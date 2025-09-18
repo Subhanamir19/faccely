@@ -29,7 +29,7 @@ Safety rules:
   return conservative midrange estimates (50–60) without commentary.
 
 Scoring guidance:
-• Scores may be decimals; avoid snapping to multiples of 5 (e.g., 34, 57.2, 73.5, 81.1).
+• Scores may be decimals; avoid  snapping to multiples of 5 (e.g., 34, 57.2, 73.5, 81.1).
 • Each score must be within [0,100] and metrics are independent.
 
 Return STRICT JSON only—no prose/markdown—exactly:

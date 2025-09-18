@@ -5,8 +5,8 @@ import {CameraView,useCameraPermissions} from "expo-camera";
 import * as ImagePicker from "expo-image-picker";
 import * as FileSystem from "expo-file-system";
 import Button from "../../components/ui/Button";
-import {useRouter} from "expo-router";
-import { useScores } from "../../store/scores"; // use our scoring store
+import { router } from "expo-router";
+import { useScores } from "../../store/scores";    
 
 // Turn any weird Android path/content URI into a usable file:// URI
 async function ensureFileUriAsync(raw?:string|null):Promise<string|null>{
@@ -26,8 +26,7 @@ async function ensureFileUriAsync(raw?:string|null):Promise<string|null>{
 }
 
 export default function TakePicture(){
-  const router=useRouter();
-  const { analyze } = useScores(); // call backend and store scores+image
+  const { analyze } = useScores();
 
   const [perm,requestPerm]=useCameraPermissions();
   const [previewUri,setPreviewUri]=useState<string|null>(null);
@@ -90,37 +89,44 @@ export default function TakePicture(){
     }
   };
 
+  // ---- MAIN FIX ----
   const useThis = async ()=>{
     if(!previewUri || submitting) return;
     try{
       setSubmitting(true);
-      await analyze(previewUri);      // calls /analyze and saves scores + imageUri
-      router.push("/(tabs)/score");   // then navigate to the score screen
+      // analyze() must return JSON { scores: {...}, modelMatch: {...} }
+      const scoresJson = await analyze(previewUri);
+
+      console.log("DEBUG scoresJson from analyze:", scoresJson);
+
+      if (scoresJson) {
+        router.push({
+          pathname: "/(tabs)/score",
+          params: { scoresPayload: JSON.stringify(scoresJson) },
+        });
+      } else {
+        Alert.alert("Analysis failed", "No scores were returned from backend.");
+      }
     }finally{
       setSubmitting(false);
     }
   };
 
-  const clearPreview=()=>{
-    if(submitting) return;
-    setPreviewUri(null);
-  };
-
+  const clearPreview=()=>{ if(!submitting) setPreviewUri(null); };
   const permissionDenied=perm?.granted===false;
 
-  // ---- onPress wrappers (must be () => void) ----
   const noop = () => {};
-  const onUseThis = () => { if(submitting) return; void useThis(); };
-  const onRetake = () => { if(submitting) return; clearPreview(); };
-  const onStartCamera = () => { if(submitting) return; void startCamera(); };
-  const onOpenGallery = () => { if(submitting) return; void openGallery(); };
+  const onUseThis = () => { if(!submitting) void useThis(); };
+  const onRetake = () => { if(!submitting) clearPreview(); };
+  const onStartCamera = () => { if(!submitting) void startCamera(); };
+  const onOpenGallery = () => { if(!submitting) void openGallery(); };
 
   return(
     <View className="flex-1 bg-[#F8F8F8]">
       <View style={{height:56}}/>
       <Text className="text-2xl px-16 mb-4">Capture</Text>
 
-      {/* Base controls driven by preview presence */}
+      {/* Base controls */}
       <View className="px-4" style={{gap:12}}>
         {previewUri?(
           <View style={{flexDirection:"row",gap:12}}>
@@ -138,40 +144,24 @@ export default function TakePicture(){
           </View>
         ):(
           <>
-            <Button
-              title="Take Photo"
-              onPress={onStartCamera}
-              style={{opacity: submitting ? 0.6 : 1}}
-            />
-            <Button
-              title="Pick From Gallery"
-              onPress={onOpenGallery}
-              variant="ghost"
-              style={{opacity: submitting ? 0.6 : 1}}
-            />
+            <Button title="Take Photo" onPress={onStartCamera} style={{opacity: submitting ? 0.6 : 1}}/>
+            <Button title="Pick From Gallery" onPress={onOpenGallery} variant="ghost" style={{opacity: submitting ? 0.6 : 1}}/>
           </>
         )}
       </View>
 
-      {/* Preview under buttons */}
+      {/* Preview */}
       <View style={{height:12}}/>
-      <View
-        style={{
-          marginHorizontal:16,
-          marginBottom:16,
-          borderRadius:20,
-          overflow:"hidden",
-          backgroundColor:"#e9e9e9",
-          width:"auto",
-          alignSelf:"stretch"
-        }}
-      >
+      <View style={{
+        marginHorizontal:16,
+        marginBottom:16,
+        borderRadius:20,
+        overflow:"hidden",
+        backgroundColor:"#e9e9e9",
+        alignSelf:"stretch"
+      }}>
         {previewUri?(
-          <Image
-            source={{uri:previewUri}}
-            style={{width:"100%",aspectRatio:3/4,backgroundColor:"#000"}}
-            resizeMode="contain"
-          />
+          <Image source={{uri:previewUri}} style={{width:"100%",aspectRatio:3/4,backgroundColor:"#000"}} resizeMode="contain"/>
         ):(
           <View style={{height:260}} className="items-center justify-center">
             <Text className="opacity-60">No image selected yet.</Text>
@@ -179,26 +169,17 @@ export default function TakePicture(){
         )}
       </View>
 
-      {/* Sticky actions (so they never go off-screen) */}
+      {/* Sticky actions */}
       {previewUri&&(
         <View style={{position:"absolute",left:0,right:0,bottom:16,paddingHorizontal:16}}>
           <View style={{flexDirection:"row",gap:12}}>
-            <Button
-              title={submitting ? "Analyzing…" : "Use This Photo"}
-              onPress={onUseThis}
-              style={{flex:1, opacity: submitting ? 0.6 : 1}}
-            />
-            <Button
-              title="Retake"
-              onPress={onRetake}
-              variant="ghost"
-              style={{flex:1, opacity: submitting ? 0.6 : 1}}
-            />
+            <Button title={submitting ? "Analyzing…" : "Use This Photo"} onPress={onUseThis} style={{flex:1, opacity: submitting ? 0.6 : 1}}/>
+            <Button title="Retake" onPress={onRetake} variant="ghost" style={{flex:1, opacity: submitting ? 0.6 : 1}}/>
           </View>
         </View>
       )}
 
-      {/* Full-screen camera */}
+      {/* Camera modal */}
       <Modal visible={cameraOpen} animationType="fade" presentationStyle="fullScreen" onRequestClose={()=>setCameraOpen(false)}>
         <StatusBar hidden/>
         <View style={{flex:1,backgroundColor:"#000"}}>
@@ -212,32 +193,22 @@ export default function TakePicture(){
           ):(
             <>
               <CameraView ref={cameraRef} active={true} facing="front" mode="picture" style={{flex:1}}/>
-              <View
-                style={{
-                  position:"absolute",left:0,right:0,bottom:0,
-                  paddingHorizontal:24,paddingVertical:18,
-                  backgroundColor:"rgba(0,0,0,0.35)",flexDirection:"row",
-                  alignItems:"center",justifyContent:"space-between"
-                }}
-              >
-                <Pressable
-                  onPress={()=>setCameraOpen(false)}
-                  style={{paddingVertical:12,paddingHorizontal:18,borderRadius:12,backgroundColor:"rgba(255,255,255,0.18)"}}
-                >
+              <View style={{
+                position:"absolute",left:0,right:0,bottom:0,
+                paddingHorizontal:24,paddingVertical:18,
+                backgroundColor:"rgba(0,0,0,0.35)",flexDirection:"row",
+                alignItems:"center",justifyContent:"space-between"
+              }}>
+                <Pressable onPress={()=>setCameraOpen(false)} style={{paddingVertical:12,paddingHorizontal:18,borderRadius:12,backgroundColor:"rgba(255,255,255,0.18)"}}>
                   <Text style={{color:"#fff",fontSize:16}}>Close</Text>
                 </Pressable>
-
-                <Pressable
-                  onPress={()=>{ void capture(); }}
-                  style={{
-                    width:76,height:76,borderRadius:38,
-                    backgroundColor:"#fff",alignItems:"center",justifyContent:"center",
-                    borderWidth:4,borderColor:"rgba(255,255,255,0.6)"
-                  }}
-                >
+                <Pressable onPress={()=>{ void capture(); }} style={{
+                  width:76,height:76,borderRadius:38,
+                  backgroundColor:"#fff",alignItems:"center",justifyContent:"center",
+                  borderWidth:4,borderColor:"rgba(255,255,255,0.6)"
+                }}>
                   <View style={{width:60,height:60,borderRadius:30,backgroundColor:"#fff"}}/>
                 </Pressable>
-
                 <View style={{width:88}}/>
               </View>
             </>

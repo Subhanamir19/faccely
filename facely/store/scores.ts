@@ -18,7 +18,10 @@ type State = {
 
 type Actions = {
   setImage: (uri: string) => void;
-  analyze: (uri: string) => Promise<void>;
+
+  /** Analyze image and return scores JSON (or null on failure). */
+  analyze: (uri: string) => Promise<Scores | null>;
+
   reset: () => void;
 
   /** Returns true on success, false on failure (never hangs). */
@@ -44,14 +47,15 @@ export const useScores = create<State & Actions>((set, get) => ({
       const mime = lower.endsWith(".png") ? "image/png" : "image/jpeg";
       const s = await analyzeImage(uri, mime);
       set({ scores: s, loading: false });
+      return s; // <-- return the JSON scores
     } catch (e: any) {
       set({ error: e?.message || "Failed to analyze", loading: false });
+      return null; // <-- fail safe
     }
   },
 
   // Always resolves; spinner can’t get stuck
   explain: async (uri: string, scores: Scores): Promise<boolean> => {
-    // guard against double taps
     if (get().explLoading) return false;
 
     set({ explLoading: true, explError: null });

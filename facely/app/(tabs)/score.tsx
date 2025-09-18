@@ -1,5 +1,7 @@
 import React, { useMemo, useRef, useState, useCallback, useEffect } from "react";
 import { View, Text, StyleSheet, useWindowDimensions, FlatList, Animated, Easing, Pressable } from "react-native";
+import { useLocalSearchParams } from "expo-router";
+
 import Svg, {
   Path,
   Defs,
@@ -84,44 +86,43 @@ function computeMilestone(score: number) {
 // ---------------------------------------------------------------------------
 // Geometry helpers — Catmull–Rom to Bezier
 // ---------------------------------------------------------------------------
-function catmullRomToBezier(points: { x: number; y: number }[]) {
-  if (points.length < 2) return "";
-  const d: string[] = [`M ${points[0].x} ${points[0].y}`];
-  for (let i = 0; i < points.length - 1; i++) {
-    const p0 = points[i - 1] || points[i];
-    const p1 = points[i];
-    const p2 = points[i + 1];
-    const p3 = points[i + 2] || p2;
-    const cp1x = p1.x + (p2.x - p0.x) / 6;
-    const cp1y = p1.y + (p2.y - p0.y) / 6;
-    const cp2x = p2.x - (p3.x - p1.x) / 6;
-    const cp2y = p2.y - (p3.y - p1.y) / 6;
-    d.push(`C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2.x} ${p2.y}`);
-  }
-  return d.join(" ");
+// NEW: simple polyline, no overshoot
+function buildPolyline(points: { x: number; y: number }[]) {
+  if (!points.length) return "";
+  return points.map((p, i) => (i === 0 ? `M ${p.x} ${p.y}` : `L ${p.x} ${p.y}`)).join(" ");
 }
 
 function buildAnchors({
   innerW, innerH, x0, yTop, yBase, score,
 }: { innerW: number; innerH: number; x0: number; yTop: number; yBase: number; score: number }) {
   const s = clamp(score, 0, 100);
-  const tScore = s / 100;
+  const A = s / 100;
+
   const xAt = (t: number) => x0 + t * innerW;
   const yForVal = (val: number) => yTop + (1 - clamp(val, 0, 100) / 100) * innerH;
-  const A = s / 100;
-  const anchors = [
-    { t: 0.0, v: 3 },
+
+  // draft values (may wiggle)
+  const rough = [
+    { t: 0.00, v: 2 },
     { t: 0.18, v: 28 + 16 * A },
     { t: 0.36, v: 38 + 10 * A },
-    { t: tScore, v: s },
+    { t: A,    v: s },
     { t: 0.70, v: 60 + 30 * A },
-    { t: 1.0, v: 88 + 8 * A },
-  ]
-    .sort((a, b) => a.t - b.t)
-    .filter((p, i, arr) => i === 0 || p.t - arr[i - 1].t > 0.0001)
-    .map(({ t, v }) => ({ x: xAt(t), y: yForVal(v) }));
-  return anchors;
+    { t: 1.00, v: Math.max(s, 86 + 10 * A) },
+  ].sort((a, b) => a.t - b.t);
+
+  // enforce monotonic increase to kill any backward pivot
+  let maxSoFar = 0;
+  const mono = rough.map(p => {
+    const nv = Math.max(maxSoFar, clamp(p.v, 0, 100));
+    maxSoFar = nv;
+    return { t: p.t, v: nv };
+  });
+
+  // to SVG points
+  return mono.map(({ t, v }) => ({ x: xAt(t), y: yForVal(v) }));
 }
+
 
 // ---------------------------------------------------------------------------
 // Header row: tiny icon chip + title + info button
@@ -165,7 +166,8 @@ function GlassRing({ value, active }: { value: number; active: boolean }) {
       easing: active ? Easing.out(Easing.cubic) : Easing.inOut(Easing.quad),
       useNativeDriver: false,
     }).start();
-  }, [active, progress]);
+  }, [active, value]);
+
 
   const dashOffset = progress.interpolate({ inputRange: [0, 1], outputRange: [c, c * (1 - clamp(value, 0, 100) / 100)] });
   const displayValue = progress.interpolate({ inputRange: [0, 1], outputRange: [0, clamp(value, 0, 100)] });
@@ -274,13 +276,23 @@ function MetricCard({ item, width, active }: { item: MetricItem; width: number; 
   const innerH = graphH - topPad - bottomPad;
   const yBase = graphH - bottomPad;
 
-  const anchors = useMemo(() => buildAnchors({ innerW, innerH, x0: leftPad, yTop: topPad, yBase, score }), [innerW, innerH, leftPad, topPad, yBase, score]);
-  const strokePath = useMemo(() => catmullRomToBezier(anchors), [anchors]);
-  const fillPath = useMemo(() => {
-    const last = anchors[anchors.length - 1];
-    const first = anchors[0];
-    return `${catmullRomToBezier(anchors)} L ${last.x} ${yBase} L ${first.x} ${yBase} Z`;
-  }, [anchors, yBase]);
+  const anchors = useMemo(
+    () => buildAnchors({ innerW, innerH, x0: leftPad, yTop: topPad, yBase, score }),
+    [innerW, innerH, leftPad, topPad, yBase, score]
+  );
+  const strokePath = useMemo(() => buildPolyline(anchors), [anchors]);
+const fillPath = useMemo(() => {
+  const first = anchors[0];
+  const last  = anchors[anchors.length - 1];
+  return [
+    `M ${first.x} ${yBase}`,
+    `L ${first.x} ${first.y}`,
+    ...anchors.slice(1).map(p => `L ${p.x} ${p.y}`),
+    `L ${last.x} ${yBase}`,
+    "Z",
+  ].join(" ");
+}, [anchors, yBase]);
+
 
   // Marker coordinates
   const markerX = leftPad + (clamp(score, 0, 100) / 100) * innerW;
@@ -298,7 +310,7 @@ function MetricCard({ item, width, active }: { item: MetricItem; width: number; 
     return y;
   }, [anchors, markerX]);
 
-  // Active pulsing glow for the dot
+  // Pulsing glow for active dot
   const pulse = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     let loop: Animated.CompositeAnimation | undefined;
@@ -319,11 +331,67 @@ function MetricCard({ item, width, active }: { item: MetricItem; width: number; 
   const glowR = pulse.interpolate({ inputRange: [0, 1], outputRange: [14, 18] });
   const glowOp = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.22, 0.35] });
 
-  const { tierIndex } = computeMilestone(score);
+  const { tierIndex } = computeMilestone(score); // still used for the vertical guide and general tier calc
+
+  // -------- Animated curve + area (draws from zero, only once) --------
+  const AnimatedPath: any = Animated.createAnimatedComponent(Path);
+  const pathRef = useRef<any>(null);
+  const [pathLength, setPathLength] = useState(0);        // 0 so we gate animation until measured
+  const drawAnim = useRef(new Animated.Value(0)).current; // 0 → 1 draws the line
+  const fillOpacity = useRef(new Animated.Value(0)).current;
+  const hasAnimated = useRef(false);                      // never replay for this card
+
+  // measure total length after path exists
+  useEffect(() => {
+    const id = requestAnimationFrame(() => {
+      if (pathRef.current?.getTotalLength) {
+        try {
+          const len = pathRef.current.getTotalLength();
+          if (len && len !== pathLength) setPathLength(len);
+        } catch {}
+      } else {
+        // fallback if RN-SVG can't measure on some devices
+        const fallback = Math.max(1, innerW + innerH);
+        if (fallback !== pathLength) setPathLength(fallback);
+      }
+    });
+    return () => cancelAnimationFrame(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [strokePath, innerW, innerH]);
+
+  // start animation only once when active and measured
+  useEffect(() => {
+    if (active && pathLength > 1 && !hasAnimated.current) {
+      hasAnimated.current = true;
+      drawAnim.setValue(0);
+      fillOpacity.setValue(0);
+
+      Animated.parallel([
+        Animated.timing(drawAnim, {
+          toValue: 1,
+          duration: 900,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: false,
+        }),
+        Animated.timing(fillOpacity, {
+          toValue: 1,
+          duration: 600,
+          delay: 300,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: false,
+        }),
+      ]).start();
+    }
+  }, [active, pathLength, drawAnim, fillOpacity]);
+
+  const dashOffset = drawAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [pathLength || 0, 0], // start fully hidden at left → fully drawn
+  });
 
   return (
     <View style={[styles.card, { width }]}>
-      <HeaderRow title={title} icon={icon} onInfo={() => { /* open sheet/tooltip if needed */ }} />
+      <HeaderRow title={title} icon={icon} onInfo={() => {}} />
 
       <Svg width={width} height={graphH}>
         <Defs>
@@ -346,34 +414,70 @@ function MetricCard({ item, width, active }: { item: MetricItem; width: number; 
           const y = topPad + (1 - val / 100) * innerH;
           return (
             <G key={`yt-${i}`}>
-              {i !== 0 && <Line x1={leftPad} y1={y} x2={width - rightPad} y2={y} stroke={COLORS.axis} strokeWidth={0.75} opacity={0.32} />}
-              <SvgText x={leftPad - 8} y={y + 4} fontSize={11} fill={COLORS.textSubtle} textAnchor="end">{val}</SvgText>
+              {i !== 0 && (
+                <Line
+                  x1={leftPad}
+                  y1={y}
+                  x2={width - rightPad}
+                  y2={y}
+                  stroke={COLORS.axis}
+                  strokeWidth={0.75}
+                  opacity={0.32}
+                />
+              )}
+              <SvgText x={leftPad - 8} y={y + 4} fontSize={11} fill={COLORS.textSubtle} textAnchor="end">
+                {val}
+              </SvgText>
             </G>
           );
         })}
 
-        {/* Area + stroke */}
-        <Path d={fillPath} fill="url(#areaGrad)" />
-        <Path d={strokePath} fill="none" stroke="url(#strokeGrad)" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" />
+        {/* Area + animated stroke */}
+        <AnimatedPath
+          d={fillPath}
+          fill="url(#areaGrad)"
+          opacity={pathLength > 1 ? fillOpacity : 0}
+        />
+        <AnimatedPath
+          ref={pathRef}
+          d={strokePath}
+          fill="none"
+          stroke="url(#strokeGrad)"
+          strokeWidth={3}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          {...(pathLength > 1
+            ? { strokeDasharray: pathLength, strokeDashoffset: dashOffset }
+            : null)}
+        />
 
         {/* Marker guide + pulsing dot */}
         <Line x1={markerX} y1={topPad} x2={markerX} y2={yBase} stroke={COLORS.curveEnd} strokeWidth={1.2} strokeDasharray="6 6" opacity={0.9} />
         <AnimatedCircle cx={markerX} cy={markerY} r={glowR} fill={COLORS.glow} opacity={glowOp as any} />
         <Circle cx={markerX} cy={markerY} r={9} fill="#fff" />
         <Circle cx={markerX} cy={markerY} r={7} fill="#fff" stroke={COLORS.curveEnd} strokeWidth={2.5} />
+        {/* Labels under the graph */}
+{["Poor", "Average", "Sharp", "Elite"].map((label, i) => {
+  const x = leftPad + (i / 3) * innerW;   // spread 4 labels evenly
+  const y = yBase + 14;                   // a little below the x-axis
+  return (
+    <SvgText
+      key={label}
+      x={x}
+      y={y}
+      fontSize={11}
+      fill={COLORS.textSubtle}
+      fontWeight="500"
+      textAnchor={i === 0 ? "start" : i === 3 ? "end" : "middle"}
+    >
+      {label}
+    </SvgText>
+  );
+})}
 
-        {/* X labels reflecting tiers */}
-        {X_LABELS.map((label, i) => {
-          const x = leftPad + (i / (X_LABELS.length - 1)) * innerW;
-          const activeTier = i === tierIndex || i === Math.min(3, tierIndex + 1);
-          return (
-            <SvgText key={label} x={x} y={graphH - 20} fill={activeTier ? COLORS.textDark : COLORS.textSubtle} fontSize={13} fontWeight={activeTier ? "700" : "500"} textAnchor="middle">
-              {label}
-            </SvgText>
-          );
-        })}
       </Svg>
 
+  
       {/* Score + insight row */}
       <View style={styles.scoreRow}>
         <GlassRing value={score} active={active} />
@@ -383,16 +487,68 @@ function MetricCard({ item, width, active }: { item: MetricItem; width: number; 
   );
 }
 
+
+
 // ---------------------------------------------------------------------------
 // Main screen with FlatList + prev/next gum buttons
 // ---------------------------------------------------------------------------
+function applyApiScores(api: any): MetricItem[] {
+  const scores = api?.scores ?? api;
+
+  // normalize keys from snake_case to Title Case
+  const keyMap: Record<string, string> = {
+    jawline: "Jawline",
+    facial_symmetry: "Symmetry",
+    cheekbones: "Cheekbones",
+    sexual_dimorphism: "Sexual Dimorphism",
+    skin_quality: "Skin Quality",
+    eyes_symmetry: "Eye Symmetry",
+    nose_harmony: "Nose Harmony",
+    youthfulness: "Masculinity/Femininity", // <-- map to your UI label
+  };
+
+  return DEFAULT_METRICS.map(m => {
+    // try API key directly OR via keyMap
+    const apiKey = Object.entries(keyMap).find(([, v]) => v === m.key)?.[0];
+    const sc = Number(scores?.[apiKey ?? ""]);
+    return {
+      ...m,
+      score: Number.isFinite(sc) ? Math.max(0, Math.min(100, sc)) : m.score,
+      percentile: Number.isFinite(sc) ? sc : (m.percentile ?? m.score),
+    };
+  });
+}
+
 export default function ScoreScreen() {
   const { width } = useWindowDimensions();
   const itemWidth = Math.min(760, Math.max(320, width * 0.82));
   const spacer = Math.max(12, width * 0.02);
   const snap = itemWidth + spacer;
 
+  const [index, setIndex] = useState(0);
   const [metrics, setMetrics] = useState<MetricItem[]>(DEFAULT_METRICS);
+
+  const params = useLocalSearchParams<{ scoresPayload?: string }>();
+
+useEffect(() => {
+  if (params.scoresPayload) {
+    try {
+      const payload = JSON.parse(params.scoresPayload as string);
+      setMetrics(applyApiScores(payload)); // <- this is the line you wanted
+      useEffect(() => {
+        if (params.scoresPayload) {
+          try {
+            const payload = JSON.parse(params.scoresPayload as string);
+            console.log("DEBUG incoming scoresPayload:", payload);  // 👈 add this
+            setMetrics(applyApiScores(payload));
+          } catch {}
+        }
+      }, [params.scoresPayload]);
+      
+    } catch {}
+  }
+}, [params.scoresPayload]);
+
   const listRef = useRef<FlatList>(null);
 
   const getItemLayout = useCallback((_: any, i: number) => ({ length: snap, offset: snap * i, index: i }), [snap]);
@@ -407,7 +563,7 @@ export default function ScoreScreen() {
   );
 
   const scrollTo = useCallback((i: number) => {
-    const clamped = Math.max(0, Math.min(METRICS.length - 1, i));
+    const clamped = Math.max(0, Math.min(metrics.length - 1, i));
     listRef.current?.scrollToOffset({ offset: clamped * snap, animated: true });
     setIndex(clamped);
   }, [snap]);
@@ -420,7 +576,7 @@ export default function ScoreScreen() {
       <FlatList
         ref={listRef}
         horizontal
-        data={METRICS}
+        data={metrics}
         keyExtractor={(m) => m.key}
         renderItem={renderItem}
         showsHorizontalScrollIndicator={false}
@@ -436,7 +592,7 @@ export default function ScoreScreen() {
 
       {/* Pager dots */}
       <View style={styles.dotsRow}>
-        {METRICS.map((_, i) => (
+      {metrics.map((_, i) => (
           <View key={i} style={[styles.dot, i === index && styles.dotActive]} />
         ))}
       </View>
@@ -444,7 +600,7 @@ export default function ScoreScreen() {
       {/* Gumroad-style controls with subtle glow when enabled */}
       <View style={styles.controlsRow}>
       <GumButton label="Previous" onPress={goPrev} disabled={index === 0} variant="prev" />
-<GumButton label="Next" onPress={goNext} disabled={index === METRICS.length - 1} variant="next" />
+<GumButton label="Next" onPress={goNext} disabled={index === metrics.length - 1} variant="next" />
 
       </View>
     </View>

@@ -3,6 +3,7 @@ import {Text,Pressable} from "react-native";
 import Animated,{useSharedValue,withSpring,useAnimatedStyle} from "react-native-reanimated";
 import {GlassCard} from "./Glass";
 
+
 type Props={label:string;value?:number};
 
 export const MetricCard=({label,value}:Props)=>{
