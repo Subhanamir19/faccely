@@ -1,216 +1,255 @@
 // app/(onboarding)/age.tsx
 import { useEffect, useState } from "react";
-import { View, Text, StyleSheet, Pressable } from "react-native";
+import {
+  View,
+  StyleSheet,
+  Pressable,
+  ImageBackground,
+  Platform,
+} from "react-native";
 import { router } from "expo-router";
+import { BlurView } from "expo-blur";
+import T from "@/components/ui/T";
 import { useOnboarding } from "@/store/onboarding";
 
-/**
- * Visual spec:
- * - Soft light background
- * - White rounded card with shadow
- * - Top pill progress (step 1/3)
- * - Title + subtitle
- * - Circular age stepper with + / −
- * - Primary green "Next" button, ghost "Skip" button
- */
-
-const ACCENT = "#23A455";       // primary green (tune if you want)
-const BG = "#F5F7FA";
-const TEXT_DARK = "#0F172A";
-const TEXT_SUB = "#667085";
-const CARD = "#FFFFFF";
-const BORDER = "rgba(15,23,42,0.06)";
+const ACCENT = "#8FA31E";
+const CARD_BG = "rgba(12, 14, 18, 0.72)";
+const CARD_BORDER = "rgba(255,255,255,0.08)";
+const TEXT = "rgba(255,255,255,0.92)";
+const TEXT_DIM = "rgba(255,255,255,0.65)";
+const R = 28;
 
 export default function AgeScreen() {
   const { data, setField } = useOnboarding();
-  const [age, setAge] = useState<number>(Number.isFinite(data.age) ? Number(data.age) : 25);
+  const [age, setAge] = useState<number>(
+    Number.isFinite(data.age) ? Number(data.age) : 25
+  );
 
   useEffect(() => {
     setField("age", age);
   }, [age]);
 
-  const dec = () => setAge((a) => Math.max(10, a - 1));
-  const inc = () => setAge((a) => Math.min(100, a + 1));
+  const dec = () => setAge(a => Math.max(10, a - 1));
+  const inc = () => setAge(a => Math.min(100, a + 1));
   const next = () => router.push("/(onboarding)/ethnicity");
   const skip = () => router.push("/(onboarding)/ethnicity");
 
   return (
-    <View style={styles.screen}>
-      <View style={styles.card}>
-        {/* pill progress (step 1 of 3) */}
-        <View style={styles.progressWrap}>
+    <ImageBackground
+      source={require("../../assets/bg/score-bg.jpg")}
+      resizeMode="cover"
+      style={styles.bg}
+      imageStyle={styles.bgImg}
+    >
+      <View style={styles.bgOverlay} />
+
+      <View style={styles.cardWrap}>
+        <BlurView intensity={60} tint="dark" style={styles.card}>
+          {/* Top slim progress */}
           <View style={styles.progressTrack}>
-            <View style={[styles.progressFill, { width: `${(1 / 3) * 100}%` }]} />
+            <View style={styles.progressFill} />
           </View>
-        </View>
 
-        <Text style={styles.title}>How old are you?</Text>
-        <Text style={styles.sub}>
-          We use your age to calibrate{"\n"}health & aesthetics benchmarks.
-        </Text>
+          <T style={styles.title}>How old are you?</T>
+          <T style={styles.sub}>
+            We use your age to calibrate{"\n"}health & aesthetics benchmarks.
+          </T>
 
-        {/* circular stepper */}
-        <View style={styles.circle}>
-        <Pressable hitSlop={16} onPress={inc} style={styles.sideBtn}>
-  <Text style={styles.sideSymbol}>＋</Text>
-</Pressable>
+          {/* Circular age stepper */}
+          <View style={styles.circle}>
+            {/* translucent inner overlay to avoid GPU faceting */}
+            <View style={styles.circleInner} />
 
-<View>
-  <Text style={styles.ageText}>{age}</Text>
-  <View style={styles.underline} />
-</View>
+            <Pressable hitSlop={16} onPress={inc} style={styles.sideBtn}>
+              <T style={styles.sideSymbol}>＋</T>
+            </Pressable>
 
-<Pressable hitSlop={16} onPress={dec} style={styles.sideBtn}>
-  <Text style={styles.sideSymbol}>－</Text>
-</Pressable>
-        </View>
+            <View style={{ alignItems: "center" }}>
+              <T style={styles.ageText}>{age}</T>
+              <View style={styles.underline} />
+            </View>
 
-        {/* buttons */}
-        <Pressable onPress={next} style={({ pressed }) => [styles.primaryBtn, pressed && styles.pressed]}>
-          <Text style={styles.primaryLabel}>Next</Text>
-        </Pressable>
+            <Pressable hitSlop={16} onPress={dec} style={styles.sideBtn}>
+              <T style={styles.sideSymbol}>－</T>
+            </Pressable>
+          </View>
 
-        <Pressable onPress={skip} style={({ pressed }) => [styles.ghostBtn, pressed && styles.pressed]}>
-          <Text style={styles.ghostLabel}>Skip</Text>
-        </Pressable>
+          {/* Buttons */}
+          <Pressable
+            onPress={next}
+            style={({ pressed }) => [styles.primaryBtn, pressed && styles.pressed]}
+          >
+            <T style={styles.primaryLabel}>Next</T>
+          </Pressable>
+
+          <Pressable
+            onPress={skip}
+            style={({ pressed }) => [styles.ghostBtn, pressed && styles.pressed]}
+          >
+            <T style={styles.ghostLabel}>Skip</T>
+          </Pressable>
+        </BlurView>
       </View>
-    </View>
+    </ImageBackground>
   );
 }
 
-const R = 24;
-
 const styles = StyleSheet.create({
-  screen: {
+  bg: {
     flex: 1,
-    backgroundColor: BG,
-    padding: 20,
+    backgroundColor: "#0A0C10",
+    justifyContent: "center",
+  },
+  bgImg: {},
+  bgOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(3,6,10,0.45)",
+  },
+
+  cardWrap: {
+    paddingHorizontal: 18,
     justifyContent: "center",
   },
   card: {
-    backgroundColor: CARD,
-    borderRadius: 28,
-    paddingVertical: 28,
+    alignSelf: "center",
+    width: "92%",
+    borderRadius: 32,
+    overflow: "hidden",
     paddingHorizontal: 22,
+    paddingTop: 18,
+    paddingBottom: 20,
+    backgroundColor: CARD_BG,
     borderWidth: 1,
-    borderColor: BORDER,
-    // soft shadow
-    shadowColor: "#000",
-    shadowOpacity: 0.12,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 10,
+    borderColor: CARD_BORDER,
+    ...(Platform.OS === "android"
+      ? { elevation: 8 }
+      : {
+          shadowColor: "#000",
+          shadowOpacity: 0.25,
+          shadowRadius: 30,
+          shadowOffset: { width: 0, height: 18 },
+        }),
   },
 
-  progressWrap: { marginBottom: 18, alignItems: "center" },
+  // Progress
   progressTrack: {
-    height: 16,
+    height: 14,
     width: "70%",
+    alignSelf: "center",
     borderRadius: 999,
-    backgroundColor: "rgba(15,23,42,0.06)",
-    borderWidth: 1,
-    borderColor: "rgba(15,23,42,0.05)",
+    backgroundColor: "rgba(255,255,255,0.08)",
     overflow: "hidden",
+    marginTop: 6,
+    marginBottom: 14,
   },
   progressFill: {
     height: "100%",
-    backgroundColor: "rgba(35,164,85,0.35)",
+    width: `${(1 / 3) * 100}%`,
+    backgroundColor: ACCENT,
   },
 
+  // Copy
   title: {
-    fontSize: 26,
-    lineHeight: 30,
+    fontSize: 28,
+    lineHeight: 34,
     fontWeight: "800",
-    color: TEXT_DARK,
     textAlign: "center",
+    color: TEXT,
     marginTop: 6,
   },
   sub: {
-    fontSize: 14,
-    lineHeight: 20,
-    color: TEXT_SUB,
+    fontSize: 15,
+    lineHeight: 22,
     textAlign: "center",
+    color: TEXT_DIM,
     marginTop: 8,
     marginBottom: 22,
   },
 
+  // Circle stepper
   circle: {
     alignSelf: "center",
-    width: 200,
-    height: 200,
-    borderRadius: 100,
-    backgroundColor: "#FFFFFF",
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: "#0E1114", // OPAQUE base to stop hexagon artifact
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: "rgba(255,255,255,0.07)",
     alignItems: "center",
     justifyContent: "space-between",
     flexDirection: "row",
     paddingHorizontal: 20,
-    // inner ring glow
-    shadowColor: "#000",
-    shadowOpacity: 0.08,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 6,
-    marginBottom: 24,
+    marginBottom: 26,
+    overflow: "hidden", // ensure inner overlay clips perfectly circular
+    // Important: NO elevation/shadow on the circle itself (causes polygonal artifacts on Android)
+  },
+  circleInner: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(255,255,255,0.04)", // gives the soft glass look
   },
   sideBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.06)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
   },
   sideSymbol: {
     fontSize: 24,
-    color: "#9AA4B2",
-    fontWeight: "600",
+    fontWeight: "700",
+    color: "rgba(255,255,255,0.8)",
   },
-
   ageText: {
-    fontSize: 56,
-    fontWeight: "800",
-    color: TEXT_DARK,
+    fontSize: 64,
+    fontWeight: "900",
+    color: TEXT,
     textAlign: "center",
   },
   underline: {
     height: 6,
     borderRadius: 6,
     backgroundColor: ACCENT,
-    marginTop: 6,
+    marginTop: 8,
+    width: 72,
   },
 
+  // Buttons
   primaryBtn: {
     marginTop: 6,
     backgroundColor: ACCENT,
     borderRadius: R,
-    paddingVertical: 14,
+    paddingVertical: 16,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#000",
-    shadowOpacity: 0.15,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 8,
+    ...(Platform.OS === "android"
+      ? { elevation: 6 }
+      : {
+          shadowColor: "#000",
+          shadowOpacity: 0.25,
+          shadowRadius: 16,
+          shadowOffset: { width: 0, height: 10 },
+        }),
   },
-  primaryLabel: { color: "#FFFFFF", fontSize: 16, fontWeight: "700" },
+  primaryLabel: {
+    color: "#0C0F13",
+    fontSize: 16,
+    fontWeight: "800",
+  },
 
   ghostBtn: {
     marginTop: 12,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "rgba(255,255,255,0.06)",
     borderRadius: R,
-    paddingVertical: 14,
+    paddingVertical: 16,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: "rgba(15,23,42,0.08)",
-    shadowColor: "#000",
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 6,
+    borderColor: "rgba(255,255,255,0.10)",
   },
-  ghostLabel: { color: TEXT_DARK, fontSize: 16, fontWeight: "700" },
+  ghostLabel: { color: TEXT, fontSize: 16, fontWeight: "700" },
 
   pressed: { transform: [{ translateY: 1 }] },
 });

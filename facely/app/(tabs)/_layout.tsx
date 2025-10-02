@@ -1,44 +1,61 @@
+// app/(tabs)/_layout.tsx
 import React from "react";
 import { Tabs } from "expo-router";
-import { Camera, Home, BarChart3, User } from "lucide-react-native";
+import { Platform } from "react-native";
+import { Camera, ListChecks } from "lucide-react-native";
 
-export default function TabLayout() {
+const ACTIVE = "#8FA31E";
+const INACTIVE = "rgba(255,255,255,0.55)";
+const BG = "#0B0B0B";
+const BORDER = "rgba(255,255,255,0.08)";
+
+export default function TabsLayout() {
   return (
     <Tabs
+      initialRouteName="take-picture"
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: "#0f0f0f",
-        tabBarStyle: { backgroundColor: "#fff" },
+        tabBarActiveTintColor: ACTIVE,
+        tabBarInactiveTintColor: INACTIVE,
+        tabBarStyle: {
+          backgroundColor: BG,
+          borderTopColor: BORDER,
+          height: 64,
+          paddingTop: 8,
+          paddingBottom: Platform.select({ ios: 10, android: 8 }),
+        },
+        tabBarLabelStyle: {
+          fontSize: 12,
+          fontFamily: Platform.select({
+            ios: "Poppins-SemiBold",
+            android: "Poppins-SemiBold",
+            default: "Poppins-SemiBold",
+          }),
+        },
       }}
     >
+      {/* Visible tab #1: Analysis → starts at take-picture */}
       <Tabs.Screen
         name="take-picture"
         options={{
-          title: "Take Picture",
-          tabBarIcon: ({ color }) => <Camera color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="score"
-        options={{
-          title: "Score",
-          tabBarIcon: ({ color }) => <Home color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="analysis"
-        options={{
           title: "Analysis",
-          tabBarIcon: ({ color }) => <BarChart3 color={color} />,
+          tabBarIcon: ({ color, size }) => <Camera color={color} size={size ?? 22} />,
         }}
       />
+
+      {/* Visible tab #2: Recommendations */}
       <Tabs.Screen
-        name="profile"
+        name="recommendations"
         options={{
-          title: "Profile",
-          tabBarIcon: ({ color }) => <User color={color} />,
+          title: "Recommendations",
+          tabBarIcon: ({ color, size }) => <ListChecks color={color} size={size ?? 22} />,
         }}
       />
+
+      {/* Keep routes but hide them from the tab bar */}
+      <Tabs.Screen name="score" options={{ href: null }} />
+      <Tabs.Screen name="analysis" options={{ href: null }} />
+      <Tabs.Screen name="profile" options={{ href: null }} />
     </Tabs>
   );
 }

@@ -1,3 +1,4 @@
+// C:\SS\scorer-node\src\validators.ts
 import { z } from "zod";
 
 export const metricKeys = [
@@ -8,7 +9,6 @@ export const metricKeys = [
   "eyes_symmetry",
   "nose_harmony",
   "sexual_dimorphism",
-  "youthfulness",
 ] as const;
 
 export type MetricKey = (typeof metricKeys)[number];
@@ -21,7 +21,6 @@ export const ScoresSchema = z.object({
   eyes_symmetry: z.number().min(0).max(100),
   nose_harmony: z.number().min(0).max(100),
   sexual_dimorphism: z.number().min(0).max(100),
-  youthfulness: z.number().min(0).max(100),
 });
 
 export type Scores = z.infer<typeof ScoresSchema>;
@@ -35,7 +34,59 @@ export const ExplanationsSchema = z.object({
   eyes_symmetry: z.array(z.string()).length(2),
   nose_harmony: z.array(z.string()).length(2),
   sexual_dimorphism: z.array(z.string()).length(2),
-  youthfulness: z.array(z.string()).length(2),
 });
 
 export type Explanations = z.infer<typeof ExplanationsSchema>;
+
+/* ============================================================================
+   NEW: Recommendations schemas (used by /recommendations endpoint)
+   - Reuses your MetricKey union so strings stay consistent across app and API
+   ============================================================================ */
+
+   export const GenderSchema = z.enum(["male", "female", "other"]);
+   export type Gender = z.infer<typeof GenderSchema>;
+   
+   export const RecommendationItemSchema = z.object({
+     metric: z.enum(metricKeys),
+     score: z.number().min(0).max(100),
+     title: z.string().max(40).optional(),         // NEW: short imperative label
+     finding: z.string().max(120).optional(),      // made optional
+     recommendation: z.string().max(220),          // main action, concise
+     priority: z.enum(["low", "medium", "high"]),
+     expected_gain: z
+       .union([z.number(), z.string()])
+       .optional()
+       .transform((val) =>
+         typeof val === "string" ? parseFloat(val) : val
+       ),
+   });
+   
+   export type RecommendationItem = z.infer<typeof RecommendationItemSchema>;
+   
+   export const RecommendationsRequestSchema = z.object({
+     age: z.number().int().min(10).max(100),
+     gender: GenderSchema.optional(),
+     ethnicity: z.string().optional(),
+     metrics: z.array(
+       z.object({
+         key: z.enum(metricKeys),
+         score: z.number().min(0).max(100),
+         notes: z.string().optional(), // optional qualitative note from analysis
+       })
+     ),
+   });
+   
+   export type RecommendationsRequest = z.infer<
+     typeof RecommendationsRequestSchema
+   >;
+   
+   export const RecommendationsResponseSchema = z.object({
+     summary: z.string(), // short overall plan
+     items: z.array(RecommendationItemSchema), // per-metric actions
+     version: z.literal("v1"),
+   });
+   
+   export type RecommendationsResponse = z.infer<
+     typeof RecommendationsResponseSchema
+   >;
+   

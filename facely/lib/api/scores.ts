@@ -1,52 +1,76 @@
-import { API_BASE_URL } from "../config";
+// Frontend API for scoring endpoints. Sends proper multipart files.
+// Do NOT set Content-Type manually; React Native will set the boundary.
 
-/** Single source of truth for score shape */
+import { API_BASE } from "./config";
+
 export type Scores = {
-  jawline:number;
-  facial_symmetry:number;
-  skin_quality:number;
-  cheekbones:number;
-  eyes_symmetry:number;
-  nose_harmony:number;
-  sexual_dimorphism:number;
-  youthfulness:number;
+  jawline: number;
+  facial_symmetry: number;
+  skin_quality: number;
+  cheekbones: number;
+  eyes_symmetry: number;
+  nose_harmony: number;
+  sexual_dimorphism: number;
 };
 
-const KEYS = [
-  "jawline","facial_symmetry","skin_quality","cheekbones",
-  "eyes_symmetry","nose_harmony","sexual_dimorphism","youthfulness"
-] as const;
+function filenameFromUri(uri: string): string {
+  try {
+    const q = uri.split("?")[0];
+    const last = q.substring(q.lastIndexOf("/") + 1) || "upload.jpg";
+    return last.includes(".") ? last : last + ".jpg";
+  } catch {
+    return "upload.jpg";
+  }
+}
 
-/**
- * POST /analyze
- * multipart/form-data:
- *   - image: file
- */
-export async function analyzeImage(
-  uri:string,
-  mime: "image/jpeg" | "image/png" = "image/jpeg"
-): Promise<Scores> {
-  const name = uri.split("/").pop() || (mime === "image/png" ? "selfie.png" : "selfie.jpg");
+function mimeFromUri(uri: string): string {
+  const u = uri.toLowerCase();
+  if (u.endsWith(".png")) return "image/png";
+  if (u.endsWith(".webp")) return "image/webp";
+  if (u.endsWith(".gif")) return "image/gif";
+  if (u.endsWith(".heic") || u.endsWith(".heif")) return "image/heic";
+  return "image/jpeg";
+}
 
+function filePart(uri: string) {
+  return {
+    uri,                                  // file:// or content://
+    name: filenameFromUri(uri),
+    type: mimeFromUri(uri),
+  } as any;
+}
+
+// --- Single image ---
+export async function analyzeImage(uri: string): Promise<Scores> {
   const form = new FormData();
-  // React Native fetch file shape
-  form.append("image" as any, { uri, name, type: mime } as any);
+  form.append("image", filePart(uri));    // backend expects 'image'
 
-  const res = await fetch(`${API_BASE_URL}/analyze`, { method: "POST", body: form });
+  const res = await fetch(`${API_BASE}/analyze`, {
+    method: "POST",
+    body: form,
+  });
 
   if (!res.ok) {
-    const msg = await res.text().catch(()=> "");
-    throw new Error(`HTTP ${res.status} ${msg}`);
+    const text = await res.text().catch(() => "");
+    throw new Error(`analyze failed: ${res.status} ${text}`);
   }
+  return (await res.json()) as Scores;
+}
 
-  const data = await res.json();
+// --- Pair images ---
+export async function analyzePair(frontalUri: string, sideUri: string): Promise<Scores> {
+  const form = new FormData();
+  form.append("frontal", filePart(frontalUri)); // backend expects 'frontal'
+  form.append("side", filePart(sideUri));       // and 'side'
 
-  // minimal validation so the UI doesn’t blow up later
-  for (const k of KEYS) {
-    if (typeof (data as any)[k] !== "number") {
-      throw new Error("Bad payload from server");
-    }
+  const res = await fetch(`${API_BASE}/analyze/pair`, {
+    method: "POST",
+    body: form,
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`analyze/pair failed: ${res.status} ${text}`);
   }
-
-  return data as Scores;
+  return (await res.json()) as Scores;
 }

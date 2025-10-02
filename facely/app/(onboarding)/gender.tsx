@@ -1,186 +1,302 @@
-import { View, Text, StyleSheet, Pressable, FlatList } from "react-native";
+// app/(onboarding)/gender.tsx
+import React, { useMemo } from "react";
+import {
+  View,
+  StyleSheet,
+  Pressable,
+  FlatList,
+  ImageBackground,
+  Platform,
+  AccessibilityState,
+} from "react-native";
 import { router } from "expo-router";
+import { BlurView } from "expo-blur";
+import T from "@/components/ui/T";
 import { useOnboarding } from "@/store/onboarding";
 
-const ACCENT = "#23A455";
-const ACCENT_DARK = "#177A3E";
-const BG = "#F5F7FA";
-const TEXT_DARK = "#0F172A";
-const TEXT_SUB = "#667085";
-const CARD = "#FFFFFF";
-const BORDER = "rgba(15,23,42,0.08)";
+/** Tokens (aligned with ethnicity screen) */
+const ACCENT = "#8FA31E";
+const TEXT = "rgba(255,255,255,0.92)";
+const TEXT_DIM = "rgba(255,255,255,0.65)";
+const CARD_BORDER = "rgba(255,255,255,0.12)";
+const CARD_TINT = "rgba(15,15,15,0.72)";
+const TRACK = "rgba(255,255,255,0.12)";
+const TRACK_INNER = "rgba(0,0,0,0.35)";
+const BUTTON_TRACK = "rgba(255,255,255,0.10)";
 
-type Row = { key: string; label: string; icon: string };
+type Row = { key: string; label: string };
 const OPTIONS: Row[] = [
-  { key: "Male",   label: "Male",   icon: "♂︎" },
-  { key: "Female", label: "Female", icon: "♀︎" },
-  { key: "Other",  label: "Other / Prefer not to say", icon: "👤" },
+  { key: "Female", label: "Female" },
+  { key: "Male", label: "Male" },
+  { key: "Other", label: "Other" },
 ];
 
 export default function GenderScreen() {
   const { data, setField, finish } = useOnboarding();
   const selected = data.gender;
 
+  const rows = useMemo(() => OPTIONS, []);
+
   const choose = (label: string) => setField("gender", label);
-  const end = async () => { await finish(); router.replace("/take-picture"); };
+  const onNext = async () => {
+    if (!selected) return;
+    await finish();
+    router.replace("/loading");
+  };
 
   return (
-    <View style={styles.screen}>
-      <View style={styles.card}>
-        {/* progress pill 3/3 */}
-        <View style={styles.progressWrap}>
-          <View style={styles.progressTrack}>
-            <View style={[styles.progressFill, { width: "100%" }]} />
+    <ImageBackground
+      source={require("../../assets/bg/score-bg.jpg")}
+      resizeMode="cover"
+      style={styles.screen}
+      imageStyle={styles.bgImage}
+    >
+      <View style={styles.centerWrap}>
+        <BlurView intensity={50} tint="dark" style={styles.card}>
+          <View style={styles.cardOverlay} />
+
+          {/* progress pill (3/3) */}
+          <View style={styles.progressWrap}>
+            <View style={styles.progressTrack}>
+              <View style={[styles.progressFill, { width: "100%" }]} />
+            </View>
           </View>
-        </View>
 
-        <Text style={styles.title}>What’s your gender?</Text>
-        <Text style={styles.sub}>
-          We adjust benchmarks and analysis according to biological differences.
-        </Text>
+          <T style={styles.title}>What’s your gender?</T>
+          <T style={styles.sub}>
+            This information is required to generate an accurate analysis.
+          </T>
 
-        <FlatList
-          style={{ marginTop: 18 }}
-          data={OPTIONS}
-          keyExtractor={(it) => it.key}
-          ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
-          renderItem={({ item }) => {
-            const active = selected === item.label;
-            return (
-              <View style={styles.optShadow}>
+          <FlatList
+            data={rows}
+            scrollEnabled={false}
+            keyExtractor={(it) => it.key}
+            ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
+            contentContainerStyle={styles.listContainer}
+            renderItem={({ item }) => {
+              const active = selected === item.label;
+              return (
                 <Pressable
-                  android_ripple={{ color: "transparent" }}  // no gray wash
                   onPress={() => choose(item.label)}
                   style={({ pressed }) => [
-                    styles.optBase,
-                    active && styles.optActive,
-                    pressed && styles.pressed,
+                    styles.option,
+                    active && styles.optionActive,
+                    pressed && { transform: [{ translateY: 1 }] },
                   ]}
                 >
-                  <Text style={[styles.icon, active && styles.iconActive]}>{item.icon}</Text>
-                  <Text style={[styles.optText, active && styles.optTextActive]}>
+                  {/* inner bevel */}
+                  <View style={styles.optionInner} />
+                  {/* active lime stroke only (no fill, no elevation) */}
+                  {active ? <View style={styles.optionRing} /> : null}
+
+                  <T style={[styles.optionText, active && styles.optionTextActive]}>
                     {item.label}
-                  </Text>
+                  </T>
                 </Pressable>
-              </View>
-            );
-          }}
-          scrollEnabled={false}
-        />
+              );
+            }}
+          />
 
-        <Pressable
-          onPress={end}
-          disabled={!selected}
-          accessibilityState={{ disabled: !selected }}
-          android_ripple={{ color: "transparent" }}
-          style={({ pressed }) => [styles.primaryBtn, pressed && styles.pressed, !selected && { opacity: 0.6 }]}
-        >
-          <Text style={styles.primaryLabel}>Finish</Text>
-        </Pressable>
+          {/* Primary Next */}
+          <Pressable
+            onPress={onNext}
+            disabled={!selected}
+            accessibilityState={{ disabled: !selected } as AccessibilityState}
+            style={({ pressed }) => [
+              styles.primaryBtn,
+              !selected && styles.primaryBtnDisabled,
+              pressed && { transform: [{ translateY: 1 }] },
+            ]}
+          >
+            <T style={styles.primaryLabel}>Next</T>
+          </Pressable>
 
-        <Pressable
-          onPress={end}
-          android_ripple={{ color: "transparent" }}
-          style={({ pressed }) => [styles.ghostBtn, pressed && styles.pressed]}
-        >
-          <Text style={styles.ghostLabel}>Skip</Text>
-        </Pressable>
+          {/* Skip */}
+          <Pressable
+            onPress={onNext}
+            style={({ pressed }) => [
+              styles.secondaryBtn,
+              pressed && { transform: [{ translateY: 1 }] },
+            ]}
+          >
+            <T style={styles.secondaryLabel}>Skip</T>
+          </Pressable>
+        </BlurView>
       </View>
-    </View>
+    </ImageBackground>
   );
 }
 
-const R = 22;
+const R = 28;
+const PILL_R = 999;
 
 const styles = StyleSheet.create({
-  pressed: { transform: [{ translateY: 1 }] },
-
-  screen: { flex: 1, backgroundColor: BG, padding: 20, justifyContent: "center" },
+  screen: {
+    flex: 1,
+    backgroundColor: "#000",
+  },
+  bgImage: {
+    transform: [{ translateY: 40 }],
+  },
+  centerWrap: {
+    flex: 1,
+    paddingHorizontal: 18,
+    justifyContent: "center",
+    alignItems: "center",
+  },
 
   card: {
-    backgroundColor: CARD,
-    borderRadius: 28,
-    paddingVertical: 26,
-    paddingHorizontal: 20,
-    borderWidth: 1,
-    borderColor: "rgba(15,23,42,0.06)",
-    shadowColor: "#000",
-    shadowOpacity: 0.12,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 8,
-  },
-
-  progressWrap: { alignItems: "center", marginBottom: 14 },
-  progressTrack: {
-    height: 16, width: "85%", borderRadius: 999,
-    backgroundColor: "rgba(15,23,42,0.06)",
-    borderWidth: 1, borderColor: "rgba(15,23,42,0.05)",
+    width: "92%",
+    borderRadius: R,
     overflow: "hidden",
   },
-  progressFill: { height: "100%", backgroundColor: "rgba(35,164,85,0.35)" },
-
-  title: { fontSize: 26, lineHeight: 30, fontWeight: "800", color: TEXT_DARK, marginTop: 6 },
-  sub: { fontSize: 14, lineHeight: 20, color: TEXT_SUB, marginTop: 8 },
-
-  // Shadow wrapper so we can keep Pressable itself clean
-  optShadow: {
-    borderRadius: 18,
-    shadowColor: "#000",
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 4,                 // subtle, natural
+  cardOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: CARD_TINT,
+    borderRadius: R,
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
   },
-  optBase: {
-    flexDirection: "row",
+
+  progressWrap: { alignItems: "center", marginTop: 18, marginBottom: 12 },
+  progressTrack: {
+    height: 16,
+    width: "86%",
+    borderRadius: PILL_R,
+    backgroundColor: TRACK,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
+    overflow: "hidden",
+  },
+  progressFill: {
+    height: "100%",
+    backgroundColor: ACCENT,
+  },
+
+  title: {
+    fontSize: 26,
+    lineHeight: 30,
+    textAlign: "center",
+    color: TEXT,
+    marginTop: 6,
+    fontFamily: Platform.select({
+      ios: "Poppins-SemiBold",
+      android: "Poppins-SemiBold",
+      default: "Poppins-SemiBold",
+    }),
+  },
+  sub: {
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: "center",
+    color: TEXT_DIM,
+    marginTop: 8,
+    paddingHorizontal: 8,
+    fontFamily: Platform.select({
+      ios: "Poppins-Regular",
+      android: "Poppins-Regular",
+      default: "Poppins-Regular",
+    }),
+  },
+
+  listContainer: {
+    paddingTop: 12,
     alignItems: "center",
-    gap: 12,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 18,
+  },
+
+  option: {
+    position: "relative",
+    width: "86%",
+    backgroundColor: "rgba(0,0,0,0.55)",
+    borderRadius: 20,
     paddingVertical: 18,
     paddingHorizontal: 18,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: "rgba(255,255,255,0.10)",
+    overflow: "hidden",
   },
-  optActive: {
-    backgroundColor: ACCENT,
-    borderColor: ACCENT_DARK,
+  optionInner: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: TRACK_INNER,
   },
-  icon: { fontSize: 18, color: "#8A94A6", width: 22, textAlign: "center" },
-  iconActive: { color: "#FFFFFF" },
-  optText: { fontSize: 18, fontWeight: "700", color: TEXT_DARK },
-  optTextActive: { color: "#FFFFFF" },
+  optionRing: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 20,
+    borderWidth: 2,
+    borderColor: ACCENT,
+    // iOS glow only; Android keeps it flat to avoid black slabs
+    ...(Platform.OS === "ios"
+      ? {
+          shadowColor: ACCENT,
+          shadowOpacity: 0.6,
+          shadowRadius: 16,
+          shadowOffset: { width: 0, height: 0 },
+        }
+      : null),
+  },
+  optionActive: {
+    backgroundColor: "rgba(143,163,30,0.08)", // very subtle fill under the stroke
+    borderColor: ACCENT,
+  },
+  optionText: {
+    fontSize: 18,
+    color: TEXT,
+    fontFamily: Platform.select({
+      ios: "Poppins-SemiBold",
+      android: "Poppins-SemiBold",
+      default: "Poppins-SemiBold",
+    }),
+  },
+  optionTextActive: {
+    color: TEXT,
+  },
 
   primaryBtn: {
-    marginTop: 22,
+    marginTop: 18,
+    alignSelf: "center",
+    width: "86%",
     backgroundColor: ACCENT,
-    borderRadius: 28,
+    borderRadius: 26,
     paddingVertical: 16,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#000",
-    shadowOpacity: 0.15,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 6,
   },
-  primaryLabel: { color: "#FFFFFF", fontSize: 16, fontWeight: "700" },
+  primaryBtnDisabled: {
+    backgroundColor: BUTTON_TRACK,
+  },
+  primaryLabel: {
+    fontSize: 16,
+    color: "#0D0E0D",
+    fontFamily: Platform.select({
+      ios: "Poppins-SemiBold",
+      android: "Poppins-SemiBold",
+      default: "Poppins-SemiBold",
+    }),
+  },
 
-  ghostBtn: {
-    marginTop: 12,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 28,
-    paddingVertical: 16,
+  secondaryBtn: {
+    marginTop: 10,
+    marginBottom: 12,
+    alignSelf: "center",
+    width: "86%",
+    borderRadius: 22,
+    paddingVertical: 14,
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.55)",
     borderWidth: 1,
-    borderColor: "rgba(15,23,42,0.08)",
-    shadowColor: "#000",
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 4,
+    borderColor: "rgba(255,255,255,0.12)",
+    overflow: "hidden",
   },
-  ghostLabel: { color: TEXT_DARK, fontSize: 16, fontWeight: "700" },
+  secondaryLabel: {
+    fontSize: 16,
+    color: TEXT,
+    fontFamily: Platform.select({
+      ios: "Poppins-SemiBold",
+      android: "Poppins-SemiBold",
+      default: "Poppins-SemiBold",
+    }),
+  },
 });

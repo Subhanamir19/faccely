@@ -1,48 +1,144 @@
+// C:\SS\scorer-node\src\index.ts
+
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import multer from "multer";
 import OpenAI from "openai";
+import sharp from "sharp";
+import { ZodError } from "zod";
 
+import { generateRecommendations } from "./recommender";
 import { ENV } from "./env";
-import { ScoresSchema, ExplanationsSchema } from "./validators";
-import { scoreImageBytes } from "./scorer";
-import { explainImageBytes } from "./explainer";
+import {
+  ScoresSchema,
+  ExplanationsSchema,
+  RecommendationsRequestSchema,
+} from "./validators";
+import { scoreImageBytes, scoreImagePairBytes } from "./scorer";
+import { explainImageBytes, explainImagePairBytes } from "./explainer";
 
 const app = express();
 app.use(helmet());
-app.use(cors({ origin: ENV.CORS_ORIGINS }));
+app.use(cors({ origin: "*"}));
+
 app.use(express.json({ limit: "1mb" }));
 app.use(rateLimit({ windowMs: 60_000, max: ENV.RATE_LIMIT_PER_MIN }));
 
-const upload = multer({ limits: { fileSize: 3 * 1024 * 1024 } }); // 3MB cap
+/**
+ * Multer in-memory storage so we can inspect/normalize before OpenAI.
+ * Size cap is generous; scorer will downscale internally.
+ */
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024 }, // 15 MB per file
+});
+
+/** -----------------------------------------------------------------------
+ * Image utilities
+ * --------------------------------------------------------------------- */
+
+/**
+ * Only used by EXPLAIN endpoints for now (they still expect bytes+mimetype).
+ * Auto-rotate using EXIF and convert to high-quality JPEG.
+ * We'll migrate explainers to the same PNG-normalizer later.
+ */
+async function toJpegBuffer(file: Express.Multer.File) {
+  if (!file?.buffer?.length) {
+    throw new Error("empty_upload_buffer");
+  }
+  const out = await sharp(file.buffer)
+    .rotate()
+    .jpeg({ quality: 92, mozjpeg: true })
+    .toBuffer();
+  return { buffer: out, mime: "image/jpeg" as const };
+}
+
+/** Small helper to surface OpenAI errors cleanly */
+function errorPayload(err: any) {
+  const openaiMsg =
+    err?.response?.data?.error?.message ||
+    err?.error?.message ||
+    err?.message ||
+    "unknown_error";
+  const status = err?.status || err?.response?.status;
+  return { error: "upstream_failed", status, detail: openaiMsg };
+}
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
 
+/**
+ * Single-image analysis
+ * NOTE: We now pass raw bytes to scorer; scorer handles normalization to PNG.
+ */
 app.post("/analyze", upload.single("image"), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: "file 'image' required" });
+
     const client = new OpenAI({ apiKey: ENV.OPENAI_API_KEY });
-    const scores = await scoreImageBytes(
-      client,
-      req.file.buffer,
-      req.file.mimetype || "image/jpeg"
-    );
+
+    // Pass original bytes. MIME is unused by scorer but kept for signature compatibility.
+    const scores = await scoreImageBytes(client, req.file.buffer, req.file.mimetype);
     const parsed = ScoresSchema.parse(scores);
     res.json(parsed);
   } catch (err: any) {
-    console.error(err);
-    res.status(500).json({ error: err?.message || "internal_error" });
+    console.error("[/analyze] error:", err?.response?.data ?? err);
+    if (err instanceof ZodError) {
+      return res.status(422).json({ error: "invalid_scores_shape", issues: err.issues });
+    }
+    res.status(500).json(errorPayload(err));
   }
 });
 
-/** NEW: explanations route */
+/**
+ * Two-image analysis
+ * NOTE: Same: send raw buffers, let scorer normalize both.
+ */
+app.post(
+  "/analyze/pair",
+  upload.fields([
+    { name: "frontal", maxCount: 1 },
+    { name: "side", maxCount: 1 },
+  ]),
+  async (req, res) => {
+    try {
+      const files = req.files as Record<string, Express.Multer.File[]>;
+      const frontal = files?.frontal?.[0];
+      const side = files?.side?.[0];
+      if (!frontal || !side) {
+        return res.status(400).json({ error: "files 'frontal' and 'side' required" });
+      }
+
+      const client = new OpenAI({ apiKey: ENV.OPENAI_API_KEY });
+      const scores = await scoreImagePairBytes(
+        client,
+        frontal.buffer,
+        frontal.mimetype,
+        side.buffer,
+        side.mimetype
+      );
+
+      const parsed = ScoresSchema.parse(scores);
+      res.json(parsed);
+    } catch (err: any) {
+      console.error("[/analyze/pair] error:", err?.response?.data ?? err);
+      if (err instanceof ZodError) {
+        return res.status(422).json({ error: "invalid_scores_shape", issues: err.issues });
+      }
+      res.status(500).json(errorPayload(err));
+    }
+  }
+);
+
+/**
+ * Single-image explanations
+ * Still using JPEG conversion until explainer is updated to normalize internally.
+ */
 app.post("/analyze/explain", upload.single("image"), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: "file 'image' required" });
 
-    // scores come as multipart field "scores" (string); validate as numbers 0–100
     const scoresRaw = req.body?.scores;
     if (!scoresRaw) return res.status(400).json({ error: "field 'scores' required" });
 
@@ -54,20 +150,97 @@ app.post("/analyze/explain", upload.single("image"), async (req, res) => {
     }
     const scores = ScoresSchema.parse(scoresJson);
 
+    const { buffer, mime } = await toJpegBuffer(req.file);
     const client = new OpenAI({ apiKey: ENV.OPENAI_API_KEY });
-    const notes = await explainImageBytes(
-      client,
-      req.file.buffer,
-      req.file.mimetype || "image/jpeg",
-      scores
-    );
 
-    // validate the shape: string[2] per metric
+    const notes = await explainImageBytes(client, buffer, mime, scores);
     const parsed = ExplanationsSchema.parse(notes);
     res.json(parsed);
   } catch (err: any) {
-    console.error(err);
-    res.status(500).json({ error: err?.message || "internal_error" });
+    console.error("[/analyze/explain] error:", err?.response?.data ?? err);
+    if (err instanceof ZodError) {
+      return res.status(422).json({ error: "invalid_explanations_shape", issues: err.issues });
+    }
+    res.status(500).json(errorPayload(err));
+  }
+});
+
+/**
+ * Pair explanations (frontal + side)
+ * Still using JPEG conversion until explainer is updated to normalize internally.
+ */
+app.post(
+  "/analyze/explain/pair",
+  upload.fields([
+    { name: "frontal", maxCount: 1 },
+    { name: "side", maxCount: 1 },
+  ]),
+  async (req, res) => {
+    try {
+      const files = req.files as Record<string, Express.Multer.File[]>;
+      const frontal = files?.frontal?.[0];
+      const side = files?.side?.[0];
+      if (!frontal || !side) {
+        return res.status(400).json({ error: "files 'frontal' and 'side' required" });
+      }
+
+      const scoresRaw = req.body?.scores;
+      if (!scoresRaw) return res.status(400).json({ error: "field 'scores' required" });
+
+      let scoresJson: unknown;
+      try {
+        scoresJson = JSON.parse(scoresRaw);
+      } catch {
+        return res.status(400).json({ error: "scores must be valid JSON" });
+      }
+      const scores = ScoresSchema.parse(scoresJson);
+
+      const fJ = await toJpegBuffer(frontal);
+      const sJ = await toJpegBuffer(side);
+
+      const client = new OpenAI({ apiKey: ENV.OPENAI_API_KEY });
+      const notes = await explainImagePairBytes(
+        client,
+        fJ.buffer,
+        fJ.mime,
+        sJ.buffer,
+        sJ.mime,
+        scores
+      );
+
+      const parsed = ExplanationsSchema.parse(notes);
+      res.json(parsed);
+    } catch (err: any) {
+      console.error("[/analyze/explain/pair] error:", err?.response?.data ?? err);
+      if (err instanceof ZodError) {
+        return res.status(422).json({ error: "invalid_explanations_shape", issues: err.issues });
+      }
+      res.status(500).json(errorPayload(err));
+    }
+  }
+);
+
+/**
+ * Recommendations (JSON-only)
+ */
+app.post("/recommendations", upload.none(), async (req, res) => {
+  try {
+    const payload = RecommendationsRequestSchema.parse(req.body);
+    const data = await generateRecommendations(payload);
+    res.json(data);
+  } catch (err: any) {
+    if (err instanceof ZodError) {
+      return res.status(400).json({
+        error: "invalid_recommendations_payload",
+        issues: err.issues?.map((i) => ({
+          path: i.path,
+          code: i.code,
+          message: i.message,
+        })),
+      });
+    }
+    console.error("[/recommendations] error:", err?.response?.data ?? err);
+    res.status(500).json(errorPayload(err));
   }
 });
 

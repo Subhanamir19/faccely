@@ -1,220 +1,572 @@
 // app/(tabs)/take-picture.tsx
-import React,{useRef,useState} from "react";
-import {View,Text,Image,Alert,Pressable,Modal,StatusBar} from "react-native";
-import {CameraView,useCameraPermissions} from "expo-camera";
+import React, { useRef, useState } from "react";
+import {
+  View,
+  Text,
+  Image,
+  Alert,
+  Pressable,
+  Modal,
+  StatusBar,
+  SafeAreaView,
+  ImageBackground,
+  Platform,
+  StyleSheet,
+} from "react-native";
+import { CameraView, useCameraPermissions } from "expo-camera";
 import * as ImagePicker from "expo-image-picker";
 import * as FileSystem from "expo-file-system";
-import Button from "../../components/ui/Button";
 import { router } from "expo-router";
-import { useScores } from "../../store/scores";    
+import Svg, { Line, Circle, Rect, Path } from "react-native-svg";
+import { useScores } from "../../store/scores";
 
-// Turn any weird Android path/content URI into a usable file:// URI
-async function ensureFileUriAsync(raw?:string|null):Promise<string|null>{
-  if(!raw) return null;
-  if(raw.startsWith("file://")||raw.startsWith("http")) return raw;
-  if(raw.startsWith("/")) return `file://${raw}`;
-  if(raw.startsWith("content://")){
-    try{
-      const dest=`${FileSystem.cacheDirectory}capture_${Date.now()}.jpg`;
-      await FileSystem.copyAsync({from:raw,to:dest});
+/* ============================== TOKENS ============================== */
+const ACCENT = "#8FA31E";                 // neon lime
+const TEXT = "rgba(255,255,255,0.92)";
+const TEXT_DIM = "rgba(255,255,255,0.65)";
+const CARD_BORDER = "rgba(255,255,255,0.12)";
+const CARD_TINT = "rgba(15,15,15,0.72)";
+const BG = "#0B0B0C";
+
+/* ============================== HELPERS ============================== */
+async function ensureFileUriAsync(raw?: string | null): Promise<string | null> {
+  if (!raw) return null;
+  if (raw.startsWith("file://") || raw.startsWith("http")) return raw;
+  if (raw.startsWith("/")) return `file://${raw}`;
+  if (raw.startsWith("content://")) {
+    try {
+      const dest = `${FileSystem.cacheDirectory}capture_${Date.now()}.jpg`;
+      await FileSystem.copyAsync({ from: raw, to: dest });
       return dest;
-    }catch{
+    } catch {
       return raw;
     }
   }
   return raw;
 }
 
-export default function TakePicture(){
-  const { analyze } = useScores();
+type Step = "frontal" | "side" | "review";
 
-  const [perm,requestPerm]=useCameraPermissions();
-  const [previewUri,setPreviewUri]=useState<string|null>(null);
-  const [submitting,setSubmitting]=useState(false);
+/* ============================== UI ============================== */
+function LimeButton({
+  title,
+  onPress,
+  disabled,
+  style,
+}: {
+  title: string;
+  onPress: () => void;
+  disabled?: boolean;
+  style?: any;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      style={({ pressed }) => [
+        {
+          alignSelf: "center",
+          width: "86%",
+          borderRadius: 26,
+          paddingVertical: 16,
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: disabled ? "rgba(255,255,255,0.10)" : ACCENT,
+          transform: [{ translateY: pressed ? 1 : 0 }],
+        },
+        style,
+      ]}
+    >
+      <Text
+        style={{
+          color: disabled ? TEXT_DIM : "#0D0E0D",
+          fontSize: 16,
+          fontFamily: Platform.select({
+            ios: "Poppins-SemiBold",
+            android: "Poppins-SemiBold",
+            default: "Poppins-SemiBold",
+          }),
+        }}
+      >
+        {title}
+      </Text>
+    </Pressable>
+  );
+}
 
-  const [cameraOpen,setCameraOpen]=useState(false);
-  const cameraRef=useRef<CameraView>(null);
+/* A rounded neon frame with soft glow, sized by parent using absolute fill */
+function NeonFrame() {
+  return (
+    <>
+      <View
+        pointerEvents="none"
+        style={{
+          ...StyleSheet.absoluteFillObject,
+          borderRadius: 22,
+          borderWidth: 2,
+          borderColor: ACCENT,
+        }}
+      />
+      {/* glow */}
+      <View
+        pointerEvents="none"
+        style={{
+          ...StyleSheet.absoluteFillObject,
+          borderRadius: 22,
+          shadowColor: ACCENT,
+          shadowOpacity: 0.6,
+          shadowRadius: 20,
+          shadowOffset: { width: 0, height: 0 },
+          // android glow approximation
+          ...(Platform.OS === "android" ? { borderWidth: 0.1, borderColor: "transparent", elevation: 6 } : null),
+        }}
+      />
+    </>
+  );
+}
 
-  // ----- Gallery -----
-  const openGallery=async ()=>{
-    if(submitting) return;
-    const {granted,canAskAgain}=await ImagePicker.getMediaLibraryPermissionsAsync();
-    if(!granted){
-      if(!canAskAgain){Alert.alert("Permission needed","Enable Photos permission in Settings.");return;}
-      const req=await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if(!req.granted) return;
-    }
-    const res=await ImagePicker.launchImageLibraryAsync({
-      mediaTypes:ImagePicker.MediaTypeOptions.Images,
-      quality:1
-    });
-    if(!res.canceled){
-      const normalized=await ensureFileUriAsync(res.assets?.[0]?.uri||null);
-      if(normalized){
-        setPreviewUri(normalized);
-      }
+/* SVG overlays for alignment */
+function FrontalGuides({ w, h }: { w: number; h: number }) {
+  const pad = 16;
+  const innerW = w - pad * 2;
+  const innerH = h - pad * 2;
+  const cx = w / 2;
+  const cy = h / 2;
+  return (
+    <Svg width={w} height={h} style={{ position: "absolute", left: 0, top: 0 }}>
+      {/* bounding rounded rect */}
+      <Rect x={pad} y={pad} width={innerW} height={innerH} rx={20} ry={20} stroke={ACCENT} strokeOpacity={0.35} fill="none" />
+      {/* midline vertical */}
+      <Line x1={cx} y1={pad + 6} x2={cx} y2={h - pad - 6} stroke={ACCENT} strokeWidth={2} strokeOpacity={0.7} />
+      {/* eye line */}
+      <Line x1={pad + 10} y1={cy - innerH * 0.08} x2={w - pad - 10} y2={cy - innerH * 0.08} stroke={ACCENT} strokeWidth={2} strokeOpacity={0.4} />
+      {/* nose circle */}
+      <Circle cx={cx} cy={cy + innerH * 0.05} r={innerW * 0.08} stroke={ACCENT} strokeWidth={2} strokeOpacity={0.5} fill="none" />
+      {/* face oval */}
+      <Path
+        d={`
+          M ${cx} ${pad + 18}
+          C ${cx + innerW * 0.26} ${pad + innerH * 0.22}, ${cx + innerW * 0.26} ${h - pad - innerH * 0.18}, ${cx} ${h - pad - 10}
+          C ${cx - innerW * 0.26} ${h - pad - innerH * 0.18}, ${cx - innerW * 0.26} ${pad + innerH * 0.22}, ${cx} ${pad + 18}
+        `}
+        stroke={ACCENT}
+        strokeOpacity={0.28}
+        strokeWidth={2}
+        fill="none"
+      />
+    </Svg>
+  );
+}
+
+function SideGuides({ w, h }: { w: number; h: number }) {
+  const pad = 16;
+  const innerW = w - pad * 2;
+  const innerH = h - pad * 2;
+  const cx = w / 2;
+  return (
+    <Svg width={w} height={h} style={{ position: "absolute", left: 0, top: 0 }}>
+      {/* bounding rounded rect */}
+      <Rect x={pad} y={pad} width={innerW} height={innerH} rx={20} ry={20} stroke={ACCENT} strokeOpacity={0.35} fill="none" />
+      {/* profile vertical (tragus alignment) */}
+      <Line x1={cx} y1={pad + 6} x2={cx} y2={h - pad - 6} stroke={ACCENT} strokeWidth={2} strokeOpacity={0.7} />
+      {/* brow/nose bridge line */}
+      <Line x1={cx - innerW * 0.18} y1={pad + innerH * 0.36} x2={cx + innerW * 0.28} y2={pad + innerH * 0.36} stroke={ACCENT} strokeWidth={2} strokeOpacity={0.4} />
+      {/* chin arc */}
+      <Path
+        d={`
+          M ${cx + innerW * 0.24} ${pad + innerH * 0.72}
+          Q ${cx + innerW * 0.10} ${pad + innerH * 0.86}, ${cx - innerW * 0.02} ${pad + innerH * 0.74}
+        `}
+        stroke={ACCENT}
+        strokeOpacity={0.45}
+        strokeWidth={2}
+        fill="none"
+      />
+      {/* eye target dot */}
+      <Circle cx={cx + innerW * 0.08} cy={pad + innerH * 0.38} r={5} fill={ACCENT} />
+    </Svg>
+  );
+}
+
+/* ============================== SCREEN ============================== */
+export default function TakePicture() {
+  const scoresStore = useScores() as any;
+
+  const [perm, requestPerm] = useCameraPermissions();
+  const permissionDenied = perm?.granted === false;
+
+  const [step, setStep] = useState<Step>("frontal");
+  const [frontalUri, setFrontalUri] = useState<string | null>(null);
+  const [sideUri, setSideUri] = useState<string | null>(null);
+
+  const [submitting, setSubmitting] = useState(false);
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [chooserOpen, setChooserOpen] = useState(false);
+  const cameraRef = useRef<CameraView>(null);
+
+  // capture selection
+  const handleChosen = async (uri: string | null) => {
+    if (!uri) return;
+    const normalized = await ensureFileUriAsync(uri);
+    if (!normalized) return;
+
+    if (step === "frontal") {
+      setFrontalUri(normalized);
+      setStep("side");
+    } else if (step === "side") {
+      setSideUri(normalized);
+      setStep("review");
     }
   };
 
-  // ----- Camera flow -----
-  const startCamera=async ()=>{
-    if(submitting) return;
-    if(!perm?.granted){
-      const r=await requestPerm();
-      if(!r.granted){Alert.alert("Permission needed","Camera permission is required.");return;}
+  const changePose = (pose: "frontal" | "side") => {
+    setStep(pose);
+    setChooserOpen(true);
+  };
+
+  const pickFromGallery = async () => {
+    setChooserOpen(false);
+    const res = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 1,
+    });
+    if (!res.canceled) await handleChosen(res.assets?.[0]?.uri || null);
+  };
+
+  const startCamera = async () => {
+    setChooserOpen(false);
+    if (!perm?.granted) {
+      const r = await requestPerm();
+      if (!r.granted) {
+        Alert.alert("Permission needed", "Camera permission is required.");
+        return;
+      }
     }
-    setPreviewUri(null);
     setCameraOpen(true);
   };
 
-  const capture=async ()=>{
-    try{
-      // @ts-ignore support both APIs across SDK versions
-      const photo=await cameraRef.current?.takePhotoAsync?.({quality:1,skipMetadata:false})
-                || await cameraRef.current?.takePictureAsync?.({quality:1,skipProcessing:false});
-
-      const raw=(photo?.uri as string)
-             ?? (photo as any)?.path
-             ?? (photo as any)?.assets?.[0]?.uri;
-
-      const normalized=await ensureFileUriAsync(raw||null);
-      if(normalized){
-        setPreviewUri(normalized);
-        setCameraOpen(false);
-      }else{
-        Alert.alert("Camera error","No usable URI returned from camera.");
-      }
-    }catch(e:any){
-      Alert.alert("Camera error",String(e?.message||e));
+  const capture = async () => {
+    try {
+      const cam: any = cameraRef.current;
+      const photo =
+        (await cam?.takePictureAsync?.({ quality: 1, skipProcessing: false })) ||
+        (await cam?.takePhoto?.({ quality: 1 })) ||
+        null;
+      const raw = photo?.uri ?? photo?.path ?? photo?.assets?.[0]?.uri;
+      await handleChosen(raw || null);
+    } catch (e: any) {
+      Alert.alert("Camera error", String(e?.message || e));
+    } finally {
+      setCameraOpen(false);
     }
   };
 
-  // ---- MAIN FIX ----
-  const useThis = async ()=>{
-    if(!previewUri || submitting) return;
-    try{
+  const canContinue = !!frontalUri && !!sideUri && !submitting;
+
+  const useBoth = async () => {
+    if (!canContinue) return;
+    try {
       setSubmitting(true);
-      // analyze() must return JSON { scores: {...}, modelMatch: {...} }
-      const scoresJson = await analyze(previewUri);
-
-      console.log("DEBUG scoresJson from analyze:", scoresJson);
-
-      if (scoresJson) {
+      if (typeof scoresStore.analyzePair === "function") {
+        const out = await scoresStore.analyzePair(frontalUri, sideUri);
+        if (!out) {
+          Alert.alert("Analysis failed", "No scores were returned from backend.");
+          return;
+        }
         router.push({
           pathname: "/(tabs)/score",
-          params: { scoresPayload: JSON.stringify(scoresJson) },
+          params: { scoresPayload: JSON.stringify(out) },
         });
       } else {
-        Alert.alert("Analysis failed", "No scores were returned from backend.");
+        Alert.alert(
+          "Next step needed",
+          "Implement useScores.analyzePair(frontUri, sideUri) to send both images together."
+        );
       }
-    }finally{
+    } finally {
       setSubmitting(false);
     }
   };
 
-  const clearPreview=()=>{ if(!submitting) setPreviewUri(null); };
-  const permissionDenied=perm?.granted===false;
+  const renderGuide = ({
+    guideSrc,
+    title,
+    overlay,
+  }: {
+    guideSrc: any;
+    title: string;
+    overlay: "frontal" | "side";
+  }) => (
+    <ImageBackground
+      source={require("../../assets/bg/score-bg.jpg")}
+      style={{ flex: 1, backgroundColor: BG }}
+      imageStyle={{ transform: [{ translateY: 40 }] }}
+    >
+      <SafeAreaView style={{ flex: 1 }}>
+  <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 18 }}>
 
-  const noop = () => {};
-  const onUseThis = () => { if(!submitting) void useThis(); };
-  const onRetake = () => { if(!submitting) clearPreview(); };
-  const onStartCamera = () => { if(!submitting) void startCamera(); };
-  const onOpenGallery = () => { if(!submitting) void openGallery(); };
+          <Text
+            style={{
+              color: TEXT,
+              fontSize: 24,
+              lineHeight: 28,
+              marginBottom: 16,
+              fontFamily: Platform.select({
+                ios: "Poppins-SemiBold",
+                android: "Poppins-SemiBold",
+                default: "Poppins-SemiBold",
+              }),
+            }}
+          >
+            {title}
+          </Text>
 
-  return(
-    <View className="flex-1 bg-[#F8F8F8]">
-      <View style={{height:56}}/>
-      <Text className="text-2xl px-16 mb-4">Capture</Text>
+          {/* Card with neon frame + guide image */}
+          <View
+  style={{
+    width: "86%",
+    aspectRatio: 3 / 4,
+    borderRadius: 22,
+    overflow: "hidden",
+    position: "relative",
+    backgroundColor: "#000",
+    marginTop: 6,   // tiny visual offset so it feels perfectly centered
+  }}
+>
 
-      {/* Base controls */}
-      <View className="px-4" style={{gap:12}}>
-        {previewUri?(
-          <View style={{flexDirection:"row",gap:12}}>
-            <Button
-              title={submitting ? "Analyzing…" : "Use This Photo"}
-              onPress={previewUri ? onUseThis : noop}
-              style={{flex:1, opacity: submitting ? 0.6 : 1}}
-            />
-            <Button
-              title="Retake"
-              onPress={onRetake}
-              variant="ghost"
-              style={{flex:1, opacity: submitting ? 0.6 : 1}}
-            />
+            <Image source={guideSrc} style={{ width: "100%", height: "100%" }} resizeMode="cover" />
+            <NeonFrame />
+            {/* overlay guides */}
+            {overlay === "frontal" ? (
+              <FrontalGuides w={Math.round((360 / 4) * 3)} h={480} />
+            ) : (
+              <SideGuides w={Math.round((360 / 4) * 3)} h={480} />
+            )}
           </View>
-        ):(
-          <>
-            <Button title="Take Photo" onPress={onStartCamera} style={{opacity: submitting ? 0.6 : 1}}/>
-            <Button title="Pick From Gallery" onPress={onOpenGallery} variant="ghost" style={{opacity: submitting ? 0.6 : 1}}/>
-          </>
-        )}
-      </View>
 
-      {/* Preview */}
-      <View style={{height:12}}/>
-      <View style={{
-        marginHorizontal:16,
-        marginBottom:16,
-        borderRadius:20,
-        overflow:"hidden",
-        backgroundColor:"#e9e9e9",
-        alignSelf:"stretch"
-      }}>
-        {previewUri?(
-          <Image source={{uri:previewUri}} style={{width:"100%",aspectRatio:3/4,backgroundColor:"#000"}} resizeMode="contain"/>
-        ):(
-          <View style={{height:260}} className="items-center justify-center">
-            <Text className="opacity-60">No image selected yet.</Text>
-          </View>
-        )}
-      </View>
+          <Text
+            style={{
+              marginTop: 12,
+              color: TEXT_DIM,
+              fontSize: 13,
+              fontFamily: Platform.select({
+                ios: "Poppins-Regular",
+                android: "Poppins-Regular",
+                default: "Poppins-Regular",
+              }),
+            }}
+          >
+            Align your face with the guides. Good lighting, neutral expression.
+          </Text>
 
-      {/* Sticky actions */}
-      {previewUri&&(
-        <View style={{position:"absolute",left:0,right:0,bottom:16,paddingHorizontal:16}}>
-          <View style={{flexDirection:"row",gap:12}}>
-            <Button title={submitting ? "Analyzing…" : "Use This Photo"} onPress={onUseThis} style={{flex:1, opacity: submitting ? 0.6 : 1}}/>
-            <Button title="Retake" onPress={onRetake} variant="ghost" style={{flex:1, opacity: submitting ? 0.6 : 1}}/>
+          <LimeButton
+            title={overlay === "frontal" ? "Capture Photo" : "Capture Photo"}
+            onPress={() => setChooserOpen(true)}
+            style={{ marginTop: 18 }}
+          />
+
+          {/* dots */}
+          <View style={{ flexDirection: "row", gap: 6, marginTop: 12 }}>
+            <View
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: 4,
+                backgroundColor: overlay === "frontal" ? ACCENT : "rgba(255,255,255,0.25)",
+              }}
+            />
+            <View
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: 4,
+                backgroundColor: overlay === "side" ? ACCENT : "rgba(255,255,255,0.25)",
+              }}
+            />
           </View>
         </View>
+      </SafeAreaView>
+    </ImageBackground>
+  );
+
+  return (
+    <>
+      {/* Step A: Frontal, Step B: Side */}
+      {step === "frontal" &&
+        renderGuide({
+          guideSrc: require("../../assets/capture-guides/frontal-guide.jpg"),
+          title: "Take Frontal Photo",
+          overlay: "frontal",
+        })}
+      {step === "side" &&
+        renderGuide({
+          guideSrc: require("../../assets/capture-guides/side-guide.jpg"),
+          title: "Take Side Photo",
+          overlay: "side",
+        })}
+
+      {/* Step C: Review */}
+      {step === "review" && (
+  <ImageBackground
+    source={require("../../assets/bg/score-bg.jpg")}
+    style={{ flex: 1, backgroundColor: BG }}
+    imageStyle={{ transform: [{ translateY: 40 }] }}
+  >
+    <SafeAreaView style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 18 }}>
+
+            <Text
+              style={{
+                color: TEXT,
+                fontSize: 20,
+                marginBottom: 14,
+                fontFamily: Platform.select({
+                  ios: "Poppins-SemiBold",
+                  android: "Poppins-SemiBold",
+                  default: "Poppins-SemiBold",
+                }),
+              }}
+            >
+              Review your photos
+            </Text>
+
+            <View style={{ width: "92%", flexDirection: "row", justifyContent: "space-between", gap: 12 }}>
+
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: TEXT_DIM, marginBottom: 6 }}>Frontal</Text>
+                <View
+                  style={{
+                    width: "100%",
+                    aspectRatio: 3 / 4,
+                    borderRadius: 16,
+                    overflow: "hidden",
+                    borderWidth: 1.5,
+                    borderColor: "rgba(255,255,255,0.12)",
+                    backgroundColor: "#000",
+                  }}
+                >
+                  <Image source={{ uri: frontalUri! }} style={{ width: "100%", height: "100%" }} resizeMode="cover" />
+                </View>
+                <Pressable onPress={() => changePose("frontal")} style={{ marginTop: 10 }}>
+                  <Text style={{ color: ACCENT, fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }) }}>
+                    Retake
+                  </Text>
+                </Pressable>
+              </View>
+
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: TEXT_DIM, marginBottom: 6 }}>Side</Text>
+                <View
+                  style={{
+                    width: "100%",
+                    aspectRatio: 3 / 4,
+                    borderRadius: 16,
+                    overflow: "hidden",
+                    borderWidth: 1.5,
+                    borderColor: "rgba(255,255,255,0.12)",
+                    backgroundColor: "#000",
+                  }}
+                >
+                  <Image source={{ uri: sideUri! }} style={{ width: "100%", height: "100%" }} resizeMode="cover" />
+                </View>
+                <Pressable onPress={() => changePose("side")} style={{ marginTop: 10 }}>
+                  <Text style={{ color: ACCENT, fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }) }}>
+                    Retake
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+
+            <LimeButton
+  title={submitting ? "Analyzing…" : "Proceed to score"}
+  onPress={useBoth}
+  disabled={!canContinue}
+  style={{ marginTop: 22, width: "92%" }}
+/>
+
+          </SafeAreaView>
+        </ImageBackground>
       )}
 
+      {/* Chooser modal */}
+      <Modal transparent visible={chooserOpen} animationType="fade" onRequestClose={() => setChooserOpen(false)}>
+        <Pressable style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center" }} onPress={() => setChooserOpen(false)}>
+          <View
+            style={{
+              marginHorizontal: 32,
+              backgroundColor: "#1A1A1A",
+              borderRadius: 16,
+              padding: 20,
+              gap: 12,
+              borderWidth: 1,
+              borderColor: CARD_BORDER,
+            }}
+          >
+            <LimeButton title="Take Photo" onPress={startCamera} />
+            <Pressable onPress={pickFromGallery} style={{ alignSelf: "center", marginTop: 6 }}>
+              <Text
+                style={{
+                  color: ACCENT,
+                  fontFamily: Platform.select({
+                    ios: "Poppins-SemiBold",
+                    android: "Poppins-SemiBold",
+                    default: "Poppins-SemiBold",
+                  }),
+                }}
+              >
+                Pick From Gallery
+              </Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Modal>
+
       {/* Camera modal */}
-      <Modal visible={cameraOpen} animationType="fade" presentationStyle="fullScreen" onRequestClose={()=>setCameraOpen(false)}>
-        <StatusBar hidden/>
-        <View style={{flex:1,backgroundColor:"#000"}}>
-          {permissionDenied?(
-            <View style={{flex:1,alignItems:"center",justifyContent:"center"}}>
-              <Text style={{color:"#fff",fontSize:16,marginBottom:12}}>Camera permission required.</Text>
-              <Button title="Grant Permission" onPress={()=>{ void requestPerm(); }}/>
-              <View style={{height:12}}/>
-              <Button title="Close" variant="ghost" onPress={()=>setCameraOpen(false)}/>
+      <Modal visible={cameraOpen} animationType="fade" presentationStyle="fullScreen" onRequestClose={() => setCameraOpen(false)}>
+        <StatusBar hidden />
+        <View style={{ flex: 1, backgroundColor: "#000" }}>
+          {permissionDenied ? (
+            <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+              <Text style={{ color: TEXT, marginBottom: 12 }}>Camera permission required.</Text>
+              <LimeButton title="Grant Permission" onPress={() => void requestPerm()} />
+              <Pressable onPress={() => setCameraOpen(false)} style={{ marginTop: 10 }}>
+                <Text style={{ color: TEXT_DIM }}>Close</Text>
+              </Pressable>
             </View>
-          ):(
+          ) : (
             <>
-              <CameraView ref={cameraRef} active={true} facing="front" mode="picture" style={{flex:1}}/>
-              <View style={{
-                position:"absolute",left:0,right:0,bottom:0,
-                paddingHorizontal:24,paddingVertical:18,
-                backgroundColor:"rgba(0,0,0,0.35)",flexDirection:"row",
-                alignItems:"center",justifyContent:"space-between"
-              }}>
-                <Pressable onPress={()=>setCameraOpen(false)} style={{paddingVertical:12,paddingHorizontal:18,borderRadius:12,backgroundColor:"rgba(255,255,255,0.18)"}}>
-                  <Text style={{color:"#fff",fontSize:16}}>Close</Text>
+              <CameraView ref={cameraRef} active={true} facing="front" style={{ flex: 1 }} />
+              <View
+                style={{
+                  position: "absolute",
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  padding: 20,
+                  backgroundColor: "rgba(0,0,0,0.35)",
+                  flexDirection: "row",
+                  justifyContent: "center",
+                }}
+              >
+                <Pressable
+                  onPress={capture}
+                  style={{
+                    width: 82,
+                    height: 82,
+                    borderRadius: 41,
+                    backgroundColor: "#fff",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    borderWidth: 4,
+                    borderColor: "rgba(255,255,255,0.6)",
+                  }}
+                >
+                  <View style={{ width: 66, height: 66, borderRadius: 33, backgroundColor: "#fff" }} />
                 </Pressable>
-                <Pressable onPress={()=>{ void capture(); }} style={{
-                  width:76,height:76,borderRadius:38,
-                  backgroundColor:"#fff",alignItems:"center",justifyContent:"center",
-                  borderWidth:4,borderColor:"rgba(255,255,255,0.6)"
-                }}>
-                  <View style={{width:60,height:60,borderRadius:30,backgroundColor:"#fff"}}/>
-                </Pressable>
-                <View style={{width:88}}/>
               </View>
             </>
           )}
         </View>
       </Modal>
-    </View>
+    </>
   );
 }

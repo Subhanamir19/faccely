@@ -1,98 +1,75 @@
-import { API_BASE_URL } from "../config";
-import type { Scores } from "../../store/scores";
+import { API_BASE } from "./config";
+import type { Scores } from "./scores";
 
-// keep the same metric keys as scores
-export type MetricKey =
+export type Explanations = Record<
   | "jawline"
   | "facial_symmetry"
   | "skin_quality"
   | "cheekbones"
   | "eyes_symmetry"
   | "nose_harmony"
-  | "sexual_dimorphism"
-  | "youthfulness";
+  | "sexual_dimorphism",
+  [string, string]
+>;
 
-export type Explanations = Record<MetricKey, string[]>;
-
-const KEYS: MetricKey[] = [
-  "jawline",
-  "facial_symmetry",
-  "skin_quality",
-  "cheekbones",
-  "eyes_symmetry",
-  "nose_harmony",
-  "sexual_dimorphism",
-  "youthfulness",
-];
-
-/** Utility: turn anything (string | string[] | unknown) into <= 2 concise lines */
-function normalizeToTwoLines(v: unknown): string[] {
-  const pickTwo = (arr: string[]) =>
-    arr
-      .map(s => String(s).trim())
-      .filter(Boolean)
-      .slice(0, 2);
-
-  if (Array.isArray(v)) {
-    // If items aren’t strings, coerce; also flatten if dev accidentally nested
-    const flat = v.flat().map(x => (typeof x === "string" ? x : JSON.stringify(x)));
-    const two = pickTwo(flat);
-    return two.length ? two : ["No notes.", ""].filter(Boolean);
+function filenameFromUri(uri: string): string {
+  try {
+    const q = uri.split("?")[0];
+    const last = q.substring(q.lastIndexOf("/") + 1) || "upload.jpg";
+    return last.includes(".") ? last : last + ".jpg";
+  } catch {
+    return "upload.jpg";
   }
-
-  if (typeof v === "string") {
-    // Split by sentences / newlines and take two
-    const bits =
-      v.split(/\r?\n+/)
-        .flatMap(line => line.split(/(?<=[.!?])\s+/))
-        .map(s => s.trim())
-        .filter(Boolean);
-    const two = pickTwo(bits.length ? bits : [v]);
-    return two.length ? two : ["No notes.", ""].filter(Boolean);
-  }
-
-  // Unknown – give a safe fallback so UI never breaks
-  return ["No notes.", ""].filter(Boolean);
 }
 
-/**
- * Calls backend /analyze/explain with the selfie + scores and
- * returns two concise lines per metric. Robust to loose server shapes.
- */
-export async function explainMetrics(
-  uri: string,
-  scores: Scores,
-  mime: "image/jpeg" | "image/png" = "image/jpeg"
-): Promise<Explanations> {
-  const name =
-    uri.split("/").pop() || (mime === "image/png" ? "selfie.png" : "selfie.jpg");
+function mimeFromUri(uri: string): string {
+  const u = uri.toLowerCase();
+  if (u.endsWith(".png")) return "image/png";
+  if (u.endsWith(".webp")) return "image/webp";
+  if (u.endsWith(".gif")) return "image/gif";
+  if (u.endsWith(".heic") || u.endsWith(".heif")) return "image/heic";
+  return "image/jpeg";
+}
 
+function filePart(uri: string) {
+  return { uri, name: filenameFromUri(uri), type: mimeFromUri(uri) } as any;
+}
+
+export async function explainMetrics(uri: string, scores: Scores): Promise<Explanations> {
   const form = new FormData();
-  // RN fetch file shape
-  form.append("image" as any, { uri, name, type: mime } as any);
+  form.append("image", filePart(uri));
   form.append("scores", JSON.stringify(scores));
 
-  const url = `${API_BASE_URL}/analyze/explain`;
-  console.log("EXPLAIN →", url);
-  const res = await fetch(url, { method: "POST", body: form });
+  const res = await fetch(`${API_BASE}/analyze/explain`, {
+    method: "POST",
+    body: form,
+  });
 
   if (!res.ok) {
-    const msg = await res.text().catch(() => "");
-    throw new Error(`HTTP ${res.status} ${msg}`);
+    const text = await res.text().catch(() => "");
+    throw new Error(`explain failed: ${res.status} ${text}`);
   }
+  return (await res.json()) as Explanations;
+}
 
-  let data: any;
-  try {
-    data = await res.json();
-  } catch {
-    // Some proxies return text/html on error—surface it cleanly
-    const msg = await res.text().catch(() => "");
-    throw new Error(`Bad JSON from server ${msg ? `- ${msg}` : ""}`);
-  }
+export async function explainMetricsPair(
+  frontalUri: string,
+  sideUri: string,
+  scores: Scores
+): Promise<Explanations> {
+  const form = new FormData();
+  form.append("frontal", filePart(frontalUri));
+  form.append("side", filePart(sideUri));
+  form.append("scores", JSON.stringify(scores));
 
-  const out: Partial<Explanations> = {};
-  for (const k of KEYS) {
-    out[k] = normalizeToTwoLines(data?.[k]);
+  const res = await fetch(`${API_BASE}/analyze/explain/pair`, {
+    method: "POST",
+    body: form,
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`explain/pair failed: ${res.status} ${text}`);
   }
-  return out as Explanations;
+  return (await res.json()) as Explanations;
 }

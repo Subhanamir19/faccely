@@ -1,15 +1,28 @@
-import { useMemo } from "react";
-import { View, Text, StyleSheet, Pressable, FlatList } from "react-native";
+// app/(onboarding)/ethnicity.tsx
+import React, { useMemo } from "react";
+import {
+  View,
+  StyleSheet,
+  Pressable,
+  FlatList,
+  ImageBackground,
+  Platform,
+  AccessibilityState,
+} from "react-native";
 import { router } from "expo-router";
+import { BlurView } from "expo-blur";
+import T from "@/components/ui/T";
 import { useOnboarding } from "@/store/onboarding";
 
-const ACCENT = "#23A455";
-const ACCENT_DARK = "#177A3E";
-const BG = "#F5F7FA";
-const TEXT_DARK = "#0F172A";
-const TEXT_SUB = "#667085";
-const CARD = "#FFFFFF";
-const BORDER = "rgba(15,23,42,0.06)";
+/** Tokens */
+const ACCENT = "#8FA31E";
+const TEXT = "rgba(255,255,255,0.92)";
+const TEXT_DIM = "rgba(255,255,255,0.65)";
+const CARD_BORDER = "rgba(255,255,255,0.12)";
+const CARD_TINT = "rgba(15,15,15,0.72)";
+const TRACK = "rgba(255,255,255,0.12)";
+const TRACK_INNER = "rgba(0,0,0,0.35)";
+const BUTTON_TRACK = "rgba(255,255,255,0.10)";
 
 const OPTIONS = [
   "Asian",
@@ -32,155 +45,258 @@ export default function EthnicityScreen() {
   };
 
   return (
-    <View style={styles.screen}>
-      <View style={styles.card}>
-        {/* progress pill (step 2/3) */}
-        <View style={styles.progressWrap}>
-          <View style={styles.progressTrack}>
-            <View style={[styles.progressFill, { width: `${(2 / 3) * 100}%` }]} />
+    <ImageBackground
+      source={require("../../assets/bg/score-bg.jpg")}
+      resizeMode="cover"
+      style={styles.screen}
+      imageStyle={styles.bgImage}
+    >
+      <View style={styles.centerWrap}>
+        <BlurView intensity={50} tint="dark" style={styles.card}>
+          <View style={styles.cardOverlay} />
+
+          {/* progress pill (step 2/3) */}
+          <View style={styles.progressWrap}>
+            <View style={styles.progressTrack}>
+              <View style={[styles.progressFill, { width: `${(2 / 3) * 100}%` }]} />
+            </View>
           </View>
-        </View>
 
-        <Text style={styles.title}>What’s your ethnicity?</Text>
-        <Text style={styles.sub}>
-          This helps us calibrate analysis based on global population data.
-        </Text>
+          <T style={styles.title}>What’s your ethnicity?</T>
+          <T style={styles.sub}>
+            This helps us calibrate analysis based on global population data.
+          </T>
 
-        <FlatList
-          style={{ marginTop: 18 }}
-          data={rows}
-          keyExtractor={(it) => it.key}
-          ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
-          renderItem={({ item }) => {
-            const active = selected === item.label;
-            return (
-              <Pressable
-                onPress={() => setField("ethnicity", item.label)}
-                style={({ pressed }) => [
-                  styles.option,
-                  active && styles.optionActive,
-                  pressed && { transform: [{ translateY: 1 }] },
-                ]}
-              >
-                <Text style={[styles.optionText, active && styles.optionTextActive]}>
-                  {item.label}
-                </Text>
-              </Pressable>
-            );
-          }}
-          scrollEnabled={false}
-        />
+          <FlatList
+            data={rows}
+            scrollEnabled={false}
+            keyExtractor={(it) => it.key}
+            ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
+            contentContainerStyle={styles.listContainer}
+            renderItem={({ item }) => {
+              const active = selected === item.label;
+              return (
+                <Pressable
+                  onPress={() => setField("ethnicity", item.label)}
+                  style={({ pressed }) => [
+                    styles.option,
+                    active && styles.optionActive,
+                    pressed && { transform: [{ translateY: 1 }] },
+                  ]}
+                >
+                  {/* faint inner bevel */}
+                  <View style={styles.optionInner} />
+                  {/* active outer ring — NO elevation/background to avoid black slab */}
+                  {active ? <View style={styles.optionRing} /> : null}
 
-        <Pressable
-          onPress={onNext}
-          // keep same color whether selected or not; just block taps when not selected
-          disabled={!selected}
-          accessibilityState={{ disabled: !selected }}
-          style={({ pressed }) => [
-            styles.primaryBtn,
-            pressed && { transform: [{ translateY: 1 }] },
-          ]}
-        >
-          <Text style={styles.primaryLabel}>Next</Text>
-        </Pressable>
+                  <T style={[styles.optionText, active && styles.optionTextActive]}>
+                    {item.label}
+                  </T>
+                </Pressable>
+              );
+            }}
+          />
+
+          {/* Primary "Next" */}
+          <Pressable
+            onPress={onNext}
+            disabled={!selected}
+            accessibilityState={{ disabled: !selected } as AccessibilityState}
+            style={({ pressed }) => [
+              styles.primaryBtn,
+              !selected && styles.primaryBtnDisabled,
+              pressed && { transform: [{ translateY: 1 }] },
+            ]}
+          >
+            <T style={styles.primaryLabel}>Next</T>
+          </Pressable>
+
+          {/* Secondary "Skip" */}
+          <Pressable
+            onPress={() => router.push("/(onboarding)/gender")}
+            style={({ pressed }) => [
+              styles.secondaryBtn,
+              pressed && { transform: [{ translateY: 1 }] },
+            ]}
+          >
+            <T style={styles.secondaryLabel}>Skip</T>
+          </Pressable>
+        </BlurView>
       </View>
-    </View>
+    </ImageBackground>
   );
 }
 
-const R = 22;
+const R = 28;
+const PILL_R = 999;
 
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: BG,
-    padding: 20,
-    justifyContent: "center",
+    backgroundColor: "#000",
   },
-  card: {
-    backgroundColor: CARD,
-    borderRadius: 28,
-    paddingVertical: 26,
-    paddingHorizontal: 20,
-    borderWidth: 1,
-    borderColor: BORDER,
-    shadowColor: "#000",
-    shadowOpacity: 0.12,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 10,
+  bgImage: {
+    transform: [{ translateY: 40 }],
+  },
+  centerWrap: {
+    flex: 1,
+    paddingHorizontal: 18,
+    justifyContent: "center",
+    alignItems: "center",
   },
 
-  progressWrap: { alignItems: "center", marginBottom: 14 },
+  card: {
+    width: "92%",
+    borderRadius: R,
+    overflow: "hidden",
+  },
+  cardOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: CARD_TINT,
+    borderRadius: R,
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
+  },
+
+  progressWrap: { alignItems: "center", marginTop: 18, marginBottom: 12 },
   progressTrack: {
     height: 16,
-    width: "85%",
-    borderRadius: 999,
-    backgroundColor: "rgba(15,23,42,0.06)",
+    width: "86%",
+    borderRadius: PILL_R,
+    backgroundColor: TRACK,
     borderWidth: 1,
-    borderColor: "rgba(15,23,42,0.05)",
+    borderColor: "rgba(255,255,255,0.10)",
     overflow: "hidden",
   },
   progressFill: {
     height: "100%",
-    backgroundColor: "rgba(35,164,85,0.35)",
+    backgroundColor: ACCENT,
   },
 
   title: {
     fontSize: 26,
     lineHeight: 30,
-    fontWeight: "800",
-    color: TEXT_DARK,
     textAlign: "center",
+    color: TEXT,
     marginTop: 6,
+    fontFamily: Platform.select({
+      ios: "Poppins-SemiBold",
+      android: "Poppins-SemiBold",
+      default: "Poppins-SemiBold",
+    }),
   },
   sub: {
     fontSize: 14,
     lineHeight: 20,
-    color: TEXT_SUB,
     textAlign: "center",
+    color: TEXT_DIM,
     marginTop: 8,
+    paddingHorizontal: 8,
+    fontFamily: Platform.select({
+      ios: "Poppins-Regular",
+      android: "Poppins-Regular",
+      default: "Poppins-Regular",
+    }),
+  },
+
+  listContainer: {
+    paddingTop: 12,
+    alignItems: "center", // makes children honor width below
   },
 
   option: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 18,
+    position: "relative",
+    width: "86%",                 // pulled in so rounded corners don’t touch card
+    backgroundColor: "rgba(0,0,0,0.55)",
+    borderRadius: 20,
     paddingVertical: 18,
     paddingHorizontal: 18,
     borderWidth: 1,
-    borderColor: "rgba(15,23,42,0.08)",
-    shadowColor: "#000",
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 6,
+    borderColor: "rgba(255,255,255,0.10)",
+    overflow: "hidden",          // clip any artifacts
+  },
+  optionInner: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: TRACK_INNER,
+  },
+  optionRing: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 20,
+    borderWidth: 2,
+    borderColor: ACCENT,
+    // iOS glow; Android avoids elevation to prevent black rectangle
+    ...(Platform.OS === "ios"
+      ? {
+          shadowColor: ACCENT,
+          shadowOpacity: 0.6,
+          shadowRadius: 16,
+          shadowOffset: { width: 0, height: 0 },
+        }
+      : null),
   },
   optionActive: {
-    backgroundColor: ACCENT,            // solid green
-    borderColor: ACCENT_DARK,
-    shadowOpacity: 0.12,
+    backgroundColor: "rgba(143,163,30,0.10)",
+    borderColor: ACCENT,
   },
   optionText: {
     fontSize: 18,
-    fontWeight: "700",
-    color: TEXT_DARK,
+    color: TEXT,
+    fontFamily: Platform.select({
+      ios: "Poppins-SemiBold",
+      android: "Poppins-SemiBold",
+      default: "Poppins-SemiBold",
+    }),
   },
   optionTextActive: {
-    color: "#FFFFFF",                   // white text when active
+    color: TEXT,
   },
 
   primaryBtn: {
-    marginTop: 20,
-    backgroundColor: ACCENT,            // always green
-    borderRadius: 28,
+    marginTop: 18,
+    alignSelf: "center",
+    width: "86%",                 // same inset as options
+    backgroundColor: ACCENT,
+    borderRadius: 26,
     paddingVertical: 16,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#000",
-    shadowOpacity: 0.15,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 8,
   },
-  primaryLabel: { color: "#FFFFFF", fontSize: 16, fontWeight: "700" },
+  primaryBtnDisabled: {
+    backgroundColor: BUTTON_TRACK,
+  },
+  primaryLabel: {
+    fontSize: 16,
+    color: "#0D0E0D",
+    fontFamily: Platform.select({
+      ios: "Poppins-SemiBold",
+      android: "Poppins-SemiBold",
+      default: "Poppins-SemiBold",
+    }),
+  },
+
+  secondaryBtn: {
+    marginTop: 10,
+    marginBottom: 12,
+    alignSelf: "center",
+    width: "86%",                 // same inset
+    borderRadius: 22,
+    paddingVertical: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.55)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+    overflow: "hidden",
+  },
+  secondaryLabel: {
+    fontSize: 16,
+    color: TEXT,
+    fontFamily: Platform.select({
+      ios: "Poppins-SemiBold",
+      android: "Poppins-SemiBold",
+      default: "Poppins-SemiBold",
+    }),
+  },
 });
