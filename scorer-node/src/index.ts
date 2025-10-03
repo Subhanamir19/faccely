@@ -20,8 +20,15 @@ import { scoreImageBytes, scoreImagePairBytes } from "./scorer";
 import { explainImageBytes, explainImagePairBytes } from "./explainer";
 
 const app = express();
+app.use((req, _res, next) => {
+  console.log(
+    `[${new Date().toISOString()}] ${req.method} ${req.url} ct=${req.headers["content-type"] || ""}`
+  );
+  next();
+});
+
 app.use(helmet());
-app.use(cors({ origin: "*"}));
+app.use(cors({ origin: "*" }));
 
 app.use(express.json({ limit: "1mb" }));
 app.use(rateLimit({ windowMs: 60_000, max: ENV.RATE_LIMIT_PER_MIN }));
@@ -29,33 +36,37 @@ app.use(rateLimit({ windowMs: 60_000, max: ENV.RATE_LIMIT_PER_MIN }));
 /**
  * Multer in-memory storage so we can inspect/normalize before OpenAI.
  * Size cap is generous; scorer will downscale internally.
+ * Accept common image types and the occasional "octet-stream" lie from RN.
  */
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 15 * 1024 * 1024 }, // 15 MB per file
+  fileFilter: (_req, file, cb) => {
+    const ok = new Set([
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+      "image/gif",
+      "image/heic",
+      "image/heif",
+      "application/octet-stream",
+    ]);
+    cb(null, ok.has(file.mimetype));
+  },
 });
 
 /** -----------------------------------------------------------------------
- * Image utilities
+ * Helpers
  * --------------------------------------------------------------------- */
 
-/**
- * Only used by EXPLAIN endpoints for now (they still expect bytes+mimetype).
- * Auto-rotate using EXIF and convert to high-quality JPEG.
- * We'll migrate explainers to the same PNG-normalizer later.
- */
 async function toJpegBuffer(file: Express.Multer.File) {
   if (!file?.buffer?.length) {
     throw new Error("empty_upload_buffer");
   }
-  const out = await sharp(file.buffer)
-    .rotate()
-    .jpeg({ quality: 92, mozjpeg: true })
-    .toBuffer();
+  const out = await sharp(file.buffer).rotate().jpeg({ quality: 92, mozjpeg: true }).toBuffer();
   return { buffer: out, mime: "image/jpeg" as const };
 }
 
-/** Small helper to surface OpenAI errors cleanly */
 function errorPayload(err: any) {
   const openaiMsg =
     err?.response?.data?.error?.message ||
@@ -66,19 +77,32 @@ function errorPayload(err: any) {
   return { error: "upstream_failed", status, detail: openaiMsg };
 }
 
+/** Tiny buffer preview for debugging bad multipart bodies */
+function preview(buf?: Buffer) {
+  if (!buf) return "nil";
+  const head = buf.slice(0, 12).toString("hex");
+  return `${buf.length}B ${head}`;
+}
+
 app.get("/health", (_req, res) => res.json({ ok: true }));
 
 /**
  * Single-image analysis
- * NOTE: We now pass raw bytes to scorer; scorer handles normalization to PNG.
+ * NOTE: Pass raw bytes to scorer; scorer handles normalization to PNG.
  */
 app.post("/analyze", upload.single("image"), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: "file 'image' required" });
+    if (!req.file.buffer?.length) {
+      return res.status(400).json({
+        error: "empty_file_buffer",
+        hint: "Likely bad client FormData. Do NOT set Content-Type manually.",
+      });
+    }
+
+    console.log("[/analyze] buffer:", preview(req.file.buffer));
 
     const client = new OpenAI({ apiKey: ENV.OPENAI_API_KEY });
-
-    // Pass original bytes. MIME is unused by scorer but kept for signature compatibility.
     const scores = await scoreImageBytes(client, req.file.buffer, req.file.mimetype);
     const parsed = ScoresSchema.parse(scores);
     res.json(parsed);
@@ -106,9 +130,18 @@ app.post(
       const files = req.files as Record<string, Express.Multer.File[]>;
       const frontal = files?.frontal?.[0];
       const side = files?.side?.[0];
+
       if (!frontal || !side) {
         return res.status(400).json({ error: "files 'frontal' and 'side' required" });
       }
+      if (!frontal.buffer?.length || !side.buffer?.length) {
+        return res.status(400).json({
+          error: "empty_file_buffers",
+          hint: "Likely bad client FormData. Do NOT set Content-Type manually. Send { uri, name, type } parts.",
+        });
+      }
+
+      console.log("[/analyze/pair] buffers:", "frontal", preview(frontal.buffer), "side", preview(side.buffer));
 
       const client = new OpenAI({ apiKey: ENV.OPENAI_API_KEY });
       const scores = await scoreImagePairBytes(

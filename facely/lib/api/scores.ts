@@ -1,5 +1,4 @@
 // Frontend API for scoring endpoints. Sends proper multipart files.
-// Do NOT set Content-Type manually; React Native will set the boundary.
 
 import { API_BASE } from "./config";
 
@@ -33,44 +32,48 @@ function mimeFromUri(uri: string): string {
 }
 
 function filePart(uri: string) {
-  return {
-    uri,                                  // file:// or content://
-    name: filenameFromUri(uri),
-    type: mimeFromUri(uri),
-  } as any;
+  return { uri, name: filenameFromUri(uri), type: mimeFromUri(uri) } as any;
 }
 
-// --- Single image ---
 export async function analyzeImage(uri: string): Promise<Scores> {
   const form = new FormData();
-  form.append("image", filePart(uri));    // backend expects 'image'
+  form.append("image", filePart(uri));
 
-  const res = await fetch(`${API_BASE}/analyze`, {
-    method: "POST",
-    body: form,
-  });
+  let res: Response;
+  try {
+    console.log("[API] POST", `${API_BASE}/analyze`);
+    res = await fetch(`${API_BASE}/analyze`, { method: "POST", body: form });
+  } catch (e: any) {
+    console.log("[API] /analyze network error:", e?.message || e);
+    throw new Error("NETWORK_UNREACHABLE");
+  }
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(`analyze failed: ${res.status} ${text}`);
+    console.log("[API] /analyze HTTP", res.status, text);
+    throw new Error(`HTTP_${res.status}`);
   }
   return (await res.json()) as Scores;
 }
 
-// --- Pair images ---
 export async function analyzePair(frontalUri: string, sideUri: string): Promise<Scores> {
   const form = new FormData();
-  form.append("frontal", filePart(frontalUri)); // backend expects 'frontal'
-  form.append("side", filePart(sideUri));       // and 'side'
+  form.append("frontal", filePart(frontalUri));
+  form.append("side", filePart(sideUri));
 
-  const res = await fetch(`${API_BASE}/analyze/pair`, {
-    method: "POST",
-    body: form,
-  });
+  let res: Response;
+  try {
+    console.log("[API] POST", `${API_BASE}/analyze/pair`);
+    res = await fetch(`${API_BASE}/analyze/pair`, { method: "POST", body: form });
+  } catch (e: any) {
+    console.log("[API] /analyze/pair network error:", e?.message || e);
+    throw new Error("NETWORK_UNREACHABLE");
+  }
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(`analyze/pair failed: ${res.status} ${text}`);
+    console.log("[API] /analyze/pair HTTP", res.status, text);
+    throw new Error(`HTTP_${res.status}`);
   }
   return (await res.json()) as Scores;
 }

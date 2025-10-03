@@ -15,13 +15,14 @@ import {
 } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as ImagePicker from "expo-image-picker";
+import * as ImageManipulator from "expo-image-manipulator";
 import * as FileSystem from "expo-file-system";
 import { router } from "expo-router";
 import Svg, { Line, Circle, Rect, Path } from "react-native-svg";
 import { useScores } from "../../store/scores";
 
 /* ============================== TOKENS ============================== */
-const ACCENT = "#8FA31E";                 // neon lime
+const ACCENT = "#8FA31E"; // neon lime
 const TEXT = "rgba(255,255,255,0.92)";
 const TEXT_DIM = "rgba(255,255,255,0.65)";
 const CARD_BORDER = "rgba(255,255,255,0.12)";
@@ -29,20 +30,45 @@ const CARD_TINT = "rgba(15,15,15,0.72)";
 const BG = "#0B0B0C";
 
 /* ============================== HELPERS ============================== */
+function toFileUri(u: string) {
+  if (u.startsWith("file://") || u.startsWith("http")) return u;
+  if (u.startsWith("/")) return `file://${u}`;
+  return u;
+}
+
+/** Normalize any incoming URI to a stable file:// path we can read. */
 async function ensureFileUriAsync(raw?: string | null): Promise<string | null> {
   if (!raw) return null;
-  if (raw.startsWith("file://") || raw.startsWith("http")) return raw;
-  if (raw.startsWith("/")) return `file://${raw}`;
   if (raw.startsWith("content://")) {
+    // Copy out of content resolver so we get a readable file:// path
+    const dest = `${FileSystem.cacheDirectory}capture_${Date.now()}.jpg`;
     try {
-      const dest = `${FileSystem.cacheDirectory}capture_${Date.now()}.jpg`;
       await FileSystem.copyAsync({ from: raw, to: dest });
       return dest;
     } catch {
+      // Fallback: let RN/Expo try to read content:// directly later
       return raw;
     }
   }
-  return raw;
+  return toFileUri(raw);
+}
+
+/** Force-save as JPEG so the backend never sees HEIC/HEIF surprises. */
+async function ensureJpeg(uri: string): Promise<string> {
+  const lower = uri.toLowerCase();
+  const alreadyJpeg = lower.endsWith(".jpg") || lower.endsWith(".jpeg");
+  try {
+    if (alreadyJpeg) return uri;
+    const out = await ImageManipulator.manipulateAsync(
+      uri,
+      [],
+      { compress: 0.92, format: ImageManipulator.SaveFormat.JPEG }
+    );
+    return toFileUri(out.uri);
+  } catch {
+    // If manipulation fails (rare), just return original URI
+    return uri;
+  }
 }
 
 type Step = "frontal" | "side" | "review";
@@ -117,8 +143,9 @@ function NeonFrame() {
           shadowOpacity: 0.6,
           shadowRadius: 20,
           shadowOffset: { width: 0, height: 0 },
-          // android glow approximation
-          ...(Platform.OS === "android" ? { borderWidth: 0.1, borderColor: "transparent", elevation: 6 } : null),
+          ...(Platform.OS === "android"
+            ? { borderWidth: 0.1, borderColor: "transparent", elevation: 6 }
+            : null),
         }}
       />
     </>
@@ -134,15 +161,10 @@ function FrontalGuides({ w, h }: { w: number; h: number }) {
   const cy = h / 2;
   return (
     <Svg width={w} height={h} style={{ position: "absolute", left: 0, top: 0 }}>
-      {/* bounding rounded rect */}
       <Rect x={pad} y={pad} width={innerW} height={innerH} rx={20} ry={20} stroke={ACCENT} strokeOpacity={0.35} fill="none" />
-      {/* midline vertical */}
       <Line x1={cx} y1={pad + 6} x2={cx} y2={h - pad - 6} stroke={ACCENT} strokeWidth={2} strokeOpacity={0.7} />
-      {/* eye line */}
       <Line x1={pad + 10} y1={cy - innerH * 0.08} x2={w - pad - 10} y2={cy - innerH * 0.08} stroke={ACCENT} strokeWidth={2} strokeOpacity={0.4} />
-      {/* nose circle */}
       <Circle cx={cx} cy={cy + innerH * 0.05} r={innerW * 0.08} stroke={ACCENT} strokeWidth={2} strokeOpacity={0.5} fill="none" />
-      {/* face oval */}
       <Path
         d={`
           M ${cx} ${pad + 18}
@@ -165,13 +187,9 @@ function SideGuides({ w, h }: { w: number; h: number }) {
   const cx = w / 2;
   return (
     <Svg width={w} height={h} style={{ position: "absolute", left: 0, top: 0 }}>
-      {/* bounding rounded rect */}
       <Rect x={pad} y={pad} width={innerW} height={innerH} rx={20} ry={20} stroke={ACCENT} strokeOpacity={0.35} fill="none" />
-      {/* profile vertical (tragus alignment) */}
       <Line x1={cx} y1={pad + 6} x2={cx} y2={h - pad - 6} stroke={ACCENT} strokeWidth={2} strokeOpacity={0.7} />
-      {/* brow/nose bridge line */}
       <Line x1={cx - innerW * 0.18} y1={pad + innerH * 0.36} x2={cx + innerW * 0.28} y2={pad + innerH * 0.36} stroke={ACCENT} strokeWidth={2} strokeOpacity={0.4} />
-      {/* chin arc */}
       <Path
         d={`
           M ${cx + innerW * 0.24} ${pad + innerH * 0.72}
@@ -182,7 +200,6 @@ function SideGuides({ w, h }: { w: number; h: number }) {
         strokeWidth={2}
         fill="none"
       />
-      {/* eye target dot */}
       <Circle cx={cx + innerW * 0.08} cy={pad + innerH * 0.38} r={5} fill={ACCENT} />
     </Svg>
   );
@@ -229,6 +246,7 @@ export default function TakePicture() {
     const res = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       quality: 1,
+      exif: false,
     });
     if (!res.canceled) await handleChosen(res.assets?.[0]?.uri || null);
   };
@@ -267,8 +285,13 @@ export default function TakePicture() {
     if (!canContinue) return;
     try {
       setSubmitting(true);
+
+      // Force both images to JPEG to avoid HEIC/HEIF issues on server
+      const fJpeg = await ensureJpeg(frontalUri!);
+      const sJpeg = await ensureJpeg(sideUri!);
+
       if (typeof scoresStore.analyzePair === "function") {
-        const out = await scoresStore.analyzePair(frontalUri, sideUri);
+        const out = await scoresStore.analyzePair(fJpeg, sJpeg);
         if (!out) {
           Alert.alert("Analysis failed", "No scores were returned from backend.");
           return;
@@ -303,8 +326,7 @@ export default function TakePicture() {
       imageStyle={{ transform: [{ translateY: 40 }] }}
     >
       <SafeAreaView style={{ flex: 1 }}>
-  <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 18 }}>
-
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 18 }}>
           <Text
             style={{
               color: TEXT,
@@ -323,20 +345,18 @@ export default function TakePicture() {
 
           {/* Card with neon frame + guide image */}
           <View
-  style={{
-    width: "86%",
-    aspectRatio: 3 / 4,
-    borderRadius: 22,
-    overflow: "hidden",
-    position: "relative",
-    backgroundColor: "#000",
-    marginTop: 6,   // tiny visual offset so it feels perfectly centered
-  }}
->
-
+            style={{
+              width: "86%",
+              aspectRatio: 3 / 4,
+              borderRadius: 22,
+              overflow: "hidden",
+              position: "relative",
+              backgroundColor: "#000",
+              marginTop: 6, // tiny visual offset so it feels perfectly centered
+            }}
+          >
             <Image source={guideSrc} style={{ width: "100%", height: "100%" }} resizeMode="cover" />
             <NeonFrame />
-            {/* overlay guides */}
             {overlay === "frontal" ? (
               <FrontalGuides w={Math.round((360 / 4) * 3)} h={480} />
             ) : (
@@ -359,11 +379,7 @@ export default function TakePicture() {
             Align your face with the guides. Good lighting, neutral expression.
           </Text>
 
-          <LimeButton
-            title={overlay === "frontal" ? "Capture Photo" : "Capture Photo"}
-            onPress={() => setChooserOpen(true)}
-            style={{ marginTop: 18 }}
-          />
+          <LimeButton title="Capture Photo" onPress={() => setChooserOpen(true)} style={{ marginTop: 18 }} />
 
           {/* dots */}
           <View style={{ flexDirection: "row", gap: 6, marginTop: 12 }}>
@@ -391,7 +407,6 @@ export default function TakePicture() {
 
   return (
     <>
-      {/* Step A: Frontal, Step B: Side */}
       {step === "frontal" &&
         renderGuide({
           guideSrc: require("../../assets/capture-guides/frontal-guide.jpg"),
@@ -405,15 +420,13 @@ export default function TakePicture() {
           overlay: "side",
         })}
 
-      {/* Step C: Review */}
       {step === "review" && (
-  <ImageBackground
-    source={require("../../assets/bg/score-bg.jpg")}
-    style={{ flex: 1, backgroundColor: BG }}
-    imageStyle={{ transform: [{ translateY: 40 }] }}
-  >
-    <SafeAreaView style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 18 }}>
-
+        <ImageBackground
+          source={require("../../assets/bg/score-bg.jpg")}
+          style={{ flex: 1, backgroundColor: BG }}
+          imageStyle={{ transform: [{ translateY: 40 }] }}
+        >
+          <SafeAreaView style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 18 }}>
             <Text
               style={{
                 color: TEXT,
@@ -430,7 +443,6 @@ export default function TakePicture() {
             </Text>
 
             <View style={{ width: "92%", flexDirection: "row", justifyContent: "space-between", gap: 12 }}>
-
               <View style={{ flex: 1 }}>
                 <Text style={{ color: TEXT_DIM, marginBottom: 6 }}>Frontal</Text>
                 <View
@@ -447,7 +459,16 @@ export default function TakePicture() {
                   <Image source={{ uri: frontalUri! }} style={{ width: "100%", height: "100%" }} resizeMode="cover" />
                 </View>
                 <Pressable onPress={() => changePose("frontal")} style={{ marginTop: 10 }}>
-                  <Text style={{ color: ACCENT, fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }) }}>
+                  <Text
+                    style={{
+                      color: ACCENT,
+                      fontFamily: Platform.select({
+                        ios: "Poppins-SemiBold",
+                        android: "Poppins-SemiBold",
+                        default: "Poppins-SemiBold",
+                      }),
+                    }}
+                  >
                     Retake
                   </Text>
                 </Pressable>
@@ -469,7 +490,16 @@ export default function TakePicture() {
                   <Image source={{ uri: sideUri! }} style={{ width: "100%", height: "100%" }} resizeMode="cover" />
                 </View>
                 <Pressable onPress={() => changePose("side")} style={{ marginTop: 10 }}>
-                  <Text style={{ color: ACCENT, fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }) }}>
+                  <Text
+                    style={{
+                      color: ACCENT,
+                      fontFamily: Platform.select({
+                        ios: "Poppins-SemiBold",
+                        android: "Poppins-SemiBold",
+                        default: "Poppins-SemiBold",
+                      }),
+                    }}
+                  >
                     Retake
                   </Text>
                 </Pressable>
@@ -477,12 +507,11 @@ export default function TakePicture() {
             </View>
 
             <LimeButton
-  title={submitting ? "Analyzing…" : "Proceed to score"}
-  onPress={useBoth}
-  disabled={!canContinue}
-  style={{ marginTop: 22, width: "92%" }}
-/>
-
+              title={submitting ? "Analyzing…" : "Proceed to score"}
+              onPress={useBoth}
+              disabled={!canContinue}
+              style={{ marginTop: 22, width: "92%" }}
+            />
           </SafeAreaView>
         </ImageBackground>
       )}

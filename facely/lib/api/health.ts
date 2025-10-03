@@ -2,8 +2,8 @@ import { API_BASE } from "./config";
 
 export async function pingHealth(): Promise<boolean> {
   try {
-    const res = await fetch(`${API_BASE}/health`);
-    return res.ok;
+    const r = await fetch(`${API_BASE}/health`);
+    return r.ok;
   } catch {
     return false;
   }
