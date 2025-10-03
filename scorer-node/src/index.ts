@@ -34,6 +34,12 @@ app.use(express.json({ limit: "1mb" }));
 app.use(rateLimit({ windowMs: 60_000, max: ENV.RATE_LIMIT_PER_MIN }));
 
 /**
+ * Create a single OpenAI client and reuse it.
+ * Avoids per-request setup and keeps connections warm.
+ */
+const openai = new OpenAI({ apiKey: ENV.OPENAI_API_KEY });
+
+/**
  * Multer in-memory storage so we can inspect/normalize before OpenAI.
  * Size cap is generous; scorer will downscale internally.
  * Accept common image types and the occasional "octet-stream" lie from RN.
@@ -102,8 +108,10 @@ app.post("/analyze", upload.single("image"), async (req, res) => {
 
     console.log("[/analyze] buffer:", preview(req.file.buffer));
 
-    const client = new OpenAI({ apiKey: ENV.OPENAI_API_KEY });
-    const scores = await scoreImageBytes(client, req.file.buffer, req.file.mimetype);
+    const t0 = Date.now();
+    const scores = await scoreImageBytes(openai, req.file.buffer, req.file.mimetype);
+    console.log("[/analyze] total ms =", Date.now() - t0);
+
     const parsed = ScoresSchema.parse(scores);
     res.json(parsed);
   } catch (err: any) {
@@ -143,14 +151,15 @@ app.post(
 
       console.log("[/analyze/pair] buffers:", "frontal", preview(frontal.buffer), "side", preview(side.buffer));
 
-      const client = new OpenAI({ apiKey: ENV.OPENAI_API_KEY });
+      const t0 = Date.now();
       const scores = await scoreImagePairBytes(
-        client,
+        openai,
         frontal.buffer,
         frontal.mimetype,
         side.buffer,
         side.mimetype
       );
+      console.log("[/analyze/pair] total ms =", Date.now() - t0);
 
       const parsed = ScoresSchema.parse(scores);
       res.json(parsed);
@@ -184,9 +193,11 @@ app.post("/analyze/explain", upload.single("image"), async (req, res) => {
     const scores = ScoresSchema.parse(scoresJson);
 
     const { buffer, mime } = await toJpegBuffer(req.file);
-    const client = new OpenAI({ apiKey: ENV.OPENAI_API_KEY });
 
-    const notes = await explainImageBytes(client, buffer, mime, scores);
+    const t0 = Date.now();
+    const notes = await explainImageBytes(openai, buffer, mime, scores);
+    console.log("[/analyze/explain] total ms =", Date.now() - t0);
+
     const parsed = ExplanationsSchema.parse(notes);
     res.json(parsed);
   } catch (err: any) {
@@ -231,15 +242,16 @@ app.post(
       const fJ = await toJpegBuffer(frontal);
       const sJ = await toJpegBuffer(side);
 
-      const client = new OpenAI({ apiKey: ENV.OPENAI_API_KEY });
+      const t0 = Date.now();
       const notes = await explainImagePairBytes(
-        client,
+        openai,
         fJ.buffer,
         fJ.mime,
         sJ.buffer,
         sJ.mime,
         scores
       );
+      console.log("[/analyze/explain/pair] total ms =", Date.now() - t0);
 
       const parsed = ExplanationsSchema.parse(notes);
       res.json(parsed);
