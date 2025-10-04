@@ -7,7 +7,7 @@ import OpenAI from "openai";
 import sharp from "sharp";
 import { ZodError, type ZodIssue } from "zod";
 
-import { generateRecommendations } from "./recommender.js";
+import { generateRecommendations, RecommendationsParseError } from "./recommender";
 import { ENV } from "./env.js";
 import {
   ScoresSchema,
@@ -296,14 +296,35 @@ app.post(
  * Recommendations (JSON-only)
  */
 app.post("/recommendations", upload.none(), async (req, res) => {
+  const parsedReq = RecommendationsRequestSchema.safeParse(req.body);
+  if (!parsedReq.success) {
+    return res.status(400).json({
+      error: "invalid_recommendations_payload",
+      issues: parsedReq.error.issues?.map((i) => ({
+        path: i.path,
+        code: i.code,
+        message: i.message,
+      })),
+    });
+  }
   try {
-    const payload = RecommendationsRequestSchema.parse(req.body);
-    const data = await generateRecommendations(payload);
+    const data = await generateRecommendations(parsedReq.data);
     res.json(data);
   } catch (err: any) {
+
+    if (err instanceof RecommendationsParseError) {
+      console.error("[/recommendations] invalid completion:", err.rawPreview);
+      return res.status(502).json({
+        error: "recommendations_generation_failed",
+        detail: err.message,
+      });
+    }
+
     if (err instanceof ZodError) {
-      return res.status(400).json({
-        error: "invalid_recommendations_payload",
+      console.error("[/recommendations] invalid completion shape:", err.issues);
+      return res.status(502).json({
+        error: "recommendations_shape_invalid",
+        detail: "Routine generation failed: upstream response had an unexpected shape.",
         issues: err.issues?.map((i: ZodIssue) => ({
           path: i.path,
           code: i.code,

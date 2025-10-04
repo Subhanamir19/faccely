@@ -2,11 +2,21 @@
 import OpenAI from "openai";
 import { ENV } from "./env.js";
 import {
-  RecommendationsRequestSchema,
+  
   RecommendationsResponseSchema,
   RecommendationsRequest,
   RecommendationsResponse,
 } from "./validators.js";
+
+export class RecommendationsParseError extends Error {
+  readonly rawPreview: string;
+
+  constructor(raw: string) {
+    super("Routine generation failed: upstream response was not valid JSON.");
+    this.name = "RecommendationsParseError";
+    this.rawPreview = truncate(raw, 1200);
+  }
+}
 
 const openai = new OpenAI({ apiKey: ENV.OPENAI_API_KEY });
 
@@ -16,9 +26,9 @@ const openai = new OpenAI({ apiKey: ENV.OPENAI_API_KEY });
  * and returns a RecommendationsResponse (schema-validated).
  */
 export async function generateRecommendations(
-  payload: unknown
+  req: RecommendationsRequest
 ): Promise<RecommendationsResponse> {
-  const req: RecommendationsRequest = RecommendationsRequestSchema.parse(payload);
+  
 
   const system = [
     "You are a board-certified aesthetician and evidence-driven coach.",
@@ -60,18 +70,20 @@ export async function generateRecommendations(
 
   const raw = completion.choices[0]?.message?.content?.trim() ?? "";
 
-  // Best-effort JSON extraction if the model misbehaves
-  const maybeJson =
-    tryParse(raw) ??
-    tryParse(extractJson(raw)) ??
-    {
-      summary: raw.slice(0, 240),
-      items: [],
-      version: "v1" as const,
-    };
+  if (raw) {
+    console.debug("[generateRecommendations] completion preview:", truncate(raw, 1200));
+  }
+
+  const parsed = tryParse(raw) ?? tryParse(extractJson(raw));
+
+  if (!parsed) {
+    console.error("[generateRecommendations] failed to parse completion:", truncate(raw, 2000));
+    throw new RecommendationsParseError(raw);
+  }
 
   // Validate and return
-  return RecommendationsResponseSchema.parse(maybeJson);
+  return RecommendationsResponseSchema.parse(parsed);
+
 }
 
 /* ---------------------------- helpers ---------------------------- */
@@ -90,4 +102,8 @@ function extractJson(s: string): string {
   const end = s.lastIndexOf("}");
   if (start === -1 || end === -1 || end <= start) return s;
   return s.slice(start, end + 1);
+}
+function truncate(raw: string, max: number): string {
+  if (raw.length <= max) return raw;
+  return `${raw.slice(0, max)}…(truncated)`;
 }
