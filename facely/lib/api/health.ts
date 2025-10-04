@@ -1,9 +1,13 @@
+// facely/lib/api/health.ts
 import { API_BASE } from "./config";
 
-export async function pingHealth(): Promise<boolean> {
+/** Ping backend /health and return true/false instead of throwing. */
+export async function pingHealth(signal?: AbortSignal): Promise<boolean> {
   try {
-    const r = await fetch(`${API_BASE}/health`);
-    return r.ok;
+    const res = await fetch(`${API_BASE}/health`, { method: "GET", signal });
+    if (!res.ok) return false;
+    // Some backends return plain text, others JSON. Either is fine.
+    return true;
   } catch {
     return false;
   }

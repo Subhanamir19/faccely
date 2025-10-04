@@ -75,20 +75,81 @@ type MetricItem = {
   key: string;
   score: number;         // 0..100
   percentile?: number;   // defaults to score
-  icon?: 'jaw' | 'sym' | 'cheek' | 'dimorph' | 'skin' | 'eyesym' | 'nose' | 'sex';
+  icon?: 'jaw' | 'sym' | 'cheek' | 'dimorph' | 'skin' | 'eyesym' | 'nose';
   locked?: boolean;      // future gating if needed
 };
 
-// Full 8 metrics
-const DEFAULT_METRICS: MetricItem[] = [
-  { key: "Jawline", score: 64, percentile: 64, icon: "jaw" },
-  { key: "Facial Symmetry", score: 72, percentile: 72, icon: "sym" },
-  { key: "Cheekbones", score: 58, percentile: 58, icon: "cheek" },
-  { key: "Masculinity/Femininity", score: 81, percentile: 83, icon: "dimorph" },
-  { key: "Skin Quality", score: 69, percentile: 71, icon: "skin" },
-  { key: "Eye Symmetry", score: 62, percentile: 60, icon: "eyesym" },
-  { key: "Nose Balance", score: 74, percentile: 76, icon: "nose" },
+type MetricDefinition = {
+  apiKey: string;
+  label: string;
+  icon: MetricItem['icon'];
+  defaultScore: number;
+  defaultPercentile?: number;
+  locked?: boolean;
+};
+
+const METRIC_DEFINITIONS: MetricDefinition[] = [
+  {
+    apiKey: "jawline",
+    label: "Jawline",
+    icon: "jaw",
+    defaultScore: 64,
+    defaultPercentile: 64,
+  },
+  {
+    apiKey: "facial_symmetry",
+    label: "Facial Symmetry",
+    icon: "sym",
+    defaultScore: 72,
+    defaultPercentile: 72,
+  },
+  {
+    apiKey: "cheekbones",
+    label: "Cheekbones",
+    icon: "cheek",
+    defaultScore: 58,
+    defaultPercentile: 58,
+  },
+  {
+    apiKey: "sexual_dimorphism",
+    label: "Masculinity/Femininity",
+    icon: "dimorph",
+    defaultScore: 81,
+    defaultPercentile: 83,
+  },
+  {
+    apiKey: "skin_quality",
+    label: "Skin Quality",
+    icon: "skin",
+    defaultScore: 69,
+    defaultPercentile: 71,
+  },
+  {
+    apiKey: "eyes_symmetry",
+    label: "Eye Symmetry",
+    icon: "eyesym",
+    defaultScore: 62,
+    defaultPercentile: 60,
+  },
+  {
+    apiKey: "nose_harmony",
+    label: "Nose Balance",
+    icon: "nose",
+    defaultScore: 74,
+    defaultPercentile: 76,
+  },
 ];
+
+// Full 8 metrics
+const DEFAULT_METRICS: MetricItem[] = METRIC_DEFINITIONS.map(
+  ({ label, icon, defaultScore, defaultPercentile, locked }) => ({
+    key: label,
+    icon,
+    locked,
+    score: defaultScore,
+    percentile: defaultPercentile ?? defaultScore,
+  })
+);
 
 const clamp = (v: number, min: number, max: number) =>
   Math.max(min, Math.min(max, v));
@@ -585,27 +646,17 @@ function MetricCard({ item, width, active }: { item: MetricItem; width: number; 
 // ---------------------------------------------------------------------------
 function applyApiScores(api: any): MetricItem[] {
   const scores = api?.scores ?? api;
-
-  // normalize keys from snake_case to Title Case
-  const keyMap: Record<string, string> = {
-    jawline: "Jawline",
-    facial_symmetry: "Facial Symmetry",
-    cheekbones: "Cheekbones",
-    sexual_dimorphism: "Masculinity",
-    skin_quality: "Skin Quality",
-    eyes_symmetry: "Eye Symmetry",
-    nose_harmony: "Nose Balance",
-  };
-
-  return DEFAULT_METRICS.map(m => {
-    // try API key directly OR via keyMap
-    const apiKey = Object.entries(keyMap).find(([, v]) => v === m.key)?.[0];
-    const sc = Number(scores?.[apiKey ?? ""]);
+  return METRIC_DEFINITIONS.map(({ apiKey, label, icon, locked, defaultScore, defaultPercentile }) => {
+    const raw = Number(scores?.[apiKey]);
+    const val = Number.isFinite(raw) ? Math.max(0, Math.min(100, raw)) : null;
+    const pct = defaultPercentile ?? defaultScore;
     return {
-      ...m,
-      score: Number.isFinite(sc) ? Math.max(0, Math.min(100, sc)) : m.score,
-      percentile: Number.isFinite(sc) ? sc : (m.percentile ?? m.score),
-    };
+      key: label,
+      icon,
+      locked,
+      score: val ?? defaultScore,
+      percentile: val ?? pct,
+    } as MetricItem;
   });
 }
 
@@ -618,7 +669,7 @@ export default function ScoreScreen() {
   const snap = itemWidth + spacer;
 
   const [index, setIndex] = useState(0);
-  const [metrics, setMetrics] = useState<MetricItem[]>(DEFAULT_METRICS.slice(0, 7));
+  const [metrics, setMetrics] = useState<MetricItem[]>(DEFAULT_METRICS);
 
   const params = useLocalSearchParams<{ scoresPayload?: string }>();
 
@@ -626,10 +677,10 @@ export default function ScoreScreen() {
     if (!params.scoresPayload) return;
     try {
       const payload = JSON.parse(params.scoresPayload as string);
-      setMetrics(applyApiScores(payload).slice(0, 7));
-      setIndex(0);
-      listRef.current?.scrollToOffset({ offset: 0, animated: false });
-      (applyApiScores(payload).slice(0, 7));
+      setMetrics(applyApiScores(payload));
+setIndex(0);
+listRef.current?.scrollToOffset({ offset: 0, animated: false });
+
     } catch {
       // ignore bad payloads
     }

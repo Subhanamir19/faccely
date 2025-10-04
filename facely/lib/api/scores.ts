@@ -1,7 +1,7 @@
-// Frontend API for scoring endpoints. Sends proper multipart files.
-
+// facely/lib/api/scores.ts
 import { API_BASE } from "./config";
 
+/** Keep this aligned with backend keys. */
 export type Scores = {
   jawline: number;
   facial_symmetry: number;
@@ -12,68 +12,88 @@ export type Scores = {
   sexual_dimorphism: number;
 };
 
-function filenameFromUri(uri: string): string {
-  try {
-    const q = uri.split("?")[0];
-    const last = q.substring(q.lastIndexOf("/") + 1) || "upload.jpg";
-    return last.includes(".") ? last : last + ".jpg";
-  } catch {
-    return "upload.jpg";
-  }
+/* ---------- internal helpers ---------- */
+
+function toPart(uri: string, name: string): {
+  uri: string;
+  name: string;
+  type: string;
+} {
+  const normalized =
+    uri.startsWith("file://") ? uri : uri.startsWith("/") ? `file://${uri}` : uri;
+  // Label as JPEG; the server should sniff true type anyway.
+  return { uri: normalized, name: `${name}.jpg`, type: "image/jpeg" };
 }
 
-function mimeFromUri(uri: string): string {
-  const u = uri.toLowerCase();
-  if (u.endsWith(".png")) return "image/png";
-  if (u.endsWith(".webp")) return "image/webp";
-  if (u.endsWith(".gif")) return "image/gif";
-  if (u.endsWith(".heic") || u.endsWith(".heif")) return "image/heic";
-  return "image/jpeg";
-}
-
-function filePart(uri: string) {
-  return { uri, name: filenameFromUri(uri), type: mimeFromUri(uri) } as any;
-}
-
-export async function analyzeImage(uri: string): Promise<Scores> {
-  const form = new FormData();
-  form.append("image", filePart(uri));
-
-  let res: Response;
-  try {
-    console.log("[API] POST", `${API_BASE}/analyze`);
-    res = await fetch(`${API_BASE}/analyze`, { method: "POST", body: form });
-  } catch (e: any) {
-    console.log("[API] /analyze network error:", e?.message || e);
-    throw new Error("NETWORK_UNREACHABLE");
-  }
-
+async function parseScores(res: Response): Promise<Scores> {
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    console.log("[API] /analyze HTTP", res.status, text);
-    throw new Error(`HTTP_${res.status}`);
+    throw new Error(`HTTP ${res.status}${text ? ` — ${text.slice(0, 200)}` : ""}`);
   }
-  return (await res.json()) as Scores;
+  const json = (await res.json()) as unknown;
+
+  // Minimal guard: ensure numeric 0..100 for each expected key.
+  const keys: (keyof Scores)[] = [
+    "jawline",
+    "facial_symmetry",
+    "skin_quality",
+    "cheekbones",
+    "eyes_symmetry",
+    "nose_harmony",
+    "sexual_dimorphism",
+  ];
+  const out: Partial<Scores> = {};
+  for (const k of keys) {
+    const v = (json as any)?.[k];
+    if (typeof v !== "number" || !isFinite(v)) {
+      throw new Error(`Invalid score for "${k}"`);
+    }
+    // Hard clamp for safety.
+    (out as any)[k] = Math.max(0, Math.min(100, Math.round(v)));
+  }
+  return out as Scores;
 }
 
-export async function analyzePair(frontalUri: string, sideUri: string): Promise<Scores> {
-  const form = new FormData();
-  form.append("frontal", filePart(frontalUri));
-  form.append("side", filePart(sideUri));
+/* ---------- public API ---------- */
 
-  let res: Response;
-  try {
-    console.log("[API] POST", `${API_BASE}/analyze/pair`);
-    res = await fetch(`${API_BASE}/analyze/pair`, { method: "POST", body: form });
-  } catch (e: any) {
-    console.log("[API] /analyze/pair network error:", e?.message || e);
-    throw new Error("NETWORK_UNREACHABLE");
-  }
+/** POST /analyze with a single image (multipart/form-data). */
+export async function analyzeImage(uri: string, signal?: AbortSignal): Promise<Scores> {
+  const fd = new FormData();
+  // Backend single-image field name assumed "image".
+  fd.append("image", toPart(uri, "image") as any);
 
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    console.log("[API] /analyze/pair HTTP", res.status, text);
-    throw new Error(`HTTP_${res.status}`);
-  }
-  return (await res.json()) as Scores;
+  const res = await fetch(`${API_BASE}/analyze`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      // Don't set Content-Type; RN will add correct multipart boundary.
+    },
+    body: fd,
+    signal,
+  });
+
+  return parseScores(res);
+}
+
+/** POST /analyze/pair with frontal + side images (multipart/form-data). */
+export async function analyzePair(
+  frontalUri: string,
+  sideUri: string,
+  signal?: AbortSignal
+): Promise<Scores> {
+  const fd = new FormData();
+  // Field names expected by backend: "frontal" and "side".
+  fd.append("frontal", toPart(frontalUri, "frontal") as any);
+  fd.append("side", toPart(sideUri, "side") as any);
+
+  const res = await fetch(`${API_BASE}/analyze/pair`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+    },
+    body: fd,
+    signal,
+  });
+
+  return parseScores(res);
 }

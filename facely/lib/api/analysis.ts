@@ -1,61 +1,88 @@
+// facely/lib/api/analysis.ts
 import { API_BASE } from "./config";
 import type { Scores } from "./scores";
 
-export type Explanations = Record<
-  | "jawline"
-  | "facial_symmetry"
-  | "skin_quality"
-  | "cheekbones"
-  | "eyes_symmetry"
-  | "nose_harmony"
-  | "sexual_dimorphism",
-  [string, string]
->;
+/**
+ * Backend returns per-metric notes. Keep this flexible to avoid frontend breaks.
+ * Example:
+ * {
+ *   jawline: ["Tier: Developing — soft mandibular border", "Refinement: reduce submental fat"],
+ *   ...
+ * }
+ */
+export type Explanations = Record<string, string[] | string>;
 
-function filenameFromUri(uri: string): string {
-  try {
-    const q = uri.split("?")[0];
-    const last = q.substring(q.lastIndexOf("/") + 1) || "upload.jpg";
-    return last.includes(".") ? last : last + ".jpg";
-  } catch {
-    return "upload.jpg";
-  }
-}
-function mimeFromUri(uri: string): string {
-  const u = uri.toLowerCase();
-  if (u.endsWith(".png")) return "image/png";
-  if (u.endsWith(".webp")) return "image/webp";
-  if (u.endsWith(".gif")) return "image/gif";
-  if (u.endsWith(".heic") || u.endsWith(".heif")) return "image/heic";
-  return "image/jpeg";
-}
-function filePart(uri: string) {
-  return { uri, name: filenameFromUri(uri), type: mimeFromUri(uri) } as any;
+/* ---------- internal helpers ---------- */
+
+function toPart(uri: string, name: string): {
+  uri: string;
+  name: string;
+  type: string;
+} {
+  const normalized =
+    uri.startsWith("file://") ? uri : uri.startsWith("/") ? `file://${uri}` : uri;
+  return { uri: normalized, name: `${name}.jpg`, type: "image/jpeg" };
 }
 
-export async function explainMetrics(uri: string, scores: Scores) {
-  const form = new FormData();
-  form.append("image", filePart(uri));
-  form.append("scores", JSON.stringify(scores));
-
-  const res = await fetch(`${API_BASE}/analyze/explain`, { method: "POST", body: form });
+async function parseExplanations(res: Response): Promise<Explanations> {
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(`HTTP_${res.status}: ${text}`);
+    throw new Error(`HTTP ${res.status}${text ? ` — ${text.slice(0, 200)}` : ""}`);
   }
-  return (await res.json());
+  // Shape can vary; let store/components normalize.
+  return (await res.json()) as Explanations;
 }
 
-export async function explainMetricsPair(frontalUri: string, sideUri: string, scores: Scores) {
-  const form = new FormData();
-  form.append("frontal", filePart(frontalUri));
-  form.append("side", filePart(sideUri));
-  form.append("scores", JSON.stringify(scores));
+/* ---------- public API ---------- */
 
-  const res = await fetch(`${API_BASE}/analyze/explain/pair`, { method: "POST", body: form });
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`HTTP_${res.status}: ${text}`);
-  }
-  return (await res.json());
+/**
+ * POST /analyze/explain for single image.
+ * Sends multipart with the image and a small JSON scores blob so server can tailor notes.
+ * Fields:
+ *   - image: file
+ *   - scores: application/json as string
+ */
+export async function explainMetrics(
+  imageUri: string,
+  scores: Scores,
+  signal?: AbortSignal
+): Promise<Explanations> {
+  const fd = new FormData();
+  fd.append("image", toPart(imageUri, "image") as any);
+  fd.append("scores", JSON.stringify(scores));
+  const res = await fetch(`${API_BASE}/analyze/explain`, {
+    method: "POST",
+    headers: { Accept: "application/json" },
+    body: fd,
+    signal,
+  });
+  return parseExplanations(res);
+}
+
+/**
+ * POST /analyze/pair/explain for frontal + side pair.
+ * Sends multipart with both files and the scores JSON.
+ * Fields:
+ *   - frontal: file
+ *   - side: file
+ *   - scores: application/json as string
+ */
+export async function explainMetricsPair(
+  frontalUri: string,
+  sideUri: string,
+  scores: Scores,
+  signal?: AbortSignal
+): Promise<Explanations> {
+  const fd = new FormData();
+  fd.append("frontal", toPart(frontalUri, "frontal") as any);
+  fd.append("side", toPart(sideUri, "side") as any);
+  fd.append("scores", JSON.stringify(scores));
+
+  const res = await fetch(`${API_BASE}/analyze/pair/explain`, {
+    method: "POST",
+    headers: { Accept: "application/json" },
+    body: fd,
+    signal,
+  });
+  return parseExplanations(res);
 }

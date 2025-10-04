@@ -1,5 +1,5 @@
 // facely/lib/api/recommendations.ts
-import { API_BASE_URL } from "../config";
+import { API_BASE } from "./config";
 
 /** Metric keys (kept consistent with backend) */
 const METRIC_KEYS = [
@@ -27,42 +27,15 @@ export type RecommendationsReq = {
   metrics: MetricInput[];
 };
 
-/**
- * Server may evolve. We keep the response type loose and let the store normalize it.
- * Examples the backend SHOULD aim to return:
- *
- * Preferred (task-like):
- * {
- *   "summary": "Focus on SPF and hydration.",
- *   "items": [
- *     {
- *       "metric": "skin_quality",
- *       "title": "Apply SPF 30",
- *       "recommendation": "Use a broad-spectrum SPF 30+ each morning.",
- *       "finding": "Mild uneven tone and texture.",
- *       "priority": "high",
- *       "expected_gain": 6,
- *       "score": 62
- *     }
- *   ],
- *   "version": "v1"
- * }
- *
- * Legacy tolerated:
- * { "summary": "...", "recommendations": [ /* same item shape */ /* ] }
- * OR even an array of strings/items.
- */
+/** Shape is intentionally flexible; the store/consumers will normalize. */
 export type RecommendationsRes = unknown;
 
-/**
- * Helper to build a well-formed request from a flat scores object.
- * Useful if you ever call this lib from places other than Recommendations screen.
- */
+/** Build a typed request body from loose inputs. */
 export function buildRecommendationsReq(input: {
   age: number;
   gender?: "male" | "female" | "other";
   ethnicity?: string;
-  scores: Partial<Record<MetricKey, number>>;
+  scores: Record<MetricKey, number | undefined>;
   notes?: Partial<Record<MetricKey, string>>;
 }): RecommendationsReq {
   const metrics: MetricInput[] = (Object.keys(input.scores) as MetricKey[])
@@ -90,7 +63,7 @@ export async function fetchRecommendations(
   body: RecommendationsReq,
   signal?: AbortSignal
 ): Promise<RecommendationsRes> {
-  const res = await fetch(`${API_BASE_URL}/recommendations`, {
+  const res = await fetch(`${API_BASE}/recommendations`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -103,7 +76,7 @@ export async function fetchRecommendations(
   }
 
   // Do NOT enforce a rigid shape here. Let the store normalize.
-  return (await res.json()) as unknown as RecommendationsRes;
+  return (await res.json()) as RecommendationsRes;
 }
 
 /* --------------------------- utils --------------------------- */
