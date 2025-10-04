@@ -1,4 +1,4 @@
-// app/loading.tsx
+// C:\SS\facely\app\loading.tsx
 import React, { useEffect, useRef } from "react";
 import {
   View,
@@ -8,12 +8,35 @@ import {
   Animated,
   Easing,
   Platform,
+  Alert,
 } from "react-native";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
 import T from "@/components/ui/T";
 import { useOnboarding } from "@/store/onboarding";
+import { useScores } from "../store/scores"; // ⬅️ added
+import * as FileSystem from "expo-file-system";
+
+function toFileUri(u: string) {
+  if (u.startsWith("file://") || u.startsWith("http")) return u;
+  if (u.startsWith("/")) return `file://${u}`;
+  return u;
+}
+
+async function ensureFileUriAsync(raw?: string | null): Promise<string | null> {
+  if (!raw) return null;
+  if (raw.startsWith("content://")) {
+    const dest = `${FileSystem.cacheDirectory}capture_${Date.now()}.jpg`;
+    try {
+      await FileSystem.copyAsync({ from: raw, to: dest });
+      return dest;
+    } catch {
+      return raw; // fallback
+    }
+  }
+  return toFileUri(raw);
+}
 
 // ===== Tokens =====
 const LIME = "#8FA31E";
@@ -29,45 +52,138 @@ const SIZE = 240;        // outer diameter of ring container
 const RING = 210;        // circle diameter for SVG math
 const STROKE = 12;
 
+type Params = {
+  mode?: "analyzePair" | "advanced" | string;
+  front?: string;
+  side?: string;
+};
+
 export default function LoadingScreen() {
   const { completed } = useOnboarding();
+  const { mode, front, side } = useLocalSearchParams<Params>();
+  const scoresStore = useScores();
 
   // progress 0..100
   const prog = useRef(new Animated.Value(0)).current;
+  const loopStopRef = useRef(false);
+
+  // Indeterminate loop for real async work
+  const startIndeterminateLoop = () => {
+    loopStopRef.current = false;
+    const tick = () => {
+      if (loopStopRef.current) return;
+      prog.setValue(0);
+      Animated.timing(prog, {
+        toValue: 100,
+        duration: 1600,
+        easing: Easing.inOut(Easing.cubic),
+        useNativeDriver: false,
+      }).start(({ finished }) => {
+        if (finished && !loopStopRef.current) tick();
+      });
+    };
+    tick();
+  };
+
+  const stopLoop = () => {
+    loopStopRef.current = true;
+    // let the current tick finish; we don't care about exact percent
+  };
 
   useEffect(() => {
+    // Task modes take precedence over onboarding bootstrap
+    if (mode === "analyzePair") {
+      if (!front || !side) {
+        Alert.alert("Missing images", "Both frontal and side images are required.");
+        router.back();
+        return;
+      }
+    
+      startIndeterminateLoop();
+    
+      (async () => {
+        try {
+          // 1) decode what we encoded during navigation
+          const decodedFront = decodeURIComponent(front as string);
+          const decodedSide  = decodeURIComponent(side as string);
+    
+          // 2) normalize for Android content:// and ensure file://
+          const frontUri = await ensureFileUriAsync(decodedFront);
+          const sideUri  = await ensureFileUriAsync(decodedSide);
+    
+          if (!frontUri || !sideUri) {
+            throw new Error("Image paths could not be resolved.");
+          }
+    
+          console.log("[loading] analyzePair URIs:", { frontUri, sideUri });
+    
+          const out = await (scoresStore as any).analyzePair(frontUri, sideUri);
+          if (!out) throw new Error("No scores were returned from backend.");
+    
+          stopLoop();
+          router.replace({
+            pathname: "/(tabs)/score",
+            params: { scoresPayload: JSON.stringify(out) },
+          });
+        } catch (e: any) {
+          stopLoop();
+          Alert.alert("Analysis failed", String(e?.message || e));
+          router.back();
+        }
+      })();
+    
+      return;
+    }
+    
+
+    if (mode === "advanced") {
+      // imageUri + scores are already in the store after scoring step
+      startIndeterminateLoop();
+
+      (async () => {
+        try {
+          const ok = await (scoresStore as any).explain(
+            (scoresStore as any).imageUri,
+            (scoresStore as any).scores
+          );
+          stopLoop();
+          if (ok) {
+            router.replace("/(tabs)/analysis");
+          } else {
+            throw new Error("Advanced analysis did not return results.");
+          }
+        } catch (e: any) {
+          stopLoop();
+          Alert.alert("Advanced analysis failed", String(e?.message || e));
+          router.back();
+        }
+      })();
+
+      return;
+    }
+
+    // Default: original onboarding bootstrap behavior (unchanged path)
     if (!completed) {
       // nice try deep-linking; go finish onboarding
       router.replace("/(onboarding)/age");
       return;
     }
 
-    // Simulated bootstrap; replace with real warmups later
-    const run = () => {
-      Animated.timing(prog, {
-        toValue: 100,
-        duration: 2200,
-        easing: Easing.inOut(Easing.cubic),
-        useNativeDriver: false,
-      }).start(({ finished }) => {
-        if (finished) router.replace("/(tabs)/take-picture");
-      });
-    };
-    run();
-  }, [completed, prog]);
+    // Simulated bootstrap; keep existing behavior
+    Animated.timing(prog, {
+      toValue: 100,
+      duration: 2200,
+      easing: Easing.inOut(Easing.cubic),
+      useNativeDriver: false,
+    }).start(({ finished }) => {
+      if (finished) router.replace("/(tabs)/take-picture");
+    });
+  }, [completed, mode, front, side]);
 
   // Derived values for ring + percent
-  const pct = prog.interpolate({ inputRange: [0, 100], outputRange: [0, 100] });
   const pctText = prog.interpolate({
     inputRange: [0, 100],
     outputRange: [0, 100],
-  });
-
-  // ring math
-  const CIRC = Math.PI * (RING - STROKE);
-  const dashOffset = prog.interpolate({
-    inputRange: [0, 100],
-    outputRange: [CIRC, 0],
   });
 
   return (
@@ -97,7 +213,6 @@ export default function LoadingScreen() {
                 { transform: [{ rotate: "-90deg" }] }, // start at top
               ]}
             >
-              {/* We use two circles by stacking Views with borders to avoid SVG perf jank */}
               <View
                 style={[
                   styles.circleBase,
@@ -117,14 +232,12 @@ export default function LoadingScreen() {
                     height: RING,
                     borderWidth: STROKE,
                     borderColor: PURPLE,
-                    // Stroke dash emulation by masking with clip ring + rotating a half-gradient head
-                    // Use a sweep gradient via background and mask for smooth head
                   },
                 ]}
               />
             </Animated.View>
 
-            {/* Actual sweep progress using native Animated.View */}
+            {/* Sweep head (indeterminate look) */}
             <Animated.View
               style={[
                 styles.sweep,
@@ -132,10 +245,14 @@ export default function LoadingScreen() {
                   width: RING,
                   height: RING,
                   borderRadius: RING / 2,
-                  transform: [{ rotate: prog.interpolate({
-                    inputRange: [0, 100],
-                    outputRange: ["0deg", "360deg"],
-                  }) }],
+                  transform: [
+                    {
+                      rotate: prog.interpolate({
+                        inputRange: [0, 100],
+                        outputRange: ["0deg", "360deg"],
+                      }),
+                    },
+                  ],
                 },
               ]}
             >
@@ -149,15 +266,14 @@ export default function LoadingScreen() {
 
             {/* Inner avatar */}
             <View style={styles.avatarWrap}>
-            <Image
-  source={require("../assets/loading/face-loader.jpg")}
-  style={styles.avatar}
-  resizeMode="cover"
-/>
-
+              <Image
+                source={require("../assets/loading/face-loader.jpg")}
+                style={styles.avatar}
+                resizeMode="cover"
+              />
             </View>
 
-            {/* Mask the ring to show only the traced arc using dash offset math */}
+            {/* Mask ring placeholder */}
             <Animated.View
               style={[
                 styles.mask,
@@ -166,28 +282,26 @@ export default function LoadingScreen() {
                   width: RING,
                   height: RING,
                   borderRadius: RING / 2,
-                  // emulate stroke-dashoffset by clipping a sector with larger black cover
-                  // we fake with a rotating cover that shrinks as progress grows
-                  transform: [
-                    {
-                      rotate: prog.interpolate({
-                        inputRange: [0, 100],
-                        outputRange: ["0deg", "360deg"],
-                      }),
-                    },
-                  ],
                 },
               ]}
             />
           </View>
 
           {/* Headline */}
-          <T style={styles.headline}>Max your Looks</T>
+          <T style={styles.headline}>
+            {mode === "advanced"
+              ? "Running advanced analysis"
+              : mode === "analyzePair"
+              ? "Scoring your photos"
+              : "Max your Looks"}
+          </T>
 
           {/* Subline */}
-          <T style={styles.subline}>Preparing analysis algorithm</T>
+          <T style={styles.subline}>
+            {mode ? "Please hold, this can take a few seconds" : "Preparing analysis algorithm"}
+          </T>
 
-          {/* Percent pill */}
+          {/* Percent pill (cosmetic, shows 0–100 loop or final bootstrap) */}
           <View style={styles.pill}>
             <T style={styles.pillText}>
               {/** show integer percent */}
@@ -299,7 +413,6 @@ const styles = StyleSheet.create({
   mask: {
     position: "absolute",
     borderColor: "transparent",
-    // This element exists only to stabilize layout on some Androids
   },
 
   headline: {

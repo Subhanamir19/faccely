@@ -2,9 +2,14 @@
 import OpenAI from "openai";
 import type { Scores } from "./validators";
 import { normalizeToPngDataUrl } from "./lib/image-normalize";
+import crypto from "crypto";
 
-// Prefer a model that honors JSON output reliably.
+/* ------------------------------ Config/Env -------------------------------- */
+
 const MODEL = process.env.OPENAI_SCORES_MODEL || "gpt-4o-mini";
+const CACHE_TTL_MS = Number(process.env.SCORE_CACHE_TTL_MS ?? 1000 * 60 * 60 * 24 * 30); // 30d
+const CACHE_MAX_ITEMS = Number(process.env.SCORE_CACHE_MAX_ITEMS ?? 5000); // simple LRU-ish cap
+const PROMPT_VERSION = "v3.2"; // bump to invalidate cache if you change prompts/rules
 
 /* ------------------------------- Shared keys ------------------------------ */
 const SCORE_KEYS: (keyof Scores)[] = [
@@ -31,10 +36,72 @@ const KEY_ALIASES: Record<string, keyof Scores> = {
   nose: "nose_harmony",
 };
 
+function sha256Hex(s: string | Buffer) {
+  return crypto.createHash("sha256").update(s).digest("hex");
+}
+
+function cacheKeySingle(dataUrl: string): string {
+  return sha256Hex(
+    `SINGLE|${MODEL}|${PROMPT_VERSION}|${dataUrl.length}|${sha256Hex(dataUrl)}`
+  );
+}
+function cacheKeyPair(frontal: string, side: string): string {
+  return sha256Hex(
+    `PAIR|${MODEL}|${PROMPT_VERSION}|${frontal.length}|${sha256Hex(
+      frontal
+    )}|${side.length}|${sha256Hex(side)}`
+  );
+}
+
+/* ------------------------------ In-memory cache --------------------------- */
+/** Very small LRU-ish cache with TTL and size cap. Pluggable later with Redis. */
+type CacheEntry = { value: Scores; ts: number };
+const memCache = new Map<string, CacheEntry>();
+const inFlight = new Map<string, Promise<Scores>>(); // in-flight de-duplication
+
+function cacheGet(key: string): Scores | null {
+  const now = Date.now();
+  const hit = memCache.get(key);
+  if (!hit) return null;
+  if (now - hit.ts > CACHE_TTL_MS) {
+    memCache.delete(key);
+    return null;
+  }
+  // refresh recency
+  memCache.delete(key);
+  memCache.set(key, { ...hit, ts: now });
+  return hit.value;
+}
+
+function cacheSet(key: string, value: Scores) {
+  // size cap
+  if (memCache.size >= CACHE_MAX_ITEMS) {
+    // delete oldest entry (first inserted)
+    const oldest = memCache.keys().next().value;
+    if (oldest) memCache.delete(oldest);
+  }
+  memCache.set(key, { value, ts: Date.now() });
+}
+
 /* --------------------------- System prompts ------------------------------- */
 const SCHEMA_KEYS_SENTENCE = `Keys must be exactly: ${SCORE_KEYS.join(
   ", "
 )}. Values are integers 0–100. Do not include any other fields or commentary.`;
+
+const ANTI_FIVE_SENTENCE = `
+IMPORTANT OUTPUT DISCIPLINE:
+- Do NOT quantize to 5-point steps (…, 55, 60, 65, …). Avoid step patterns and round-number bias.
+- Scores must be integers 0–100, but do not preferentially choose numbers ending in 0 or 5.
+- If your internal estimate lands near a multiple of 5, choose the nearest NON-5 integer instead (e.g., 63 or 68 instead of 65).
+`.trim();
+
+const RANGE_DISCIPLINE = `
+RANGE DISCIPLINE (NO REGRESSION TO THE MEAN):
+- Use the FULL 0–100 range where evidence warrants it. Do NOT cluster around 60–75 without strong cues.
+- Low scores are allowed when visible cues are weak/negative; high scores are allowed when cues are strong/clear.
+- If all metrics would land in a narrow band (e.g., 60–75) without strong justification, widen the spread to reflect the strongest and weakest signals actually observed.
+- Never "balance" a low metric by inflating an unrelated metric. Each metric is independent and evidence-based.
+`.trim();
 
 const SYSTEM_MSG_SINGLE = `
 You are a facial aesthetician. Judge only visible facial structure from the provided image.
@@ -51,13 +118,22 @@ Scoring (0–100, integers only, independent per metric):
 - nose_harmony: dorsum straightness, tip definition, width vs midface balance, deviation.
 - sexual_dimorphism: degree of culturally typical trait expression in bone/soft-tissue proportions. Do NOT infer identity.
 
+${RANGE_DISCIPLINE}
+
 Anti-inflation rules:
 - Any metric may be low if cues indicate; do not compensate with unrelated positives.
 - If cues conflict, prioritize the clearest high-signal cues; do not average toward 50.
 - No praise words, no prose, no explanations in the output.
 
-Return a strict JSON object with exactly seven keys and integer values 0–100.
-${SCHEMA_KEYS_SENTENCE}
+${ANTI_FIVE_SENTENCE}
+
+OUTPUT FORMAT:
+Return one strict JSON object with exactly seven keys and integer values 0–100.
+Keys must be exactly: ${SCORE_KEYS.join(", ")}.
+Do not include any other fields or commentary.
+
+VALID EXAMPLE (structure only, not real values):
+{"jawline": 72, "facial_symmetry": 41, "skin_quality": 68, "cheekbones": 59, "eyes_symmetry": 74, "nose_harmony": 33, "sexual_dimorphism": 86}
 `.trim();
 
 const SYSTEM_MSG_PAIR = `
@@ -67,21 +143,28 @@ Do not identify the person or infer age, gender identity, race/ethnicity, health
 No medical claims or sexual content. If content is unclear/occluded/low-res, increase uncertainty but do NOT inflate scores.
 
 Metrics and scoring same as single-image prompt.
-Rules: Use BOTH views to refine judgments (e.g., jawline, cheekbones, symmetry, nose).
-If views disagree, still output a single score per metric.
+Rules: Use BOTH views to refine judgments (e.g., jawline, cheekbones, symmetry, nose). If views disagree, still output a single score per metric.
 
-Return a strict JSON object with exactly seven keys and integer values 0–100.
-${SCHEMA_KEYS_SENTENCE}
+${RANGE_DISCIPLINE}
+${ANTI_FIVE_SENTENCE}
+
+OUTPUT FORMAT:
+Return one strict JSON object with exactly seven keys and integer values 0–100.
+Keys must be exactly: ${SCORE_KEYS.join(", ")}.
+Do not include any other fields or commentary.
+
+VALID EXAMPLE (structure only, not real values):
+{"jawline": 69, "facial_symmetry": 28, "skin_quality": 77, "cheekbones": 64, "eyes_symmetry": 71, "nose_harmony": 39, "sexual_dimorphism": 83}
 `.trim();
 
 /* ----------------------------- User prompts ------------------------------- */
 const USER_PROMPT_SINGLE = `Score this face per the rubric. Return ONLY a JSON object with exactly these keys: ${SCORE_KEYS.join(
   ", "
-)}. Values must be integers 0–100. No extra fields.`.trim();
+)}. Values must be integers 0–100 and should not preferentially end in 0 or 5. No extra fields.`.trim();
 
 const USER_PROMPT_PAIR = `Score using BOTH images (frontal then right-side). Return ONLY a JSON object with exactly these keys: ${SCORE_KEYS.join(
   ", "
-)}. Values must be integers 0–100. No extra fields.`.trim();
+)}. Values must be integers 0–100 and should not preferentially end in 0 or 5. No extra fields.`.trim();
 
 /* --------------------------------- API ------------------------------------ */
 export async function scoreImageBytes(
@@ -97,26 +180,57 @@ export async function scoreImageBytes(
   const dataUrl = await normalizeToPngDataUrl(bytes, { maxEdge: 1024 });
   console.log("[single] normalize ms =", Date.now() - t0);
 
-  const t1 = Date.now();
-  const resp = await client.chat.completions.create({
-    model: MODEL,
-    temperature: 0.1,
-    response_format: { type: "json_object" },
-    messages: [
-      { role: "system", content: SYSTEM_MSG_SINGLE },
-      {
-        role: "user",
-        content: [
-          { type: "text", text: USER_PROMPT_SINGLE },
-          { type: "image_url", image_url: { url: dataUrl } },
-        ] as any,
-      },
-    ],
-  });
-  console.log("[single] openai ms =", Date.now() - t1);
+  const key = cacheKeySingle(dataUrl);
 
-  const raw = resp.choices?.[0]?.message?.content ?? "";
-  return parseScoresStrict(raw);
+  // cache hit
+  const cached = cacheGet(key);
+  if (cached) {
+    console.log("[single] cache HIT");
+    return cached;
+  }
+
+  // in-flight de-duplication
+  const existing = inFlight.get(key);
+  if (existing) {
+    console.log("[single] in-flight dedupe WAIT");
+    return existing;
+  }
+
+  const task = (async () => {
+    const t1 = Date.now();
+    const resp = await client.chat.completions.create({
+      model: MODEL,
+      temperature: 0.1,
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: SYSTEM_MSG_SINGLE },
+        {
+          role: "user",
+          content: [
+            { type: "text", text: USER_PROMPT_SINGLE },
+            { type: "image_url", image_url: { url: dataUrl } },
+          ] as any,
+        },
+      ],
+    });
+    console.log("[single] openai ms =", Date.now() - t1);
+
+    const raw = resp.choices?.[0]?.message?.content ?? "";
+    const parsed = parseScoresStrict(raw);
+    const adjusted = antiFiveSnap(parsed, key); // deterministic de-rounding
+    console.log("[single] FINAL ADJUSTED SCORES =>", adjusted);
+    cacheSet(key, adjusted);
+    return adjusted;
+  })()
+    .catch((e) => {
+      throw e;
+    })
+    .finally(() => {
+      inFlight.delete(key);
+    });
+
+  inFlight.set(key, task);
+  return task;
 }
 
 export async function scoreImagePairBytes(
@@ -142,27 +256,58 @@ export async function scoreImagePairBytes(
   ]);
   console.log("[pair] normalize ms =", Date.now() - t0);
 
-  const t1 = Date.now();
-  const resp = await client.chat.completions.create({
-    model: MODEL,
-    temperature: 0.1,
-    response_format: { type: "json_object" },
-    messages: [
-      { role: "system", content: SYSTEM_MSG_PAIR },
-      {
-        role: "user",
-        content: [
-          { type: "text", text: USER_PROMPT_PAIR },
-          { type: "image_url", image_url: { url: frontalDataUrl } },
-          { type: "image_url", image_url: { url: sideDataUrl } },
-        ] as any,
-      },
-    ],
-  });
-  console.log("[pair] openai ms =", Date.now() - t1);
+  const key = cacheKeyPair(frontalDataUrl, sideDataUrl);
 
-  const raw = resp.choices?.[0]?.message?.content ?? "";
-  return parseScoresStrict(raw);
+  // cache hit
+  const cached = cacheGet(key);
+  if (cached) {
+    console.log("[pair] cache HIT");
+    return cached;
+  }
+
+  // in-flight de-duplication
+  const existing = inFlight.get(key);
+  if (existing) {
+    console.log("[pair] in-flight dedupe WAIT");
+    return existing;
+  }
+
+  const task = (async () => {
+    const t1 = Date.now();
+    const resp = await client.chat.completions.create({
+      model: MODEL,
+      temperature: 0.1,
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: SYSTEM_MSG_PAIR },
+        {
+          role: "user",
+          content: [
+            { type: "text", text: USER_PROMPT_PAIR },
+            { type: "image_url", image_url: { url: frontalDataUrl } },
+            { type: "image_url", image_url: { url: sideDataUrl } },
+          ] as any,
+        },
+      ],
+    });
+    console.log("[pair] openai ms =", Date.now() - t1);
+
+    const raw = resp.choices?.[0]?.message?.content ?? "";
+    const parsed = parseScoresStrict(raw);
+    const adjusted = antiFiveSnap(parsed, key); // deterministic de-rounding
+    console.log("[pair] FINAL ADJUSTED SCORES =>", adjusted);
+    cacheSet(key, adjusted);
+    return adjusted;
+  })()
+    .catch((e) => {
+      throw e;
+    })
+    .finally(() => {
+      inFlight.delete(key);
+    });
+
+  inFlight.set(key, task);
+  return task;
 }
 
 /* --------------------------------- Helpers -------------------------------- */
@@ -262,4 +407,44 @@ function parseScoresStrict(raw: string | null | undefined): Scores {
   }
 
   return out as Scores;
+}
+
+/* ------------------------- Deterministic anti-5 snap ----------------------- */
+/**
+ * If a score lands exactly on a multiple of 5 (except 0 or 100),
+ * apply a tiny deterministic offset derived from the cache key and metric name.
+ * This prevents robotic “…, 60, 65, 70 …” without introducing randomness.
+ * The same inputs always produce the same adjusted outputs.
+ */
+function antiFiveSnap(scores: Scores, deterministicSeed: string): Scores {
+  const out: Scores = { ...scores };
+
+  for (const k of SCORE_KEYS) {
+    let s = out[k];
+    // leave boundaries alone
+    if (s === 0 || s === 100) continue;
+    if (s % 5 !== 0) continue;
+
+    // derive a small offset in {-2, -1, +1, +2} deterministically
+    const h = sha256Hex(`${deterministicSeed}|${k}`).slice(0, 4); // 16-bit hex
+    const n = parseInt(h, 16);
+    const offsets = [-2, -1, +1, +2] as const;
+    const delta = offsets[n % offsets.length];
+
+    let adjusted = s + delta;
+    if (adjusted < 0) adjusted = 0;
+    if (adjusted > 100) adjusted = 100;
+
+    // Avoid landing on another multiple of 5 after clamping
+    if (adjusted % 5 === 0 && adjusted !== s) {
+      // nudge by 1 toward the center (deterministic direction)
+      adjusted += delta > 0 ? 1 : -1;
+      if (adjusted < 0) adjusted = 0;
+      if (adjusted > 100) adjusted = 100;
+    }
+
+    out[k] = adjusted;
+  }
+
+  return out;
 }

@@ -1,4 +1,4 @@
-// app/(tabs)/take-picture.tsx
+// C:\SS\facely\app\(tabs)\take-picture.tsx
 import React, { useRef, useState } from "react";
 import {
   View,
@@ -20,6 +20,7 @@ import * as FileSystem from "expo-file-system";
 import { router } from "expo-router";
 import Svg, { Line, Circle, Rect, Path } from "react-native-svg";
 import { useScores } from "../../store/scores";
+
 
 /* ============================== TOKENS ============================== */
 const ACCENT = "#8FA31E"; // neon lime
@@ -285,32 +286,24 @@ export default function TakePicture() {
     if (!canContinue) return;
     try {
       setSubmitting(true);
-
-      // Force both images to JPEG to avoid HEIC/HEIF issues on server
       const fJpeg = await ensureJpeg(frontalUri!);
       const sJpeg = await ensureJpeg(sideUri!);
-
-      if (typeof scoresStore.analyzePair === "function") {
-        const out = await scoresStore.analyzePair(fJpeg, sJpeg);
-        if (!out) {
-          Alert.alert("Analysis failed", "No scores were returned from backend.");
-          return;
-        }
-        router.push({
-          pathname: "/(tabs)/score",
-          params: { scoresPayload: JSON.stringify(out) },
-        });
-      } else {
-        Alert.alert(
-          "Next step needed",
-          "Implement useScores.analyzePair(frontUri, sideUri) to send both images together."
-        );
-      }
+  
+      router.push({
+        pathname: "/loading",
+        params: {
+          mode: "analyzePair",
+          front: encodeURIComponent(fJpeg),
+          side: encodeURIComponent(sJpeg),
+        },
+      });
     } finally {
       setSubmitting(false);
     }
   };
-
+  
+  
+  
   const renderGuide = ({
     guideSrc,
     title,
