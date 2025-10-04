@@ -5,17 +5,17 @@ import rateLimit from "express-rate-limit";
 import multer from "multer";
 import OpenAI from "openai";
 import sharp from "sharp";
-import { ZodError } from "zod";
+import { ZodError, type ZodIssue } from "zod";
 
-import { generateRecommendations } from "./recommender";
-import { ENV } from "./env";
+import { generateRecommendations } from "./recommender.js";
+import { ENV } from "./env.js";
 import {
   ScoresSchema,
   ExplanationsSchema,
   RecommendationsRequestSchema,
-} from "./validators";
-import { scoreImageBytes, scoreImagePairBytes } from "./scorer";
-import { explainImageBytes, explainImagePairBytes } from "./explainer";
+} from "./validators.js";
+import { scoreImageBytes, scoreImagePairBytes } from "./scorer.js";
+import { explainImageBytes, explainImagePairBytes } from "./explainer.js";
 
 const app = express();
 app.use((req, _res, next) => {
@@ -304,7 +304,7 @@ app.post("/recommendations", upload.none(), async (req, res) => {
     if (err instanceof ZodError) {
       return res.status(400).json({
         error: "invalid_recommendations_payload",
-        issues: err.issues?.map((i) => ({
+        issues: err.issues?.map((i: ZodIssue) => ({
           path: i.path,
           code: i.code,
           message: i.message,

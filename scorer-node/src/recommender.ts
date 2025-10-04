@@ -1,12 +1,12 @@
 // C:\SS\scorer-node\src\recommender.ts
 import OpenAI from "openai";
-import { ENV } from "./env";
+import { ENV } from "./env.js";
 import {
   RecommendationsRequestSchema,
   RecommendationsResponseSchema,
   RecommendationsRequest,
   RecommendationsResponse,
-} from "./validators";
+} from "./validators.js";
 
 const openai = new OpenAI({ apiKey: ENV.OPENAI_API_KEY });
 

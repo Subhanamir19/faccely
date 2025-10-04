@@ -129,7 +129,11 @@ export const useRecommendations = create<State>((set, get) => ({
       set({ data: norm, isLoading: false, error: null, lastHash: h });
     } catch (e: any) {
       set({
-        error: e?.message ?? "Failed to fetch recommendations",
+        data: null,
+        error:
+          typeof e?.message === "string"
+            ? e.message
+            : "Failed to fetch recommendations",
         isLoading: false,
       });
     }

@@ -71,8 +71,20 @@ export async function fetchRecommendations(
   });
 
   if (!res.ok) {
-    const msg = await res.text().catch(() => "");
-    throw new Error(`HTTP ${res.status} ${msg}`);
+    const raw = await res.text().catch(() => "");
+    let message = `HTTP ${res.status}`;
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        const parts = [parsed?.detail, parsed?.error, parsed?.status]
+          .filter((x) => typeof x === "string" || typeof x === "number")
+          .map(String);
+        if (parts.length) message = parts.join(" · ");
+      } catch {
+        message = `${message} ${raw}`.trim();
+      }
+    }
+    throw new Error(message || "Request failed");
   }
 
   // Do NOT enforce a rigid shape here. Let the store normalize.

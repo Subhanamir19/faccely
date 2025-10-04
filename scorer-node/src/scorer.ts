@@ -1,7 +1,7 @@
 // C:\SS\scorer-node\src\scorer.ts
 import OpenAI from "openai";
-import type { Scores } from "./validators";
-import { normalizeToPngDataUrl } from "./lib/image-normalize";
+import type { Scores, MetricKey } from "./validators.js";
+import { normalizeToPngDataUrl } from "./lib/image-normalize.js";
 import crypto from "crypto";
 
 /* ------------------------------ Config/Env -------------------------------- */
@@ -12,7 +12,7 @@ const CACHE_MAX_ITEMS = Number(process.env.SCORE_CACHE_MAX_ITEMS ?? 5000); // si
 const PROMPT_VERSION = "v3.2"; // bump to invalidate cache if you change prompts/rules
 
 /* ------------------------------- Shared keys ------------------------------ */
-const SCORE_KEYS: (keyof Scores)[] = [
+const SCORE_KEYS: MetricKey[] = [
   "jawline",
   "facial_symmetry",
   "skin_quality",

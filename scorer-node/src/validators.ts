@@ -56,7 +56,7 @@ export type Explanations = z.infer<typeof ExplanationsSchema>;
      expected_gain: z
        .union([z.number(), z.string()])
        .optional()
-       .transform((val) =>
+       .transform((val: number | string | undefined) =>
          typeof val === "string" ? parseFloat(val) : val
        ),
    });

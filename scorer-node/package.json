@@ -1,10 +1,11 @@
 {
   "name": "scorer-node",
   "version": "1.0.0",
+  "type": "module",
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
-    "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
+    "dev": "ts-node-dev --esm --respawn --transpile-only src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js"
   },
