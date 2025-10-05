@@ -6,7 +6,7 @@ import {
   RecommendationsResponseSchema,
   RecommendationsRequest,
   RecommendationsResponse,
-} from "./validators.js";
+} from "./validators";
 
 export class RecommendationsParseError extends Error {
   readonly rawPreview: string;
