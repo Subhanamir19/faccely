@@ -50,27 +50,40 @@ function sanitizeHost(raw: string | null | undefined): string | null {
   if (!host) return null;
   return host.trim();
 }
+function isLoopback(host: string): boolean {
+  const lower = host.toLowerCase();
+  return (
+    lower === "localhost" ||
+    lower === "127.0.0.1" ||
+    lower.startsWith("127.") ||
+    lower === "::1"
+  );
+}
 
+function isWildcard(host: string): boolean {
+  const lower = host.toLowerCase();
+  return lower === "0.0.0.0" || lower === "[::]";
+}
 /**
  * Resolve a sane local default for dev builds.
  *
- * When running inside Expo Go on a physical device there is no localhost/10.0.2.2
- * bridge. Instead we derive the LAN IP from the Metro debugger host so the
- * device can reach the Node backend running on the same machine.
+ * Prefer the LAN host advertised by Metro so virtual devices can reach a
+ * remote backend. Fall back to emulator/simulator loopback shims when Metro is
+ * bound to localhost/0.0.0.0.
  */
 function guessLocal(): string {
   const expoHost =
   sanitizeHost((Constants as any)?.expoConfig?.hostUri) ||
-      sanitizeHost((Constants as any)?.expoGoConfig?.hostUri) ||
-      sanitizeHost((Constants as any)?.manifest?.debuggerHost) ||
-      sanitizeHost((Constants as any)?.manifest2?.extra?.expoClient?.hostUri);
+    sanitizeHost((Constants as any)?.expoGoConfig?.hostUri) ||
+    sanitizeHost((Constants as any)?.manifest?.debuggerHost) ||
+    sanitizeHost((Constants as any)?.manifest2?.extra?.expoClient?.hostUri);
 
       const isRunningOnDevice = Boolean((Constants as any)?.isDevice);
 
       if (expoHost && (Platform.OS !== "android" || isRunningOnDevice)) {
     return `http://${expoHost}:8080`;
   }
-  
+
   if (Platform.OS === "android") {
     // Android emulator cannot reach "localhost" on your PC.
     // 10.0.2.2 maps to the dev machine.
