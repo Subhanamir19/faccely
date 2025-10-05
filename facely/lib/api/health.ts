@@ -1,6 +1,6 @@
 // facely/lib/api/health.ts
 import { API_BASE } from "./config";
-import { fetchWithTimeout } from "./client";
+import { fetchWithTimeout } from "./client.js";
 
 
 /** Ping backend /health and return true/false instead of throwing. */

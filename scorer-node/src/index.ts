@@ -7,16 +7,16 @@ import OpenAI from "openai";
 import sharp from "sharp";
 import { ZodError, type ZodIssue } from "zod";
 
-import { generateRecommendations, RecommendationsParseError } from "./recommender.js";
+import { generateRecommendations, RecommendationsParseError } from "./recommender";
 
-import { ENV } from "./env.js";
+import { ENV } from "./env";
 import {
   ScoresSchema,
   ExplanationsSchema,
   RecommendationsRequestSchema,
-} from "./validators.js";
-import { scoreImageBytes, scoreImagePairBytes } from "./scorer.js";
-import { explainImageBytes, explainImagePairBytes } from "./explainer.js";
+} from "./validators";
+import { scoreImageBytes, scoreImagePairBytes } from "./scorer";
+import { explainImageBytes, explainImagePairBytes } from "./explainer";
 
 const app = express();
 app.use((req, _res, next) => {

@@ -1,6 +1,6 @@
 // C:\SS\scorer-node\src\recommender.ts
 import OpenAI from "openai";
-import { ENV } from "./env.js";
+import { ENV } from "./env";
 import {
   
   RecommendationsResponseSchema,

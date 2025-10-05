@@ -1,6 +1,6 @@
 // facely/lib/api/analysis.ts
 import { API_BASE } from "./config";
-import { buildApiError, fetchWithTimeout } from "./client";
+import { buildApiError, fetchWithTimeout } from "./client.ts";
 
 import type { Scores } from "./scores";
 

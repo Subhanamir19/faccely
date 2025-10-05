@@ -4,6 +4,8 @@
     "strict": true,
     "baseUrl": ".",
     "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+
     "paths": {
       "@/*": ["*"],
       "@components/*": ["components/*"],
@@ -15,5 +17,15 @@
       "@/store/*": ["store/*"],
       "@/stores/*": ["store/*"]
     }
-  }
+  },
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    "**/*.js",
+    "**/*.jsx"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
 }
