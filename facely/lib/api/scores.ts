@@ -1,6 +1,6 @@
 // facely/lib/api/scores.ts
 import { API_BASE } from "./config";
-import { buildApiError, fetchWithTimeout } from "./client.ts";
+import { buildApiError, fetchWithTimeout } from "./client";
 
 /** Keep this aligned with backend keys. */
 export type Scores = {
