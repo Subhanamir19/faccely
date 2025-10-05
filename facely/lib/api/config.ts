@@ -65,9 +65,12 @@ function guessLocal(): string {
       sanitizeHost((Constants as any)?.manifest?.debuggerHost) ||
       sanitizeHost((Constants as any)?.manifest2?.extra?.expoClient?.hostUri);
 
-  if (expoHost) {
+      const isRunningOnDevice = Boolean((Constants as any)?.isDevice);
+
+      if (expoHost && (Platform.OS !== "android" || isRunningOnDevice)) {
     return `http://${expoHost}:8080`;
   }
+  
   if (Platform.OS === "android") {
     // Android emulator cannot reach "localhost" on your PC.
     // 10.0.2.2 maps to the dev machine.

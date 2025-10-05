@@ -20,8 +20,10 @@ causing the health check to fail before any request left the device.
    Placeholder values (anything containing `your-remote-api.example.com` or an
    invalid scheme) are ignored so the app automatically falls back to the local
    development resolver that inspects the Metro host and, failing that, the
-   usual simulator defaults (`http://10.0.2.2:8080` for Android, `http://localhost:8080`
-   elsewhere).
+   usual simulator defaults. Android emulators always receive
+   `http://10.0.2.2:8080` even when Metro advertises a LAN IP, ensuring the
+   virtual device can hop back to the host machine. iOS simulators and web fall
+   back to `http://localhost:8080`..
 2. A checked-in `.env` is no longer used. Instead we provide `.env.example` with
    sane defaults and ignore the real `.env` in git. This prevents publishing a
    production bundle with the placeholder URL baked in.
