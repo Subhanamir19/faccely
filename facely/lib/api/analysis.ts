@@ -1,6 +1,6 @@
 // facely/lib/api/analysis.ts
 import { API_BASE } from "./config";
-import { buildApiError, fetchWithTimeout } from "./client";
+import { ApiResponseError, buildApiError, fetchWithTimeout } from "./client";
 
 import type { Scores } from "./scores";
 
@@ -55,7 +55,7 @@ export async function explainMetrics(
   const fd = new FormData();
   fd.append("image", toPart(imageUri, "image") as any);
   fd.append("scores", JSON.stringify(scores));
-  const res = await fetchWithTimeout(`${API_BASE}/analyze/explain`, {
+  const res = await fetchWithTimeout(`${API_BASE}/analyze/explain/pair`, {
     method: "POST",
     headers: { Accept: "application/json" },
     body: fd,
@@ -67,7 +67,7 @@ export async function explainMetrics(
 }
 
 /**
- * POST /analyze/pair/explain for frontal + side pair.
+ * POST /analyze/explain/pair for frontal + side pair.
  * Sends multipart with both files and the scores JSON.
  * Fields:
  *   - frontal: file
@@ -85,13 +85,34 @@ export async function explainMetricsPair(
   fd.append("side", toPart(sideUri, "side") as any);
   fd.append("scores", JSON.stringify(scores));
 
-  const res = await fetchWithTimeout(`${API_BASE}/analyze/pair/explain`, {
-    method: "POST",
-    headers: { Accept: "application/json" },
-    body: fd,
-    signal,
-    timeoutMs: 90_000,
+  const attempt = async (path: string): Promise<Explanations> => {
+    const res = await fetchWithTimeout(`${API_BASE}${path}`, {
+      method: "POST",
+      headers: { Accept: "application/json" },
+      body: fd,
+      signal,
+      timeoutMs: 90_000,
 
-  });
-  return parseExplanations(res, "Pair explanation request failed");
+
+    });
+    return parseExplanations(res, "Pair explanation request failed");
+  };
+
+  try {
+    return await attempt("/analyze/explain/pair");
+  } catch (err) {
+    const shouldRetryLegacy =
+      (err instanceof ApiResponseError && err.status === 404) ||
+      (err instanceof TypeError && err.message?.includes("Network request failed"));
+
+    if (!shouldRetryLegacy) {
+      throw err;
+    }
+
+    try {
+      return await attempt("/analyze/pair/explain");
+    } catch (fallbackErr) {
+      throw fallbackErr;
+    }
+  }
 }
