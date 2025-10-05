@@ -7,7 +7,8 @@ import OpenAI from "openai";
 import sharp from "sharp";
 import { ZodError, type ZodIssue } from "zod";
 
-import { generateRecommendations, RecommendationsParseError } from "./recommender";
+import { generateRecommendations, RecommendationsParseError } from "./recommender.js";
+
 import { ENV } from "./env.js";
 import {
   ScoresSchema,

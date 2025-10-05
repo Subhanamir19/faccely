@@ -117,8 +117,7 @@ export default function LoadingScreen() {
     
           console.log("[loading] analyzePair URIs:", { frontUri, sideUri });
     
-          const out = await (scoresStore as any).analyzePair(frontUri, sideUri);
-          if (!out) throw new Error("No scores were returned from backend.");
+          const out = await scoresStore.analyzePair(frontUri, sideUri);
     
           stopLoop();
           router.replace({
@@ -142,10 +141,12 @@ export default function LoadingScreen() {
 
       (async () => {
         try {
-          const ok = await (scoresStore as any).explain(
-            (scoresStore as any).imageUri,
-            (scoresStore as any).scores
-          );
+          const { imageUri: storedImageUri, scores: storedScores } = scoresStore;
+          if (!storedImageUri || !storedScores) {
+            throw new Error("Scores not found. Please run analysis again.");
+          }
+
+          const ok = await scoresStore.explain(storedImageUri, storedScores);
           stopLoop();
           if (ok) {
             router.replace("/(tabs)/analysis");

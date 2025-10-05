@@ -1,5 +1,6 @@
 // facely/lib/api/scores.ts
 import { API_BASE } from "./config";
+import { buildApiError, fetchWithTimeout } from "./client";
 
 /** Keep this aligned with backend keys. */
 export type Scores = {
@@ -27,8 +28,8 @@ function toPart(uri: string, name: string): {
 
 async function parseScores(res: Response): Promise<Scores> {
   if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`HTTP ${res.status}${text ? ` — ${text.slice(0, 200)}` : ""}`);
+    throw await buildApiError(res, "Score request failed");
+
   }
   const json = (await res.json()) as unknown;
 
@@ -62,7 +63,7 @@ export async function analyzeImage(uri: string, signal?: AbortSignal): Promise<S
   // Backend single-image field name assumed "image".
   fd.append("image", toPart(uri, "image") as any);
 
-  const res = await fetch(`${API_BASE}/analyze`, {
+  const res = await fetchWithTimeout(`${API_BASE}/analyze`, {
     method: "POST",
     headers: {
       Accept: "application/json",
@@ -70,6 +71,8 @@ export async function analyzeImage(uri: string, signal?: AbortSignal): Promise<S
     },
     body: fd,
     signal,
+    timeoutMs: 90_000,
+
   });
 
   return parseScores(res);
@@ -86,13 +89,16 @@ export async function analyzePair(
   fd.append("frontal", toPart(frontalUri, "frontal") as any);
   fd.append("side", toPart(sideUri, "side") as any);
 
-  const res = await fetch(`${API_BASE}/analyze/pair`, {
+  const res = await fetchWithTimeout(`${API_BASE}/analyze/pair`, {
+
     method: "POST",
     headers: {
       Accept: "application/json",
     },
     body: fd,
     signal,
+    timeoutMs: 90_000,
+
   });
 
   return parseScores(res);

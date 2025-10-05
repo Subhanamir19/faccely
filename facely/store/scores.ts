@@ -12,6 +12,8 @@ import {
   explainMetricsPair,
   type Explanations,
 } from "../lib/api/analysis";
+import { toUserFacingError } from "../lib/api/client";
+
 
 // Re-export for other modules
 export type { Scores };
@@ -33,10 +35,11 @@ type Actions = {
   setSideImage: (uri: string) => void;
 
   /** Analyze single image. */
-  analyze: (uri: string) => Promise<Scores | null>;
+  analyze: (uri: string) => Promise<Scores>;
+
 
   /** Analyze a frontal + side image pair. */
-  analyzePair: (frontalUri: string, sideUri: string) => Promise<Scores | null>;
+  analyzePair: (frontalUri: string, sideUri: string) => Promise<Scores>;
 
   /** Explain metrics with single image. */
   explain: (uri: string, scores: Scores) => Promise<boolean>;
@@ -78,9 +81,10 @@ export const useScores = create<State & Actions>((set, get) => ({
       const s = await analyzeImage(uri);
       set({ scores: s, loading: false });
       return s;
-    } catch (e: any) {
-      set({ error: e?.message || "Failed to analyze", loading: false });
-      return null;
+    } catch (err) {
+      const friendly = toUserFacingError(err, "Failed to analyze");
+      set({ error: friendly.message, loading: false });
+      throw friendly;
     }
   },
 
@@ -101,12 +105,10 @@ export const useScores = create<State & Actions>((set, get) => ({
       const s = await apiAnalyzePair(frontalUri, sideUri);
       set({ scores: s, loading: false });
       return s;
-    } catch (e: any) {
-      set({
-        error: e?.message || "Failed to analyze pair",
-        loading: false,
-      });
-      return null;
+    } catch (err) {
+      const friendly = toUserFacingError(err, "Failed to analyze pair");
+      set({ error: friendly.message, loading: false });
+      throw friendly;
     }
   },
 
