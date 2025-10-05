@@ -28,9 +28,9 @@ causing the health check to fail before any request left the device.
    sane defaults and ignore the real `.env` in git. This prevents publishing a
    production bundle with the placeholder URL baked in.
 3. Development builds log a clear message explaining which API base is active and
-   when a fallback was applied. Production bundles also emit a warning if no
-   explicit URL has been configured so the issue is caught during QA.
-
+     when a fallback was applied. Production bundles now refuse to fall back to a
+   loopback host; instead a fatal configuration error is surfaced in the logs
+   and UI so the missing `EXPO_PUBLIC_API_URL` is detected before release.
 ## How to configure the backend base URL
 
 1. Copy `.env.example` to `.env` in the `facely/` directory.
@@ -40,6 +40,11 @@ causing the health check to fail before any request left the device.
 3. For a deployed backend set `EXPO_PUBLIC_API_URL` to the publicly reachable
    origin, e.g. `https://api.your-domain.com`.
 4. Restart Expo after changing the variable so Metro rebuilds the bundle.
+
+If a production build launches without `EXPO_PUBLIC_API_URL` the client now
+shows "Backend base URL missing..." instead of attempting to call
+`http://10.0.2.2:8080`, preventing the misleading "Backend unreachable"
+dialogue that previously appeared on real devices.
 
 With these safeguards in place the analysis flow only fails when the backend is
 truly unreachable, not because of a placeholder configuration.

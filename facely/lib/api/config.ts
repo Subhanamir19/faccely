@@ -40,7 +40,7 @@ function normalizeBase(raw: string | null | undefined): string | null {
   } catch {
     return null;
   }
-  
+
 }
 
 function sanitizeHost(raw: string | null | undefined): string | null {
@@ -73,14 +73,14 @@ function isWildcard(host: string): boolean {
  */
 function guessLocal(): string {
   const expoHost =
-  sanitizeHost((Constants as any)?.expoConfig?.hostUri) ||
+    sanitizeHost((Constants as any)?.expoConfig?.hostUri) ||
     sanitizeHost((Constants as any)?.expoGoConfig?.hostUri) ||
     sanitizeHost((Constants as any)?.manifest?.debuggerHost) ||
     sanitizeHost((Constants as any)?.manifest2?.extra?.expoClient?.hostUri);
 
-      const isRunningOnDevice = Boolean((Constants as any)?.isDevice);
+  const isRunningOnDevice = Boolean((Constants as any)?.isDevice);
 
-      if (expoHost && (Platform.OS !== "android" || isRunningOnDevice)) {
+  if (expoHost && !isLoopback(expoHost) && !isWildcard(expoHost) && isRunningOnDevice) {
     return `http://${expoHost}:8080`;
   }
 
@@ -93,6 +93,7 @@ function guessLocal(): string {
   // iOS simulator and web can reach the host machine via localhost.
   return "http://localhost:8080";
 }
+
 const envBase =
   normalizeBase((Constants as any)?.expoConfig?.extra?.EXPO_PUBLIC_API_URL) ??
   normalizeBase((Constants as any)?.expoGoConfig?.extra?.EXPO_PUBLIC_API_URL) ??
@@ -101,9 +102,31 @@ const envBase =
     (Constants as any)?.manifest2?.extra?.expoClient?.extra?.EXPO_PUBLIC_API_URL
   ) ??
   normalizeBase(process.env.EXPO_PUBLIC_API_URL);
+const appOwnership = (Constants as any)?.appOwnership;
+const ALLOW_LOCAL_GUESS =
+  __DEV__ ||
+  appOwnership === "expo" ||
+  appOwnership === "guest" ||
+  appOwnership == null;
 
+const resolvedBase = envBase ?? (ALLOW_LOCAL_GUESS ? guessLocal() : null);
+
+const FALLBACK_INVALID = "http://127.0.0.1.invalid";
 /** Single source of truth for the API host. */
-export const API_BASE = envBase || guessLocal();
+export const API_BASE = resolvedBase ?? FALLBACK_INVALID;
+
+/** Flag so call-sites can surface a helpful error when no backend is configured. */
+export const API_BASE_CONFIGURED = Boolean(resolvedBase);
+
+const MISCONFIGURED_HINT =
+  "Backend base URL missing. Set EXPO_PUBLIC_API_URL before building production bundles.";
+
+/** Human readable hint that can be surfaced in the UI. */
+export const API_BASE_CONFIGURATION_HINT = API_BASE_CONFIGURED
+  ? ""
+  : `${MISCONFIGURED_HINT} (appOwnership=${appOwnership ?? "unknown"}).`;
+
+export const API_BASE_MISCONFIGURED_MESSAGE = MISCONFIGURED_HINT;
 
 if (__DEV__) {
   const note = envBase
@@ -112,9 +135,9 @@ if (__DEV__) {
   console.log("[API] BASE =", API_BASE, note);
 }
 
-if (!envBase && process.env.NODE_ENV === "production") {
-  // Surface a visible warning in release builds so a misconfigured bundle is caught early.
-  console.warn(
-    "[API] No EXPO_PUBLIC_API_URL provided. Bundle will default to local dev host which is unreachable in production."
-  );
+if (!API_BASE_CONFIGURED) {
+  console.error("[API]", MISCONFIGURED_HINT, {
+    appOwnership: appOwnership ?? "unknown",
+    envProvided: Boolean(envBase),
+  });
 }

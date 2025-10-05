@@ -1,7 +1,11 @@
 // C:\SS\facely\store\scores.ts
 import { create } from "zustand";
-import { API_BASE } from "../lib/api/config";
-import { pingHealth } from "../lib/api/health";
+import {
+  API_BASE,
+  API_BASE_CONFIGURED,
+  API_BASE_CONFIGURATION_HINT,
+  API_BASE_MISCONFIGURED_MESSAGE,
+} from "../lib/api/config";import { pingHealth } from "../lib/api/health";
 import {
   analyzeImage,
   analyzePair as apiAnalyzePair,
@@ -14,7 +18,19 @@ import {
 } from "../lib/api/analysis";
 import { toUserFacingError } from "../lib/api/client";
 
+const MISCONFIGURED_ERROR_MESSAGE = (() => {
+  if (API_BASE_CONFIGURED) return "";
+  if (API_BASE_CONFIGURATION_HINT.trim().length > 0) {
+    return API_BASE_CONFIGURATION_HINT;
+  }
+  return `${API_BASE_MISCONFIGURED_MESSAGE} (current fallback: ${API_BASE}).`;
+})();
 
+function ensureBackendConfigured() {
+  if (!API_BASE_CONFIGURED) {
+    throw new Error(MISCONFIGURED_ERROR_MESSAGE);
+  }
+}
 // Re-export for other modules
 export type { Scores };
 
@@ -72,6 +88,8 @@ export const useScores = create<State & Actions>((set, get) => ({
   analyze: async (uri: string) => {
     set({ loading: true, error: null, imageUri: uri });
     try {
+      ensureBackendConfigured();
+
       const reachable = await pingHealth();
       if (!reachable) {
         throw new Error(
@@ -96,6 +114,8 @@ export const useScores = create<State & Actions>((set, get) => ({
       sideImageUri: sideUri,
     });
     try {
+      ensureBackendConfigured();
+
       const reachable = await pingHealth();
       if (!reachable) {
         throw new Error(
@@ -117,6 +137,8 @@ export const useScores = create<State & Actions>((set, get) => ({
 
     set({ explLoading: true, explError: null });
     try {
+      ensureBackendConfigured();
+
       const reachable = await pingHealth();
       if (!reachable) {
         throw new Error(
@@ -147,6 +169,8 @@ export const useScores = create<State & Actions>((set, get) => ({
 
     set({ explLoading: true, explError: null });
     try {
+      ensureBackendConfigured();
+
       const reachable = await pingHealth();
       if (!reachable) {
         throw new Error(
