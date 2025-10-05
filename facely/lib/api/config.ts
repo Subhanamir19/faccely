@@ -61,13 +61,13 @@ function sanitizeHost(raw: string | null | undefined): string | null {
 function guessLocal(): string {
   const expoHost =
   sanitizeHost((Constants as any)?.expoConfig?.hostUri) ||
-    sanitizeHost((Constants as any)?.expoGoConfig?.hostUri) ||
-    sanitizeHost((Constants as any)?.manifest?.debuggerHost) ||
-    sanitizeHost((Constants as any)?.manifest2?.extra?.expoClient?.hostUri);
+      sanitizeHost((Constants as any)?.expoGoConfig?.hostUri) ||
+      sanitizeHost((Constants as any)?.manifest?.debuggerHost) ||
+      sanitizeHost((Constants as any)?.manifest2?.extra?.expoClient?.hostUri);
 
-    if (expoHost) {
-      return `http://${expoHost}:8080`;
-    }
+  if (expoHost) {
+    return `http://${expoHost}:8080`;
+  }
   if (Platform.OS === "android") {
     // Android emulator cannot reach "localhost" on your PC.
     // 10.0.2.2 maps to the dev machine.
@@ -77,6 +77,14 @@ function guessLocal(): string {
   // iOS simulator and web can reach the host machine via localhost.
   return "http://localhost:8080";
 }
+const envBase =
+  normalizeBase((Constants as any)?.expoConfig?.extra?.EXPO_PUBLIC_API_URL) ??
+  normalizeBase((Constants as any)?.expoGoConfig?.extra?.EXPO_PUBLIC_API_URL) ??
+  normalizeBase((Constants as any)?.manifest?.extra?.EXPO_PUBLIC_API_URL) ??
+  normalizeBase(
+    (Constants as any)?.manifest2?.extra?.expoClient?.extra?.EXPO_PUBLIC_API_URL
+  ) ??
+  normalizeBase(process.env.EXPO_PUBLIC_API_URL);
 
 /** Single source of truth for the API host. */
 export const API_BASE = envBase || guessLocal();
