@@ -27,9 +27,9 @@
     },
     "plugins": ["expo-router"],
     "scheme": "facely",
-    "assetBundlePatterns": [
-      "assets/fonts/*",
-      "assets/**/*"
-    ]
+    "assetBundlePatterns": ["assets/fonts/*", "assets/**/*"],
+    "extra": {
+      "EXPO_PUBLIC_API_BASE_URL": "https://faccely-production.up.railway.app"
+    }
   }
 }

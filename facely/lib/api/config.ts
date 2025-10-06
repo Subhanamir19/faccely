@@ -1,143 +1,71 @@
 // facely/lib/api/config.ts
-import { Platform } from "react-native";
+// Single source of truth for the backend base URL.
+// No emulator guessing, no localhost bingo, no magic fallbacks.
+
 import Constants from "expo-constants";
 
-const PLACEHOLDER_HOST_SUBSTRINGS = [
-  "your-remote-api.example.com",
-  "example.com/your-remote-api",
-];
-
-
-function isPlaceholder(raw: string): boolean {
-  const lower = raw.toLowerCase();
-  return PLACEHOLDER_HOST_SUBSTRINGS.some((needle) => lower.includes(needle));
-}
-
-function normalizeBase(raw: string | null | undefined): string | null {
+/** Normalize and validate a base URL without trailing slash. */
+function normalizeBase(raw?: string | null): string | null {
   if (!raw) return null;
-
   const trimmed = raw.trim();
   if (!trimmed) return null;
 
-  const withScheme = /^https?:\/\//i.test(trimmed)
-    ? trimmed
-    : `https://${trimmed}`;
+  // Ensure scheme
+  const withScheme = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
 
   try {
     const url = new URL(withScheme);
     if (!/^https?:$/.test(url.protocol)) return null;
-
-    const host = url.hostname?.trim();
-    if (!host) return null;
-    if (isPlaceholder(host) || isPlaceholder(withScheme)) return null;
-
-    const origin = url.origin.replace(/\/$/, "");
-    const path = url.pathname.replace(/\/$/, "");
-
-    // Allow advanced users to include a stable path prefix, e.g. https://api/foo
+    const origin = url.origin.replace(/\/+$/, "");
+    const path = url.pathname.replace(/\/+$/, "");
+    // Allow optional fixed path prefix (e.g., https://api.example.com/v1)
     const suffix = path.length > 1 ? path : "";
     return `${origin}${suffix}`;
   } catch {
     return null;
   }
-
 }
 
-function sanitizeHost(raw: string | null | undefined): string | null {
-  if (!raw) return null;
-  const clean = raw.replace(/^https?:\/\//, "");
-  const [host] = clean.split(":");
-  if (!host) return null;
-  return host.trim();
-}
-function isLoopback(host: string): boolean {
-  const lower = host.toLowerCase();
-  return (
-    lower === "localhost" ||
-    lower === "127.0.0.1" ||
-    lower.startsWith("127.") ||
-    lower === "::1"
-  );
-}
-
-function isWildcard(host: string): boolean {
-  const lower = host.toLowerCase();
-  return lower === "0.0.0.0" || lower === "[::]";
-}
-/**
- * Resolve a sane local default for dev builds.
- *
- * Prefer the LAN host advertised by Metro so virtual devices can reach a
- * remote backend. Fall back to emulator/simulator loopback shims when Metro is
- * bound to localhost/0.0.0.0.
- */
-function guessLocal(): string {
-  const expoHost =
-    sanitizeHost((Constants as any)?.expoConfig?.hostUri) ||
-    sanitizeHost((Constants as any)?.expoGoConfig?.hostUri) ||
-    sanitizeHost((Constants as any)?.manifest?.debuggerHost) ||
-    sanitizeHost((Constants as any)?.manifest2?.extra?.expoClient?.hostUri);
-
-  const isRunningOnDevice = Boolean((Constants as any)?.isDevice);
-
-  if (expoHost && !isLoopback(expoHost) && !isWildcard(expoHost) && isRunningOnDevice) {
-    return `http://${expoHost}:8080`;
-  }
-
-  if (Platform.OS === "android") {
-    // Android emulator cannot reach "localhost" on your PC.
-    // 10.0.2.2 maps to the dev machine.
-    return "http://10.0.2.2:8080";
-  }
-
-  // iOS simulator and web can reach the host machine via localhost.
-  return "http://localhost:8080";
-}
+/* -------------------------------------------------------------------------- */
+/*   Read env from Expo (prefer EXPO_PUBLIC_API_BASE_URL)                     */
+/* -------------------------------------------------------------------------- */
 
 const envBase =
-  normalizeBase((Constants as any)?.expoConfig?.extra?.EXPO_PUBLIC_API_URL) ??
-  normalizeBase((Constants as any)?.expoGoConfig?.extra?.EXPO_PUBLIC_API_URL) ??
-  normalizeBase((Constants as any)?.manifest?.extra?.EXPO_PUBLIC_API_URL) ??
+  normalizeBase((Constants as any)?.expoConfig?.extra?.EXPO_PUBLIC_API_BASE_URL) ??
+  normalizeBase((Constants as any)?.expoGoConfig?.extra?.EXPO_PUBLIC_API_BASE_URL) ??
+  normalizeBase((Constants as any)?.manifest?.extra?.EXPO_PUBLIC_API_BASE_URL) ??
   normalizeBase(
-    (Constants as any)?.manifest2?.extra?.expoClient?.extra?.EXPO_PUBLIC_API_URL
+    (Constants as any)?.manifest2?.extra?.expoClient?.extra?.EXPO_PUBLIC_API_BASE_URL
   ) ??
-  normalizeBase(process.env.EXPO_PUBLIC_API_URL);
-const appOwnership = (Constants as any)?.appOwnership;
-const ALLOW_LOCAL_GUESS =
-  __DEV__ ||
-  appOwnership === "expo" ||
-  appOwnership === "guest" ||
-  appOwnership == null;
+  // Node-style fallback when bundlers inject process.env
+  normalizeBase(process.env.EXPO_PUBLIC_API_BASE_URL);
 
-const resolvedBase = envBase ?? (ALLOW_LOCAL_GUESS ? guessLocal() : null);
+/* -------------------------------------------------------------------------- */
+/*   Final base: env or production default                                    */
+/* -------------------------------------------------------------------------- */
 
-const FALLBACK_INVALID = "http://127.0.0.1.invalid";
-/** Single source of truth for the API host. */
-export const API_BASE = resolvedBase ?? FALLBACK_INVALID;
+// Hard default to your deployed backend.
+// Change this constant only if you move domains.
+const PROD_DEFAULT = "https://faccely-production.up.railway.app";
 
-/** Flag so call-sites can surface a helpful error when no backend is configured. */
-export const API_BASE_CONFIGURED = Boolean(resolvedBase);
+export const API_BASE = envBase || PROD_DEFAULT;
+export const API_BASE_CONFIGURED = Boolean(envBase);
 
-const MISCONFIGURED_HINT =
-  "Backend base URL missing. Set EXPO_PUBLIC_API_URL before building production bundles.";
+const MISCONFIGURED_HINT = API_BASE_CONFIGURED
+  ? "API base provided via EXPO_PUBLIC_API_BASE_URL."
+  : "Using production default. Set EXPO_PUBLIC_API_BASE_URL to override.";
 
-/** Human readable hint that can be surfaced in the UI. */
-export const API_BASE_CONFIGURATION_HINT = API_BASE_CONFIGURED
-  ? ""
-  : `${MISCONFIGURED_HINT} (appOwnership=${appOwnership ?? "unknown"}).`;
+/** Human readable hint for UI surfaces. */
+export const API_BASE_CONFIGURATION_HINT = MISCONFIGURED_HINT;
 
+/** Kept for backwards compatibility with existing imports. */
 export const API_BASE_MISCONFIGURED_MESSAGE = MISCONFIGURED_HINT;
 
+// Boot log: helpful but quiet.
 if (__DEV__) {
-  const note = envBase
-    ? ""
-    : "[API] Falling back to inferred dev server host. Set EXPO_PUBLIC_API_URL for production.";
+  const note = API_BASE_CONFIGURED ? "(env)" : "(default)";
+  // eslint-disable-next-line no-console
   console.log("[API] BASE =", API_BASE, note);
 }
 
-if (!API_BASE_CONFIGURED) {
-  console.error("[API]", MISCONFIGURED_HINT, {
-    appOwnership: appOwnership ?? "unknown",
-    envProvided: Boolean(envBase),
-  });
-}
+export default API_BASE;
