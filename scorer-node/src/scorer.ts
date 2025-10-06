@@ -1,7 +1,7 @@
 // C:\SS\scorer-node\src\scorer.ts
 import OpenAI from "openai";
-import type { Scores, MetricKey } from "./validators";
-import { normalizeToPngDataUrl } from "./lib/image-normalize";
+import type { Scores, MetricKey } from "./validators.js";
+import { normalizeToPngDataUrl } from "./lib/image-normalize.js";
 import crypto from "crypto";
 
 /* ------------------------------ Config/Env -------------------------------- */

@@ -1,12 +1,12 @@
 // C:\SS\scorer-node\src\recommender.ts
 import OpenAI from "openai";
-import { ENV } from "./env";
+import { ENV } from "./env.js";
 import {
   
   RecommendationsResponseSchema,
   RecommendationsRequest,
   RecommendationsResponse,
-} from "./validators";
+} from "./validators.js";
 
 export class RecommendationsParseError extends Error {
   readonly rawPreview: string;
