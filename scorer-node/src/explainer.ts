@@ -1,7 +1,8 @@
 // C:\SS\scorer-node\src\explainer.ts
 import OpenAI from "openai";
 import crypto from "crypto";
-import { Scores, metricKeys, type MetricKey } from "./validators";
+import { Scores, metricKeys, type MetricKey } from "./validators.js";
+import { normalizeToPngDataUrl } from "./lib/image-normalize.js";
 
 /**
  * Explainer goals
