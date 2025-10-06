@@ -29,7 +29,8 @@ app.use((req, _res, next) => {
 app.use(helmet());
 app.use(cors({ origin: "*" }));
 
-app.use(express.json({ limit: "1mb" }));
+app.use(express.json({ limit: "5mb" }));
+
 app.use(rateLimit({ windowMs: 60_000, max: ENV.RATE_LIMIT_PER_MIN }));
 
 /**

@@ -1,6 +1,6 @@
 // facely/lib/api/scores.ts
 import { API_BASE } from "./config";
-import { buildApiError, fetchWithTimeout } from "./client";
+import { LONG_REQUEST_TIMEOUT_MS, buildApiError, fetchWithTimeout } from "./client";
 
 /** Keep this aligned with backend keys. */
 export type Scores = {
@@ -71,7 +71,7 @@ export async function analyzeImage(uri: string, signal?: AbortSignal): Promise<S
     },
     body: fd,
     signal,
-    timeoutMs: 90_000,
+    timeoutMs: LONG_REQUEST_TIMEOUT_MS,
 
   });
 
@@ -97,7 +97,7 @@ export async function analyzePair(
     },
     body: fd,
     signal,
-    timeoutMs: 90_000,
+    timeoutMs: LONG_REQUEST_TIMEOUT_MS,
 
   });
 

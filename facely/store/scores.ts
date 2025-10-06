@@ -5,7 +5,8 @@ import {
   API_BASE_CONFIGURED,
   API_BASE_CONFIGURATION_HINT,
   API_BASE_MISCONFIGURED_MESSAGE,
-} from "../lib/api/config";import { pingHealth } from "../lib/api/health";
+} from "../lib/api/config";
+import { pingHealth } from "../lib/api/health";
 import {
   analyzeImage,
   analyzePair as apiAnalyzePair,
@@ -16,7 +17,7 @@ import {
   explainMetricsPair,
   type Explanations,
 } from "../lib/api/analysis";
-import { toUserFacingError } from "../lib/api/client";
+import { RequestTimeoutError, toUserFacingError } from "../lib/api/client";
 
 const MISCONFIGURED_ERROR_MESSAGE = (() => {
   if (API_BASE_CONFIGURED) return "";
@@ -149,12 +150,15 @@ export const useScores = create<State & Actions>((set, get) => ({
       set({ explanations: exps, explLoading: false, explError: null });
       return true;
     } catch (e: any) {
+      const message = e instanceof RequestTimeoutError
+      ? "Request timed out"
+      : e?.name === "AbortError"
+      ? "Request timed out"
+      : e?.message || "Failed to explain";
       set({
         explLoading: false,
-        explError:
-          e?.name === "AbortError"
-            ? "Request timed out"
-            : e?.message || "Failed to explain",
+        explError: message,
+
       });
       return false;
     }
@@ -181,12 +185,15 @@ export const useScores = create<State & Actions>((set, get) => ({
       set({ explanations: exps, explLoading: false, explError: null });
       return true;
     } catch (e: any) {
+      const message = e instanceof RequestTimeoutError
+      ? "Request timed out"
+      : e?.name === "AbortError"
+      ? "Request timed out"
+      : e?.message || "Failed to explain pair";
       set({
         explLoading: false,
-        explError:
-          e?.name === "AbortError"
-            ? "Request timed out"
-            : e?.message || "Failed to explain pair",
+        explError: message,
+
       });
       return false;
     }

@@ -1,6 +1,11 @@
 // facely/lib/api/analysis.ts
 import { API_BASE } from "./config";
-import { ApiResponseError, buildApiError, fetchWithTimeout } from "./client";
+import {
+  ApiResponseError,
+  LONG_REQUEST_TIMEOUT_MS,
+  buildApiError,
+  fetchWithTimeout,
+} from "./client";
 
 import type { Scores } from "./scores";
 
@@ -55,12 +60,12 @@ export async function explainMetrics(
   const fd = new FormData();
   fd.append("image", toPart(imageUri, "image") as any);
   fd.append("scores", JSON.stringify(scores));
-  const res = await fetchWithTimeout(`${API_BASE}/analyze/explain/pair`, {
+  const res = await fetchWithTimeout(`${API_BASE}/analyze/explain`, {
     method: "POST",
     headers: { Accept: "application/json" },
     body: fd,
     signal,
-    timeoutMs: 90_000,
+    timeoutMs: LONG_REQUEST_TIMEOUT_MS,
   });
   return parseExplanations(res, "Explanation request failed");
 
@@ -80,19 +85,21 @@ export async function explainMetricsPair(
   scores: Scores,
   signal?: AbortSignal
 ): Promise<Explanations> {
-  const fd = new FormData();
-  fd.append("frontal", toPart(frontalUri, "frontal") as any);
-  fd.append("side", toPart(sideUri, "side") as any);
-  fd.append("scores", JSON.stringify(scores));
+  const buildFormData = () => {
+    const fd = new FormData();
+    fd.append("frontal", toPart(frontalUri, "frontal") as any);
+    fd.append("side", toPart(sideUri, "side") as any);
+    fd.append("scores", JSON.stringify(scores));
+    return fd;
+  };
 
   const attempt = async (path: string): Promise<Explanations> => {
     const res = await fetchWithTimeout(`${API_BASE}${path}`, {
       method: "POST",
       headers: { Accept: "application/json" },
-      body: fd,
+      body: buildFormData(),
       signal,
-      timeoutMs: 90_000,
-
+      timeoutMs: LONG_REQUEST_TIMEOUT_MS,
 
     });
     return parseExplanations(res, "Pair explanation request failed");

@@ -3,7 +3,21 @@
 // Keeps timeout/error handling consistent across all endpoints.
 
 export type FetchWithTimeoutOptions = RequestInit & { timeoutMs?: number };
-
+export class RequestTimeoutError extends Error {
+    readonly timeoutMs: number;
+  
+    constructor(timeoutMs: number) {
+      const seconds = Math.max(1, Math.round(timeoutMs / 1000));
+      super(
+        `Request timed out after ${seconds} ${seconds === 1 ? "second" : "seconds"}`
+      );
+      this.name = "RequestTimeoutError";
+      this.timeoutMs = timeoutMs;
+    }
+  }
+  
+  export const LONG_REQUEST_TIMEOUT_MS = 180_000;
+  
 export class ApiResponseError extends Error {
   readonly status: number;
   readonly body?: unknown;
@@ -19,9 +33,13 @@ export class ApiResponseError extends Error {
 function createTimeoutController(
   timeoutMs: number,
   upstreamSignal?: AbortSignal
-): { signal: AbortSignal; cleanup: () => void } {
-  const controller = new AbortController();
+): { signal: AbortSignal; cleanup: () => void; didTimeout: () => boolean } {
+    const controller = new AbortController();
+    let timedOut = false;
+
   const timer = setTimeout(() => {
+    timedOut = true;
+
     if (!controller.signal.aborted) {
       controller.abort();
     }
@@ -48,7 +66,11 @@ function createTimeoutController(
     }
   };
 
-  return { signal: controller.signal, cleanup };
+  return {
+    signal: controller.signal,
+    cleanup,
+    didTimeout: () => timedOut,
+  };
 }
 
 /** fetch() wrapper that adds an abortable timeout. */
@@ -67,13 +89,18 @@ export async function fetchWithTimeout(
     return fetch(input, { ...rest, signal: upstreamSignal });
   }
 
-  const { signal: timeoutSignal, cleanup } = createTimeoutController(
+  const { signal: timeoutSignal, cleanup, didTimeout } = createTimeoutController(
     timeoutMs,
     upstreamSignal
   );
 
   try {
     return await fetch(input, { ...rest, signal: timeoutSignal });
+} catch (err) {
+    if (didTimeout()) {
+      throw new RequestTimeoutError(timeoutMs);
+    }
+    throw err;
   } finally {
     cleanup();
   }
