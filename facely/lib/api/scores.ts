@@ -15,25 +15,39 @@ export type Scores = {
 
 /* ---------- internal helpers ---------- */
 
+function normalizeFileUri(uri: string): string {
+  return uri.startsWith("file://") ? uri : uri.startsWith("/") ? `file://${uri}` : uri;
+}
+
 function toPart(uri: string, name: string): {
   uri: string;
   name: string;
   type: string;
 } {
-  const normalized =
-    uri.startsWith("file://") ? uri : uri.startsWith("/") ? `file://${uri}` : uri;
-  // Label as JPEG; the server should sniff true type anyway.
+  const normalized = normalizeFileUri(uri);
+  // Label as JPEG; the server will sniff true type anyway.
   return { uri: normalized, name: `${name}.jpg`, type: "image/jpeg" };
+}
+
+/** Some Android emulators choke on { uri, name, type }. Blobs are more reliable. */
+async function toBlobPart(uri: string, name: string): Promise<{ blob: Blob; filename: string }> {
+  const normalized = normalizeFileUri(uri);
+  // RN fetch can read file:// URIs and return a Blob
+  const res = await fetch(normalized);
+  // Defensive: ensure 200-ish; local file fetch often reports ok anyway
+  if (!res || typeof res.blob !== "function") {
+    throw new Error(`Failed to open file for upload: ${normalized}`);
+  }
+  const blob = await res.blob();
+  return { blob, filename: `${name}.jpg` };
 }
 
 async function parseScores(res: Response): Promise<Scores> {
   if (!res.ok) {
     throw await buildApiError(res, "Score request failed");
-
   }
   const json = (await res.json()) as unknown;
 
-  // Minimal guard: ensure numeric 0..100 for each expected key.
   const keys: (keyof Scores)[] = [
     "jawline",
     "facial_symmetry",
@@ -49,7 +63,6 @@ async function parseScores(res: Response): Promise<Scores> {
     if (typeof v !== "number" || !isFinite(v)) {
       throw new Error(`Invalid score for "${k}"`);
     }
-    // Hard clamp for safety.
     (out as any)[k] = Math.max(0, Math.min(100, Math.round(v)));
   }
   return out as Scores;
@@ -60,20 +73,28 @@ async function parseScores(res: Response): Promise<Scores> {
 /** POST /analyze with a single image (multipart/form-data). */
 export async function analyzeImage(uri: string, signal?: AbortSignal): Promise<Scores> {
   const fd = new FormData();
-  // Backend single-image field name assumed "image".
-  fd.append("image", toPart(uri, "image") as any);
 
+  // Prefer Blob to avoid emulator URI weirdness
+  try {
+    const { blob, filename } = await toBlobPart(uri, "image");
+    (fd as any).append("image", blob as any, filename);
+  } catch {
+    // Fallback to { uri, name, type } if blob read fails
+    (fd as any).append("image", toPart(uri, "image") as any);
+  }
+
+  console.log("[scores] POST /analyze starting…", API_BASE);
   const res = await fetchWithTimeout(`${API_BASE}/analyze`, {
     method: "POST",
     headers: {
       Accept: "application/json",
-      // Don't set Content-Type; RN will add correct multipart boundary.
+      // Do NOT set Content-Type manually; RN will add the correct multipart boundary.
     },
     body: fd,
     signal,
     timeoutMs: LONG_REQUEST_TIMEOUT_MS,
-
   });
+  console.log("[scores] POST /analyze done, status =", res.status);
 
   return parseScores(res);
 }
@@ -85,21 +106,30 @@ export async function analyzePair(
   signal?: AbortSignal
 ): Promise<Scores> {
   const fd = new FormData();
-  // Field names expected by backend: "frontal" and "side".
-  fd.append("frontal", toPart(frontalUri, "frontal") as any);
-  fd.append("side", toPart(sideUri, "side") as any);
 
+  try {
+    const f = await toBlobPart(frontalUri, "frontal");
+    const s = await toBlobPart(sideUri, "side");
+    (fd as any).append("frontal", f.blob as any, f.filename);
+    (fd as any).append("side", s.blob as any, s.filename);
+  } catch {
+    // Fallback to URI parts if Blob read fails
+    (fd as any).append("frontal", toPart(frontalUri, "frontal") as any);
+    (fd as any).append("side", toPart(sideUri, "side") as any);
+  }
+
+  console.log("[scores] POST /analyze/pair starting…", API_BASE);
   const res = await fetchWithTimeout(`${API_BASE}/analyze/pair`, {
-
     method: "POST",
     headers: {
       Accept: "application/json",
+      // Let RN set multipart boundary automatically.
     },
     body: fd,
     signal,
     timeoutMs: LONG_REQUEST_TIMEOUT_MS,
-
   });
+  console.log("[scores] POST /analyze/pair done, status =", res.status);
 
   return parseScores(res);
 }
