@@ -21,6 +21,23 @@ import { router } from "expo-router";
 import Svg, { Line, Circle, Rect, Path } from "react-native-svg";
 import { useScores } from "../../store/scores";
 
+// ⬇️ add this after imports
+async function persistToCache(uri: string): Promise<string> {
+  const m = /\.([A-Za-z0-9]+)(?:\?|#|$)/.exec(uri);
+  const ext = (m?.[1] || "jpg").toLowerCase();
+  const dest = `${FileSystem.cacheDirectory}persist-${Date.now()}-${Math.random()
+    .toString(36)
+    .slice(2)}.${ext}`;
+  try {
+    await FileSystem.copyAsync({ from: uri, to: dest });
+    return dest;
+  } catch {
+    const decoded = decodeURI(uri);
+    await FileSystem.copyAsync({ from: decoded, to: dest });
+    return dest;
+  }
+}
+
 
 /* ============================== TOKENS ============================== */
 const ACCENT = "#8FA31E"; // neon lime
@@ -225,17 +242,21 @@ export default function TakePicture() {
   // capture selection
   const handleChosen = async (uri: string | null) => {
     if (!uri) return;
-    const normalized = await ensureFileUriAsync(uri);
-    if (!normalized) return;
-
-    if (step === "frontal") {
-      setFrontalUri(normalized);
-      setStep("side");
-    } else if (step === "side") {
-      setSideUri(normalized);
-      setStep("review");
+    try {
+      // immediately persist to our own cache so Expo doesn’t delete it
+      const stable = await persistToCache(uri);
+      if (step === "frontal") {
+        setFrontalUri(stable);
+        setStep("side");
+      } else if (step === "side") {
+        setSideUri(stable);
+        setStep("review");
+      }
+    } catch (e: any) {
+      Alert.alert("File error", "Could not persist selected photo.");
     }
   };
+  
 
   const changePose = (pose: "frontal" | "side") => {
     setStep(pose);

@@ -1,4 +1,6 @@
 // facely/lib/api/scores.ts
+// Stop copying temp files. Resolve a stable, existing path and use it as-is.
+
 import API_BASE from "./config";
 import * as FileSystem from "expo-file-system";
 
@@ -14,10 +16,16 @@ export type Scores = {
 
 const DEFAULT_TIMEOUT_MS = 180_000;
 
-function timeoutFetch(input: RequestInfo | URL, init: RequestInit = {}, ms = DEFAULT_TIMEOUT_MS) {
+function timeoutFetch(
+  input: RequestInfo | URL,
+  init: RequestInit = {},
+  ms = DEFAULT_TIMEOUT_MS
+) {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), ms);
-  return fetch(input, { ...init, signal: controller.signal }).finally(() => clearTimeout(id));
+  return fetch(input, { ...init, signal: controller.signal }).finally(() =>
+    clearTimeout(id)
+  );
 }
 
 function filePart(uri: string, name: string) {
@@ -26,45 +34,58 @@ function filePart(uri: string, name: string) {
 }
 
 /* ----------------------------------------------------------------------------
-   File handling helpers: make URIs readable and stable
+   Resolve a readable file path without copying (no ENOENT roulette)
 ----------------------------------------------------------------------------- */
 
-/** Copy the given uri into our own cache and return the new path. Handles file:// and content:// */
-async function materializeToCache(uri: string): Promise<string> {
-  const extMatch = /\.([A-Za-z0-9]+)(?:\?|#|$)/.exec(uri);
-  const ext = (extMatch?.[1] || "jpg").toLowerCase();
-  const dest =
-    `${FileSystem.cacheDirectory}upload-` +
-    `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+/**
+ * Given a URI returned by ImagePicker, return a variant that actually exists.
+ * We try:
+ *   1) the URI as-is (usually file:///...%40anonymous%2Ffacely.../ImagePicker/xxx.jpeg)
+ *   2) encodeURI(uri)  — some toolchains hand us already-decoded strings
+ *   3) decodeURI(uri)  — some logs are encoded, FS expects decoded
+ *
+ * If none exist, we throw a loud error. That means the temp file is gone.
+ */
+async function resolveExistingPath(uri: string): Promise<string> {
+  const candidates = [uri];
 
-  // Try raw, then URL-decoded (Expo sometimes percent-encodes path chunks)
+  // Avoid double-encoding "file://", keep scheme exact then vary only the path
   try {
-    await FileSystem.copyAsync({ from: uri, to: dest });
-    return dest;
-  } catch (e1) {
-    const decoded = decodeURI(uri);
-    if (decoded !== uri) {
-      await FileSystem.copyAsync({ from: decoded, to: dest });
-      return dest;
+    const u = new URL(uri);
+    const path = u.pathname || "";
+    const enc = `file://${encodeURI(path)}`;
+    const dec = `file://${decodeURI(path)}`;
+    // Push unique variants only
+    for (const v of [enc, dec]) {
+      if (!candidates.includes(v)) candidates.push(v);
     }
-    throw e1;
-  }
-}
-
-/** Ensure we can actually read the file: if it doesn't exist, copy it into our cache. */
-async function ensureReadableFile(uri: string): Promise<string> {
-  try {
-    const info = await FileSystem.getInfoAsync(uri);
-    if (info.exists) return uri;
   } catch {
-    // fall through to materialize
+    // Not a URL? Fine, brute-force variants
+    if (!candidates.includes(encodeURI(uri))) candidates.push(encodeURI(uri));
+    if (!candidates.includes(decodeURI(uri))) candidates.push(decodeURI(uri));
   }
-  return materializeToCache(uri);
+
+  for (const cand of candidates) {
+    try {
+      const info = await FileSystem.getInfoAsync(cand);
+      if (info.exists) return cand;
+    } catch {
+      // ignore and try next
+    }
+  }
+
+  // If we reach here, the picker temp is gone. Tell the caller plainly.
+  const msg =
+    "Selected image is no longer available on disk. Re-select the photo and try again.";
+  const err = new Error(msg);
+  (err as any).code = "FILE_GONE";
+  (err as any).details = { uri, tried: candidates };
+  throw err;
 }
 
 export async function pingHealth(): Promise<boolean> {
   try {
-    const r = await timeoutFetch(`${API_BASE}/health`, { method: "GET" }, 10000);
+    const r = await timeoutFetch(`${API_BASE}/health`, { method: "GET" }, 10_000);
     return r.ok;
   } catch {
     return false;
@@ -76,16 +97,16 @@ export async function pingHealth(): Promise<boolean> {
 ----------------------------------------------------------------------------- */
 
 async function analyzePairMultipart(frontUri: string, sideUri: string): Promise<Scores> {
-  // Make sure both files are real, readable paths under our control
+  // Resolve existing paths; do NOT copy them anywhere
   const [frontPath, sidePath] = await Promise.all([
-    ensureReadableFile(frontUri),
-    ensureReadableFile(sideUri),
+    resolveExistingPath(frontUri),
+    resolveExistingPath(sideUri),
   ]);
 
   const form = new FormData();
   // FIELD NAMES MUST MATCH SERVER EXACTLY
   form.append("frontal", filePart(frontPath, "frontal.jpg"));
-  form.append("side",    filePart(sidePath,  "side.jpg"));
+  form.append("side", filePart(sidePath, "side.jpg"));
 
   console.log("[scores] POST /analyze/pair starting...", API_BASE, {
     frontPath,
@@ -97,7 +118,7 @@ async function analyzePairMultipart(frontUri: string, sideUri: string): Promise<
     res = await timeoutFetch(`${API_BASE}/analyze/pair`, {
       method: "POST",
       body: form,
-      headers: { Accept: "application/json" }, // do NOT set Content-Type
+      headers: { Accept: "application/json" }, // do NOT set Content-Type, RN sets boundary
     });
   } catch (e: any) {
     console.log("[scores] /analyze/pair network error:", e?.message || e);
@@ -116,10 +137,10 @@ async function analyzePairMultipart(frontUri: string, sideUri: string): Promise<
 }
 
 async function analyzePairBytes(frontUri: string, sideUri: string): Promise<Scores> {
-  // Same: first materialize to our cache, then read
+  // Resolve existing paths; then base64 encode directly
   const [frontPath, sidePath] = await Promise.all([
-    ensureReadableFile(frontUri),
-    ensureReadableFile(sideUri),
+    resolveExistingPath(frontUri),
+    resolveExistingPath(sideUri),
   ]);
 
   console.log("[scores] POST /analyze/pair-bytes starting...", API_BASE, {
@@ -128,8 +149,12 @@ async function analyzePairBytes(frontUri: string, sideUri: string): Promise<Scor
   });
 
   const [f, s] = await Promise.all([
-    FileSystem.readAsStringAsync(frontPath, { encoding: FileSystem.EncodingType.Base64 }),
-    FileSystem.readAsStringAsync(sidePath,  { encoding: FileSystem.EncodingType.Base64 }),
+    FileSystem.readAsStringAsync(frontPath, {
+      encoding: FileSystem.EncodingType.Base64,
+    }),
+    FileSystem.readAsStringAsync(sidePath, {
+      encoding: FileSystem.EncodingType.Base64,
+    }),
   ]);
 
   const res = await timeoutFetch(`${API_BASE}/analyze/pair-bytes`, {
@@ -137,7 +162,7 @@ async function analyzePairBytes(frontUri: string, sideUri: string): Promise<Scor
     headers: { "Content-Type": "application/json", Accept: "application/json" },
     body: JSON.stringify({
       front: `data:image/jpeg;base64,${f}`,
-      side:  `data:image/jpeg;base64,${s}`,
+      side: `data:image/jpeg;base64,${s}`,
     }),
   });
 
@@ -158,6 +183,11 @@ export async function analyzePair(frontUri: string, sideUri: string): Promise<Sc
     if (err?.message === "NETWORK_LAYER_FAIL") {
       console.log("[scores] falling back to /analyze/pair-bytes");
       return await analyzePairBytes(frontUri, sideUri);
+    }
+    // If the file is gone, bubble a clear, user-facing message
+    if ((err as any)?.code === "FILE_GONE") {
+      console.log("[scores] file missing:", (err as any).details);
+      throw err;
     }
     throw err;
   }
