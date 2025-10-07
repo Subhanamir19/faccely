@@ -1,5 +1,8 @@
+// scorer-node/src/index.ts
+// Render-ready Express entry point with explicit CORS preflight handling + JSON fallback route.
+
 import express from "express";
-import cors from "cors";
+import cors, { type CorsOptions } from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import multer from "multer";
@@ -9,12 +12,17 @@ import { ZodError, type ZodIssue } from "zod";
 
 import { generateRecommendations, RecommendationsParseError } from "./recommender.js";
 import { ENV } from "./env.js";
-import { ScoresSchema, ExplanationsSchema, RecommendationsRequestSchema } from "./validators.js";
+import {
+  ScoresSchema,
+  ExplanationsSchema,
+  RecommendationsRequestSchema,
+} from "./validators.js";
 import { scoreImageBytes, scoreImagePairBytes } from "./scorer.js";
 import { explainImageBytes, explainImagePairBytes } from "./explainer.js";
 
-
 const app = express();
+
+// Request logger — keep it first
 app.use((req, _res, next) => {
   console.log(
     `[${new Date().toISOString()}] ${req.method} ${req.url} ct=${req.headers["content-type"] || ""}`
@@ -22,27 +30,50 @@ app.use((req, _res, next) => {
   next();
 });
 
+// Security headers
 app.use(helmet());
-app.use(cors({ origin: "*" }));
 
-app.use(express.json({ limit: "5mb" }));
+/* ----------------------------- CORS normalize ----------------------------- */
+function normalizeCorsOrigins(val: unknown): string | string[] | undefined {
+  if (val == null) return undefined;
+  if (Array.isArray(val)) {
+    return val.map((x) => String(x).trim()).filter((s) => s.length > 0);
+  }
+  const str = String(val).trim();
+  if (!str) return undefined;
+  if (str === "*") return "*";
+  return str.split(",").map((s) => s.trim()).filter((s) => s.length > 0);
+}
 
+const origins = normalizeCorsOrigins(ENV.CORS_ORIGINS) ?? "*";
+
+const corsOptions: CorsOptions = {
+  origin: origins as any, // string | string[]
+  methods: ["GET", "POST", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Accept"],
+};
+
+// CORS + explicit preflight
+app.use(cors(corsOptions));
+app.options("*", cors(corsOptions));
+
+/* ------------------------------- JSON limit ------------------------------- */
+app.use(express.json({ limit: "25mb" })); // 25 MB so /pair-bytes can breathe
+
+// Rate limit
 app.use(rateLimit({ windowMs: 60_000, max: ENV.RATE_LIMIT_PER_MIN }));
 
 /**
- * Create a single OpenAI client and reuse it.
- * Avoids per-request setup and keeps connections warm.
+ * Reuse a single OpenAI client.
  */
 const openai = new OpenAI({ apiKey: ENV.OPENAI_API_KEY });
 
 /**
- * Multer in-memory storage so we can inspect/normalize before OpenAI.
- * Size cap is generous; scorer will downscale internally.
- * Accept common image types and the occasional "octet-stream" lie from RN.
+ * Multer memory storage — up to 15 MB per file.
  */
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 15 * 1024 * 1024 }, // 15 MB per file
+  limits: { fileSize: 15 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     const ok = new Set([
       "image/jpeg",
@@ -57,48 +88,57 @@ const upload = multer({
   },
 });
 
-/* ---------------------------------------------------------------------------
- * Helpers
- * ------------------------------------------------------------------------- */
-
+/* -------------------------------- Helpers -------------------------------- */
 async function toJpegBuffer(file: Express.Multer.File) {
-  if (!file?.buffer?.length) {
-    throw new Error("empty_upload_buffer");
-  }
-  const out = await sharp(file.buffer)
-    .rotate()
-    .jpeg({ quality: 92, mozjpeg: true })
-    .toBuffer();
+  if (!file?.buffer?.length) throw new Error("empty_upload_buffer");
+  const out = await sharp(file.buffer).rotate().jpeg({ quality: 92, mozjpeg: true }).toBuffer();
   return { buffer: out, mime: "image/jpeg" as const };
 }
 
 function errorPayload(err: any) {
   const openaiMsg =
-    err?.response?.data?.error?.message ||
-    err?.error?.message ||
-    err?.message ||
-    "unknown_error";
+    err?.response?.data?.error?.message || err?.error?.message || err?.message || "unknown_error";
   const status = err?.status || err?.response?.status;
   return { error: "upstream_failed", status, detail: openaiMsg };
 }
 
-/** Tiny buffer preview for debugging bad multipart bodies */
 function preview(buf?: Buffer) {
   if (!buf) return "nil";
   const head = buf.slice(0, 12).toString("hex");
   return `${buf.length}B ${head}`;
 }
 
+/* --------------------------------- Routes -------------------------------- */
+
 app.get("/health", (_req, res) => res.json({ ok: true }));
 
-/**
- * Single-image analysis
- * NOTE: Pass raw bytes to scorer; scorer handles normalization to PNG.
- */
+// JSON data-URL fallback for cursed Android multipart cases
+app.post("/analyze/pair-bytes", async (req, res) => {
+  try {
+    const { front, side } = (req.body || {}) as { front?: string; side?: string };
+    if (typeof front !== "string" || typeof side !== "string") {
+      return res.status(400).json({ error: "fields 'front' and 'side' required as data URLs" });
+    }
+    const fB64 = front.replace(/^data:image\/\w+;base64,/, "");
+    const sB64 = side.replace(/^data:image\/\w+;base64,/, "");
+    const fBuf = Buffer.from(fB64, "base64");
+    const sBuf = Buffer.from(sB64, "base64");
+
+    const scores = await scoreImagePairBytes(openai, fBuf, "image/jpeg", sBuf, "image/jpeg");
+    const parsed = ScoresSchema.parse(scores);
+    res.json(parsed);
+  } catch (err: any) {
+    console.error("[/analyze/pair-bytes] error:", err?.response?.data ?? err);
+    if (err instanceof ZodError) {
+      return res.status(422).json({ error: "invalid_scores_shape", issues: err.issues });
+    }
+    res.status(500).json({ error: "pair_bytes_failed", detail: err?.message || "unknown" });
+  }
+});
+
 app.post("/analyze", upload.single("image"), async (req, res) => {
   try {
-    if (!req.file)
-      return res.status(400).json({ error: "file 'image' required" });
+    if (!req.file) return res.status(400).json({ error: "file 'image' required" });
     if (!req.file.buffer?.length) {
       return res.status(400).json({
         error: "empty_file_buffer",
@@ -109,30 +149,19 @@ app.post("/analyze", upload.single("image"), async (req, res) => {
     console.log("[/analyze] buffer:", preview(req.file.buffer));
 
     const t0 = Date.now();
-    const scores = await scoreImageBytes(
-      openai,
-      req.file.buffer,
-      req.file.mimetype
-    );
+    const scores = await scoreImageBytes(openai, req.file.buffer, req.file.mimetype);
     console.log("[/analyze] total ms =", Date.now() - t0);
 
     const parsed = ScoresSchema.parse(scores);
     res.json(parsed);
   } catch (err: any) {
     console.error("[/analyze] error:", err?.response?.data ?? err);
-    if (err instanceof ZodError) {
-      return res
-        .status(422)
-        .json({ error: "invalid_scores_shape", issues: err.issues });
-    }
+    if (err instanceof ZodError)
+      return res.status(422).json({ error: "invalid_scores_shape", issues: err.issues });
     res.status(500).json(errorPayload(err));
   }
 });
 
-/**
- * Two-image analysis
- * NOTE: Same: send raw buffers, let scorer normalize both.
- */
 app.post(
   "/analyze/pair",
   upload.fields([
@@ -146,14 +175,13 @@ app.post(
       const side = files?.side?.[0];
 
       if (!frontal || !side) {
-        return res
-          .status(400)
-          .json({ error: "files 'frontal' and 'side' required" });
+        return res.status(400).json({ error: "files 'frontal' and 'side' required" });
       }
       if (!frontal.buffer?.length || !side.buffer?.length) {
         return res.status(400).json({
           error: "empty_file_buffers",
-          hint: "Likely bad client FormData. Do NOT set Content-Type manually. Send { uri, name, type } parts.",
+          hint:
+            "Likely bad client FormData. Do NOT set Content-Type manually. Send { uri, name, type } parts.",
         });
       }
 
@@ -179,28 +207,19 @@ app.post(
       res.json(parsed);
     } catch (err: any) {
       console.error("[/analyze/pair] error:", err?.response?.data ?? err);
-      if (err instanceof ZodError) {
-        return res
-          .status(422)
-          .json({ error: "invalid_scores_shape", issues: err.issues });
-      }
+      if (err instanceof ZodError)
+        return res.status(422).json({ error: "invalid_scores_shape", issues: err.issues });
       res.status(500).json(errorPayload(err));
     }
   }
 );
 
-/**
- * Single-image explanations
- * Still using JPEG conversion until explainer is updated to normalize internally.
- */
 app.post("/analyze/explain", upload.single("image"), async (req, res) => {
   try {
-    if (!req.file)
-      return res.status(400).json({ error: "file 'image' required" });
+    if (!req.file) return res.status(400).json({ error: "file 'image' required" });
 
     const scoresRaw = req.body?.scores;
-    if (!scoresRaw)
-      return res.status(400).json({ error: "field 'scores' required" });
+    if (!scoresRaw) return res.status(400).json({ error: "field 'scores' required" });
 
     let scoresJson: unknown;
     try {
@@ -220,19 +239,12 @@ app.post("/analyze/explain", upload.single("image"), async (req, res) => {
     res.json(parsed);
   } catch (err: any) {
     console.error("[/analyze/explain] error:", err?.response?.data ?? err);
-    if (err instanceof ZodError) {
-      return res
-        .status(422)
-        .json({ error: "invalid_explanations_shape", issues: err.issues });
-    }
+    if (err instanceof ZodError)
+      return res.status(422).json({ error: "invalid_explanations_shape", issues: err.issues });
     res.status(500).json(errorPayload(err));
   }
 });
 
-/**
- * Pair explanations (frontal + side)
- * Still using JPEG conversion until explainer is updated to normalize internally.
- */
 app.post(
   "/analyze/explain/pair",
   upload.fields([
@@ -245,14 +257,11 @@ app.post(
       const frontal = files?.frontal?.[0];
       const side = files?.side?.[0];
       if (!frontal || !side) {
-        return res
-          .status(400)
-          .json({ error: "files 'frontal' and 'side' required" });
+        return res.status(400).json({ error: "files 'frontal' and 'side' required" });
       }
 
       const scoresRaw = req.body?.scores;
-      if (!scoresRaw)
-        return res.status(400).json({ error: "field 'scores' required" });
+      if (!scoresRaw) return res.status(400).json({ error: "field 'scores' required" });
 
       let scoresJson: unknown;
       try {
@@ -280,19 +289,15 @@ app.post(
       res.json(parsed);
     } catch (err: any) {
       console.error("[/analyze/explain/pair] error:", err?.response?.data ?? err);
-      if (err instanceof ZodError) {
+      if (err instanceof ZodError)
         return res
           .status(422)
           .json({ error: "invalid_explanations_shape", issues: err.issues });
-      }
       res.status(500).json(errorPayload(err));
     }
   }
 );
 
-/**
- * Recommendations (JSON-only)
- */
 app.post("/recommendations", upload.none(), async (req, res) => {
   const parsedReq = RecommendationsRequestSchema.safeParse(req.body);
   if (!parsedReq.success) {
@@ -309,15 +314,10 @@ app.post("/recommendations", upload.none(), async (req, res) => {
     const data = await generateRecommendations(parsedReq.data);
     res.json(data);
   } catch (err: any) {
-
     if (err instanceof RecommendationsParseError) {
       console.error("[/recommendations] invalid completion:", err.rawPreview);
-      return res.status(502).json({
-        error: "recommendations_generation_failed",
-        detail: err.message,
-      });
+      return res.status(502).json({ error: "recommendations_generation_failed", detail: err.message });
     }
-
     if (err instanceof ZodError) {
       console.error("[/recommendations] invalid completion shape:", err.issues);
       return res.status(502).json({
@@ -335,9 +335,7 @@ app.post("/recommendations", upload.none(), async (req, res) => {
   }
 });
 
-/* ---------------------------------------------------------------------------
- * Server bind
- * ------------------------------------------------------------------------- */
+/* ------------------------------- Server bind ------------------------------ */
 app.listen(ENV.PORT, "0.0.0.0", () => {
   console.log(`Scorer listening on 0.0.0.0:${ENV.PORT}`);
 });
