@@ -5,6 +5,7 @@ import {
   API_BASE_CONFIGURED,
   API_BASE_CONFIGURATION_HINT,
   API_BASE_MISCONFIGURED_MESSAGE,
+  API_BASE_REASON,
 } from "../lib/api/config";
 import { pingHealth } from "../lib/api/health";
 import {
@@ -32,6 +33,17 @@ function ensureBackendConfigured() {
     throw new Error(MISCONFIGURED_ERROR_MESSAGE);
   }
 }
+
+async function assertBackendReachable(): Promise<void> {
+  ensureBackendConfigured();
+  const reachable = await pingHealth();
+  if (!reachable) {
+    throw new Error(
+      `Backend unreachable at ${API_BASE} (reason: ${API_BASE_REASON}). Check network, emulator mapping, or server process.`
+    );
+  }
+}
+
 // Re-export for other modules
 export type { Scores };
 
@@ -53,7 +65,6 @@ type Actions = {
 
   /** Analyze single image. */
   analyze: (uri: string) => Promise<Scores>;
-
 
   /** Analyze a frontal + side image pair. */
   analyzePair: (frontalUri: string, sideUri: string) => Promise<Scores>;
@@ -89,19 +100,16 @@ export const useScores = create<State & Actions>((set, get) => ({
   analyze: async (uri: string) => {
     set({ loading: true, error: null, imageUri: uri });
     try {
-      ensureBackendConfigured();
+      await assertBackendReachable();
 
-      const reachable = await pingHealth();
-      if (!reachable) {
-        throw new Error(
-          `Backend unreachable. Check API base (${API_BASE}) and network.`
-        );
-      }
       const s = await analyzeImage(uri);
       set({ scores: s, loading: false });
       return s;
     } catch (err) {
-      const friendly = toUserFacingError(err, "Failed to analyze");
+      const friendly = toUserFacingError(
+        err,
+        `Failed to analyze (base: ${API_BASE}).`
+      );
       set({ error: friendly.message, loading: false });
       throw friendly;
     }
@@ -115,19 +123,16 @@ export const useScores = create<State & Actions>((set, get) => ({
       sideImageUri: sideUri,
     });
     try {
-      ensureBackendConfigured();
+      await assertBackendReachable();
 
-      const reachable = await pingHealth();
-      if (!reachable) {
-        throw new Error(
-          `Backend unreachable. Check API base (${API_BASE}) and network.`
-        );
-      }
       const s = await apiAnalyzePair(frontalUri, sideUri);
       set({ scores: s, loading: false });
       return s;
     } catch (err) {
-      const friendly = toUserFacingError(err, "Failed to analyze pair");
+      const friendly = toUserFacingError(
+        err,
+        `Failed to analyze pair (base: ${API_BASE}).`
+      );
       set({ error: friendly.message, loading: false });
       throw friendly;
     }
@@ -138,27 +143,21 @@ export const useScores = create<State & Actions>((set, get) => ({
 
     set({ explLoading: true, explError: null });
     try {
-      ensureBackendConfigured();
+      await assertBackendReachable();
 
-      const reachable = await pingHealth();
-      if (!reachable) {
-        throw new Error(
-          `Backend unreachable. Check API base (${API_BASE}) and network.`
-        );
-      }
       const exps = await explainMetrics(uri, scores);
       set({ explanations: exps, explLoading: false, explError: null });
       return true;
     } catch (e: any) {
-      const message = e instanceof RequestTimeoutError
-      ? "Request timed out"
-      : e?.name === "AbortError"
-      ? "Request timed out"
-      : e?.message || "Failed to explain";
+      const message =
+        e instanceof RequestTimeoutError
+          ? "Request timed out"
+          : e?.name === "AbortError"
+          ? "Request timed out"
+          : e?.message || `Failed to explain (base: ${API_BASE}).`;
       set({
         explLoading: false,
         explError: message,
-
       });
       return false;
     }
@@ -173,27 +172,21 @@ export const useScores = create<State & Actions>((set, get) => ({
 
     set({ explLoading: true, explError: null });
     try {
-      ensureBackendConfigured();
+      await assertBackendReachable();
 
-      const reachable = await pingHealth();
-      if (!reachable) {
-        throw new Error(
-          `Backend unreachable. Check API base (${API_BASE}) and network.`
-        );
-      }
       const exps = await explainMetricsPair(frontalUri, sideUri, scores);
       set({ explanations: exps, explLoading: false, explError: null });
       return true;
     } catch (e: any) {
-      const message = e instanceof RequestTimeoutError
-      ? "Request timed out"
-      : e?.name === "AbortError"
-      ? "Request timed out"
-      : e?.message || "Failed to explain pair";
+      const message =
+        e instanceof RequestTimeoutError
+          ? "Request timed out"
+          : e?.name === "AbortError"
+          ? "Request timed out"
+          : e?.message || `Failed to explain pair (base: ${API_BASE}).`;
       set({
         explLoading: false,
         explError: message,
-
       });
       return false;
     }

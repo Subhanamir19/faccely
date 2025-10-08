@@ -1,8 +1,12 @@
 // facely/lib/api/scores.ts
-// Stop copying temp files. Resolve a stable, existing path and use it as-is.
+// Stable, concurrency-safe upload helpers for facial scoring.
 
 import API_BASE from "./config";
 import * as FileSystem from "expo-file-system";
+
+/* -------------------------------------------------------------------------- */
+/*   Types                                                                    */
+/* -------------------------------------------------------------------------- */
 
 export type Scores = {
   jawline: number;
@@ -14,13 +18,17 @@ export type Scores = {
   sexual_dimorphism: number;
 };
 
+/* -------------------------------------------------------------------------- */
+/*   Timeout helpers                                                          */
+/* -------------------------------------------------------------------------- */
+
 const DEFAULT_TIMEOUT_MS = 180_000;
 
 function timeoutFetch(
   input: RequestInfo | URL,
   init: RequestInit = {},
   ms = DEFAULT_TIMEOUT_MS
-) {
+): Promise<Response> {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), ms);
   return fetch(input, { ...init, signal: controller.signal }).finally(() =>
@@ -33,34 +41,22 @@ function filePart(uri: string, name: string) {
   return { uri, name, type: "image/jpeg" } as any;
 }
 
-/* ----------------------------------------------------------------------------
-   Resolve a readable file path without copying (no ENOENT roulette)
------------------------------------------------------------------------------ */
+/* -------------------------------------------------------------------------- */
+/*   Resolve a readable file path without copying                             */
+/* -------------------------------------------------------------------------- */
 
-/**
- * Given a URI returned by ImagePicker, return a variant that actually exists.
- * We try:
- *   1) the URI as-is (usually file:///...%40anonymous%2Ffacely.../ImagePicker/xxx.jpeg)
- *   2) encodeURI(uri)  — some toolchains hand us already-decoded strings
- *   3) decodeURI(uri)  — some logs are encoded, FS expects decoded
- *
- * If none exist, we throw a loud error. That means the temp file is gone.
- */
 async function resolveExistingPath(uri: string): Promise<string> {
   const candidates = [uri];
 
-  // Avoid double-encoding "file://", keep scheme exact then vary only the path
   try {
     const u = new URL(uri);
     const path = u.pathname || "";
     const enc = `file://${encodeURI(path)}`;
     const dec = `file://${decodeURI(path)}`;
-    // Push unique variants only
     for (const v of [enc, dec]) {
       if (!candidates.includes(v)) candidates.push(v);
     }
   } catch {
-    // Not a URL? Fine, brute-force variants
     if (!candidates.includes(encodeURI(uri))) candidates.push(encodeURI(uri));
     if (!candidates.includes(decodeURI(uri))) candidates.push(decodeURI(uri));
   }
@@ -70,11 +66,10 @@ async function resolveExistingPath(uri: string): Promise<string> {
       const info = await FileSystem.getInfoAsync(cand);
       if (info.exists) return cand;
     } catch {
-      // ignore and try next
+      /* ignore and try next */
     }
   }
 
-  // If we reach here, the picker temp is gone. Tell the caller plainly.
   const msg =
     "Selected image is no longer available on disk. Re-select the photo and try again.";
   const err = new Error(msg);
@@ -83,61 +78,70 @@ async function resolveExistingPath(uri: string): Promise<string> {
   throw err;
 }
 
+/* -------------------------------------------------------------------------- */
+/*   Health check (legacy fallback)                                           */
+/* -------------------------------------------------------------------------- */
+
 export async function pingHealth(): Promise<boolean> {
   try {
     const r = await timeoutFetch(`${API_BASE}/health`, { method: "GET" }, 10_000);
     return r.ok;
-  } catch {
+  } catch (e) {
+    console.warn("[scores] pingHealth legacy fallback failed:", (e as any)?.message);
     return false;
   }
 }
 
-/* ----------------------------------------------------------------------------
-   Uploads
------------------------------------------------------------------------------ */
+/* -------------------------------------------------------------------------- */
+/*   Multipart upload: pair                                                   */
+/* -------------------------------------------------------------------------- */
 
 async function analyzePairMultipart(frontUri: string, sideUri: string): Promise<Scores> {
-  // Resolve existing paths; do NOT copy them anywhere
   const [frontPath, sidePath] = await Promise.all([
     resolveExistingPath(frontUri),
     resolveExistingPath(sideUri),
   ]);
 
   const form = new FormData();
-  // FIELD NAMES MUST MATCH SERVER EXACTLY
   form.append("frontal", filePart(frontPath, "frontal.jpg"));
   form.append("side", filePart(sidePath, "side.jpg"));
 
-  console.log("[scores] POST /analyze/pair starting...", API_BASE, {
-    frontPath,
-    sidePath,
-  });
+  const url = `${API_BASE}/analyze/pair`;
+  const start = Date.now();
+  console.log("[scores] POST", url, { frontPath, sidePath });
 
   let res: Response;
   try {
-    res = await timeoutFetch(`${API_BASE}/analyze/pair`, {
+    res = await timeoutFetch(url, {
       method: "POST",
       body: form,
-      headers: { Accept: "application/json" }, // do NOT set Content-Type, RN sets boundary
+      headers: { Accept: "application/json" }, // RN sets boundary automatically
     });
   } catch (e: any) {
-    console.log("[scores] /analyze/pair network error:", e?.message || e);
+    console.error("[scores] /analyze/pair network error:", e?.message || e);
     throw new Error("NETWORK_LAYER_FAIL");
+  } finally {
+    const duration = Date.now() - start;
+    console.log(`[scores] /analyze/pair duration: ${duration} ms`);
   }
 
   if (!res.ok) {
     const body = await res.text().catch(() => "");
-    console.log("[scores] /analyze/pair fail http", res.status, body);
+    console.error("[scores] /analyze/pair fail http", res.status, body);
     throw new Error(`HTTP ${res.status} ${body}`);
   }
 
-  const json = await res.json();
+  const json = await res.json().catch(() => null);
+  if (!json) throw new Error("Invalid JSON from server");
   console.log("[scores] /analyze/pair ok", json);
   return json as Scores;
 }
 
+/* -------------------------------------------------------------------------- */
+/*   Byte-fallback upload: pair                                               */
+/* -------------------------------------------------------------------------- */
+
 async function analyzePairBytes(frontUri: string, sideUri: string): Promise<Scores> {
-  // Resolve existing paths; then base64 encode directly
   const [frontPath, sidePath] = await Promise.all([
     resolveExistingPath(frontUri),
     resolveExistingPath(sideUri),
@@ -157,7 +161,10 @@ async function analyzePairBytes(frontUri: string, sideUri: string): Promise<Scor
     }),
   ]);
 
-  const res = await timeoutFetch(`${API_BASE}/analyze/pair-bytes`, {
+  const url = `${API_BASE}/analyze/pair-bytes`;
+  const start = Date.now();
+
+  const res = await timeoutFetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "application/json" },
     body: JSON.stringify({
@@ -166,29 +173,77 @@ async function analyzePairBytes(frontUri: string, sideUri: string): Promise<Scor
     }),
   });
 
+  const duration = Date.now() - start;
   if (!res.ok) {
     const body = await res.text().catch(() => "");
-    console.log("[scores] /analyze/pair-bytes fail http", res.status, body);
+    console.error("[scores] /analyze/pair-bytes fail http", res.status, body);
     throw new Error(`HTTP ${res.status} ${body}`);
   }
-  const json = await res.json();
-  console.log("[scores] /analyze/pair-bytes ok", json);
+
+  const json = await res.json().catch(() => null);
+  if (!json) throw new Error("Invalid JSON from server");
+  console.log(`[scores] /analyze/pair-bytes ok (${duration} ms)`, json);
   return json as Scores;
 }
+
+/* -------------------------------------------------------------------------- */
+/*   Public entrypoint: pair                                                  */
+/* -------------------------------------------------------------------------- */
 
 export async function analyzePair(frontUri: string, sideUri: string): Promise<Scores> {
   try {
     return await analyzePairMultipart(frontUri, sideUri);
   } catch (err: any) {
     if (err?.message === "NETWORK_LAYER_FAIL") {
-      console.log("[scores] falling back to /analyze/pair-bytes");
+      console.warn("[scores] falling back to /analyze/pair-bytes");
       return await analyzePairBytes(frontUri, sideUri);
     }
-    // If the file is gone, bubble a clear, user-facing message
     if ((err as any)?.code === "FILE_GONE") {
-      console.log("[scores] file missing:", (err as any).details);
+      console.error("[scores] file missing:", (err as any).details);
       throw err;
     }
+    console.error("[scores] analyzePair unrecoverable error:", err);
     throw err;
   }
+}
+
+/* -------------------------------------------------------------------------- */
+/*   Single-image upload                                                      */
+/* -------------------------------------------------------------------------- */
+
+export async function analyzeImage(uri: string): Promise<Scores> {
+  const path = await resolveExistingPath(uri);
+  const form = new FormData();
+  // Server expects field "image" on /analyze
+  form.append("image", { uri: path, name: "image.jpg", type: "image/jpeg" } as any);
+
+  const url = `${API_BASE}/analyze`;
+  const start = Date.now();
+  console.log("[scores] POST", url, { path });
+
+  let res: Response;
+  try {
+    res = await timeoutFetch(url, {
+      method: "POST",
+      body: form,
+      headers: { Accept: "application/json" },
+    });
+  } catch (e: any) {
+    console.error("[scores] /analyze network error:", e?.message || e);
+    throw new Error("NETWORK_LAYER_FAIL");
+  } finally {
+    const duration = Date.now() - start;
+    console.log(`[scores] /analyze duration: ${duration} ms`);
+  }
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    console.error("[scores] /analyze fail http", res.status, body);
+    throw new Error(`HTTP ${res.status} ${body}`);
+  }
+
+  const json = await res.json().catch(() => null);
+  if (!json) throw new Error("Invalid JSON from server");
+  console.log("[scores] /analyze ok", json);
+  return json as Scores;
 }
