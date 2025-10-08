@@ -32,16 +32,17 @@ const OPTIONS: Row[] = [
 ];
 
 export default function GenderScreen() {
-  const { data, setField, finish } = useOnboarding();
+  const { data, setField } = useOnboarding();
   const selected = data.gender;
 
   const rows = useMemo(() => OPTIONS, []);
 
   const choose = (label: string) => setField("gender", label);
-  const onNext = async () => {
+
+  // Navigate to the new final onboarding screen (no finish here)
+  const onNext = () => {
     if (!selected) return;
-    await finish();
-    router.replace("/loading");
+    router.push("/(onboarding)/edge");
   };
 
   return (
@@ -111,9 +112,9 @@ export default function GenderScreen() {
             <T style={styles.primaryLabel}>Next</T>
           </Pressable>
 
-          {/* Skip */}
+          {/* Skip -> also go to edge */}
           <Pressable
-            onPress={onNext}
+            onPress={() => router.push("/(onboarding)/edge")}
             style={({ pressed }) => [
               styles.secondaryBtn,
               pressed && { transform: [{ translateY: 1 }] },
@@ -226,7 +227,6 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     borderWidth: 2,
     borderColor: ACCENT,
-    // iOS glow only; Android keeps it flat to avoid black slabs
     ...(Platform.OS === "ios"
       ? {
           shadowColor: ACCENT,
@@ -237,7 +237,7 @@ const styles = StyleSheet.create({
       : null),
   },
   optionActive: {
-    backgroundColor: "rgba(143,163,30,0.08)", // very subtle fill under the stroke
+    backgroundColor: "rgba(143,163,30,0.08)",
     borderColor: ACCENT,
   },
   optionText: {
