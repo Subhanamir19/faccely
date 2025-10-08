@@ -1,3 +1,4 @@
+// app/(onboarding)/edge.tsx
 import React, { useCallback, useState } from "react";
 import { View, ImageBackground, StyleSheet, SafeAreaView } from "react-native";
 import { router } from "expo-router";
@@ -109,8 +110,9 @@ export default function EdgeScreen() {
     } catch {
       /* don’t brick onboarding if storage is offline */
     }
-    router.replace("/(tabs)");
-}, []);
+    // ⬇️ land on the tab group's actual entry route
+    router.replace("/(tabs)/take-picture");
+  }, []);
 
   return (
     <ImageBackground
