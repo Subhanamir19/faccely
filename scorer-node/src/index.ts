@@ -91,9 +91,22 @@ const upload = multer({
 
 async function toJpegBuffer(file: Express.Multer.File) {
   if (!file?.buffer?.length) throw new Error("empty_upload_buffer");
-  const out = await sharp(file.buffer).rotate().jpeg({ quality: 92, mozjpeg: true }).toBuffer();
-  return { buffer: out, mime: "image/jpeg" as const };
+  try {
+    const out = await sharp(file.buffer).rotate().jpeg({ quality: 92, mozjpeg: true }).toBuffer();
+    return { buffer: out, mime: "image/jpeg" as const };
+  } catch (e: any) {
+    const msg = String(e?.message || e);
+    const isHeif = /heif|heic|compression format has not been built/i.test(msg);
+    if (isHeif) {
+      const err: any = new Error("unsupported_image_codec_heic");
+      err.status = 415;
+      err.hint = "HEIC/HEIF not supported on server. Please upload JPEG or PNG.";
+      throw err;
+    }
+    throw e;
+  }
 }
+
 
 function errorPayload(err: any) {
   const openaiMsg =
@@ -216,7 +229,11 @@ app.post("/analyze", upload.single("image"), async (req, res) => {
     console.error("[/analyze] error:", err?.response?.data ?? err);
     if (err instanceof ZodError)
       return res.status(422).json({ error: "invalid_scores_shape", issues: err.issues });
+    if ((err as any).status === 415) {
+      return res.status(415).json({ error: "unsupported_image_codec", hint: (err as any).hint });
+    }
     res.status(500).json(errorPayload(err));
+    
   } finally {
     release();
     console.log("[/analyze] ms =", Date.now() - t0);
