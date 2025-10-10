@@ -1,4 +1,4 @@
-// C:\SS\facely\store\scores.ts
+// facely/store/scores.ts
 import { create } from "zustand";
 import {
   API_BASE,
@@ -204,3 +204,18 @@ export const useScores = create<State & Actions>((set, get) => ({
       explError: null,
     }),
 }));
+
+// ---------------------------------------------------------------------------
+// Helpers for UI (non-breaking additions)
+// ---------------------------------------------------------------------------
+export function getSubmetricVerdicts(
+  explanations: Explanations | null,
+  metric: keyof Scores
+): string[] {
+  if (!explanations) return ["", "", "", ""];
+  const arr = (explanations as any)[metric];
+  if (Array.isArray(arr) && arr.length > 0) {
+    return arr.slice(0, 4);
+  }
+  return ["", "", "", ""];
+}

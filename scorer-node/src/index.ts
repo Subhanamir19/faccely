@@ -14,8 +14,11 @@ import { generateRecommendations, RecommendationsParseError } from "./recommende
 import { ENV } from "./env.js";
 import {
   ScoresSchema,
-  ExplanationsSchema,
-  RecommendationsRequestSchema,
+  ExplanationsSchemaV1,
+  ExplanationsSchemaV2,
+  RecommendationsRequestSchema, // ← you were missing this
+  type ExplanationsV1,
+  type ExplanationsV2,
 } from "./validators.js";
 import { scoreImageBytes, scoreImagePairBytes } from "./scorer.js";
 import { explainImageBytes, explainImagePairBytes } from "./explainer.js";
@@ -103,6 +106,16 @@ function preview(buf?: Buffer) {
   if (!buf) return "nil";
   const head = buf.slice(0, 12).toString("hex");
   return `${buf.length}B ${head}`;
+}
+
+// Coerce a V1 explanations object to V2 (pad to 4 lines)
+function coerceV1toV2(v1: ExplanationsV1): ExplanationsV2 {
+  const out: any = {};
+  for (const k of Object.keys(v1)) {
+    const arr = (v1 as any)[k] as string[];
+    out[k] = [...arr, "", "", ""].slice(0, 4);
+  }
+  return out as ExplanationsV2;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -263,7 +276,16 @@ app.post("/analyze/explain", upload.single("image"), async (req, res) => {
     const scores = ScoresSchema.parse(JSON.parse(scoresRaw));
     const { buffer, mime } = await toJpegBuffer(req.file);
     const notes = await explainImageBytes(openai, buffer, mime, scores);
-    const parsed = ExplanationsSchema.parse(notes);
+
+    // Prefer V2 (4 lines). If it fails, accept V1 and coerce to 4.
+    let parsed: ExplanationsV2;
+    try {
+      parsed = ExplanationsSchemaV2.parse(notes);
+    } catch {
+      const v1 = ExplanationsSchemaV1.parse(notes);
+      parsed = ExplanationsSchemaV2.parse(coerceV1toV2(v1));
+    }
+
     res.json(parsed);
   } catch (err: any) {
     if (err.message === "server_overloaded")
@@ -305,7 +327,16 @@ app.post(
         sJ.mime,
         scores
       );
-      const parsed = ExplanationsSchema.parse(notes);
+
+      // Prefer V2; fallback to V1 and coerce.
+      let parsed: ExplanationsV2;
+      try {
+        parsed = ExplanationsSchemaV2.parse(notes);
+      } catch {
+        const v1 = ExplanationsSchemaV1.parse(notes);
+        parsed = ExplanationsSchemaV2.parse(coerceV1toV2(v1));
+      }
+
       res.json(parsed);
     } catch (err: any) {
       if (err.message === "server_overloaded")
@@ -327,7 +358,8 @@ app.post("/recommendations", upload.none(), async (req, res) => {
   if (!parsedReq.success)
     return res.status(400).json({
       error: "invalid_recommendations_payload",
-      issues: parsedReq.error.issues?.map((i) => ({
+      issues: parsedReq.error.issues?.map((i: ZodIssue) => ({
+        //             ^^^^^^^^^^^^^ add type so TS stops whining
         path: i.path,
         code: i.code,
         message: i.message,

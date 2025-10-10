@@ -1,3 +1,4 @@
+// facely/components/analysis/AnalysisCard.tsx
 import React from "react";
 import { View, Image, StyleSheet, TextStyle } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
@@ -23,6 +24,9 @@ export type AnalysisCopy = {
   improveText?: string;
 };
 
+// NEW: sub-metric view model (UI-only, optional)
+export type SubmetricView = { title: string; verdict?: string };
+
 const ACCENT = "#8FA31E";
 const PAD = 16;
 const MEDIA_H = 230; // visually matches score.tsx graph height
@@ -30,10 +34,14 @@ const MEDIA_H = 230; // visually matches score.tsx graph height
 export default function AnalysisCard({
   metric,
   copy,
+  submetrics, // ← if provided, shows the 2×2 grid
 }: {
   metric: MetricKey;
   copy: AnalysisCopy;
+  submetrics?: SubmetricView[];
 }) {
+  const showGrid = Array.isArray(submetrics) && submetrics.length > 0;
+
   return (
     <GlassCard>
       {/* Inner content uses the same horizontal rhythm as score.tsx */}
@@ -48,7 +56,6 @@ export default function AnalysisCard({
 
         {/* Face visualization with subtle dark overlay to match palette */}
         <View style={styles.faceWrap}>
-          {/* contain => no cropping */}
           <Image source={metricImage[metric]} resizeMode="contain" style={styles.face} />
           <LinearGradient
             colors={["rgba(0,0,0,0.18)", "rgba(0,0,0,0.02)"]}
@@ -57,8 +64,6 @@ export default function AnalysisCard({
             style={StyleSheet.absoluteFill}
             pointerEvents="none"
           />
-
-          {/* Current band badge sits inside media block to save vertical space */}
           {copy.currentLabel ? (
             <View style={styles.badge}>
               <Text style={{ fontSize: 12, fontWeight: "600", color: "#101010" }}>
@@ -68,21 +73,36 @@ export default function AnalysisCard({
           ) : null}
         </View>
 
-        {/* Strength */}
-        {copy.strengthTitle ? (
-          <Text style={tx.sectionHeading as TextStyle}>{copy.strengthTitle}</Text>
-        ) : null}
-        {copy.strengthText ? (
-          <Text style={tx.bodyText as TextStyle}>{copy.strengthText}</Text>
-        ) : null}
+        {/* Either render NEW 2×2 sub-metric grid, or fallback to old Strength/Improve copy */}
+        {showGrid ? (
+          <View style={styles.grid}>
+            {submetrics!.slice(0, 4).map((s, i) => (
+              <View key={`${s.title}-${i}`} style={styles.subCard}>
+                <Text style={styles.subTitle}>{s.title}</Text>
+                <Text style={styles.subVerdict} numberOfLines={2}>
+                  {s.verdict || "—"}
+                </Text>
+                <View style={styles.subUnderline} />
+              </View>
+            ))}
+          </View>
+        ) : (
+          <>
+            {copy.strengthTitle ? (
+              <Text style={tx.sectionHeading as TextStyle}>{copy.strengthTitle}</Text>
+            ) : null}
+            {copy.strengthText ? (
+              <Text style={tx.bodyText as TextStyle}>{copy.strengthText}</Text>
+            ) : null}
 
-        {/* Improve */}
-        {copy.improveTitle ? (
-          <Text style={tx.sectionHeading as TextStyle}>{copy.improveTitle}</Text>
-        ) : null}
-        {copy.improveText ? (
-          <Text style={tx.bodyText as TextStyle}>{copy.improveText}</Text>
-        ) : null}
+            {copy.improveTitle ? (
+              <Text style={tx.sectionHeading as TextStyle}>{copy.improveTitle}</Text>
+            ) : null}
+            {copy.improveText ? (
+              <Text style={tx.bodyText as TextStyle}>{copy.improveText}</Text>
+            ) : null}
+          </>
+        )}
       </View>
     </GlassCard>
   );
@@ -123,7 +143,6 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.06)",
   },
 
-  // keep full box, no cropping; contain respects image aspect
   face: { width: "100%", height: "100%", alignSelf: "center" },
 
   badge: {
@@ -137,11 +156,41 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: ACCENT,
   },
+
+  // New grid styles
+  grid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+    paddingTop: 4,
+  },
+  subCard: {
+    flexBasis: "48%", // two per row
+    backgroundColor: "rgba(0,0,0,0.35)",
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.06)",
+  },
+  subTitle: {
+    color: "#D7FF9E",
+    fontWeight: "700",
+    marginBottom: 6,
+  },
+  subVerdict: {
+    color: "rgba(255,255,255,0.92)",
+    minHeight: 18,
+  },
+  subUnderline: {
+    height: 2,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    marginTop: 8,
+    borderRadius: 2,
+  },
 });
 
 const tx = StyleSheet.create({
   title: {
-    // Keep weight and palette, bring size closer to score.tsx header presence
     fontSize: 20,
     fontWeight: "700",
     letterSpacing: 0.2,
@@ -158,7 +207,6 @@ const tx = StyleSheet.create({
     lineHeight: 20,
     color: "rgba(255,255,255,0.92)",
   },
-  // kept for compatibility if referenced elsewhere
   current: {
     marginTop: 6,
     fontSize: 16,

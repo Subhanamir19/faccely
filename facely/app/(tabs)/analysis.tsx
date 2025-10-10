@@ -12,6 +12,8 @@ import {
 } from "react-native";
 import PagerView from "react-native-pager-view";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import AnalysisCard from "@/components/analysis/AnalysisCard";
+
 
 // Poppins wrapper
 import Text from "@/components/ui/T";
@@ -21,8 +23,7 @@ import { useScores } from "../../store/scores";
 import { useRecommendations } from "../../store/recommendations";
 import { useRouter } from "expo-router";
 
-// Card guts
-import AnalysisCard, { AnalysisCopy } from "@/components/analysis/AnalysisCard";
+// UI
 import GlassBtn from "@/components/ui/GlassBtn";
 
 const BG = require("../../assets/bg/score-bg.jpg");
@@ -31,16 +32,16 @@ const { width } = Dimensions.get("window");
 // ---------------------------------------------------------------------------
 // Tokens — mirror score.tsx spacing rhythm
 // ---------------------------------------------------------------------------
-const GUTTER = 16;                 // left/right screen padding (matches score)
+const GUTTER = 16; // left/right screen padding (matches score)
 const CARD_W = width - GUTTER * 2; // card width exactly like score.tsx
-const PAGE_TOP = 10;               // top padding inside each pager page
+const PAGE_TOP = 10; // top padding inside each pager page
 
 const DOT_SIZE = 6;
 const DOT_ACTIVE_W = 24;
 
-const PILL_ROW_BOTTOM = 14;         // bottom offset of pill row (matches score)
-const PILL_ROW_GAP = 12;           // space between pills
-const DOTS_ABOVE_PILLS = 82;       // vertical distance of dots above bottom
+const PILL_ROW_BOTTOM = 14; // bottom offset of pill row (matches score)
+const PILL_ROW_GAP = 12; // space between pills
+const DOTS_ABOVE_PILLS = 82; // vertical distance of dots above bottom
 
 // ---------------------------------------------------------------------------
 // Types & constants
@@ -66,12 +67,50 @@ const ORDER: MetricKey[] = [
 
 const LABELS: Record<MetricKey, string> = {
   jawline: "Jawline",
-  facial_symmetry: "Facial Symmetry",
-  skin_quality: "Skin Quality",
+  facial_symmetry: "Face Symmetry",
+  skin_quality: "Skin",
   cheekbones: "Cheekbones",
-  eyes_symmetry: "Eye Symmetry",
-  nose_harmony: "Nose Harmony",
-  sexual_dimorphism: "Sexual Dimorphism",
+  eyes_symmetry: "Eyes",
+  nose_harmony: "Nose",
+  sexual_dimorphism: "Masculinity",
+};
+
+// Sub-metric titles per feature (exactly what you mocked)
+const SUBMETRICS: Record<MetricKey, [string, string, string, string]> = {
+  eyes_symmetry: ["Symmetry", "Shape", "Canthal Tilt", "Color"],
+  jawline: ["Sharpness", "Symmetry", "Gonial Angle", "Projection"],
+  cheekbones: ["Definition", "Face Fat", "Maxilla Development", "Bizygomatic Width"],
+  nose_harmony: ["Nose Shape", "Straightness", "Nose Balance", "Nose Tip Type"],
+  skin_quality: ["Clarity", "Smoothness", "Evenness", "Youthfulness"],
+  facial_symmetry: ["Horizontal Alignment", "Vertical Balance", "Eye-Line Level", "Nose-Line Centering"],
+  sexual_dimorphism: ["Face Power", "Hormone Balance", "Contour Strength", "Softness Level"],
+};
+
+// Optional default one-line verdicts so UI never looks empty.
+// Replace these gradually with real per-submetric text from your explanations pipeline.
+const DEFAULT_VERDICTS: Partial<Record<MetricKey, string[]>> = {
+  eyes_symmetry: [
+    "Left eyelid slightly higher",
+    "Almond shape, ideal",
+    "Neutral — a slight lift improves sharpness",
+    "Clear and vibrant",
+  ],
+  jawline: [
+    "Crisp and well-defined",
+    "Balanced on both sides",
+    "Ideal, around 120°",
+    "Not recessed, well-pronounced",
+  ],
+  cheekbones: [
+    "Sharp and angular",
+    "Low, well-defined",
+    "Developed, ideal",
+    "Masculine, ideal",
+  ],
+  nose_harmony: ["Ideal", "Straight", "Well-proportioned", "Slightly bulbous"],
+  skin_quality: ["No acne or blemishes", "Smooth and soft", "Even tone", "Youthful appearance"],
+  facial_symmetry: ["Well-centered", "Upper-tilt left", "Aligned", "Centered"],
+  sexual_dimorphism: ["Solid and defined", "Leans masculine", "Clear edges throughout", "Firm, minimal softness"],
 };
 
 // ---------------------------------------------------------------------------
@@ -85,29 +124,24 @@ function band(score: number | undefined) {
   return "Poor";
 }
 
-function defaultStrength(m: MetricKey) {
-  switch (m) {
-    case "eyes_symmetry": return "Your eyes are well aligned, contributing to balance.";
-    case "jawline": return "Defined mandibular contour gives structure.";
-    case "cheekbones": return "Zygomatic height adds lift and contrast.";
-    case "nose_harmony": return "Nasal width and length fit overall proportions.";
-    case "facial_symmetry": return "Left-right features are relatively balanced.";
-    case "skin_quality": return "Texture and evenness support clarity.";
-    case "sexual_dimorphism": return "Proportions lean toward stronger masculine cues.";
-  }
+// ---------------------------------------------------------------------------
+// Small local UI components (self-contained, no external deps)
+// ---------------------------------------------------------------------------
+type SubmetricView = { title: string; verdict?: string };
+
+function SubmetricCard({ title, verdict }: SubmetricView) {
+  return (
+    <View style={styles.subCard}>
+      <Text style={styles.subTitle}>{title}</Text>
+      <Text style={styles.subVerdict} numberOfLines={2}>
+        {verdict || "—"}
+      </Text>
+      <View style={styles.subUnderline} />
+    </View>
+  );
 }
 
-function defaultImprove(m: MetricKey) {
-  switch (m) {
-    case "eyes_symmetry": return "Keep neutral head angle; eyebrow grooming can help.";
-    case "jawline": return "Lower submental fat; posture and tongue posture improve definition.";
-    case "cheekbones": return "Stay lean; even light from above emphasizes zygomatic contrast.";
-    case "nose_harmony": return "Avoid harsh lighting; choose flattering focal length (50–85mm eq).";
-    case "facial_symmetry": return "Shoot straight-on with even light; avoid lens distortion.";
-    case "skin_quality": return "Routine: cleanse, moisturize, SPF; sleep and hydration.";
-    case "sexual_dimorphism": return "Haircut shaping, brow clean-up, jaw posture for structure.";
-  }
-}
+
 
 // ---------------------------------------------------------------------------
 // Screen
@@ -148,7 +182,7 @@ export default function AnalysisScreen() {
       <SafeAreaView
         style={{
           flex: 1,
-          paddingTop: Platform.OS === "android" ? (StatusBar.currentHeight || 0) : 0,
+          paddingTop: Platform.OS === "android" ? StatusBar.currentHeight || 0 : 0,
         }}
       >
         {/* loader/errors row */}
@@ -159,9 +193,7 @@ export default function AnalysisScreen() {
           </View>
         ) : null}
         {explError ? (
-          <Text style={{ color: "#FF6B6B", textAlign: "center", marginTop: 8 }}>
-            {String(explError)}
-          </Text>
+          <Text style={{ color: "#FF6B6B", textAlign: "center", marginTop: 8 }}>{String(explError)}</Text>
         ) : null}
 
         {/* Swipeable cards */}
@@ -173,32 +205,36 @@ export default function AnalysisScreen() {
         >
           {ORDER.map((metric) => {
             const score = scores?.[metric] as number | undefined;
-            const lines = ((explanations?.[metric] ?? []) as string[]) || [];
-            const copy: AnalysisCopy = {
-              title: LABELS[metric],
-              strengthTitle: "Strength",
-              strengthText: lines[0] || defaultStrength(metric),
-              currentLabel: band(score) ? `Current: ${band(score)}` : undefined,
-              improveTitle: "Improve",
-              improveText: lines[1] || defaultImprove(metric),
-            };
+            const current = band(score) ? `Current: ${band(score)}` : undefined;
+
+            // If you already have per-submetric text in `explanations`, wire it here.
+            // Expecting explanations?.[metric] as string[] of length 4. If it isn't, we fallback to defaults.
+            const verdicts: string[] =
+              (Array.isArray((explanations as any)?.[metric]) &&
+                ((explanations as any)[metric] as string[]).slice(0, 4)) ||
+              DEFAULT_VERDICTS[metric] ||
+              ["", "", "", ""];
+
+            const titles = SUBMETRICS[metric];
+            const submetrics = titles.map((t, i) => ({ title: t, verdict: verdicts[i] })) as SubmetricView[];
+
             return (
               <View key={metric} style={styles.page}>
                 <View style={styles.cardWrap}>
-                  <AnalysisCard metric={metric} copy={copy} />
+                <AnalysisCard
+  metric={metric}
+  copy={{ title: LABELS[metric], currentLabel: current }}
+  submetrics={submetrics}
+/>
+
                 </View>
               </View>
             );
           })}
         </PagerView>
 
-        {/* Dots: anchored just above the buttons, same spacing rhythm as score */}
-        <View
-          style={[
-            styles.dots,
-            { bottom: insets.bottom + DOTS_ABOVE_PILLS },
-          ]}
-        >
+        {/* Dots: anchored just above the buttons */}
+        <View style={[styles.dots, { bottom: insets.bottom + DOTS_ABOVE_PILLS }]}>
           {ORDER.map((_, i) => (
             <View key={i} style={[styles.dot, i === idx && styles.dotActive]} />
           ))}
@@ -211,32 +247,17 @@ export default function AnalysisScreen() {
             { left: GUTTER, right: GUTTER, bottom: PILL_ROW_BOTTOM + insets.bottom },
           ]}
         >
-          {/* Left pill: always Previous */}
-<GlassBtn
-  label="Previous"
-  icon="chevron-back"
-  onPress={() => !isFirst && goTo(idx - 1)}
-  disabled={isFirst}
-/>
+          <GlassBtn label="Previous" icon="chevron-back" onPress={() => !isFirst && goTo(idx - 1)} disabled={isFirst} />
 
-{/* Right pill: Next normally; Recommendations on last card */}
-{!isLast ? (
-  <GlassBtn
-    label="Next"
-    icon="chevron-forward"
-    onPress={() => goTo(idx + 1)}
-  />
-) : (
-  <GlassBtn
-    label="Recommendations"
-    icon="sparkles"
-    onPress={handleRecommendations}
-  />
-)}
-</View>
-</SafeAreaView>
-</ImageBackground>
-);
+          {!isLast ? (
+            <GlassBtn label="Next" icon="chevron-forward" onPress={() => goTo(idx + 1)} />
+          ) : (
+            <GlassBtn label="Recommendations" icon="sparkles" onPress={handleRecommendations} />
+          )}
+        </View>
+      </SafeAreaView>
+    </ImageBackground>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -250,20 +271,98 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
-  // Pager page container: mirrors score.tsx gutters and top offset
- // Pager page container: fully center the card
-page: {
-  flex: 1,
-  justifyContent: "center",   // vertical centering
-  alignItems: "center",       // horizontal centering
-  paddingHorizontal: GUTTER,  // keep same side gutters
-},
+  // Pager page container: fully center the card
+  page: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: GUTTER,
+    paddingTop: PAGE_TOP,
+  },
 
-
-  // Card wrapper: exact same width and centering as score card
+  // Outer card container
   cardWrap: {
     width: CARD_W,
     alignSelf: "center",
+  },
+
+  // Card shell
+  card: {
+    borderRadius: 24,
+    overflow: "hidden",
+    backgroundColor: "rgba(8,9,10,0.6)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.06)",
+  },
+
+  cardTitle: {
+    fontSize: 28,
+    lineHeight: 34,
+    color: "white",
+    paddingHorizontal: 18,
+    paddingTop: 16,
+    paddingBottom: 8,
+    fontWeight: "600",
+  },
+
+  portraitWrap: {
+    height: 210,
+    marginHorizontal: 14,
+    marginBottom: 10,
+    borderRadius: 18,
+    overflow: "hidden",
+    backgroundColor: "rgba(255,255,255,0.03)",
+  },
+  portraitShade: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.35)",
+  },
+
+  badge: {
+    position: "absolute",
+    right: 12,
+    bottom: 12,
+    backgroundColor: "#B8FF59",
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 14,
+  },
+  badgeText: {
+    color: "#0B0C0D",
+    fontWeight: "600",
+  },
+
+  // 2x2 grid
+  grid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+    padding: 14,
+    paddingBottom: 18,
+  },
+
+  subCard: {
+    width: (CARD_W - 14 * 2 - 12) / 2, // two per row, accounting for padding & gap
+    backgroundColor: "rgba(0,0,0,0.35)",
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.06)",
+  },
+  subTitle: {
+    color: "#D7FF9E",
+    fontWeight: "600",
+    marginBottom: 6,
+  },
+  subVerdict: {
+    color: "rgba(255,255,255,0.92)",
+    minHeight: 18,
+  },
+  subUnderline: {
+    height: 2,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    marginTop: 8,
+    borderRadius: 2,
   },
 
   // Dots

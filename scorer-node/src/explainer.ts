@@ -1,19 +1,18 @@
-// C:\SS\scorer-node\src\explainer.ts
+// scorer-node/src/explainer.ts
 import OpenAI from "openai";
 import crypto from "crypto";
 import { Scores, metricKeys, type MetricKey } from "./validators.js";
-import { normalizeToPngDataUrl } from "./lib/image-normalize.js";
 
 /**
  * Explainer goals
  * - Deterministic per image (or image pair) + scores
- * - Two ultra-concise lines per metric, not generic templates
+ * - Four ultra-concise lines per metric (mapped to UI sub-metrics)
  * - Pairs must actually use both views
  * - Strict JSON output only
  */
 
 const MODEL = process.env.OPENAI_EXPLAINER_MODEL || "gpt-4o-mini";
-const PROMPT_VERSION_EXPLAIN = "exp.v2.0";
+const PROMPT_VERSION_EXPLAIN = "exp.v3.0"; // bumped
 const CACHE_TTL_MS = Number(process.env.EXPLAINER_CACHE_TTL_MS ?? 1000 * 60 * 60 * 24 * 30); // 30d
 const CACHE_MAX_ITEMS = Number(process.env.EXPLAINER_CACHE_MAX_ITEMS ?? 5000);
 
@@ -50,78 +49,73 @@ function lruSet(key: string, value: ExplainerPayload) {
   memCache.set(key, { value, ts: Date.now() });
 }
 
-/* --------------------------- Prompt Constraints --------------------------- */
+/* --------------------------- Submetric order map -------------------------- */
+/* Must match the mobile UI exactly (2×2 grid order). */
+
+const SUBMETRIC_ORDER: Record<MetricKey, readonly [string, string, string, string]> = {
+  eyes_symmetry: ["Symmetry", "Shape", "Canthal Tilt", "Color"],
+  jawline: ["Sharpness", "Symmetry", "Gonial Angle", "Projection"],
+  cheekbones: ["Definition", "Face Fat", "Maxilla Development", "Bizygomatic Width"],
+  nose_harmony: ["Nose Shape", "Straightness", "Nose Balance", "Nose Tip Type"],
+  skin_quality: ["Clarity", "Smoothness", "Evenness", "Youthfulness"],
+  facial_symmetry: ["Horizontal Alignment", "Vertical Balance", "Eye-Line Level", "Nose-Line Centering"],
+  sexual_dimorphism: ["Face Power", "Hormone Balance", "Contour Strength", "Softness Level"],
+};
+
+/* -------------------------- Prompt discipline lists ----------------------- */
 
 const METRIC_CHECKLIST = {
-  jawline: `["edge","angle","under-jaw","chin center","jaw corner"]`,
+  jawline: `["edge","angle","under-jaw","chin","corner"]`,
   facial_symmetry: `["left/right","tilt","height","width","offset"]`,
   eyes_symmetry: `["left/right","tilt","height","spacing","set"]`,
   cheekbones: `["projection","height","lift","contour"]`,
   nose_harmony: `["proportion","bridge","straight","blend","profile"]`,
-  skin_quality: `["texture","even","clarity","reflect","noise","shadow","light"]`,
+  skin_quality: `["texture","even","clarity","reflect","shadow","light"]`,
   sexual_dimorphism: `["brow","jaw","lips","contour","cheek"]`,
 };
 
+/* ------------------------------ System prompt ----------------------------- */
+
 const SYSTEM_PROMPT_BASE = `
-You are a facial aesthetician. Write ultra-concise, plain-English observations.
+You are a facial aesthetics reviewer. Write observations like a careful stylist: neutral, concise, practical.
 
-For each metric, output EXACTLY TWO lines:
-• Line 1 — Tier verdict + key visible trait (dominant strength for Strong/Elite, primary limitation for Developing/Emerging).
-• Line 2 — A single targeted refinement ONLY if useful; if already ideal, say: "already meets the standard; no adjustment needed."
+Output EXACTLY FOUR short lines per metric, mapped to the following sub-metrics and order:
+- eyes_symmetry: ["Symmetry","Shape","Canthal Tilt","Color"]
+- jawline: ["Sharpness","Symmetry","Gonial Angle","Projection"]
+- cheekbones: ["Definition","Face Fat","Maxilla Development","Bizygomatic Width"]
+- nose_harmony: ["Nose Shape","Straightness","Nose Balance","Nose Tip Type"]
+- skin_quality: ["Clarity","Smoothness","Evenness","Youthfulness"]
+- facial_symmetry: ["Horizontal Alignment","Vertical Balance","Eye-Line Level","Nose-Line Centering"]
+- sexual_dimorphism (write as "masculinity cues"): ["Face Power","Hormone Balance","Contour Strength","Softness Level"]
 
-Hard rules
-- Describe only what is visible. Present tense. No causes, products, routines, medical or identity claims.
-- No identity/ethnicity/age/health inferences. Neutral, respectful clinical phrasing.
-- Use everyday words only. BAN: dimorphism, malar, gonial, dorsum, anthropometry, ratio.
-- No filler or hedging: avoid "looks good", "decent", "might", "probably", "consider", "you should".
-- Each line ≤ 110 characters. No emojis. No markdown. Output STRICT JSON only with fixed keys.
-- Use ≥1 checklist token in EACH line for the relevant metric (see lists below).
-- Prefer a contrast word in Line 2 when proposing a change: "however", "but", "whereas", "while".
-- Do NOT repeat the same sentence or lever text across multiple metrics; vary wording appropriately.
+Rules
+- Describe only what is visible in the image(s). Present tense. No causes, routines, medical, identity or ethnicity claims.
+- Keep language simple and respectful. Everyday words only. Avoid jargon like "dimorphism", "malar", "gonial", "dorsum".
+- Each line ≤ 110 characters. Include at least one checklist token relevant to the metric.
+- If a sub-metric is already ideal, write a clear confirmation (e.g., "well centered", "clean edge"), not generic praise.
+- If a refinement helps, state ONE precise direction (edge/angle/height/spacing/texture/light) without prescribing products.
+- Symmetry: name the side and dimension if relevant (e.g., "left height slightly higher").
+- Camera hygiene is allowed only if visibility is impaired (e.g., uneven light softens edge).
+- No emojis. No markdown. No advice phrased as commands. Neutral suggestions only.
+- STRICT JSON ONLY with this shape:
+{
+  "jawline": [s1,s2,s3,s4],
+  "facial_symmetry": [s1,s2,s3,s4],
+  "skin_quality": [s1,s2,s3,s4],
+  "cheekbones": [s1,s2,s3,s4],
+  "eyes_symmetry": [s1,s2,s3,s4],
+  "nose_harmony": [s1,s2,s3,s4],
+  "sexual_dimorphism": [s1,s2,s3,s4]
+}
 
-Tone control by tier
-- Developing/Emerging: avoid praise adjectives ("strong", "clean", "sharp", "aligned").
-- Strong/Elite: such adjectives MAY appear once, modestly.
-- Never insulting; use phrasing like "less defined", "heaviness", "reduced clarity".
-
-Action requirement for low tiers (Developing/Emerging)
-- Line 2 MUST select EXACTLY ONE lever and phrase it succinctly:
-  1) Contour/definition: sharpen edge/angle/contour; reduce under-jaw softening; clarify jaw corner or chin center.
-  2) Volume/redistribution: reduce heaviness; restore lift/height/projection; adjust midface fullness for clearer contour.
-  3) Alignment/proportion: even left/right height/tilt/spacing; smooth bridge or profile blend; balance width/offset.
-  4) Surface/texture/light: even texture and reflect; reduce shadow bands or noise; prefer even light for clarity.
-  5) Openness/visibility: reduce brow heaviness; lift lid set; clear under-eye shadow to steady the set.
-  6) Grooming/styling: shape hair/brow/lip lines that clarify contour/edge/height without changing identity.
-  7) Camera hygiene (ONLY if visibility is impaired): neutral frontal angle and even light to reveal true edge/contour.
-
-Metric checklists (each line must include ≥1 token)
+Checklist tokens (use ≥1 per line):
 - jawline: ${METRIC_CHECKLIST.jawline}
 - facial_symmetry: ${METRIC_CHECKLIST.facial_symmetry}
 - eyes_symmetry: ${METRIC_CHECKLIST.eyes_symmetry}
 - cheekbones: ${METRIC_CHECKLIST.cheekbones}
 - nose_harmony: ${METRIC_CHECKLIST.nose_harmony}
 - skin_quality: ${METRIC_CHECKLIST.skin_quality}
-- sexual_dimorphism (write as "masculinity/femininity cues"): ${METRIC_CHECKLIST.sexual_dimorphism}
-
-Symmetry rule
-- If asymmetry is visible, NAME the side (“left/right height/tilt/spacing”). Do NOT say “some asymmetry”.
-
-Lighting/occlusion hygiene
-- If lighting/angle/makeup clearly soften edges, you may state it once as a visibility note in Line 1 or 2.
-
-Anti-template discipline
-- Do not reuse identical phrases across metrics or across different requests. Wording must reflect the actual cues and tiers.
-
-Return STRICT JSON ONLY:
-{
-  "jawline": [line1, line2],
-  "facial_symmetry": [line1, line2],
-  "skin_quality": [line1, line2],
-  "cheekbones": [line1, line2],
-  "eyes_symmetry": [line1, line2],
-  "nose_harmony": [line1, line2],
-  "sexual_dimorphism": [line1, line2]
-}
+- masculinity cues: ${METRIC_CHECKLIST.sexual_dimorphism}
 `.trim();
 
 /* ----------------------------- Single-image ------------------------------- */
@@ -135,23 +129,18 @@ export async function explainImageBytes(
   const img64 = bytes.toString("base64");
 
   const tierGuide = `
-Tier mapping (use EXACT words):
-- 0–30 Developing
-- 31–60 Emerging
-- 61–80 Strong
-- 81–100 Elite
+Use score ranges only to calibrate language strength (do NOT output scores):
+- 0–40 developing, 41–64 improving, 65–79 sharp, 80–100 elite.
+Keep wording neutral and specific regardless of tier.
 `.trim();
 
   const userText = `
-You are given: (a) a single face image, (b) numeric scores (0–100).
+You are given one face image and numeric metric scores (0–100).
 
 ${tierGuide}
 
-Requirements:
-- Compute the tier word for each metric from the score range above. Do NOT change scores.
-- Use the image to pick concrete visible traits so the lines are not generic.
-- Each line must include ≥1 checklist token for that metric.
-- JSON only, exactly two lines per metric.
+For EACH metric, write FOUR lines in the fixed sub-metric order listed in the system prompt.
+Use the image to pick concrete visible traits, not generic praise. JSON only.
 
 Scores JSON:
 ${JSON.stringify(scores)}
@@ -170,7 +159,7 @@ ${JSON.stringify(scores)}
       model: MODEL,
       temperature: 0.4,
       top_p: 0.9,
-      max_tokens: 900,
+      max_tokens: 1300,
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: SYSTEM_PROMPT_BASE },
@@ -187,8 +176,7 @@ ${JSON.stringify(scores)}
     const parsed = normalizeResponse(resp.choices?.[0]?.message?.content);
     lruSet(key, parsed);
     return parsed;
-  })()
-    .finally(() => inFlight.delete(key));
+  })().finally(() => inFlight.delete(key));
 
   inFlight.set(key, task);
   return task;
@@ -208,24 +196,20 @@ export async function explainImagePairBytes(
   const s64 = sideBytes.toString("base64");
 
   const tierGuide = `
-Tier mapping (use EXACT words):
-- 0–30 Developing
-- 31–60 Emerging
-- 61–80 Strong
-- 81–100 Elite
+Use score ranges only to calibrate language strength (do NOT output scores):
+- 0–40 developing, 41–64 improving, 65–79 sharp, 80–100 elite.
+Keep wording neutral and specific regardless of tier.
 `.trim();
 
   const userText = `
-You are given TWO images of the SAME face: first = frontal, second = right-side profile, plus numeric scores (0–100).
+You are given TWO images of the SAME face: first = frontal, second = right-side profile, plus metric scores.
 
 ${tierGuide}
 
-Pair-specific discipline:
-- Use BOTH views to decide which visible trait to mention. If a cue is profile-only (e.g., cervicomental angle, bridge blend), prefer Line 1 or 2 to mention that cue.
-- When a trait is clearly frontal-only vs profile-only, you MAY include a brief locator token like "(frontal)" or "(profile)" once.
-- For symmetry, name specific side and dimension: "left/right height/tilt/spacing".
-- Each line must include ≥1 checklist token for that metric.
-- JSON only, exactly two lines per metric.
+Pair discipline:
+- Use BOTH views. If a cue is profile-only (e.g., bridge blend, under-jaw angle), mention that cue once with "(profile)".
+- For symmetry, name side and dimension (e.g., "left tilt", "right height").
+- Write FOUR lines per metric in the fixed sub-metric order from the system prompt. JSON only.
 
 Scores JSON:
 ${JSON.stringify(scores)}
@@ -244,7 +228,7 @@ ${JSON.stringify(scores)}
       model: MODEL,
       temperature: 0.4,
       top_p: 0.9,
-      max_tokens: 1100,
+      max_tokens: 1500,
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: SYSTEM_PROMPT_BASE },
@@ -262,8 +246,7 @@ ${JSON.stringify(scores)}
     const parsed = normalizeResponse(resp.choices?.[0]?.message?.content);
     lruSet(key, parsed);
     return parsed;
-  })()
-    .finally(() => inFlight.delete(key));
+  })().finally(() => inFlight.delete(key));
 
   inFlight.set(key, task);
   return task;
@@ -272,7 +255,6 @@ ${JSON.stringify(scores)}
 /* --------------------------------- Keys ----------------------------------- */
 
 function cacheKeySingleExplain(image: Buffer, scores: Scores) {
-  // Deterministic key based on image content, scores, model, and prompt version
   const imgHash = sha256Hex(image);
   const scoreHash = sha256Hex(JSON.stringify(scores));
   return sha256Hex(`EXP|SINGLE|${MODEL}|${PROMPT_VERSION_EXPLAIN}|${imgHash}|${scoreHash}`);
@@ -282,7 +264,6 @@ function cacheKeyPairExplain(frontal: Buffer, side: Buffer, scores: Scores) {
   const fHash = sha256Hex(frontal);
   const sHash = sha256Hex(side);
   const scoreHash = sha256Hex(JSON.stringify(scores));
-  // Order matters: frontal then side
   return sha256Hex(`EXP|PAIR|${MODEL}|${PROMPT_VERSION_EXPLAIN}|${fHash}|${sHash}|${scoreHash}`);
 }
 
@@ -299,28 +280,36 @@ function normalizeResponse(raw: string | null | undefined): Record<MetricKey, st
 
   const out: Record<MetricKey, string[]> = {} as any;
 
-  const normalizeTwo = (arr: unknown): string[] => {
-    if (!Array.isArray(arr)) return ["", ""];
+  const normalizeFour = (arr: unknown, metric: MetricKey): string[] => {
+    if (!Array.isArray(arr)) return ["", "", "", ""];
     const lines = arr
       .filter((x) => typeof x === "string")
       .map((s) => String(s).trim().replace(/\s+/g, " "))
       .filter(Boolean)
-      .slice(0, 2);
-    while (lines.length < 2) lines.push("");
-    // cap to 110 chars each
-    return lines.map((s) => (s.length > 110 ? s.slice(0, 110).trim() : s));
+      .slice(0, 4);
+    while (lines.length < 4) lines.push("");
+    // Cap to 110 chars each
+    for (let i = 0; i < 4; i++) {
+      if (lines[i].length > 110) lines[i] = lines[i].slice(0, 110).trim();
+    }
+    // Gentle guard: if the model ignored ordering, still return 4 trimmed lines.
+    return lines;
   };
 
   for (const k of metricKeys) {
-    out[k] = normalizeTwo(data?.[k]);
+    out[k] = normalizeFour(data?.[k], k);
   }
 
-  // Optional: minimal de-duplication guard. If both lines are identical, nudge Line 2.
+  // Minimal de-duplication guard: nudge repeated lines slightly.
   for (const k of metricKeys) {
-    const [a, b] = out[k];
-    if (a && b && a.toLowerCase() === b.toLowerCase()) {
-      out[k][1] = b + " (refine)";
-    }
+    const seen = new Set<string>();
+    out[k] = out[k].map((line) => {
+      const lower = line.toLowerCase();
+      if (!line) return line;
+      if (seen.has(lower)) return `${line} (refine)`;
+      seen.add(lower);
+      return line;
+    });
   }
 
   return out;

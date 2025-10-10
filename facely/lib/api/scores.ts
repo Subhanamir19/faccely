@@ -19,6 +19,29 @@ export type Scores = {
 };
 
 /* -------------------------------------------------------------------------- */
+/*   Safe normalization                                                       */
+/* -------------------------------------------------------------------------- */
+
+const METRIC_KEYS: (keyof Scores)[] = [
+  "jawline",
+  "facial_symmetry",
+  "skin_quality",
+  "cheekbones",
+  "eyes_symmetry",
+  "nose_harmony",
+  "sexual_dimorphism",
+];
+
+export function normalizeScores(raw: Partial<Scores> | null | undefined): Scores {
+  const safe: any = {};
+  for (const k of METRIC_KEYS) {
+    const v = (raw as any)?.[k];
+    safe[k] = typeof v === "number" && Number.isFinite(v) ? v : 0;
+  }
+  return safe as Scores;
+}
+
+/* -------------------------------------------------------------------------- */
 /*   Timeout helpers                                                          */
 /* -------------------------------------------------------------------------- */
 
@@ -37,7 +60,6 @@ function timeoutFetch(
 }
 
 function filePart(uri: string, name: string) {
-  // Android requires uri + name + type, always.
   return { uri, name, type: "image/jpeg" } as any;
 }
 
@@ -115,7 +137,7 @@ async function analyzePairMultipart(frontUri: string, sideUri: string): Promise<
     res = await timeoutFetch(url, {
       method: "POST",
       body: form,
-      headers: { Accept: "application/json" }, // RN sets boundary automatically
+      headers: { Accept: "application/json" },
     });
   } catch (e: any) {
     console.error("[scores] /analyze/pair network error:", e?.message || e);
@@ -134,7 +156,7 @@ async function analyzePairMultipart(frontUri: string, sideUri: string): Promise<
   const json = await res.json().catch(() => null);
   if (!json) throw new Error("Invalid JSON from server");
   console.log("[scores] /analyze/pair ok", json);
-  return json as Scores;
+  return normalizeScores(json);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -183,7 +205,7 @@ async function analyzePairBytes(frontUri: string, sideUri: string): Promise<Scor
   const json = await res.json().catch(() => null);
   if (!json) throw new Error("Invalid JSON from server");
   console.log(`[scores] /analyze/pair-bytes ok (${duration} ms)`, json);
-  return json as Scores;
+  return normalizeScores(json);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -214,7 +236,6 @@ export async function analyzePair(frontUri: string, sideUri: string): Promise<Sc
 export async function analyzeImage(uri: string): Promise<Scores> {
   const path = await resolveExistingPath(uri);
   const form = new FormData();
-  // Server expects field "image" on /analyze
   form.append("image", { uri: path, name: "image.jpg", type: "image/jpeg" } as any);
 
   const url = `${API_BASE}/analyze`;
@@ -245,5 +266,5 @@ export async function analyzeImage(uri: string): Promise<Scores> {
   const json = await res.json().catch(() => null);
   if (!json) throw new Error("Invalid JSON from server");
   console.log("[scores] /analyze ok", json);
-  return json as Scores;
+  return normalizeScores(json);
 }

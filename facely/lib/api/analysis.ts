@@ -10,14 +10,28 @@ import {
 import type { Scores } from "./scores";
 
 /**
- * Backend returns per-metric notes. Keep this flexible to avoid frontend breaks.
- * Example:
+ * Backend returns per-metric notes. Shape can vary (string | string[]).
+ * We normalize to string[4] per metric in this module so UI stays stable.
+ *
+ * Example raw:
  * {
  *   jawline: ["Tier: Developing — soft mandibular border", "Refinement: reduce submental fat"],
  *   ...
  * }
  */
 export type Explanations = Record<string, string[] | string>;
+
+/* ---------- constants used for gentle normalization ---------- */
+
+const EXPECTED_METRICS = [
+  "eyes_symmetry",
+  "jawline",
+  "cheekbones",
+  "nose_harmony",
+  "facial_symmetry",
+  "skin_quality",
+  "sexual_dimorphism",
+] as const;
 
 /* ---------- internal helpers ---------- */
 
@@ -31,16 +45,55 @@ function toPart(uri: string, name: string): {
   return { uri: normalized, name: `${name}.jpg`, type: "image/jpeg" };
 }
 
+function ensureArray4(v: unknown): string[] {
+  if (typeof v === "string") {
+    const s = v.trim();
+    return s ? [s, "", "", ""] : ["", "", "", ""];
+  }
+  if (Array.isArray(v)) {
+    const arr = v
+      .filter(x => typeof x === "string")
+      .map(s => (s as string).trim())
+      .filter(Boolean)
+      .slice(0, 4);
+    while (arr.length < 4) arr.push("");
+    return arr;
+  }
+  return ["", "", "", ""];
+}
+
+/**
+ * Normalize any server shape into a clean `Record<metric, string[4]>`.
+ * - Guarantees keys for our expected metrics (pads with empty strings).
+ * - Preserves unexpected metrics from server too (also normalized).
+ */
+export function normalizeExplanations(raw: Explanations | null | undefined): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+
+  if (raw && typeof raw === "object") {
+    // Normalize whatever keys the server sent
+    for (const k of Object.keys(raw)) {
+      out[k] = ensureArray4((raw as any)[k]);
+    }
+  }
+
+  // Make sure our expected metrics are always present
+  for (const k of EXPECTED_METRICS) {
+    if (!out[k]) out[k] = ["", "", "", ""];
+  }
+
+  return out;
+}
+
 async function parseExplanations(
   res: Response,
   context: string
-): Promise<Explanations> {
+): Promise<Record<string, string[]>> {
   if (!res.ok) {
     throw await buildApiError(res, context);
-
   }
-  // Shape can vary; let store/components normalize.
-  return (await res.json()) as Explanations;
+  const json = (await res.json()) as Explanations;
+  return normalizeExplanations(json);
 }
 
 /* ---------- public API ---------- */
@@ -56,7 +109,7 @@ export async function explainMetrics(
   imageUri: string,
   scores: Scores,
   signal?: AbortSignal
-): Promise<Explanations> {
+): Promise<Record<string, string[]>> {
   const fd = new FormData();
   fd.append("image", toPart(imageUri, "image") as any);
   fd.append("scores", JSON.stringify(scores));
@@ -68,7 +121,6 @@ export async function explainMetrics(
     timeoutMs: LONG_REQUEST_TIMEOUT_MS,
   });
   return parseExplanations(res, "Explanation request failed");
-
 }
 
 /**
@@ -84,7 +136,7 @@ export async function explainMetricsPair(
   sideUri: string,
   scores: Scores,
   signal?: AbortSignal
-): Promise<Explanations> {
+): Promise<Record<string, string[]>> {
   const buildFormData = () => {
     const fd = new FormData();
     fd.append("frontal", toPart(frontalUri, "frontal") as any);
@@ -93,14 +145,13 @@ export async function explainMetricsPair(
     return fd;
   };
 
-  const attempt = async (path: string): Promise<Explanations> => {
+  const attempt = async (path: string): Promise<Record<string, string[]>> => {
     const res = await fetchWithTimeout(`${API_BASE}${path}`, {
       method: "POST",
       headers: { Accept: "application/json" },
       body: buildFormData(),
       signal,
       timeoutMs: LONG_REQUEST_TIMEOUT_MS,
-
     });
     return parseExplanations(res, "Pair explanation request failed");
   };
@@ -110,16 +161,13 @@ export async function explainMetricsPair(
   } catch (err) {
     const shouldRetryLegacy =
       (err instanceof ApiResponseError && err.status === 404) ||
-      (err instanceof TypeError && err.message?.includes("Network request failed"));
+      (err instanceof TypeError && (err as any).message?.includes("Network request failed"));
 
     if (!shouldRetryLegacy) {
       throw err;
     }
 
-    try {
-      return await attempt("/analyze/pair/explain");
-    } catch (fallbackErr) {
-      throw fallbackErr;
-    }
+    // legacy route fallback
+    return await attempt("/analyze/pair/explain");
   }
 }
