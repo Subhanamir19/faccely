@@ -20,6 +20,8 @@ import {
 } from "../lib/api/analysis";
 import { RequestTimeoutError, toUserFacingError } from "../lib/api/client";
 
+type InputFile = string | { uri: string; name?: string; mime?: string };
+
 const MISCONFIGURED_ERROR_MESSAGE = (() => {
   if (API_BASE_CONFIGURED) return "";
   if (API_BASE_CONFIGURATION_HINT.trim().length > 0) {
@@ -63,11 +65,11 @@ type Actions = {
   setImage: (uri: string) => void;
   setSideImage: (uri: string) => void;
 
-  /** Analyze single image. */
-  analyze: (uri: string) => Promise<Scores>;
+  /** Analyze single image. Accepts string or { uri, name?, mime? }. */
+  analyze: (input: InputFile) => Promise<Scores>;
 
-  /** Analyze a frontal + side image pair. */
-  analyzePair: (frontalUri: string, sideUri: string) => Promise<Scores>;
+  /** Analyze a frontal + side image pair. Accepts strings or objects. */
+  analyzePair: (front: InputFile, side: InputFile) => Promise<Scores>;
 
   /** Explain metrics with single image. */
   explain: (uri: string, scores: Scores) => Promise<boolean>;
@@ -83,6 +85,9 @@ type Actions = {
   reset: () => void;
 };
 
+const getUri = (x: InputFile): string =>
+  typeof x === "string" ? x : x?.uri ?? "";
+
 export const useScores = create<State & Actions>((set, get) => ({
   imageUri: null,
   sideImageUri: null,
@@ -97,12 +102,15 @@ export const useScores = create<State & Actions>((set, get) => ({
   setImage: (uri) => set({ imageUri: uri }),
   setSideImage: (uri) => set({ sideImageUri: uri }),
 
-  analyze: async (uri: string) => {
+  analyze: async (input: InputFile) => {
+    const uri = getUri(input);
     set({ loading: true, error: null, imageUri: uri });
+
     try {
       await assertBackendReachable();
 
-      const s = await analyzeImage(uri);
+      // Pass through; api layer now accepts string or { uri, name, mime }
+      const s = await analyzeImage(input as any);
       set({ scores: s, loading: false });
       return s;
     } catch (err) {
@@ -115,17 +123,19 @@ export const useScores = create<State & Actions>((set, get) => ({
     }
   },
 
-  analyzePair: async (frontalUri: string, sideUri: string) => {
+  analyzePair: async (front: InputFile, side: InputFile) => {
     set({
       loading: true,
       error: null,
-      imageUri: frontalUri,
-      sideImageUri: sideUri,
+      imageUri: getUri(front),
+      sideImageUri: getUri(side),
     });
+
     try {
       await assertBackendReachable();
 
-      const s = await apiAnalyzePair(frontalUri, sideUri);
+      // Pass through; api layer now accepts string or { uri, name, mime }
+      const s = await apiAnalyzePair(front as any, side as any);
       set({ scores: s, loading: false });
       return s;
     } catch (err) {

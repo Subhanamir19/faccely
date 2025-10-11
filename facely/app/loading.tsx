@@ -15,8 +15,12 @@ import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
 import T from "@/components/ui/T";
 import { useOnboarding } from "@/store/onboarding";
-import { useScores } from "../store/scores"; // ⬅️ added
+import { useScores } from "../store/scores";
 import * as FileSystem from "expo-file-system";
+
+// NEW: ensure pre-upload JPEG normalization (max 1080px, ~80% quality)
+import { ensureJpegCompressed } from "../lib/api/media";
+
 
 function toFileUri(u: string) {
   if (u.startsWith("file://") || u.startsWith("http")) return u;
@@ -44,30 +48,45 @@ const TEXT = "rgba(255,255,255,0.92)";
 const TEXT_DIM = "rgba(255,255,255,0.65)";
 const CARD_BORDER = "rgba(255,255,255,0.12)";
 const CARD_TINT = "rgba(15,15,15,0.72)";
-const PURPLE = "#B77CFF";        // progress ring
-const PURPLE_END = "#8A63FF";    // ring head
+const PURPLE = "#B77CFF"; // progress ring
+const PURPLE_END = "#8A63FF"; // ring head
 const TRACK = "rgba(255,255,255,0.08)";
 
-const SIZE = 240;        // outer diameter of ring container
-const RING = 210;        // circle diameter for SVG math
+const SIZE = 240;
+const RING = 210;
 const STROKE = 12;
 
 type Params = {
   mode?: "analyzePair" | "advanced" | string;
   front?: string;
   side?: string;
+
+  // optional metadata if caller already normalized
+  frontName?: string;
+  sideName?: string;
+  frontMime?: string;
+  sideMime?: string;
+  normalized?: string; // "1" if already normalized
 };
 
 export default function LoadingScreen() {
   const { completed } = useOnboarding();
-  const { mode, front, side } = useLocalSearchParams<Params>();
+  const {
+    mode,
+    front,
+    side,
+    frontName,
+    sideName,
+    frontMime,
+    sideMime,
+    normalized,
+  } = useLocalSearchParams<Params>();
   const scoresStore = useScores();
 
   // progress 0..100
   const prog = useRef(new Animated.Value(0)).current;
   const loopStopRef = useRef(false);
 
-  // Indeterminate loop for real async work
   const startIndeterminateLoop = () => {
     loopStopRef.current = false;
     const tick = () => {
@@ -87,7 +106,6 @@ export default function LoadingScreen() {
 
   const stopLoop = () => {
     loopStopRef.current = true;
-    // let the current tick finish; we don't care about exact percent
   };
 
   useEffect(() => {
@@ -98,27 +116,58 @@ export default function LoadingScreen() {
         router.back();
         return;
       }
-    
+
       startIndeterminateLoop();
-    
+
       (async () => {
         try {
           // 1) decode what we encoded during navigation
           const decodedFront = decodeURIComponent(front as string);
-          const decodedSide  = decodeURIComponent(side as string);
-    
+          const decodedSide = decodeURIComponent(side as string);
+
           // 2) normalize for Android content:// and ensure file://
-          const frontUri = await ensureFileUriAsync(decodedFront);
-          const sideUri  = await ensureFileUriAsync(decodedSide);
-    
-          if (!frontUri || !sideUri) {
+          const frontUriRaw = await ensureFileUriAsync(decodedFront);
+          const sideUriRaw = await ensureFileUriAsync(decodedSide);
+
+          if (!frontUriRaw || !sideUriRaw) {
             throw new Error("Image paths could not be resolved.");
           }
-    
-          console.log("[loading] analyzePair URIs:", { frontUri, sideUri });
-    
-          const out = await scoresStore.analyzePair(frontUri, sideUri);
-    
+
+          // 3) If previous screen already normalized & passed meta, use it.
+          //    Otherwise, enforce JPEG compression here as a safety net.
+          let frontMeta: { uri: string; name?: string; mime?: string };
+          let sideMeta: { uri: string; name?: string; mime?: string };
+
+          const alreadyNormalized = normalized === "1";
+
+          if (alreadyNormalized && frontName && sideName) {
+            frontMeta = {
+              uri: frontUriRaw,
+              name: frontName || "front.jpg",
+              mime: frontMime || "image/jpeg",
+            };
+            sideMeta = {
+              uri: sideUriRaw,
+              name: sideName || "side.jpg",
+              mime: sideMime || "image/jpeg",
+            };
+          } else {
+            // Safety: ensure size and codec are sane before upload
+            const [frontNorm, sideNorm] = await Promise.all([
+              ensureJpegCompressed(frontUriRaw),
+              ensureJpegCompressed(sideUriRaw),
+            ]);
+            frontMeta = { uri: frontNorm.uri, name: frontNorm.name, mime: "image/jpeg" };
+            sideMeta = { uri: sideNorm.uri, name: sideNorm.name, mime: "image/jpeg" };
+          }
+
+          console.log("[loading] analyzePair metas:", {
+            front: frontMeta.name,
+            side: sideMeta.name,
+          });
+
+          const out = await scoresStore.analyzePair(frontMeta as any, sideMeta as any);
+
           stopLoop();
           router.replace({
             pathname: "/(tabs)/score",
@@ -126,14 +175,14 @@ export default function LoadingScreen() {
           });
         } catch (e: any) {
           stopLoop();
-          Alert.alert("Analysis failed", String(e?.message || e));
+          const msg = String(e?.message || e || "Unknown error");
+          Alert.alert("Analysis failed", msg);
           router.back();
         }
       })();
-    
+
       return;
     }
-    
 
     if (mode === "advanced") {
       // imageUri + scores are already in the store after scoring step
@@ -165,12 +214,10 @@ export default function LoadingScreen() {
 
     // Default: original onboarding bootstrap behavior (unchanged path)
     if (!completed) {
-      // nice try deep-linking; go finish onboarding
       router.replace("/(onboarding)/age");
       return;
     }
 
-    // Simulated bootstrap; keep existing behavior
     Animated.timing(prog, {
       toValue: 100,
       duration: 2200,
@@ -179,7 +226,7 @@ export default function LoadingScreen() {
     }).start(({ finished }) => {
       if (finished) router.replace("/(tabs)/take-picture");
     });
-  }, [completed, mode, front, side]);
+  }, [completed, mode, front, side, frontName, sideName, frontMime, sideMime, normalized]);
 
   // Derived values for ring + percent
   const pctText = prog.interpolate({
@@ -188,10 +235,7 @@ export default function LoadingScreen() {
   });
 
   return (
-    <LinearGradient
-      colors={["#0B0911", "#0B0911"]} // base black; purple halo via overlay below
-      style={styles.screen}
-    >
+    <LinearGradient colors={["#0B0911", "#0B0911"]} style={styles.screen}>
       {/* purple radial glow */}
       <LinearGradient
         colors={["rgba(151, 91, 255,0.35)", "rgba(0,0,0,0)"]}
@@ -201,13 +245,11 @@ export default function LoadingScreen() {
       />
 
       <View style={styles.centerWrap}>
-        {/* Glass card so it matches your onboarding aesthetic */}
         <BlurView intensity={50} tint="dark" style={styles.card}>
           <View style={styles.cardOverlay} />
 
           {/* Ring + Avatar */}
           <View style={styles.ringWrap}>
-            {/* Track */}
             <Animated.View
               style={[
                 styles.svgWrap,
@@ -302,12 +344,9 @@ export default function LoadingScreen() {
             {mode ? "Please hold, this can take a few seconds" : "Preparing analysis algorithm"}
           </T>
 
-          {/* Percent pill (cosmetic, shows 0–100 loop or final bootstrap) */}
+          {/* Percent pill */}
           <View style={styles.pill}>
-            <T style={styles.pillText}>
-              {/** show integer percent */}
-              {Math.round((prog as any)._value ?? 0)}%
-            </T>
+            <T style={styles.pillText}>{Math.round((prog as any)._value ?? 0)}%</T>
           </View>
         </BlurView>
       </View>
@@ -321,6 +360,7 @@ export default function LoadingScreen() {
     </LinearGradient>
   );
 }
+
 
 const R = 28;
 
@@ -360,38 +400,17 @@ const styles = StyleSheet.create({
   },
   cardOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: CARD_TINT,
+    backgroundColor: "rgba(15,15,15,0.72)",
     borderRadius: R,
     borderWidth: 1,
-    borderColor: CARD_BORDER,
+    borderColor: "rgba(255,255,255,0.12)",
   },
 
-  ringWrap: {
-    width: SIZE,
-    height: SIZE,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  svgWrap: {
-    position: "absolute",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  circleBase: {
-    position: "absolute",
-    borderRadius: RING / 2,
-    opacity: 0.5,
-  },
-  circleProg: {
-    position: "absolute",
-    borderRadius: RING / 2,
-    opacity: 0.2,
-  },
-  sweep: {
-    position: "absolute",
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  ringWrap: { width: SIZE, height: SIZE, alignItems: "center", justifyContent: "center" },
+  svgWrap: { position: "absolute", alignItems: "center", justifyContent: "center" },
+  circleBase: { position: "absolute", borderRadius: RING / 2, opacity: 0.5 },
+  circleProg: { position: "absolute", borderRadius: RING / 2, opacity: 0.2 },
+  sweep: { position: "absolute", alignItems: "center", justifyContent: "center" },
   sweepHead: {
     position: "absolute",
     right: -STROKE / 2,
@@ -411,10 +430,7 @@ const styles = StyleSheet.create({
   },
   avatar: { width: "100%", height: "100%" },
 
-  mask: {
-    position: "absolute",
-    borderColor: "transparent",
-  },
+  mask: { position: "absolute", borderColor: "transparent" },
 
   headline: {
     marginTop: 22,

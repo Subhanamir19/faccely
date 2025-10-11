@@ -15,13 +15,15 @@ import {
 } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as ImagePicker from "expo-image-picker";
-import * as ImageManipulator from "expo-image-manipulator";
 import * as FileSystem from "expo-file-system";
 import { router } from "expo-router";
 import Svg, { Line, Circle, Rect, Path } from "react-native-svg";
 import { useScores } from "../../store/scores";
 
-// ⬇️ add this after imports
+// NEW: shared pre-upload compressor (JPEG, max 1080px)
+import { ensureJpegCompressed } from "../../lib/api/media";
+
+// ⬇️ persist a picked/captured asset into our cache so it survives until upload
 async function persistToCache(uri: string): Promise<string> {
   const m = /\.([A-Za-z0-9]+)(?:\?|#|$)/.exec(uri);
   const ext = (m?.[1] || "jpg").toLowerCase();
@@ -38,13 +40,11 @@ async function persistToCache(uri: string): Promise<string> {
   }
 }
 
-
 /* ============================== TOKENS ============================== */
 const ACCENT = "#8FA31E"; // neon lime
 const TEXT = "rgba(255,255,255,0.92)";
 const TEXT_DIM = "rgba(255,255,255,0.65)";
 const CARD_BORDER = "rgba(255,255,255,0.12)";
-const CARD_TINT = "rgba(15,15,15,0.72)";
 const BG = "#0B0B0C";
 
 /* ============================== HELPERS ============================== */
@@ -69,24 +69,6 @@ async function ensureFileUriAsync(raw?: string | null): Promise<string | null> {
     }
   }
   return toFileUri(raw);
-}
-
-/** Force-save as JPEG so the backend never sees HEIC/HEIF surprises. */
-async function ensureJpeg(uri: string): Promise<string> {
-  const lower = uri.toLowerCase();
-  const alreadyJpeg = lower.endsWith(".jpg") || lower.endsWith(".jpeg");
-  try {
-    if (alreadyJpeg) return uri;
-    const out = await ImageManipulator.manipulateAsync(
-      uri,
-      [],
-      { compress: 0.92, format: ImageManipulator.SaveFormat.JPEG }
-    );
-    return toFileUri(out.uri);
-  } catch {
-    // If manipulation fails (rare), just return original URI
-    return uri;
-  }
 }
 
 type Step = "frontal" | "side" | "review";
@@ -252,11 +234,10 @@ export default function TakePicture() {
         setSideUri(stable);
         setStep("review");
       }
-    } catch (e: any) {
+    } catch {
       Alert.alert("File error", "Could not persist selected photo.");
     }
   };
-  
 
   const changePose = (pose: "frontal" | "side") => {
     setStep(pose);
@@ -307,24 +288,37 @@ export default function TakePicture() {
     if (!canContinue) return;
     try {
       setSubmitting(true);
-      const fJpeg = await ensureJpeg(frontalUri!);
-      const sJpeg = await ensureJpeg(sideUri!);
-  
+
+      // Resolve any content:// leftovers to file://
+      const fResolved = await ensureFileUriAsync(frontalUri!);
+      const sResolved = await ensureFileUriAsync(sideUri!);
+      if (!fResolved || !sResolved) throw new Error("Could not read selected photos.");
+
+      // Normalize/compress both before navigation to speed up upload
+      const [fNorm, sNorm] = await Promise.all([
+        ensureJpegCompressed(fResolved),
+        ensureJpegCompressed(sResolved),
+      ]);
+
       router.push({
         pathname: "/loading",
         params: {
           mode: "analyzePair",
-          front: encodeURIComponent(fJpeg),
-          side: encodeURIComponent(sJpeg),
+          front: encodeURIComponent(fNorm.uri),
+          side: encodeURIComponent(sNorm.uri),
+          // pass meta so loading can skip reprocessing
+          frontName: fNorm.name,
+          sideName: sNorm.name,
+          frontMime: "image/jpeg",
+          sideMime: "image/jpeg",
+          normalized: "1",
         },
       });
     } finally {
       setSubmitting(false);
     }
   };
-  
-  
-  
+
   const renderGuide = ({
     guideSrc,
     title,

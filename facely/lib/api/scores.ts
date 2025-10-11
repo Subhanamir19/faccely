@@ -3,6 +3,11 @@
 
 import API_BASE from "./config";
 import * as FileSystem from "expo-file-system";
+import {
+  fetchWithRetry,
+  DEFAULT_UPLOAD_TIMEOUT_MS,
+  SHORT_REQUEST_TIMEOUT_MS,
+} from "./client";
 
 /* -------------------------------------------------------------------------- */
 /*   Types                                                                    */
@@ -17,6 +22,8 @@ export type Scores = {
   nose_harmony: number;
   sexual_dimorphism: number;
 };
+
+type InputFile = string | { uri: string; name?: string; mime?: string };
 
 /* -------------------------------------------------------------------------- */
 /*   Safe normalization                                                       */
@@ -39,28 +46,6 @@ export function normalizeScores(raw: Partial<Scores> | null | undefined): Scores
     safe[k] = typeof v === "number" && Number.isFinite(v) ? v : 0;
   }
   return safe as Scores;
-}
-
-/* -------------------------------------------------------------------------- */
-/*   Timeout helpers                                                          */
-/* -------------------------------------------------------------------------- */
-
-const DEFAULT_TIMEOUT_MS = 180_000;
-
-function timeoutFetch(
-  input: RequestInfo | URL,
-  init: RequestInit = {},
-  ms = DEFAULT_TIMEOUT_MS
-): Promise<Response> {
-  const controller = new AbortController();
-  const id = setTimeout(() => controller.abort(), ms);
-  return fetch(input, { ...init, signal: controller.signal }).finally(() =>
-    clearTimeout(id)
-  );
-}
-
-function filePart(uri: string, name: string) {
-  return { uri, name, type: "image/jpeg" } as any;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -106,39 +91,75 @@ async function resolveExistingPath(uri: string): Promise<string> {
 
 export async function pingHealth(): Promise<boolean> {
   try {
-    const r = await timeoutFetch(`${API_BASE}/health`, { method: "GET" }, 10_000);
+    const r = await fetchWithRetry(`${API_BASE}/health`, {
+      method: "GET",
+      timeoutMs: SHORT_REQUEST_TIMEOUT_MS,
+    });
     return r.ok;
   } catch (e) {
-    console.warn("[scores] pingHealth legacy fallback failed:", (e as any)?.message);
+    console.warn("[scores] pingHealth failed:", (e as any)?.message);
     return false;
   }
+}
+
+/* -------------------------------------------------------------------------- */
+/*   Helpers: normalize InputFile -> FormData part                            */
+/* -------------------------------------------------------------------------- */
+
+function toFileMeta(input: InputFile, fallbackName: string) {
+  if (typeof input === "string") {
+    return { uri: input, name: fallbackName, mime: "image/jpeg" as const };
+  }
+  const name = input.name && input.name.trim().length > 0 ? input.name : fallbackName;
+  const mime = input.mime && input.mime.trim().length > 0 ? input.mime : "image/jpeg";
+  return { uri: input.uri, name, mime: mime as "image/jpeg" };
+}
+
+async function toFormPart(
+  input: InputFile,
+  fallbackName: string
+): Promise<{ uri: string; name: string; type: string }> {
+  const meta = toFileMeta(input, fallbackName);
+  const path = await resolveExistingPath(meta.uri);
+  // Important: Android/Expo needs file:// uri, .jpg name, and correct type
+  return { uri: path, name: ensureJpegName(meta.name), type: meta.mime || "image/jpeg" } as any;
+}
+
+function ensureJpegName(name: string) {
+  return /\.jpe?g$/i.test(name) ? name : `${name.replace(/\.[^./\\]+$/, "")}.jpg`;
 }
 
 /* -------------------------------------------------------------------------- */
 /*   Multipart upload: pair                                                   */
 /* -------------------------------------------------------------------------- */
 
-async function analyzePairMultipart(frontUri: string, sideUri: string): Promise<Scores> {
-  const [frontPath, sidePath] = await Promise.all([
-    resolveExistingPath(frontUri),
-    resolveExistingPath(sideUri),
+async function analyzePairMultipart(front: InputFile, side: InputFile): Promise<Scores> {
+  const [frontPart, sidePart] = await Promise.all([
+    toFormPart(front, "front.jpg"),
+    toFormPart(side, "side.jpg"),
   ]);
 
   const form = new FormData();
-  form.append("frontal", filePart(frontPath, "frontal.jpg"));
-  form.append("side", filePart(sidePath, "side.jpg"));
+  form.append("frontal", frontPart as any);
+  form.append("side", sidePart as any);
 
   const url = `${API_BASE}/analyze/pair`;
   const start = Date.now();
-  console.log("[scores] POST", url, { frontPath, sidePath });
+  console.log("[scores] POST", url, { front: frontPart.name, side: sidePart.name });
 
   let res: Response;
   try {
-    res = await timeoutFetch(url, {
-      method: "POST",
-      body: form,
-      headers: { Accept: "application/json" },
-    });
+    res = await fetchWithRetry(
+      url,
+      {
+        method: "POST",
+        body: form,
+        headers: { Accept: "application/json" },
+        timeoutMs: DEFAULT_UPLOAD_TIMEOUT_MS,
+      },
+      3,
+      800
+    );
   } catch (e: any) {
     console.error("[scores] /analyze/pair network error:", e?.message || e);
     throw new Error("NETWORK_LAYER_FAIL");
@@ -155,7 +176,7 @@ async function analyzePairMultipart(frontUri: string, sideUri: string): Promise<
 
   const json = await res.json().catch(() => null);
   if (!json) throw new Error("Invalid JSON from server");
-  console.log("[scores] /analyze/pair ok", json);
+  console.log("[scores] /analyze/pair ok");
   return normalizeScores(json);
 }
 
@@ -163,10 +184,10 @@ async function analyzePairMultipart(frontUri: string, sideUri: string): Promise<
 /*   Byte-fallback upload: pair                                               */
 /* -------------------------------------------------------------------------- */
 
-async function analyzePairBytes(frontUri: string, sideUri: string): Promise<Scores> {
+async function analyzePairBytes(front: InputFile, side: InputFile): Promise<Scores> {
   const [frontPath, sidePath] = await Promise.all([
-    resolveExistingPath(frontUri),
-    resolveExistingPath(sideUri),
+    resolveExistingPath(typeof front === "string" ? front : front.uri),
+    resolveExistingPath(typeof side === "string" ? side : side.uri),
   ]);
 
   console.log("[scores] POST /analyze/pair-bytes starting...", API_BASE, {
@@ -186,13 +207,14 @@ async function analyzePairBytes(frontUri: string, sideUri: string): Promise<Scor
   const url = `${API_BASE}/analyze/pair-bytes`;
   const start = Date.now();
 
-  const res = await timeoutFetch(url, {
+  const res = await fetchWithRetry(url, {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "application/json" },
     body: JSON.stringify({
       front: `data:image/jpeg;base64,${f}`,
       side: `data:image/jpeg;base64,${s}`,
     }),
+    timeoutMs: DEFAULT_UPLOAD_TIMEOUT_MS,
   });
 
   const duration = Date.now() - start;
@@ -204,7 +226,7 @@ async function analyzePairBytes(frontUri: string, sideUri: string): Promise<Scor
 
   const json = await res.json().catch(() => null);
   if (!json) throw new Error("Invalid JSON from server");
-  console.log(`[scores] /analyze/pair-bytes ok (${duration} ms)`, json);
+  console.log(`[scores] /analyze/pair-bytes ok (${duration} ms)`);
   return normalizeScores(json);
 }
 
@@ -212,13 +234,13 @@ async function analyzePairBytes(frontUri: string, sideUri: string): Promise<Scor
 /*   Public entrypoint: pair                                                  */
 /* -------------------------------------------------------------------------- */
 
-export async function analyzePair(frontUri: string, sideUri: string): Promise<Scores> {
+export async function analyzePair(front: InputFile, side: InputFile): Promise<Scores> {
   try {
-    return await analyzePairMultipart(frontUri, sideUri);
+    return await analyzePairMultipart(front, side);
   } catch (err: any) {
     if (err?.message === "NETWORK_LAYER_FAIL") {
       console.warn("[scores] falling back to /analyze/pair-bytes");
-      return await analyzePairBytes(frontUri, sideUri);
+      return await analyzePairBytes(front, side);
     }
     if ((err as any)?.code === "FILE_GONE") {
       console.error("[scores] file missing:", (err as any).details);
@@ -233,10 +255,12 @@ export async function analyzePair(frontUri: string, sideUri: string): Promise<Sc
 /*   Single-image upload                                                      */
 /* -------------------------------------------------------------------------- */
 
-export async function analyzeImage(uri: string): Promise<Scores> {
-  const path = await resolveExistingPath(uri);
+export async function analyzeImage(input: InputFile): Promise<Scores> {
+  const meta = toFileMeta(input, "image.jpg");
+  const path = await resolveExistingPath(meta.uri);
+
   const form = new FormData();
-  form.append("image", { uri: path, name: "image.jpg", type: "image/jpeg" } as any);
+  form.append("image", { uri: path, name: ensureJpegName(meta.name), type: meta.mime } as any);
 
   const url = `${API_BASE}/analyze`;
   const start = Date.now();
@@ -244,11 +268,17 @@ export async function analyzeImage(uri: string): Promise<Scores> {
 
   let res: Response;
   try {
-    res = await timeoutFetch(url, {
-      method: "POST",
-      body: form,
-      headers: { Accept: "application/json" },
-    });
+    res = await fetchWithRetry(
+      url,
+      {
+        method: "POST",
+        body: form,
+        headers: { Accept: "application/json" },
+        timeoutMs: DEFAULT_UPLOAD_TIMEOUT_MS,
+      },
+      3,
+      800
+    );
   } catch (e: any) {
     console.error("[scores] /analyze network error:", e?.message || e);
     throw new Error("NETWORK_LAYER_FAIL");
@@ -265,6 +295,6 @@ export async function analyzeImage(uri: string): Promise<Scores> {
 
   const json = await res.json().catch(() => null);
   if (!json) throw new Error("Invalid JSON from server");
-  console.log("[scores] /analyze ok", json);
+  console.log("[scores] /analyze ok");
   return normalizeScores(json);
 }

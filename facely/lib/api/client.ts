@@ -16,7 +16,9 @@ export class RequestTimeoutError extends Error {
 }
 
 export const LONG_REQUEST_TIMEOUT_MS = 180_000; // 3 min for large uploads
-export const SHORT_REQUEST_TIMEOUT_MS = 15_000; // standard quick call
+export const SHORT_REQUEST_TIMEOUT_MS = 15_000; // legacy quick call
+export const DEFAULT_REQUEST_TIMEOUT_MS = 30_000; // general default
+export const DEFAULT_UPLOAD_TIMEOUT_MS = __DEV__ ? 45_000 : 30_000; // emulator is slower
 
 export class ApiResponseError extends Error {
   readonly status: number;
@@ -71,7 +73,7 @@ export async function fetchWithTimeout(
   input: RequestInfo,
   init: FetchWithTimeoutOptions = {}
 ): Promise<Response> {
-  const { timeoutMs = 30_000, signal, ...rest } = init;
+  const { timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS, signal, ...rest } = init;
   const upstreamSignal = signal ?? undefined;
 
   // short-circuit: no timeout
@@ -116,6 +118,53 @@ export async function fetchWithTimeout(
 }
 
 /* -------------------------------------------------------------------------- */
+/*   Retry wrapper for flaky mobile networks & big uploads                    */
+/* -------------------------------------------------------------------------- */
+
+function isRetryableNetworkError(e: unknown) {
+  // AbortError, our RequestTimeoutError, or generic fetch TypeError
+  const name = (e as any)?.name;
+  const msg = String((e as any)?.message || "").toLowerCase();
+  return (
+    name === "AbortError" ||
+    e instanceof RequestTimeoutError ||
+    msg.includes("network") ||
+    (e as any)?.type === "system"
+  );
+}
+
+/**
+ * Retries fetchWithTimeout with expo-friendly backoff.
+ * Default: 3 attempts, 800ms base backoff with jitter.
+ */
+export async function fetchWithRetry(
+  input: RequestInfo,
+  init: FetchWithTimeoutOptions = {},
+  attempts = 3,
+  backoffMs = 800
+): Promise<Response> {
+  let lastErr: any;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fetchWithTimeout(input, init);
+    } catch (e) {
+      lastErr = e;
+      if (i < attempts - 1 && isRetryableNetworkError(e)) {
+        const sleep = backoffMs * Math.pow(2, i) + Math.floor(Math.random() * 200);
+        if (__DEV__) {
+          // eslint-disable-next-line no-console
+          console.log(`[net] retrying (${i + 1}/${attempts - 1}) in ${sleep}ms`);
+        }
+        await new Promise((r) => setTimeout(r, sleep));
+        continue;
+      }
+      throw e;
+    }
+  }
+  throw lastErr;
+}
+
+/* -------------------------------------------------------------------------- */
 /*   Build informative ApiResponseError from payload                          */
 /* -------------------------------------------------------------------------- */
 
@@ -137,7 +186,7 @@ export async function buildApiError(
   const detail = (() => {
     if (!body || typeof body !== "object") return undefined;
     const data = body as Record<string, unknown>;
-    const maybe = data.detail ?? data.error ?? data.message;
+    const maybe = data.detail ?? data.error ?? data.message ?? data.hint;
     return typeof maybe === "string" ? maybe : undefined;
   })();
 

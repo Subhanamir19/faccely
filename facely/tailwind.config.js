@@ -4,26 +4,27 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        base: "#0F0F0F",
-        ink: "#111111",
-        ink2: "#1A1A1A",
-        mist: "#F8F8F8",
-        glass: "#FFFFFF22",
-        line: "#FFFFFF33",
-        accent: "#5DD62C",
+        base: "#000000",      // top gradient base
+        base2: "#0B0B0B",     // bottom gradient
+        ink: "#121212",       // glass card base
+        mist: "#FFFFFF",      // plain white text
+        sub: "rgba(160,160,160,0.80)", // dimmed text
+        glass: "#FFFFFF22",   // reflective streaks
+        line: "#2D2D2D",      // ghost outlines
+        track: "#2A2A2A",     // inactive progress
+        accent: "#B4F34D",    // neon lime
       },
       borderRadius: {
-        xl: "1rem",
-        xxl: "1.5rem",
+        xl: "2rem",           // 32 px card radius
+        pill: "1.75rem",      // 28 px button radius
         glass: "1.25rem",
       },
       boxShadow: {
-        soft: "0 8px 30px rgba(0,0,0,0.08)",
-        glass:
-          "inset 0 1px 0 rgba(255,255,255,0.25), 0 10px 30px rgba(0,0,0,0.15)",
+        soft: "0 2px 15px rgba(180,243,77,0.25)", // accent glow
+        card: "0 18px 30px rgba(0,0,0,0.35)",     // glass card depth
       },
       fontFamily: {
-        poppins: ["Poppins-SemiBold"], // maps to the expo-font key you registered
+        poppins: ["Poppins-SemiBold", "Poppins-Regular"],
       },
     },
   },

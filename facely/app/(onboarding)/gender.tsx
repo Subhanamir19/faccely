@@ -5,24 +5,31 @@ import {
   StyleSheet,
   Pressable,
   FlatList,
-  ImageBackground,
   Platform,
   AccessibilityState,
+  Dimensions,
 } from "react-native";
-import { router } from "expo-router";
+import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
+import { router } from "expo-router";
+
 import T from "@/components/ui/T";
+import GlassBtn from "@/components/ui/GlassBtn";
 import { useOnboarding } from "@/store/onboarding";
 
-/** Tokens (aligned with ethnicity screen) */
-const ACCENT = "#8FA31E";
-const TEXT = "rgba(255,255,255,0.92)";
-const TEXT_DIM = "rgba(255,255,255,0.65)";
-const CARD_BORDER = "rgba(255,255,255,0.12)";
-const CARD_TINT = "rgba(15,15,15,0.72)";
-const TRACK = "rgba(255,255,255,0.12)";
-const TRACK_INNER = "rgba(0,0,0,0.35)";
-const BUTTON_TRACK = "rgba(255,255,255,0.10)";
+/** Spec tokens (match onboarding visuals) */
+const ACCENT = "#B4F34D";
+const BG_TOP = "#000000";
+const BG_BOTTOM = "#0B0B0B";
+const CARD_FILL = "rgba(18,18,18,0.90)";     // #121212 @ 90%
+const CARD_BORDER = "rgba(255,255,255,0.08)";
+const TEXT = "#FFFFFF";
+const SUB = "rgba(160,160,160,0.80)";
+const TRACK_INACTIVE = "#2A2A2A";
+const OUTLINE = "#2D2D2D";
+
+const { width: W } = Dimensions.get("window");
+const CARD_W = Math.round(W * 0.86);
 
 type Row = { key: string; label: string };
 const OPTIONS: Row[] = [
@@ -39,160 +46,214 @@ export default function GenderScreen() {
 
   const choose = (label: string) => setField("gender", label);
 
-  // Navigate to the new final onboarding screen (no finish here)
   const onNext = () => {
     if (!selected) return;
     router.push("/(onboarding)/edge");
   };
 
   return (
-    <ImageBackground
-      source={require("../../assets/bg/score-bg.jpg")}
-      resizeMode="cover"
-      style={styles.screen}
-      imageStyle={styles.bgImage}
-    >
-      <View style={styles.centerWrap}>
-        <BlurView intensity={50} tint="dark" style={styles.card}>
-          <View style={styles.cardOverlay} />
+    <View style={styles.screen}>
+      {/* Background: pure black gradient with faint diagonal reflection */}
+      <LinearGradient
+        colors={[BG_TOP, BG_BOTTOM]}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 1 }}
+        style={StyleSheet.absoluteFill}
+      />
+      <LinearGradient
+        colors={["#FFFFFF08", "#00000000"]}
+        start={{ x: 0.2, y: 0 }}
+        end={{ x: 0.8, y: 1 }}
+        style={styles.diagonalReflection}
+      />
+      {/* Optional grain layer stub (inactive) */}
+      <View pointerEvents="none" style={styles.fakeGrain} />
 
-          {/* progress pill (3/3) */}
-          <View style={styles.progressWrap}>
+      <View style={styles.centerWrap}>
+        <BlurView intensity={50} tint="dark" style={[styles.card, styles.cardShadow]}>
+          {/* Glass fill + border */}
+          <View style={[StyleSheet.absoluteFill, styles.cardOverlay]} />
+          {/* Top reflective hairline */}
+          <View style={styles.cardHairline} />
+
+          {/* Inner content (24 px padding) */}
+          <View style={styles.inner}>
+            {/* Progress: 8 px high, 100% (step 3/3) */}
             <View style={styles.progressTrack}>
               <View style={[styles.progressFill, { width: "100%" }]} />
             </View>
+
+            <T style={styles.title}>What’s your gender?</T>
+            <T style={styles.sub} numberOfLines={3}>
+              This information is required to generate an accurate analysis.
+            </T>
+
+            {/* Options */}
+            <FlatList
+              data={rows}
+              keyExtractor={(it) => it.key}
+              scrollEnabled={false}
+              contentContainerStyle={styles.listContainer}
+              ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
+              renderItem={({ item }) => {
+                const active = selected === item.label;
+                return (
+                  <Pressable
+                    onPress={() => choose(item.label)}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected: active } as AccessibilityState}
+                    style={({ pressed }) => [
+                      styles.option,
+                      active && styles.optionActive,
+                      pressed && { transform: [{ translateY: 1 }] },
+                    ]}
+                  >
+                    {/* inner bevel */}
+                    <View style={styles.optionInner} />
+
+                    {/* left radio dot only when selected */}
+                    {active ? (
+                      <View style={styles.dotWrap}>
+                        <View style={styles.dotOuterActive}>
+                          <View style={styles.dotInnerActive} />
+                        </View>
+                      </View>
+                    ) : null}
+
+                    <T style={[styles.optionText, active && styles.optionTextActive]}>
+                      {item.label}
+                    </T>
+
+                    {/* soft outer glow on iOS only */}
+                    {active && Platform.OS === "ios" ? (
+                      <View style={styles.optionGlow} pointerEvents="none" />
+                    ) : null}
+                  </Pressable>
+                );
+              }}
+            />
+
+            {/* CTAs */}
+            <View style={styles.ctaCol}>
+              <View style={styles.ctaRow}>
+                <GlassBtn
+                  label="Next"
+                  onPress={onNext}
+                  variant="primary"
+                  height={56}
+                  disabled={!selected}
+                />
+              </View>
+
+              <View style={[styles.ctaRow, { marginBottom: 0 }]}>
+                <GlassBtn
+                  label="Skip"
+                  onPress={() => router.push("/(onboarding)/edge")}
+                  variant="glass"
+                  height={56}
+                />
+              </View>
+            </View>
           </View>
-
-          <T style={styles.title}>What’s your gender?</T>
-          <T style={styles.sub}>
-            This information is required to generate an accurate analysis.
-          </T>
-
-          <FlatList
-            data={rows}
-            scrollEnabled={false}
-            keyExtractor={(it) => it.key}
-            ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
-            contentContainerStyle={styles.listContainer}
-            renderItem={({ item }) => {
-              const active = selected === item.label;
-              return (
-                <Pressable
-                  onPress={() => choose(item.label)}
-                  style={({ pressed }) => [
-                    styles.option,
-                    active && styles.optionActive,
-                    pressed && { transform: [{ translateY: 1 }] },
-                  ]}
-                >
-                  {/* inner bevel */}
-                  <View style={styles.optionInner} />
-                  {/* active lime stroke only (no fill, no elevation) */}
-                  {active ? <View style={styles.optionRing} /> : null}
-
-                  <T style={[styles.optionText, active && styles.optionTextActive]}>
-                    {item.label}
-                  </T>
-                </Pressable>
-              );
-            }}
-          />
-
-          {/* Primary Next */}
-          <Pressable
-            onPress={onNext}
-            disabled={!selected}
-            accessibilityState={{ disabled: !selected } as AccessibilityState}
-            style={({ pressed }) => [
-              styles.primaryBtn,
-              !selected && styles.primaryBtnDisabled,
-              pressed && { transform: [{ translateY: 1 }] },
-            ]}
-          >
-            <T style={styles.primaryLabel}>Next</T>
-          </Pressable>
-
-          {/* Skip -> also go to edge */}
-          <Pressable
-            onPress={() => router.push("/(onboarding)/edge")}
-            style={({ pressed }) => [
-              styles.secondaryBtn,
-              pressed && { transform: [{ translateY: 1 }] },
-            ]}
-          >
-            <T style={styles.secondaryLabel}>Skip</T>
-          </Pressable>
         </BlurView>
       </View>
-    </ImageBackground>
+    </View>
   );
 }
-
-const R = 28;
-const PILL_R = 999;
 
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: "#000",
   },
-  bgImage: {
-    transform: [{ translateY: 40 }],
+
+  diagonalReflection: {
+    position: "absolute",
+    left: -50,
+    right: -50,
+    top: -80,
+    height: 260,
+    transform: [{ rotate: "12deg" }],
   },
+
+  fakeGrain: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.0,
+  },
+
   centerWrap: {
     flex: 1,
-    paddingHorizontal: 18,
     justifyContent: "center",
     alignItems: "center",
   },
 
   card: {
-    width: "92%",
-    borderRadius: R,
+    width: CARD_W,
+    borderRadius: 32,
     overflow: "hidden",
   },
+
+  cardShadow: {
+    ...(Platform.OS === "ios"
+      ? {
+          shadowColor: "#000",
+          shadowOpacity: 0.4,
+          shadowRadius: 30,
+          shadowOffset: { width: 0, height: 10 },
+        }
+      : { elevation: 8 }),
+  },
+
   cardOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: CARD_TINT,
-    borderRadius: R,
+    backgroundColor: CARD_FILL,
     borderWidth: 1,
     borderColor: CARD_BORDER,
   },
 
-  progressWrap: { alignItems: "center", marginTop: 18, marginBottom: 12 },
+  cardHairline: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 0,
+    height: 1,
+    backgroundColor: "rgba(255,255,255,0.05)",
+  },
+
+  inner: {
+    paddingHorizontal: 24,
+    paddingTop: 24,
+    paddingBottom: 24,
+  },
+
+  // Progress: 8 px, flush with inner padding, then 16 gap to title
   progressTrack: {
-    height: 16,
-    width: "86%",
-    borderRadius: PILL_R,
-    backgroundColor: TRACK,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
+    height: 8,
+    width: "100%",
+    borderRadius: 999,
+    backgroundColor: TRACK_INACTIVE,
     overflow: "hidden",
+    marginBottom: 16,
   },
   progressFill: {
     height: "100%",
     backgroundColor: ACCENT,
+    borderRadius: 999,
   },
 
   title: {
-    fontSize: 26,
-    lineHeight: 30,
-    textAlign: "center",
+    fontSize: 22,
+    lineHeight: 28,
     color: TEXT,
-    marginTop: 6,
-    fontFamily: Platform.select({
-      ios: "Poppins-SemiBold",
-      android: "Poppins-SemiBold",
-      default: "Poppins-SemiBold",
-    }),
+    textAlign: "left",
   },
+
   sub: {
+    marginTop: 8,
     fontSize: 14,
     lineHeight: 20,
-    textAlign: "center",
-    color: TEXT_DIM,
-    marginTop: 8,
-    paddingHorizontal: 8,
+    color: SUB,
+    opacity: 0.8,
+    textAlign: "left",
     fontFamily: Platform.select({
       ios: "Poppins-Regular",
       android: "Poppins-Regular",
@@ -201,48 +262,67 @@ const styles = StyleSheet.create({
   },
 
   listContainer: {
-    paddingTop: 12,
-    alignItems: "center",
+    paddingTop: 20, // Title→8→Subtitle→20→Options
   },
 
   option: {
     position: "relative",
-    width: "86%",
-    backgroundColor: "rgba(0,0,0,0.55)",
-    borderRadius: 20,
-    paddingVertical: 18,
-    paddingHorizontal: 18,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
+    width: "100%",
+    height: 56,
+    borderRadius: 18,
+    backgroundColor: "#1C1C1C",
+    borderWidth: 1.5,
+    borderColor: OUTLINE,
+    justifyContent: "center",
+    paddingLeft: 56, // room for dot when active
+    paddingRight: 20,
     overflow: "hidden",
   },
   optionInner: {
     ...StyleSheet.absoluteFillObject,
-    borderRadius: 20,
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: TRACK_INNER,
-  },
-  optionRing: {
-    ...StyleSheet.absoluteFillObject,
-    borderRadius: 20,
-    borderWidth: 2,
-    borderColor: ACCENT,
-    ...(Platform.OS === "ios"
-      ? {
-          shadowColor: ACCENT,
-          shadowOpacity: 0.6,
-          shadowRadius: 16,
-          shadowOffset: { width: 0, height: 0 },
-        }
-      : null),
+    borderColor: "rgba(0,0,0,0.35)",
   },
   optionActive: {
-    backgroundColor: "rgba(143,163,30,0.08)",
+    backgroundColor: "#151515",
     borderColor: ACCENT,
   },
+  optionGlow: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 18,
+    shadowColor: ACCENT,
+    shadowOpacity: 0.16,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 0 },
+  },
+
+  dotWrap: {
+    position: "absolute",
+    left: 20,
+    top: 0,
+    bottom: 0,
+    justifyContent: "center",
+  },
+  dotOuterActive: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: ACCENT,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dotInnerActive: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: ACCENT,
+  },
+
   optionText: {
-    fontSize: 18,
-    color: TEXT,
+    fontSize: 16,
+    color: "#EDEDED",
     fontFamily: Platform.select({
       ios: "Poppins-SemiBold",
       android: "Poppins-SemiBold",
@@ -250,53 +330,15 @@ const styles = StyleSheet.create({
     }),
   },
   optionTextActive: {
-    color: TEXT,
+    color: "#FFFFFF",
   },
 
-  primaryBtn: {
-    marginTop: 18,
-    alignSelf: "center",
-    width: "86%",
-    backgroundColor: ACCENT,
-    borderRadius: 26,
-    paddingVertical: 16,
-    alignItems: "center",
-    justifyContent: "center",
+  ctaCol: {
+    paddingTop: 24, // Options→24→Next
   },
-  primaryBtnDisabled: {
-    backgroundColor: BUTTON_TRACK,
-  },
-  primaryLabel: {
-    fontSize: 16,
-    color: "#0D0E0D",
-    fontFamily: Platform.select({
-      ios: "Poppins-SemiBold",
-      android: "Poppins-SemiBold",
-      default: "Poppins-SemiBold",
-    }),
-  },
-
-  secondaryBtn: {
-    marginTop: 10,
-    marginBottom: 12,
-    alignSelf: "center",
-    width: "86%",
-    borderRadius: 22,
-    paddingVertical: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(0,0,0,0.55)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
-    overflow: "hidden",
-  },
-  secondaryLabel: {
-    fontSize: 16,
-    color: TEXT,
-    fontFamily: Platform.select({
-      ios: "Poppins-SemiBold",
-      android: "Poppins-SemiBold",
-      default: "Poppins-SemiBold",
-    }),
+  ctaRow: {
+    flexDirection: "row",
+    gap: 12,
+    marginBottom: 12, // Next→12→Skip
   },
 });
