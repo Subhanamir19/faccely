@@ -1,5 +1,5 @@
 // app/(onboarding)/edge.tsx
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   View,
   StyleSheet,
@@ -16,13 +16,13 @@ import Animated, {
   useSharedValue,
   withDelay,
   withTiming,
-  runOnUI,
 } from "react-native-reanimated";
 import { router } from "expo-router";
 
 import T from "@/components/ui/T";
 import GlassBtn from "@/components/ui/GlassBtn";
 
+/** Tokens */
 const ACCENT = "#B4F34D";
 const BG_TOP = "#000000";
 const BG_BOTTOM = "#0B0B0B";
@@ -30,19 +30,22 @@ const CARD_FILL = "rgba(18,18,18,0.90)";
 const CARD_BORDER = "rgba(255,255,255,0.08)";
 const TEXT = "#FFFFFF";
 const SUB = "rgba(160,160,160,0.80)";
-const DARK_FILL = "#2D2D2D";
+const TRACK_BG = "#141414";
+const TRACK_BORDER = "#242424";
+const DARK_FILL = "#3A3A3A"; // readable vs TRACK_BG on Android
 
+/** Layout */
 const { width } = Dimensions.get("window");
 const CARD_W = Math.round(width * 0.86);
-const BAR_W = 100;
-const BAR_H = 190;
+const BAR_W = 110;
+const BAR_H = 220;
 const GAP = 40;
 
 /* ---------------- Vertical Stat Bar ---------------- */
 type BarProps = {
   topLine1: string;
   topLine2?: string;
-  percent: number;
+  percent: number; // 0..100
   fill: string;
   pctTextColor: string;
   delay?: number;
@@ -59,26 +62,28 @@ const VerticalStatBar: React.FC<BarProps> = ({
   const [trackH, setTrackH] = useState(0);
   const prog = useSharedValue(0);
 
+  // Always replay the animation on mount/refresh
+  useEffect(() => {
+    prog.value = 0;
+    prog.value = withDelay(
+      delay,
+      withTiming(percent / 100, {
+        duration: 1200,
+        easing: Easing.out(Easing.cubic),
+      })
+    );
+  }, [percent, delay]);
+
   const onTrackLayout = (e: any) => {
-    const h = e.nativeEvent.layout.height;
-    setTrackH(h);
-    runOnUI(() => {
-      "worklet";
-      prog.value = withDelay(
-        delay,
-        withTiming(percent / 100, {
-          duration: 900,
-          easing: Easing.bezier(0.2, 0.9, 0.3, 1),
-        })
-      );
-    })();
+    const h = e.nativeEvent.layout.height || 0;
+    if (h !== trackH) setTrackH(h);
   };
 
   const fillStyle = useAnimatedStyle(() => {
+    // height uses whatever trackH currently is; when trackH updates after refresh,
+    // the same prog.value is applied so the bar stays visible.
     const h = trackH * prog.value;
-    return {
-      height: h,
-    };
+    return { height: h };
   });
 
   return (
@@ -96,19 +101,17 @@ const VerticalStatBar: React.FC<BarProps> = ({
       ) : null}
 
       <View style={styles.barOuter} onLayout={onTrackLayout}>
+        {/* Bottom-anchored fill; only top corners rounded */}
         <Animated.View
-          style={[
-            styles.barFill,
-            { backgroundColor: fill },
-            fillStyle,
-          ]}
+          style={[styles.barFill, { backgroundColor: fill }, fillStyle]}
         >
           <View style={styles.pctWrap}>
-            <T style={[styles.pctText, { color: pctTextColor }]}>
-              {percent}%
-            </T>
+            <T style={[styles.pctText, { color: pctTextColor }]}>{percent}%</T>
           </View>
         </Animated.View>
+
+        {/* ultra-faint sheen so dark fills read at low % */}
+        <View pointerEvents="none" style={styles.fillSheen} />
       </View>
     </View>
   );
@@ -131,6 +134,7 @@ export default function EdgeScreen() {
         end={{ x: 0.5, y: 1 }}
         style={StyleSheet.absoluteFill}
       />
+      {/* faint diagonal reflection */}
       <LinearGradient
         colors={["#FFFFFF08", "#00000000"]}
         start={{ x: 0.2, y: 0 }}
@@ -143,8 +147,9 @@ export default function EdgeScreen() {
         <View style={styles.content}>
           <T style={styles.header}>You might already be losing your edge...</T>
 
+          {/* Glass card */}
           <BlurView
-            intensity={Platform.OS === "android" ? 30 : 45}
+            intensity={Platform.OS === "android" ? 34 : 45}
             tint="dark"
             style={[styles.card, styles.cardShadow]}
           >
@@ -152,7 +157,7 @@ export default function EdgeScreen() {
             <View style={styles.cardHairline} />
 
             <View style={styles.inner}>
-              {/* Bars centered vertically and horizontally */}
+              {/* Bars centered */}
               <View style={styles.barsRow}>
                 <VerticalStatBar
                   topLine1="Lifestyle"
@@ -180,13 +185,9 @@ export default function EdgeScreen() {
             </View>
           </BlurView>
 
+          {/* CTA */}
           <View style={styles.ctaWrap}>
-            <GlassBtn
-              label="Continue"
-              variant="primary"
-              height={56}
-              onPress={onContinue}
-            />
+            <GlassBtn label="Continue" variant="primary" height={56} onPress={onContinue} />
           </View>
         </View>
       </SafeAreaView>
@@ -211,7 +212,7 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "space-between",
-    paddingTop: 40,
+    paddingTop: 28,
     paddingBottom: 24,
   },
 
@@ -259,7 +260,7 @@ const styles = StyleSheet.create({
 
   inner: {
     paddingHorizontal: 32,
-    paddingVertical: 40,
+    paddingVertical: 48,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -268,13 +269,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "flex-end",
-    height: BAR_H + 40,
+    height: BAR_H + 48,
   },
 
-  barCol: {
-    width: BAR_W,
-    alignItems: "center",
-  },
+  // Bars
+  barCol: { width: BAR_W, alignItems: "center" },
   barTitle: {
     color: TEXT,
     fontSize: 16,
@@ -290,9 +289,9 @@ const styles = StyleSheet.create({
     height: BAR_H,
     marginTop: 10,
     borderRadius: 16,
-    backgroundColor: "#141414",
+    backgroundColor: TRACK_BG,
     borderWidth: 1,
-    borderColor: "#242424",
+    borderColor: TRACK_BORDER,
     overflow: "hidden",
     position: "relative",
   },
@@ -302,7 +301,12 @@ const styles = StyleSheet.create({
     width: "100%",
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
-    justifyContent: "flex-end",
+  },
+  fillSheen: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 16,
+    borderWidth: 0.5,
+    borderColor: "rgba(255,255,255,0.02)",
   },
   pctWrap: { alignItems: "center", paddingBottom: 10 },
   pctText: {
@@ -329,6 +333,6 @@ const styles = StyleSheet.create({
 
   ctaWrap: {
     width: CARD_W,
-    marginTop: 24,
+    marginTop: 8,
   },
 });
