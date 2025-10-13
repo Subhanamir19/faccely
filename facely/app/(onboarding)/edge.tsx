@@ -113,8 +113,8 @@ const VerticalStatBar: React.FC<BarProps> = ({
         </T>
       ) : null}
 
-      <View style={styles.barOanduter} onLayout={onTrackLayout}>
-        {/* Bottom-anchored fill; only top corners rounded */}
+<View style={styles.barOuter} onLayout={onTrackLayout}>
+{/* Bottom-anchored fill; only top corners rounded */}
         <Animated.View
           style={[styles.barFill, { backgroundColor: fill }, fillStyle]}
         >
