@@ -1,5 +1,5 @@
 // app/(onboarding)/edge.tsx
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect } from "react";
 import {
   View,
   StyleSheet,
@@ -59,7 +59,8 @@ const VerticalStatBar: React.FC<BarProps> = ({
   pctTextColor,
   delay = 150,
 }) => {
-  const [trackH, setTrackH] = useState(0);
+  const trackH = useSharedValue(BAR_H);
+
   const prog = useSharedValue(0);
 
   // Always replay the animation on mount/refresh
@@ -75,14 +76,15 @@ const VerticalStatBar: React.FC<BarProps> = ({
   }, [percent, delay]);
 
   const onTrackLayout = (e: any) => {
-    const h = e.nativeEvent.layout.height || 0;
-    if (h !== trackH) setTrackH(h);
+    const h = e.nativeEvent.layout.height || BAR_H;
+    trackH.value = h;
   };
 
   const fillStyle = useAnimatedStyle(() => {
     // height uses whatever trackH currently is; when trackH updates after refresh,
     // the same prog.value is applied so the bar stays visible.
-    const h = trackH * prog.value;
+    const h = trackH.value * prog.value;
+
     return { height: h };
   });
 
