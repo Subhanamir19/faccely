@@ -1,3 +1,4 @@
+// babel.config.js
 module.exports = function (api) {
   api.cache(true);
   return {
@@ -12,11 +13,14 @@ module.exports = function (api) {
             "@components": "./components",
             "@lib": "./lib",
             "@store": "./store",
-            "@stores": "./store"
+            "@stores": "./store",
           },
-          extensions: [".ts", ".tsx", ".js", ".jsx", ".json"]
-        }
-      ]
-    ]
+          extensions: [".ts", ".tsx", ".js", ".jsx", ".json"],
+        },
+      ],
+
+      // 🔥 must be LAST in the list
+      "react-native-reanimated/plugin",
+    ],
   };
 };
