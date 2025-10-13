@@ -6,8 +6,8 @@ export default function OnboardingLayout() {
       <Stack.Screen name="age" />
       <Stack.Screen name="ethnicity" />
       <Stack.Screen name="gender" />
-      {/* 👇 new final onboarding screen */}
       <Stack.Screen name="edge" />
+      <Stack.Screen name="paywall" />
     </Stack>
   );
 }

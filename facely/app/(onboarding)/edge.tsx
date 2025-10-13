@@ -133,10 +133,7 @@ const VerticalStatBar: React.FC<BarProps> = ({
 /* ---------------- Screen ---------------- */
 export default function EdgeScreen() {
   const onContinue = useCallback(() => {
-    try {
-      require("@/store/onboarding").useOnboarding.getState().finish?.();
-    } catch {}
-    router.replace("/(tabs)/take-picture");
+    router.push("/(onboarding)/paywall");
   }, []);
 
   return (
