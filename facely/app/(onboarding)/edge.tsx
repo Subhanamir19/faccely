@@ -56,7 +56,6 @@ const VerticalStatBar: React.FC<BarProps> = ({
   pctTextColor,
   delay = 150,
 }) => {
-  const { barOuter } = styles;
   const [trackHeight, setTrackHeight] = useState(BAR_H);
   const trackHeightRef = useRef(BAR_H);
   const progress = useRef(new Animated.Value(0)).current;
@@ -114,7 +113,7 @@ const VerticalStatBar: React.FC<BarProps> = ({
         </T>
       ) : null}
 
-      <View style={barOuter} onLayout={onTrackLayout}>
+      <View style={styles.barOanduter} onLayout={onTrackLayout}>
         {/* Bottom-anchored fill; only top corners rounded */}
         <Animated.View
           style={[styles.barFill, { backgroundColor: fill }, fillStyle]}
@@ -134,7 +133,10 @@ const VerticalStatBar: React.FC<BarProps> = ({
 /* ---------------- Screen ---------------- */
 export default function EdgeScreen() {
   const onContinue = useCallback(() => {
-    router.push("/(onboarding)/paywall");
+    try {
+      require("@/store/onboarding").useOnboarding.getState().finish?.();
+    } catch {}
+    router.replace("/(tabs)/take-picture");
   }, []);
 
   return (
