@@ -1,5 +1,6 @@
 // app/(onboarding)/edge.tsx
-import React, { useCallback, useEffect } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
 import {
   View,
   StyleSheet,
@@ -7,16 +8,12 @@ import {
   StatusBar,
   Dimensions,
   Platform,
+  Animated,
+  Easing,
 } from "react-native";
 import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
-import Animated, {
-  Easing,
-  useAnimatedStyle,
-  useSharedValue,
-  withDelay,
-  withTiming,
-} from "react-native-reanimated";
+
 import { router } from "expo-router";
 
 import T from "@/components/ui/T";
@@ -59,34 +56,48 @@ const VerticalStatBar: React.FC<BarProps> = ({
   pctTextColor,
   delay = 150,
 }) => {
-  const trackH = useSharedValue(BAR_H);
-
-  const prog = useSharedValue(0);
+  const [trackHeight, setTrackHeight] = useState(BAR_H);
+  const trackHeightRef = useRef(BAR_H);
+  const progress = useRef(new Animated.Value(0)).current;
+  const fillStyle = useMemo(
+    () => ({
+      height: progress.interpolate({
+        inputRange: [0, 1],
+        outputRange: [0, trackHeight],
+        extrapolate: "clamp",
+      }),
+    }),
+    [progress, trackHeight],
+  );
 
   // Always replay the animation on mount/refresh
   useEffect(() => {
-    prog.value = 0;
-    prog.value = withDelay(
-      delay,
-      withTiming(percent / 100, {
+    progress.stopAnimation();
+    progress.setValue(0);
+    const animation = Animated.sequence([
+      Animated.delay(delay),
+      Animated.timing(progress, {
+        toValue: percent / 100,
         duration: 1200,
         easing: Easing.out(Easing.cubic),
-      })
-    );
-  }, [percent, delay]);
+        useNativeDriver: false,
+      }),
+    ]);
+
+    animation.start();
+
+    return () => {
+      animation.stop();
+    };
+  }, [progress, percent, delay]);
 
   const onTrackLayout = (e: any) => {
-    const h = e.nativeEvent.layout.height || BAR_H;
-    trackH.value = h;
+    const h = e?.nativeEvent?.layout?.height || BAR_H;
+    if (!h || h === trackHeightRef.current) return;
+
+    trackHeightRef.current = h;
+    setTrackHeight(h);
   };
-
-  const fillStyle = useAnimatedStyle(() => {
-    // height uses whatever trackH currently is; when trackH updates after refresh,
-    // the same prog.value is applied so the bar stays visible.
-    const h = trackH.value * prog.value;
-
-    return { height: h };
-  });
 
   return (
     <View style={styles.barCol}>
