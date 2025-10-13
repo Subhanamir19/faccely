@@ -31,7 +31,7 @@ export default function GlassBtn({
       : styles.shadowGlass;
 
   return (
-    <Pressable onPress={onPress} disabled={disabled} style={{ flex: 1 }}>
+    <Pressable onPress={onPress} disabled={disabled} style={styles.pressable}>
       {({ pressed }) => (
         <View style={[styles.shadowWrap, shadowStyle]}>
           {isPrimary ? (
@@ -106,6 +106,10 @@ export default function GlassBtn({
 const R = 28;
 
 const styles = StyleSheet.create({
+  pressable: {
+    flex: 1,
+    alignSelf: "stretch",
+  },
   shadowWrap: {
     borderRadius: R,
     overflow: "hidden",

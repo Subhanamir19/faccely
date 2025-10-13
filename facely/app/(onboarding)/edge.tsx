@@ -347,5 +347,6 @@ const styles = StyleSheet.create({
   ctaWrap: {
     width: CARD_W,
     marginTop: 8,
+    flexDirection: "row",
   },
 });
