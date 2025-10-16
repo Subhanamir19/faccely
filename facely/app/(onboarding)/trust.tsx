@@ -32,10 +32,14 @@ const track: TrackFn = () => {};
 const RAW_TARGET_ACCURACY = 98.5;
 const ANIMATION_DURATION = 1400;
 
-const clamp = (value: number, min: number, max: number) =>
+const clampToRange = (value: number, min: number, max: number) =>
+
   Math.min(max, Math.max(min, value));
 
-const formatAccuracy = (value: number) => `${value.toFixed(1)}%`;
+const formatAccuracy = (value: number) => {
+  'worklet';
+  return `${value.toFixed(1)}%`;
+};
 
 const sanitizeAccuracy = (value: unknown) => {
   const numeric = typeof value === "number" ? value : Number(value);
@@ -49,7 +53,8 @@ const sanitizeAccuracy = (value: unknown) => {
     return 0;
   }
 
-  const clamped = clamp(numeric, 0, 100);
+  const clamped = clampToRange(numeric, 0, 100);
+
   if (__DEV__ && clamped !== numeric) {
     console.warn(
       `[TrustAccuracy] Accuracy value ${numeric} out of bounds; clamped to ${clamped}.`,
@@ -123,7 +128,8 @@ export default function TrustAccuracyScreen() {
   ]);
 
   const animatedMetricProps = useAnimatedProps(() => {
-    const current = clamp(animatedAccuracy.value, 0, 100);
+    const rawValue = animatedAccuracy.value;
+    const current = rawValue < 0 ? 0 : rawValue > 100 ? 100 : rawValue;
     const rounded = Math.round(current * 10) / 10;
     return {
       text: formatAccuracy(rounded),
