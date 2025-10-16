@@ -214,7 +214,8 @@ export default function LoadingScreen() {
 
     // Default: original onboarding bootstrap behavior (unchanged path)
     if (!completed) {
-      router.replace("/(onboarding)/age");
+      router.replace("/(onboarding)/welcome");
+
       return;
     }
 

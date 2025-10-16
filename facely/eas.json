@@ -1,0 +1,12 @@
+{
+    "cli": { "version": ">= 11.0.0" },
+    "build": {
+      "internal": {
+        "android": {
+          "buildType": "app-bundle"
+        }
+      }
+    },
+    "submit": {}
+  }
+  

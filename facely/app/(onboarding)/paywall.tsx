@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   Dimensions,
   Pressable,
@@ -18,6 +18,7 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { router } from "expo-router";
+import { useOnboarding } from "@/store/onboarding";
 
 const { width } = Dimensions.get("window");
 
@@ -173,6 +174,7 @@ const PlanCard: React.FC<{
 
 const PaywallScreen: React.FC = () => {
   const [selected, setSelected] = useState<PlanKey>("monthly");
+  const finishOnboarding = useOnboarding((state) => state.finish);
 
   const screenFade = useSharedValue(0);
 
@@ -244,9 +246,17 @@ const PaywallScreen: React.FC = () => {
     setSelected(plan);
   };
 
-  const onContinue = () => {
-    router.push("/(tabs)/take-picture");
-  };
+  const onContinue = useCallback(async () => {
+    try {
+      await finishOnboarding();
+    } catch (error) {
+      if (__DEV__) {
+        console.warn("[Paywall] Failed to persist onboarding completion", error);
+      }
+    } finally {
+      router.replace("/(tabs)/take-picture");
+    }
+  }, [finishOnboarding]);
 
   const primaryScale = useSharedValue(1);
 

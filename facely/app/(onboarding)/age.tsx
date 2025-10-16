@@ -1,13 +1,17 @@
 // app/(onboarding)/age.tsx
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+
 import {
   View,
   StyleSheet,
   Pressable,
   Platform,
   StatusBar,
+  AccessibilityInfo,
+  findNodeHandle,
 } from "react-native";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
+import { useFocusEffect } from "@react-navigation/native";
 import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
 import T from "@/components/ui/T";
@@ -22,14 +26,40 @@ const TEXT = "#FFFFFF";
 const TEXT_DIM = "rgba(160,160,160,0.80)";
 
 export default function AgeScreen() {
+  const params = useLocalSearchParams<{ autofocus?: string }>();
+
   const { data, setField } = useOnboarding();
   const [age, setAge] = useState<number>(
     Number.isFinite(data.age) ? Number(data.age) : 25
   );
+  const firstControlRef = useRef<any>(null);
 
   useEffect(() => {
     setField("age", age);
   }, [age]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (params.autofocus !== "1") {
+        return;
+      }
+
+      const timeout = setTimeout(() => {
+        const handle = firstControlRef.current
+          ? findNodeHandle(firstControlRef.current)
+          : null;
+        if (handle != null) {
+          try {
+            AccessibilityInfo.setAccessibilityFocus(handle);
+          } catch {
+            // no-op for platforms without focus APIs
+          }
+        }
+      }, 250);
+
+      return () => clearTimeout(timeout);
+    }, [params.autofocus])
+  );
 
   const dec = () => setAge(a => Math.max(10, a - 1));
   const inc = () => setAge(a => Math.min(100, a + 1));
@@ -67,7 +97,12 @@ export default function AgeScreen() {
                 style={styles.circleGlow}
               />
               <View style={styles.circleCore}>
-                <Pressable hitSlop={16} onPress={inc} style={[styles.sideBtn, styles.leftBtn]}>
+              <Pressable
+                  ref={firstControlRef}
+                  hitSlop={16}
+                  onPress={inc}
+                  style={[styles.sideBtn, styles.leftBtn]}
+                >
                   <T style={styles.sideSymbol}>＋</T>
                 </Pressable>
 
