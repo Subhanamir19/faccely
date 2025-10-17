@@ -3,8 +3,9 @@ import React from "react";
 import { Tabs } from "expo-router";
 import { Platform } from "react-native";
 import { Camera, ListChecks } from "lucide-react-native";
+import { COLORS } from "@/lib/tokens";
 
-const ACTIVE = "#8FA31E";
+const ACTIVE = COLORS.accent;
 const INACTIVE = "rgba(255,255,255,0.55)";
 const BG = "#0B0B0B";
 const BORDER = "rgba(255,255,255,0.08)";
@@ -43,11 +44,13 @@ export default function TabsLayout() {
         }}
       />
 
-      {/* Visible tab #2: Recommendations */}
+      {/* Visible tab #2: Routine */}
+
       <Tabs.Screen
-        name="recommendations"
+        name="routine"
         options={{
-          title: "Recommendations",
+          title: "Routine",
+
           tabBarIcon: ({ color, size }) => <ListChecks color={color} size={size ?? 22} />,
         }}
       />

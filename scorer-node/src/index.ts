@@ -11,12 +11,19 @@ import sharp from "sharp";
 import { ZodError, type ZodIssue } from "zod";
 
 import { generateRecommendations, RecommendationsParseError } from "./recommender.js";
+import {
+  generateRoutinePlan,
+  RoutineParseError,
+  ValidationError,
+} from "./routine.js";
 import { ENV } from "./env.js";
 import {
   ScoresSchema,
   ExplanationsSchemaV1,
   ExplanationsSchemaV2,
   RecommendationsRequestSchema, // ← you were missing this
+  RoutineRequestSchema,
+
   type ExplanationsV1,
   type ExplanationsV2,
 } from "./validators.js";
@@ -412,6 +419,62 @@ app.post("/recommendations", upload.none(), async (req, res) => {
   } finally {
     release();
     console.log("[/recommendations] ms =", Date.now() - t0);
+  }
+});
+
+/* --------------------------------- /routine -------------------------------- */
+app.post("/routine", upload.none(), async (req, res) => {
+  const parsedReq = RoutineRequestSchema.safeParse(req.body);
+  if (!parsedReq.success)
+    return res.status(400).json({
+      error: "invalid_routine_payload",
+      issues: parsedReq.error.issues?.map((i: ZodIssue) => ({
+        path: i.path,
+        code: i.code,
+        message: i.message,
+      })),
+    });
+
+  const t0 = Date.now();
+  try {
+    await enqueue();
+    const data = await generateRoutinePlan(parsedReq.data);
+    res.json(data);
+  } catch (err: any) {
+    if (err.message === "server_overloaded")
+      return res.status(503).json({ error: "too_many_requests", hint: "retry later" });
+    if (err instanceof RoutineParseError) {
+      console.error("[/routine] invalid completion:", err.rawPreview);
+      return res.status(502).json({ error: "routine_generation_failed", detail: err.message });
+    }
+    if (err instanceof ValidationError) {
+      console.error("[/routine] invalid completion shape:", err.issues);
+      return res.status(502).json({
+        error: "routine_shape_invalid",
+        detail: "Routine generation failed: upstream response had an unexpected shape.",
+        issues: err.issues?.map((i: ZodIssue) => ({
+          path: i.path,
+          code: i.code,
+          message: i.message,
+        })),
+      });
+    }
+    if (err instanceof ZodError) {
+      console.error("[/routine] validation error:", err.issues);
+      return res.status(422).json({
+        error: "routine_validation_failed",
+        issues: err.issues?.map((i: ZodIssue) => ({
+          path: i.path,
+          code: i.code,
+          message: i.message,
+        })),
+      });
+    }
+    console.error("[/routine] error:", err?.response?.data ?? err);
+    res.status(500).json(errorPayload(err));
+  } finally {
+    release();
+    console.log("[/routine] ms =", Date.now() - t0);
   }
 });
 

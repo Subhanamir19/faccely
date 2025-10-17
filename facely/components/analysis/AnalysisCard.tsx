@@ -34,7 +34,7 @@ const MEDIA_H = 230; // visually matches score.tsx graph height
 export default function AnalysisCard({
   metric,
   copy,
-  submetrics, // ← if provided, shows the 2×2 grid
+  submetrics, // if provided, shows the 2x2 grid
 }: {
   metric: MetricKey;
   copy: AnalysisCopy;
@@ -73,14 +73,14 @@ export default function AnalysisCard({
           ) : null}
         </View>
 
-        {/* Either render NEW 2×2 sub-metric grid, or fallback to old Strength/Improve copy */}
+        {/* Either render new 2x2 sub-metric grid, or fallback to old Strength/Improve copy */}
         {showGrid ? (
           <View style={styles.grid}>
             {submetrics!.slice(0, 4).map((s, i) => (
               <View key={`${s.title}-${i}`} style={styles.subCard}>
                 <Text style={styles.subTitle}>{s.title}</Text>
                 <Text style={styles.subVerdict} numberOfLines={2}>
-                  {s.verdict || "—"}
+                  {s.verdict || "--"}
                 </Text>
                 <View style={styles.subUnderline} />
               </View>

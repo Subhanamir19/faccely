@@ -149,3 +149,53 @@ export const RecommendationsResponseSchema = z.object({
 export type RecommendationsResponse = z.infer<
   typeof RecommendationsResponseSchema
 >;
+/* ============================================================================
+   Routine planner
+   ========================================================================== */
+
+   export const RoutineMetricSchema = z.object({
+    key: z.enum(metricKeys),
+    score: z.number().min(0).max(100),
+    notes: z.string().optional(),
+  });
+  
+  export const RoutineRequestSchema = z.object({
+    age: z.number().int().min(10).max(100),
+    gender: GenderSchema.optional(),
+    ethnicity: z.string().optional(),
+    daily_minutes: z.number().int().min(5).max(180).optional(),
+    metrics: z.array(RoutineMetricSchema).min(1),
+  });
+  export type RoutineReq = z.infer<typeof RoutineRequestSchema>;
+  
+  export const RoutineTaskSchema = z.object({
+    headline: z.string().min(1),
+    category: z.string().min(1),
+    protocol: z.string().min(1).max(60),
+    done: z.boolean().optional(),
+  });
+  export type RoutineTask = z.infer<typeof RoutineTaskSchema>;
+  
+  export const RoutineDaySchema = z.object({
+    day: z.number().int().min(1),
+    components: z.array(RoutineTaskSchema).length(5),
+    notes: z.array(z.string()).optional(),
+    review_checks: z.array(z.string()).optional(),
+  });
+  export type RoutineDay = z.infer<typeof RoutineDaySchema>;
+  
+  export const RoutinePlanSchema = z.object({
+    metric: z.string().min(1),
+    phase_plan: z
+      .array(
+        z.object({
+          week: z.number().int().min(1),
+          focus: z.string().min(1),
+          volume_pct: z.number(),
+        })
+      )
+      .length(4),
+    days: z.array(RoutineDaySchema).length(30),
+    global_rules_applied: z.array(z.string()).optional(),
+  });
+  export type RoutinePlan = z.infer<typeof RoutinePlanSchema>;

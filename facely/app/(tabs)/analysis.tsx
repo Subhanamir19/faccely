@@ -12,15 +12,16 @@ import {
 } from "react-native";
 import PagerView from "react-native-pager-view";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import AnalysisCard from "@/components/analysis/AnalysisCard";
+import AnalysisCard, { type SubmetricView } from "@/components/analysis/AnalysisCard";
 
 
 // Poppins wrapper
 import Text from "@/components/ui/T";
 
 // Stores / nav
-import { useScores } from "../../store/scores";
-import { useRecommendations } from "../../store/recommendations";
+import { useScores, getSubmetricVerdicts } from "../../store/scores";
+import { useRoutine } from "@/store/routine";
+import { buildRoutineReq } from "@/lib/api/routine";
 import { useRouter } from "expo-router";
 
 // UI
@@ -30,7 +31,7 @@ const BG = require("../../assets/bg/score-bg.jpg");
 const { width } = Dimensions.get("window");
 
 // ---------------------------------------------------------------------------
-// Tokens — mirror score.tsx spacing rhythm
+// Tokens - mirror score.tsx spacing rhythm
 // ---------------------------------------------------------------------------
 const GUTTER = 16; // left/right screen padding (matches score)
 const CARD_W = width - GUTTER * 2; // card width exactly like score.tsx
@@ -92,13 +93,13 @@ const DEFAULT_VERDICTS: Partial<Record<MetricKey, string[]>> = {
   eyes_symmetry: [
     "Left eyelid slightly higher",
     "Almond shape, ideal",
-    "Neutral — a slight lift improves sharpness",
+    "Neutral - a slight lift improves sharpness",
     "Clear and vibrant",
   ],
   jawline: [
     "Crisp and well-defined",
     "Balanced on both sides",
-    "Ideal, around 120°",
+    "Ideal, around 120 deg",
     "Not recessed, well-pronounced",
   ],
   cheekbones: [
@@ -125,30 +126,12 @@ function band(score: number | undefined) {
 }
 
 // ---------------------------------------------------------------------------
-// Small local UI components (self-contained, no external deps)
-// ---------------------------------------------------------------------------
-type SubmetricView = { title: string; verdict?: string };
-
-function SubmetricCard({ title, verdict }: SubmetricView) {
-  return (
-    <View style={styles.subCard}>
-      <Text style={styles.subTitle}>{title}</Text>
-      <Text style={styles.subVerdict} numberOfLines={2}>
-        {verdict || "—"}
-      </Text>
-      <View style={styles.subUnderline} />
-    </View>
-  );
-}
-
-
-
-// ---------------------------------------------------------------------------
 // Screen
 // ---------------------------------------------------------------------------
 export default function AnalysisScreen() {
-  const { scores, explanations, explLoading, explError } = useScores() as any;
-  const { get } = useRecommendations();
+  const { scores, explanations, explLoading, explError } = useScores();
+  const prefetchRoutine = useRoutine((state) => state.prefetch);
+
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
@@ -162,19 +145,25 @@ export default function AnalysisScreen() {
     pagerRef.current?.setPage(page);
   }
 
-  async function handleRecommendations() {
+  async function handleRoutine() {
+
     if (!scores) return;
-    const req = {
+    const mapped = ORDER.reduce<Record<string, number | undefined>>((acc, key) => {
+      acc[key] = scores[key];
+      return acc;
+    }, {});
+    const req = buildRoutineReq({
       age: 24,
       gender: undefined,
       ethnicity: undefined,
-      metrics: ORDER.map((k) => ({
-        key: k,
-        score: Math.round(scores[k] ?? 0),
-      })),
-    };
-    await get(req);
-    router.push("/(tabs)/recommendations");
+      scores: mapped,
+    });
+    try {
+      await prefetchRoutine(req);
+      router.push("/(tabs)/routine");
+    } catch {
+      /* swallow - store exposes error */
+    }
   }
 
   return (
@@ -189,7 +178,7 @@ export default function AnalysisScreen() {
         {explLoading ? (
           <View style={styles.rowCenter}>
             <ActivityIndicator />
-            <Text style={{ color: "rgba(255,255,255,0.7)", marginLeft: 8 }}>Analyzing…</Text>
+            <Text style={{ color: "rgba(255,255,255,0.7)", marginLeft: 8 }}>Analyzing...</Text>
           </View>
         ) : null}
         {explError ? (
@@ -207,16 +196,17 @@ export default function AnalysisScreen() {
             const score = scores?.[metric] as number | undefined;
             const current = band(score) ? `Current: ${band(score)}` : undefined;
 
-            // If you already have per-submetric text in `explanations`, wire it here.
-            // Expecting explanations?.[metric] as string[] of length 4. If it isn't, we fallback to defaults.
-            const verdicts: string[] =
-              (Array.isArray((explanations as any)?.[metric]) &&
-                ((explanations as any)[metric] as string[]).slice(0, 4)) ||
-              DEFAULT_VERDICTS[metric] ||
-              ["", "", "", ""];
+            const verdicts = getSubmetricVerdicts(explanations, metric);
+            const finalVerdicts =
+              verdicts.some((line) => line && line.trim().length > 0)
+                ? verdicts
+                : DEFAULT_VERDICTS[metric] ?? ["", "", "", ""];
 
             const titles = SUBMETRICS[metric];
-            const submetrics = titles.map((t, i) => ({ title: t, verdict: verdicts[i] })) as SubmetricView[];
+            const submetrics: SubmetricView[] = titles.map((t, i) => ({
+              title: t,
+              verdict: finalVerdicts[i],
+            }));
 
             return (
               <View key={metric} style={styles.page}>
@@ -240,19 +230,27 @@ export default function AnalysisScreen() {
           ))}
         </View>
 
-        {/* Bottom glass button row — exact placement like score.tsx */}
+        {/* Bottom glass button row - exact placement like score.tsx */}
         <View
           style={[
             styles.bottomBar,
             { left: GUTTER, right: GUTTER, bottom: PILL_ROW_BOTTOM + insets.bottom },
           ]}
         >
-          <GlassBtn label="Previous" icon="chevron-back" onPress={() => !isFirst && goTo(idx - 1)} disabled={isFirst} />
-
+          <GlassBtn
+            label="Previous"
+            icon="chevron-back"
+            onPress={() => {
+              if (!isFirst) {
+                goTo(idx - 1);
+              }
+            }}
+            disabled={isFirst}
+          />
           {!isLast ? (
             <GlassBtn label="Next" icon="chevron-forward" onPress={() => goTo(idx + 1)} />
           ) : (
-            <GlassBtn label="Recommendations" icon="sparkles" onPress={handleRecommendations} />
+            <GlassBtn label="Routine" icon="sparkles" onPress={handleRoutine} />
           )}
         </View>
       </SafeAreaView>
@@ -339,30 +337,6 @@ const styles = StyleSheet.create({
     gap: 12,
     padding: 14,
     paddingBottom: 18,
-  },
-
-  subCard: {
-    width: (CARD_W - 14 * 2 - 12) / 2, // two per row, accounting for padding & gap
-    backgroundColor: "rgba(0,0,0,0.35)",
-    borderRadius: 16,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.06)",
-  },
-  subTitle: {
-    color: "#D7FF9E",
-    fontWeight: "600",
-    marginBottom: 6,
-  },
-  subVerdict: {
-    color: "rgba(255,255,255,0.92)",
-    minHeight: 18,
-  },
-  subUnderline: {
-    height: 2,
-    backgroundColor: "rgba(255,255,255,0.12)",
-    marginTop: 8,
-    borderRadius: 2,
   },
 
   // Dots
