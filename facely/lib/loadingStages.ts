@@ -1,55 +1,54 @@
 export type LoadingStageKey =
   | "startup"
-  | "age-metrics"
-  | "paywall-sync"
-  | "scoring"
+  | "post-age"
+  | "post-paywall"
+  | "score"
   | "analysis"
-  | "routine-plan";
+  | "routine";
 
 export type LoadingStageCopy = {
   title: string;
   subtitle: string;
-  badge: number | "random";
-
 };
 
 export const LOADING_STAGE_COPY: Record<LoadingStageKey, LoadingStageCopy> = {
   startup: {
     title: "Max your Looks",
     subtitle: "initializing Sigma engine",
-    badge: "random",
-
   },
-  "age-metrics": {
+  "post-age": {
     title: "Refining age metrics",
     subtitle: "preparing adaptive parameters",
-    badge: 31,
-
   },
-  "paywall-sync": {
+  "post-paywall": {
     title: "Syncing intelligence layer",
     subtitle: "calibrating cognitive model",
-    badge: 48,
-
   },
-  scoring: {
+  score: {
     title: "Scoring your photos",
     subtitle: "extracting facial vectors",
-    badge: 69,
-
   },
   analysis: {
     title: "Analyzing your structure",
     subtitle: "mapping proportions & harmony",
-    badge: 69,
-
   },
-  "routine-plan": {
+  routine: {
     title: "Designing your 30-day plan",
     subtitle: "selecting top routines",
-    badge: 94,
-
   },
+};
+
+const PHASE_ALIASES: Record<string, LoadingStageKey> = {
+  startup: "startup",
+  "age-metrics": "post-age",
+  "paywall-sync": "post-paywall",
+  scoring: "score",
+  analysis: "analysis",
+  "routine-plan": "routine",
+  "post-age": "post-age",
+  "post-paywall": "post-paywall",
+  score: "score",
+  routine: "routine",
 };
 
 export function resolveLoadingStage({
@@ -59,12 +58,15 @@ export function resolveLoadingStage({
   mode?: string | null;
   phase?: string | null;
 }): LoadingStageKey {
-  if (phase && isLoadingStageKey(phase)) {
-    return phase;
+  if (phase) {
+    const normalized = PHASE_ALIASES[phase];
+    if (normalized) {
+      return normalized;
+    }
   }
 
   if (mode === "analyzePair") {
-    return "scoring";
+    return "score";
   }
 
   if (mode === "advanced") {

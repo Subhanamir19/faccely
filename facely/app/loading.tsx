@@ -1,36 +1,40 @@
-// C:\SS\facely\app\loading.tsx
-import React, { useEffect, useRef, useState } from "react";
-import { Animated, Alert, Easing } from "react-native";
+import React, { useEffect, useState } from "react";
+import { Alert } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
-import CinematicLoader from "@/components/ui/CinematicLoader.tsx";
-import { LOADING_STAGE_COPY, resolveLoadingStage } from "@/lib/loadingStages.ts";
-import { useOnboarding } from "@/store/onboarding";
-import { useScores } from "../store/scores";
 import * as FileSystem from "expo-file-system";
 
-// NEW: ensure pre-upload JPEG normalization (max 1080px, ~80% quality)
+import CinematicLoader from "@/components/ui/CinematicLoader";
+import { LOADING_STAGE_COPY, resolveLoadingStage } from "@/lib/loadingStages";
+import { useOnboarding } from "@/store/onboarding";
+import { useScores } from "../store/scores";
 import { ensureJpegCompressed } from "../lib/api/media";
 
-function readAnimatedValue(animatedValue: Animated.Value): number {
-  const candidate = animatedValue as any;
-  if (typeof candidate.__getValue === "function") {
-    return candidate.__getValue();
+type ParamValue = string | string[] | undefined;
+
+type Params = {
+  mode?: "analyzePair" | "advanced" | string;
+  front?: ParamValue;
+  side?: ParamValue;
+  phase?: ParamValue;
+  frontName?: ParamValue;
+  sideName?: ParamValue;
+  frontMime?: ParamValue;
+  sideMime?: ParamValue;
+  normalized?: ParamValue;
+};
+
+function takeFirst(value?: ParamValue): string | undefined {
+  if (!value) return undefined;
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function safeDecode(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
   }
-  const raw = candidate?._value;
-  return typeof raw === "number" ? raw : 0;
 }
-
-function formatPercent(value: number): string {
-  return `${Math.round(value)}%`;
-}
-
-function initialBadgeValue(badge: number | "random"): string {
-  if (badge === "random") {
-    return "0%";
-  }
-  return `${badge}%`;
-}
-
 
 function toFileUri(u: string) {
   if (u.startsWith("file://") || u.startsWith("http")) return u;
@@ -46,127 +50,68 @@ async function ensureFileUriAsync(raw?: string | null): Promise<string | null> {
       await FileSystem.copyAsync({ from: raw, to: dest });
       return dest;
     } catch {
-      return raw; // fallback
+      return raw;
     }
   }
   return toFileUri(raw);
 }
 
-
-
-type Params = {
-  mode?: "analyzePair" | "advanced" | string;
-  front?: string;
-  side?: string;
-  phase?: string;
-
-
-  // optional metadata if caller already normalized
-  frontName?: string;
-  sideName?: string;
-  frontMime?: string;
-  sideMime?: string;
-  normalized?: string; // "1" if already normalized
-};
-
 export default function LoadingScreen() {
   const { completed } = useOnboarding();
-  const {
-    mode,
-    front,
-    side,
-    frontName,
-    sideName,
-    frontMime,
-    phase,
-    sideMime,
-    normalized,
-  } = useLocalSearchParams<Params>();
-  const scoresStore = useScores();
+  const params = useLocalSearchParams<Params>();
+  const analyzePair = useScores((state) => state.analyzePair);
+  const explainPair = useScores((state) => state.explainPair);
+  const explain = useScores((state) => state.explain);
 
-  // progress 0..100
-  const prog = useRef(new Animated.Value(0)).current;
-  const loopStopRef = useRef(false);
+  const mode = takeFirst(params.mode);
+  const front = takeFirst(params.front);
+  const side = takeFirst(params.side);
+  const phase = takeFirst(params.phase);
+  const frontName = takeFirst(params.frontName);
+  const sideName = takeFirst(params.sideName);
+  const frontMime = takeFirst(params.frontMime);
+  const sideMime = takeFirst(params.sideMime);
+  const normalized = takeFirst(params.normalized);
 
+  const stageKey = resolveLoadingStage({ mode, phase });
+  const stageCopy = LOADING_STAGE_COPY[stageKey];
 
-
-  const stage = resolveLoadingStage({ mode, phase });
-  const stageCopy = LOADING_STAGE_COPY[stage];
-  const [badgeText, setBadgeText] = useState(() => initialBadgeValue(stageCopy.badge));
-
-
-  const startIndeterminateLoop = () => {
-    loopStopRef.current = false;
-    prog.stopAnimation();
-    const tick = () => {
-      if (loopStopRef.current) return;
-      prog.setValue(0);
-      Animated.timing(prog, {
-        toValue: 100,
-        duration: 1600,
-        easing: Easing.inOut(Easing.cubic),
-        useNativeDriver: false,
-      }).start(({ finished }) => {
-        if (finished && !loopStopRef.current) tick();
-      });
-    };
-    tick();
-  };
-
-  const stopLoop = () => {
-    loopStopRef.current = true;
-    prog.stopAnimation();
-
-  };
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    if (stageCopy.badge === "random") {
+    let cancelled = false;
 
-      const updateRandom = () => {
-        setBadgeText(`${Math.floor(Math.random() * 101)}%`);
-      };
-
-      updateRandom();
-      const interval = setInterval(updateRandom, 900);
-      return () => clearInterval(interval);
-    }
-
-    if (typeof stageCopy.badge === "number") {
-      setBadgeText(`${stageCopy.badge}%`);
-      return;
-    }
-
-    setBadgeText(formatPercent(readAnimatedValue(prog)));
-    const listenerId = prog.addListener(({ value }) => {
-      setBadgeText(formatPercent(value));
-
-    });
-
-    return () => {
-      prog.removeListener(listenerId);
-    };
-  }, [stageCopy.badge, prog]);
-
-
-
-  useEffect(() => {
-    // Task modes take precedence over onboarding bootstrap
-    if (mode === "analyzePair") {
-      if (!front || !side) {
-        Alert.alert("Missing images", "Both frontal and side images are required.");
-        router.back();
-        return;
+    const handleError = (err: unknown, title: string) => {
+      if (cancelled) return;
+      setIsLoading(false);
+      const message =
+        err instanceof Error
+          ? err.message
+          : typeof err === "string"
+          ? err
+          : "Unknown error";
+      if (message) {
+        Alert.alert(title, message);
       }
+      const canGoBack =
+        typeof router.canGoBack === "function" ? router.canGoBack() : false;
+      if (canGoBack) {
+        router.back();
+      } else {
+        router.replace("/error");
+      }
+    };
 
-      startIndeterminateLoop();
-
+    if (mode === "analyzePair") {
       (async () => {
         try {
-          // 1) decode what we encoded during navigation
-          const decodedFront = decodeURIComponent(front as string);
-          const decodedSide = decodeURIComponent(side as string);
+          if (!front || !side) {
+            throw new Error("Both frontal and side images are required.");
+          }
 
-          // 2) normalize for Android content:// and ensure file://
+          const decodedFront = safeDecode(front);
+          const decodedSide = safeDecode(side);
+
           const frontUriRaw = await ensureFileUriAsync(decodedFront);
           const sideUriRaw = await ensureFileUriAsync(decodedSide);
 
@@ -174,14 +119,17 @@ export default function LoadingScreen() {
             throw new Error("Image paths could not be resolved.");
           }
 
-          // 3) If previous screen already normalized & passed meta, use it.
-          //    Otherwise, enforce JPEG compression here as a safety net.
+          const alreadyNormalized = normalized === "1";
           let frontMeta: { uri: string; name?: string; mime?: string };
           let sideMeta: { uri: string; name?: string; mime?: string };
 
-          const alreadyNormalized = normalized === "1";
-
-          if (alreadyNormalized && frontName && sideName) {
+          if (
+            alreadyNormalized &&
+            frontName &&
+            sideName &&
+            frontMime &&
+            sideMime
+          ) {
             frontMeta = {
               uri: frontUriRaw,
               name: frontName || "front.jpg",
@@ -193,94 +141,116 @@ export default function LoadingScreen() {
               mime: sideMime || "image/jpeg",
             };
           } else {
-            // Safety: ensure size and codec are sane before upload
             const [frontNorm, sideNorm] = await Promise.all([
               ensureJpegCompressed(frontUriRaw),
               ensureJpegCompressed(sideUriRaw),
             ]);
-            frontMeta = { uri: frontNorm.uri, name: frontNorm.name, mime: "image/jpeg" };
-            sideMeta = { uri: sideNorm.uri, name: sideNorm.name, mime: "image/jpeg" };
+            frontMeta = {
+              uri: frontNorm.uri,
+              name: frontNorm.name,
+              mime: "image/jpeg",
+            };
+            sideMeta = {
+              uri: sideNorm.uri,
+              name: sideNorm.name,
+              mime: "image/jpeg",
+            };
           }
 
-          console.log("[loading] analyzePair metas:", {
-            front: frontMeta.name,
-            side: sideMeta.name,
-          });
+          const scores = await analyzePair(frontMeta as any, sideMeta as any);
+          if (cancelled) return;
 
-          const out = await scoresStore.analyzePair(frontMeta as any, sideMeta as any);
+          const wantsAnalysis = phase === "analysis";
+          if (wantsAnalysis) {
+            const ok = await explainPair(
+              frontMeta.uri,
+              sideMeta.uri,
+              scores,
+            );
+            if (!ok) {
+              throw new Error("Advanced analysis did not return results.");
+            }
+            if (cancelled) return;
+            setIsLoading(false);
+            router.replace("/(tabs)/analysis");
+            return;
+          }
 
-          stopLoop();
+          setIsLoading(false);
           router.replace({
             pathname: "/(tabs)/score",
-            params: { scoresPayload: JSON.stringify(out) },
+            params: { scoresPayload: JSON.stringify(scores) },
           });
-        } catch (e: any) {
-          stopLoop();
-          const msg = String(e?.message || e || "Unknown error");
-          Alert.alert("Analysis failed", msg);
-          router.back();
+        } catch (error) {
+          handleError(error, "Analysis failed");
         }
       })();
 
-      return;
+      return () => {
+        cancelled = true;
+      };
     }
 
     if (mode === "advanced") {
-      // imageUri + scores are already in the store after scoring step
-      startIndeterminateLoop();
-
       (async () => {
         try {
-          const { imageUri: storedImageUri, scores: storedScores } = scoresStore;
+          const { imageUri: storedImageUri, scores: storedScores } =
+            useScores.getState();
           if (!storedImageUri || !storedScores) {
             throw new Error("Scores not found. Please run analysis again.");
           }
-
-          const ok = await scoresStore.explain(storedImageUri, storedScores);
-          stopLoop();
-          if (ok) {
-            router.replace("/(tabs)/analysis");
-          } else {
+          const ok = await explain(storedImageUri, storedScores);
+          if (!ok) {
             throw new Error("Advanced analysis did not return results.");
           }
-        } catch (e: any) {
-          stopLoop();
-          Alert.alert("Advanced analysis failed", String(e?.message || e));
-          router.back();
+          if (cancelled) return;
+          setIsLoading(false);
+          router.replace("/(tabs)/analysis");
+        } catch (error) {
+          handleError(error, "Advanced analysis failed");
         }
       })();
 
-      return;
+      return () => {
+        cancelled = true;
+      };
     }
 
-    // Default: original onboarding bootstrap behavior (unchanged path)
     if (!completed) {
+      setIsLoading(false);
       router.replace("/(onboarding)/welcome");
-
-      return;
+      return () => {
+        cancelled = true;
+      };
     }
 
-    Animated.timing(prog, {
-      toValue: 100,
-      duration: 2200,
-      easing: Easing.inOut(Easing.cubic),
-      useNativeDriver: false,
-    }).start(({ finished }) => {
-      if (finished) router.replace("/(tabs)/take-picture");
-    });
-  }, [completed, mode, front, side, frontName, sideName, frontMime, sideMime, normalized]);
+    setIsLoading(false);
+    router.replace("/(tabs)/take-picture");
 
-  // Derived values for ring + percent
-  
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    analyzePair,
+    explain,
+    explainPair,
+    completed,
+    mode,
+    phase,
+    front,
+    side,
+    normalized,
+    frontName,
+    sideName,
+    frontMime,
+    sideMime,
+  ]);
 
   return (
     <CinematicLoader
-      progress={prog}
       title={stageCopy.title}
       subtitle={stageCopy.subtitle}
-      badgeText={badgeText}
+      loading={isLoading}
     />
   );
 }
-
-
