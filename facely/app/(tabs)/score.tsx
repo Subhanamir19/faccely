@@ -716,7 +716,8 @@ listRef.current?.scrollToOffset({ offset: 0, animated: false });
 
   const handleAdvanced = async () => {
     if (!imageUri || !scores) return;
-    router.push({ pathname: "/loading", params: { mode: "advanced" } });
+    router.push({ pathname: "/loading", params: { mode: "advanced", phase: "analysis" } });
+
   };
   
   

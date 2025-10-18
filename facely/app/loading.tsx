@@ -1,19 +1,9 @@
 // C:\SS\facely\app\loading.tsx
-import React, { useEffect, useRef } from "react";
-import {
-  View,
-  StyleSheet,
-  Image,
-  ImageBackground,
-  Animated,
-  Easing,
-  Platform,
-  Alert,
-} from "react-native";
+import React, { useEffect, useRef, useState } from "react";
+import { Animated, Alert, Easing } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
-import { BlurView } from "expo-blur";
-import { LinearGradient } from "expo-linear-gradient";
-import T from "@/components/ui/T";
+import CinematicLoader from "@/components/ui/CinematicLoader.tsx";
+import { LOADING_STAGE_COPY, resolveLoadingStage } from "@/lib/loadingStages.ts";
 import { useOnboarding } from "@/store/onboarding";
 import { useScores } from "../store/scores";
 import * as FileSystem from "expo-file-system";
@@ -42,24 +32,14 @@ async function ensureFileUriAsync(raw?: string | null): Promise<string | null> {
   return toFileUri(raw);
 }
 
-// ===== Tokens =====
-const LIME = "#8FA31E";
-const TEXT = "rgba(255,255,255,0.92)";
-const TEXT_DIM = "rgba(255,255,255,0.65)";
-const CARD_BORDER = "rgba(255,255,255,0.12)";
-const CARD_TINT = "rgba(15,15,15,0.72)";
-const PURPLE = "#B77CFF"; // progress ring
-const PURPLE_END = "#8A63FF"; // ring head
-const TRACK = "rgba(255,255,255,0.08)";
 
-const SIZE = 240;
-const RING = 210;
-const STROKE = 12;
 
 type Params = {
   mode?: "analyzePair" | "advanced" | string;
   front?: string;
   side?: string;
+  phase?: string;
+
 
   // optional metadata if caller already normalized
   frontName?: string;
@@ -78,6 +58,7 @@ export default function LoadingScreen() {
     frontName,
     sideName,
     frontMime,
+    phase,
     sideMime,
     normalized,
   } = useLocalSearchParams<Params>();
@@ -86,6 +67,11 @@ export default function LoadingScreen() {
   // progress 0..100
   const prog = useRef(new Animated.Value(0)).current;
   const loopStopRef = useRef(false);
+
+  const [badgeText, setBadgeText] = useState("0%");
+
+  const stage = resolveLoadingStage({ mode, phase });
+  const stageCopy = LOADING_STAGE_COPY[stage];
 
   const startIndeterminateLoop = () => {
     loopStopRef.current = false;
@@ -107,6 +93,28 @@ export default function LoadingScreen() {
   const stopLoop = () => {
     loopStopRef.current = true;
   };
+
+  useEffect(() => {
+    if (stage === "startup") {
+      const updateRandom = () => {
+        setBadgeText(`${Math.floor(Math.random() * 101)}%`);
+      };
+
+      updateRandom();
+      const interval = setInterval(updateRandom, 900);
+      return () => clearInterval(interval);
+    }
+
+    setBadgeText(`${Math.round((prog as any)._value ?? 0)}%`);
+    const listenerId = prog.addListener(({ value }) => {
+      setBadgeText(`${Math.round(value)}%`);
+    });
+
+    return () => {
+      prog.removeListener(listenerId);
+    };
+  }, [stage, prog]);
+
 
   useEffect(() => {
     // Task modes take precedence over onboarding bootstrap
@@ -230,248 +238,16 @@ export default function LoadingScreen() {
   }, [completed, mode, front, side, frontName, sideName, frontMime, sideMime, normalized]);
 
   // Derived values for ring + percent
-  const pctText = prog.interpolate({
-    inputRange: [0, 100],
-    outputRange: [0, 100],
-  });
+  
 
   return (
-    <LinearGradient colors={["#0B0911", "#0B0911"]} style={styles.screen}>
-      {/* purple radial glow */}
-      <LinearGradient
-        colors={["rgba(151, 91, 255,0.35)", "rgba(0,0,0,0)"]}
-        style={styles.radialGlow}
-        start={{ x: 0.5, y: 0.25 }}
-        end={{ x: 0.5, y: 1 }}
-      />
-
-      <View style={styles.centerWrap}>
-        <BlurView intensity={50} tint="dark" style={styles.card}>
-          <View style={styles.cardOverlay} />
-
-          {/* Ring + Avatar */}
-          <View style={styles.ringWrap}>
-            <Animated.View
-              style={[
-                styles.svgWrap,
-                { transform: [{ rotate: "-90deg" }] }, // start at top
-              ]}
-            >
-              <View
-                style={[
-                  styles.circleBase,
-                  {
-                    borderColor: TRACK,
-                    width: RING,
-                    height: RING,
-                    borderWidth: STROKE,
-                  },
-                ]}
-              />
-              <Animated.View
-                style={[
-                  styles.circleProg,
-                  {
-                    width: RING,
-                    height: RING,
-                    borderWidth: STROKE,
-                    borderColor: PURPLE,
-                  },
-                ]}
-              />
-            </Animated.View>
-
-            {/* Sweep head (indeterminate look) */}
-            <Animated.View
-              style={[
-                styles.sweep,
-                {
-                  width: RING,
-                  height: RING,
-                  borderRadius: RING / 2,
-                  transform: [
-                    {
-                      rotate: prog.interpolate({
-                        inputRange: [0, 100],
-                        outputRange: ["0deg", "360deg"],
-                      }),
-                    },
-                  ],
-                },
-              ]}
-            >
-              <LinearGradient
-                colors={[PURPLE, PURPLE_END]}
-                start={{ x: 0, y: 0.5 }}
-                end={{ x: 1, y: 0.5 }}
-                style={styles.sweepHead}
-              />
-            </Animated.View>
-
-            {/* Inner avatar */}
-            <View style={styles.avatarWrap}>
-              <Image
-                source={require("../assets/loading/face-loader.jpg")}
-                style={styles.avatar}
-                resizeMode="cover"
-              />
-            </View>
-
-            {/* Mask ring placeholder */}
-            <Animated.View
-              style={[
-                styles.mask,
-                {
-                  borderWidth: STROKE,
-                  width: RING,
-                  height: RING,
-                  borderRadius: RING / 2,
-                },
-              ]}
-            />
-          </View>
-
-          {/* Headline */}
-          <T style={styles.headline}>
-            {mode === "advanced"
-              ? "Running advanced analysis"
-              : mode === "analyzePair"
-              ? "Scoring your photos"
-              : "Max your Looks"}
-          </T>
-
-          {/* Subline */}
-          <T style={styles.subline}>
-            {mode ? "Please hold, this can take a few seconds" : "Preparing analysis algorithm"}
-          </T>
-
-          {/* Percent pill */}
-          <View style={styles.pill}>
-            <T style={styles.pillText}>{Math.round((prog as any)._value ?? 0)}%</T>
-          </View>
-        </BlurView>
-      </View>
-
-      {/* Grassy bottom image like your other screens */}
-      <ImageBackground
-        source={require("../assets/bg/score-bg.jpg")}
-        style={styles.bottomBg}
-        imageStyle={{ resizeMode: "cover" }}
-      />
-    </LinearGradient>
+    <CinematicLoader
+      progress={prog}
+      title={stageCopy.title}
+      subtitle={stageCopy.subtitle}
+      badgeText={badgeText}
+    />
   );
 }
 
 
-const R = 28;
-
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: "#000" },
-
-  radialGlow: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    height: "55%",
-  },
-
-  bottomBg: {
-    position: "absolute",
-    bottom: -10,
-    left: 0,
-    right: 0,
-    height: 200,
-  },
-
-  centerWrap: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: 20,
-  },
-
-  card: {
-    width: "92%",
-    borderRadius: R,
-    overflow: "hidden",
-    paddingTop: 26,
-    paddingBottom: 28,
-    alignItems: "center",
-  },
-  cardOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(15,15,15,0.72)",
-    borderRadius: R,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
-  },
-
-  ringWrap: { width: SIZE, height: SIZE, alignItems: "center", justifyContent: "center" },
-  svgWrap: { position: "absolute", alignItems: "center", justifyContent: "center" },
-  circleBase: { position: "absolute", borderRadius: RING / 2, opacity: 0.5 },
-  circleProg: { position: "absolute", borderRadius: RING / 2, opacity: 0.2 },
-  sweep: { position: "absolute", alignItems: "center", justifyContent: "center" },
-  sweepHead: {
-    position: "absolute",
-    right: -STROKE / 2,
-    width: STROKE + 8,
-    height: STROKE + 8,
-    borderRadius: (STROKE + 8) / 2,
-  },
-
-  avatarWrap: {
-    width: SIZE - 54,
-    height: SIZE - 54,
-    borderRadius: (SIZE - 54) / 2,
-    overflow: "hidden",
-    borderWidth: 6,
-    borderColor: "rgba(0,0,0,0.65)",
-    backgroundColor: "#111",
-  },
-  avatar: { width: "100%", height: "100%" },
-
-  mask: { position: "absolute", borderColor: "transparent" },
-
-  headline: {
-    marginTop: 22,
-    fontSize: 28,
-    lineHeight: 32,
-    color: LIME,
-    fontFamily: Platform.select({
-      ios: "Poppins-SemiBold",
-      android: "Poppins-SemiBold",
-      default: "Poppins-SemiBold",
-    }),
-  },
-  subline: {
-    marginTop: 8,
-    fontSize: 15,
-    lineHeight: 22,
-    color: TEXT_DIM,
-    fontFamily: Platform.select({
-      ios: "Poppins-Regular",
-      android: "Poppins-Regular",
-      default: "Poppins-Regular",
-    }),
-  },
-
-  pill: {
-    marginTop: 14,
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.08)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
-  },
-  pillText: {
-    fontSize: 14,
-    color: TEXT,
-    fontFamily: Platform.select({
-      ios: "Poppins-SemiBold",
-      android: "Poppins-SemiBold",
-      default: "Poppins-SemiBold",
-    }),
-  },
-});

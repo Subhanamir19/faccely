@@ -304,6 +304,7 @@ export default function TakePicture() {
         pathname: "/loading",
         params: {
           mode: "analyzePair",
+          phase: "scoring",
           front: encodeURIComponent(fNorm.uri),
           side: encodeURIComponent(sNorm.uri),
           // pass meta so loading can skip reprocessing
