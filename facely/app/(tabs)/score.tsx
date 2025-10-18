@@ -51,15 +51,13 @@ const COLORS = {
 
   grid: "rgba(255,255,255,0.06)",
 
-  curveStart: "#8FA31E",
-  curveEnd:   "#8FA31E",
-  glow: "rgba(143,163,30,0.28)",
+ 
   ringTrack: "rgba(255,255,255,0.16)",
 
   chipBg: "rgba(0,0,0,0.28)",
   divider: "rgba(255,255,255,0.08)",
   progressTrack: "rgba(255,255,255,0.12)",
-  progressFill:  "#8FA31E",
+
   lock: "#9AA2A9",
 };
 
@@ -166,6 +164,63 @@ const TIER_BOUNDS = [
   { min: 81, max: 100 },
 ] as const;
 
+const SCORE_COLOR_BANDS = [
+  { max: 39, color: "#EF4444" }, // 🔴 Poor / Critical
+  { max: 59, color: "#BE00E8" }, // 🟣 Improving / Mid-Tier
+  { max: 79, color: "#F59E0B" }, // 🟠 Needs Work
+  { max: 100, color: "#B4F34D" }, // 💚 Excellent
+] as const;
+
+type ScorePalette = {
+  accent: string;
+  accentLight: string;
+  glow: string;
+};
+
+function hexToRgb(hex: string) {
+  let normalized = hex.replace("#", "");
+  if (normalized.length === 3) {
+    normalized = normalized
+      .split("")
+      .map((c) => c + c)
+      .join("");
+  }
+  const parsed = parseInt(normalized, 16);
+  const int = Number.isNaN(parsed) ? 0 : parsed;
+  const r = (int >> 16) & 255;
+  const g = (int >> 8) & 255;
+  const b = int & 255;
+  return { r, g, b };
+}
+
+function toHex(channel: number) {
+  return Math.max(0, Math.min(255, Math.round(channel)))
+    .toString(16)
+    .padStart(2, "0");
+}
+
+function lightenColor(hex: string, amount: number) {
+  const { r, g, b } = hexToRgb(hex);
+  const mix = (channel: number) => channel + (255 - channel) * amount;
+  return `#${toHex(mix(r))}${toHex(mix(g))}${toHex(mix(b))}`;
+}
+
+function withAlpha(hex: string, alpha: number) {
+  const { r, g, b } = hexToRgb(hex);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function getScorePalette(score: number): ScorePalette {
+  const s = clamp(score, 0, 100);
+  const band = SCORE_COLOR_BANDS.find(({ max }) => s <= max) ?? SCORE_COLOR_BANDS[SCORE_COLOR_BANDS.length - 1];
+  const accent = band.color;
+  return {
+    accent,
+    accentLight: lightenColor(accent, 0.25),
+    glow: withAlpha(accent, 0.28),
+  };
+}
+
 function tierIndexFor(score: number) {
   const s = clamp(score, 0, 100);
   if (s <= 30) return 0;
@@ -271,7 +326,8 @@ function HeaderRow({ title, icon = 'jaw', onInfo }: { title: string; icon?: Metr
 // ---------------------------------------------------------------------------
 // GlassRing: animated circular score
 // ---------------------------------------------------------------------------
-function GlassRing({ value, active }: { value: number; active: boolean }) {
+function GlassRing({ value, active, palette }: { value: number; active: boolean; palette: ScorePalette }) {
+
   const size = 128;
   const stroke = 12;
   const r = (size - stroke) / 2;
@@ -297,8 +353,8 @@ function GlassRing({ value, active }: { value: number; active: boolean }) {
       <Svg width={size} height={size}>
         <Defs>
           <LinearGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1">
-            <Stop offset="0%" stopColor={COLORS.curveStart} />
-            <Stop offset="100%" stopColor={COLORS.curveEnd} />
+          <Stop offset="0%" stopColor={palette.accentLight} />
+          <Stop offset="100%" stopColor={palette.accent} />
           </LinearGradient>
         </Defs>
 
@@ -355,7 +411,14 @@ function InsightBlock({
   score,
   percentile = score,
   active,
-}: { metricLabel: string; score: number; percentile?: number; active: boolean }) {
+  palette,
+}: {
+  metricLabel: string;
+  score: number;
+  percentile?: number;
+  active: boolean;
+  palette: ScorePalette;
+}) {
   const { remaining } = computeMilestone(score);
 
   const pct = Math.max(0, Math.min(100, percentile)) / 100;
@@ -384,7 +447,8 @@ function InsightBlock({
 
       {/* tiny milestone/progress bar */}
       <View style={styles.miniBar}>
-        <Animated.View style={[styles.miniFill, { width }]} />
+      <Animated.View style={[styles.miniFill, { width, backgroundColor: palette.accent }]} />
+
         <View style={styles.miniLockWrap}>
           <Svg width={14} height={14} viewBox="0 0 24 24">
             <Path d="M7 10V8a5 5 0 0 1 10 0v2" stroke={COLORS.lock} strokeWidth="1.6" strokeLinecap="round" fill="none" />
@@ -409,6 +473,9 @@ function InsightBlock({
 // ---------------------------------------------------------------------------
 function MetricCard({ item, width, active }: { item: MetricItem; width: number; active: boolean }) {
   const { key: title, score, percentile, icon } = item;
+
+  const palette = useMemo(() => getScorePalette(score), [score]);
+
 
   const graphH = 280;
   const leftPad = 36;
@@ -538,12 +605,12 @@ function MetricCard({ item, width, active }: { item: MetricItem; width: number; 
       <Svg width={width} height={graphH}>
         <Defs>
           <LinearGradient id="strokeGrad" x1="0" y1="0" x2="1" y2="0">
-            <Stop offset="0%" stopColor={COLORS.curveStart} />
-            <Stop offset="100%" stopColor={COLORS.curveEnd} />
+          <Stop offset="0%" stopColor={palette.accentLight} />
+          <Stop offset="100%" stopColor={palette.accent} />
           </LinearGradient>
           <LinearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0%" stopColor={COLORS.curveEnd} stopOpacity={0.18} />
-            <Stop offset="100%" stopColor={COLORS.curveEnd} stopOpacity={0} />
+          <Stop offset="0%" stopColor={palette.accent} stopOpacity={0.18} />
+          <Stop offset="100%" stopColor={palette.accent} stopOpacity={0} />
           </LinearGradient>
         </Defs>
 
@@ -601,10 +668,11 @@ function MetricCard({ item, width, active }: { item: MetricItem; width: number; 
         />
 
         {/* Marker guide + pulsing dot */}
-        <Line x1={markerX} y1={topPad} x2={markerX} y2={yBase} stroke={COLORS.curveEnd} strokeWidth={1.2} strokeDasharray="6 6" opacity={0.9} />
-        <AnimatedCircle cx={markerX} cy={markerY} r={glowR} fill={COLORS.glow} opacity={glowOp as any} />
+        <Line x1={markerX} y1={topPad} x2={markerX} y2={yBase} stroke={palette.accent} strokeWidth={1.2} strokeDasharray="6 6" opacity={0.9} />
+        <AnimatedCircle cx={markerX} cy={markerY} r={glowR} fill={palette.glow} opacity={glowOp as any} />
         <Circle cx={markerX} cy={markerY} r={9} fill="#fff" />
-        <Circle cx={markerX} cy={markerY} r={7} fill="#fff" stroke={COLORS.curveEnd} strokeWidth={2.5} />
+        <Circle cx={markerX} cy={markerY} r={7} fill="#fff" stroke={palette.accent} strokeWidth={2.5} />
+
 
         {/* Labels under the graph */}
         {anchorsFor(title).map((label, i) => {
@@ -629,12 +697,15 @@ function MetricCard({ item, width, active }: { item: MetricItem; width: number; 
 
       {/* Score + insight row */}
       <View style={styles.scoreRow}>
-        <GlassRing value={score} active={active} />
+      <GlassRing value={score} active={active} palette={palette} />
+
         <InsightBlock
           metricLabel={title}
           score={score}
           percentile={percentile}
           active={active}
+          palette={palette}
+
         />
       </View>
     </BlurView>
@@ -662,7 +733,7 @@ function applyApiScores(api: any): MetricItem[] {
 
 export default function ScoreScreen() {
   const { width } = useWindowDimensions();
-  const { imageUri, scores, explain, explLoading, explError } = useScores();
+  const { imageUri, scores, explLoading, explError } = useScores();
 
   const itemWidth = Math.min(760, Math.max(320, width * 0.82));
   const spacer = Math.max(12, width * 0.02);
@@ -670,6 +741,10 @@ export default function ScoreScreen() {
 
   const [index, setIndex] = useState(0);
   const [metrics, setMetrics] = useState<MetricItem[]>(DEFAULT_METRICS);
+  const activePalette = useMemo(
+    () => getScorePalette(metrics[index]?.score ?? DEFAULT_METRICS[0].score),
+    [metrics, index]
+  );
 
   const params = useLocalSearchParams<{ scoresPayload?: string }>();
 
@@ -678,8 +753,8 @@ export default function ScoreScreen() {
     try {
       const payload = JSON.parse(params.scoresPayload as string);
       setMetrics(applyApiScores(payload));
-setIndex(0);
-listRef.current?.scrollToOffset({ offset: 0, animated: false });
+      setIndex(0);
+      listRef.current?.scrollToOffset({ offset: 0, animated: false });
 
     } catch {
       // ignore bad payloads
@@ -757,7 +832,10 @@ listRef.current?.scrollToOffset({ offset: 0, animated: false });
       {/* Pager dots */}
       <View style={styles.dotsRow}>
         {metrics.map((_, i) => (
-          <View key={i} style={[styles.dot, i === index && styles.dotActive]} />
+          <View
+            key={i}
+            style={[styles.dot, i === index && { backgroundColor: activePalette.accent }]}
+          />
         ))}
       </View>
 
@@ -777,7 +855,8 @@ listRef.current?.scrollToOffset({ offset: 0, animated: false });
               onPress={explLoading ? undefined : handleAdvanced}
               style={({ pressed }) => [
                 styles.gumButton,
-                { backgroundColor: COLORS.curveStart },
+                { backgroundColor: activePalette.accent },
+
                 pressed && { transform: [{ translateY: 1 }] },
               ]}
             >
@@ -962,7 +1041,7 @@ const styles = StyleSheet.create({
   },
   miniFill: {
     height: 10,
-    backgroundColor: COLORS.progressFill,
+
     borderRadius: 999,
   },
   miniLockWrap: {
@@ -988,9 +1067,6 @@ const styles = StyleSheet.create({
     borderRadius: 3,
     marginHorizontal: 4,
     backgroundColor: "rgba(255,255,255,0.3)",
-  },
-  dotActive: {
-    backgroundColor: COLORS.curveEnd,
   },
 
   // Controls row
