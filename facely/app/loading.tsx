@@ -11,6 +11,26 @@ import * as FileSystem from "expo-file-system";
 // NEW: ensure pre-upload JPEG normalization (max 1080px, ~80% quality)
 import { ensureJpegCompressed } from "../lib/api/media";
 
+function readAnimatedValue(animatedValue: Animated.Value): number {
+  const candidate = animatedValue as any;
+  if (typeof candidate.__getValue === "function") {
+    return candidate.__getValue();
+  }
+  const raw = candidate?._value;
+  return typeof raw === "number" ? raw : 0;
+}
+
+function formatPercent(value: number): string {
+  return `${Math.round(value)}%`;
+}
+
+function initialBadgeValue(badge: number | "random"): string {
+  if (badge === "random") {
+    return "0%";
+  }
+  return `${badge}%`;
+}
+
 
 function toFileUri(u: string) {
   if (u.startsWith("file://") || u.startsWith("http")) return u;
@@ -68,13 +88,16 @@ export default function LoadingScreen() {
   const prog = useRef(new Animated.Value(0)).current;
   const loopStopRef = useRef(false);
 
-  const [badgeText, setBadgeText] = useState("0%");
+
 
   const stage = resolveLoadingStage({ mode, phase });
   const stageCopy = LOADING_STAGE_COPY[stage];
+  const [badgeText, setBadgeText] = useState(() => initialBadgeValue(stageCopy.badge));
+
 
   const startIndeterminateLoop = () => {
     loopStopRef.current = false;
+    prog.stopAnimation();
     const tick = () => {
       if (loopStopRef.current) return;
       prog.setValue(0);
@@ -92,10 +115,13 @@ export default function LoadingScreen() {
 
   const stopLoop = () => {
     loopStopRef.current = true;
+    prog.stopAnimation();
+
   };
 
   useEffect(() => {
-    if (stage === "startup") {
+    if (stageCopy.badge === "random") {
+
       const updateRandom = () => {
         setBadgeText(`${Math.floor(Math.random() * 101)}%`);
       };
@@ -105,15 +131,22 @@ export default function LoadingScreen() {
       return () => clearInterval(interval);
     }
 
-    setBadgeText(`${Math.round((prog as any)._value ?? 0)}%`);
+    if (typeof stageCopy.badge === "number") {
+      setBadgeText(`${stageCopy.badge}%`);
+      return;
+    }
+
+    setBadgeText(formatPercent(readAnimatedValue(prog)));
     const listenerId = prog.addListener(({ value }) => {
-      setBadgeText(`${Math.round(value)}%`);
+      setBadgeText(formatPercent(value));
+
     });
 
     return () => {
       prog.removeListener(listenerId);
     };
-  }, [stage, prog]);
+  }, [stageCopy.badge, prog]);
+
 
 
   useEffect(() => {

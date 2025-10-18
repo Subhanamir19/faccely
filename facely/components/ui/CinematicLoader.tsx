@@ -1,13 +1,6 @@
 import React, { useMemo } from "react";
-import {
-  Animated,
-  Image,
-  ImageSourcePropType,
-  Platform,
-  SafeAreaView,
-  StyleSheet,
-  View,
-} from "react-native";
+import { Animated, Image, ImageSourcePropType, SafeAreaView, StyleSheet, View } from "react-native";
+
 import { StatusBar } from "expo-status-bar";
 import { LinearGradient } from "expo-linear-gradient";
 import Svg, { Circle, Defs, RadialGradient, Rect, Stop } from "react-native-svg";
@@ -59,8 +52,8 @@ export default function CinematicLoader({
               <Svg width={SIZE} height={SIZE} style={styles.glowLayer}>
                 <Defs>
                   <RadialGradient id="loader-glow" cx="50%" cy="50%" r="50%">
-                    <Stop offset="0%" stopColor="rgba(180,243,77,0.32)" />
-                    <Stop offset="65%" stopColor="rgba(180,243,77,0.18)" />
+                  <Stop offset="0%" stopColor="rgba(180,243,77,0.12)" />
+                    <Stop offset="65%" stopColor="rgba(180,243,77,0.05)" />
                     <Stop offset="100%" stopColor="rgba(180,243,77,0)" />
                   </RadialGradient>
                 </Defs>
@@ -201,15 +194,12 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     paddingHorizontal: 14,
     paddingVertical: 6,
-    backgroundColor: "rgba(180,243,77,0.12)",
+
   },
   progressText: {
     color: "#B4F34D",
-    fontFamily: Platform.select({
-      ios: "Poppins-SemiBold",
-      android: "Poppins-SemiBold",
-      default: "Poppins-SemiBold",
-    }),
+    fontFamily: "Poppins-SemiBold",
+
     fontSize: 14,
     letterSpacing: 0.3,
   },
