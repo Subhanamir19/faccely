@@ -240,6 +240,7 @@ export default function WelcomeIntroScreen() {
             <T style={styles.tagline}>Your face, defined by precision.</T>
           </Animated.View>
 
+
           <Animated.View style={subStyle}>
             <Text style={styles.subtext} accessibilityRole="text">
               Advanced AI aesthetics analysis begins here.
