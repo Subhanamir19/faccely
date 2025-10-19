@@ -12,7 +12,7 @@ import { Scores, metricKeys, type MetricKey } from "./validators.js";
  */
 
 const MODEL = process.env.OPENAI_EXPLAINER_MODEL || "gpt-4o-mini";
-const PROMPT_VERSION_EXPLAIN = "exp.v3.1"; // bumped
+const PROMPT_VERSION_EXPLAIN = "exp.v4.0"; // json schema + severity bands
 
 const CACHE_TTL_MS = Number(process.env.EXPLAINER_CACHE_TTL_MS ?? 1000 * 60 * 60 * 24 * 30); // 30d
 const CACHE_MAX_ITEMS = Number(process.env.EXPLAINER_CACHE_MAX_ITEMS ?? 5000);
@@ -373,23 +373,22 @@ const METRIC_CHECKLIST = {
   sexual_dimorphism: `["brow","jaw","lips","contour","cheek"]`,
 };
 
-function formatCategoryRules(): string {
+function formatCategoryRules(allowed: SubmetricOptions): string {
   const lines: string[] = [
     "Label discipline:",
     "- For EACH sub-metric choose EXACTLY one label from the allowed list.",
     "- Return only the label text (case-sensitive). No extra words, punctuation, or commentary.",
-    "- If uncertain, pick the closest fitting label from the list. Never invent new labels.",
+    "- If uncertain, pick the harsher label within the list. Never invent new labels.",
     "Allowed options per sub-metric:",
   ];
 
   for (const metric of metricKeys) {
     const submetrics = SUBMETRIC_ORDER[metric];
-    const options = CATEGORY_OPTIONS[metric];
     const metricLabel = metric === "sexual_dimorphism" ? "masculinity cues" : metric.replace(/_/g, " ");
     lines.push(`- ${metricLabel}:`);
-    if (submetrics && options) {
+    if (submetrics) {
       submetrics.forEach((sub, idx) => {
-        const opts = options[idx] ?? [];
+        const opts = optionsForSlot(metric, idx, allowed);
         if (!opts.length) return;
         lines.push(`  - ${sub}: ${opts.join(" | ")}`);
       });
@@ -399,11 +398,94 @@ function formatCategoryRules(): string {
   return lines.join("\n");
 }
 
-const CATEGORY_RULES = formatCategoryRules();
-
 /* ------------------------------ System prompt ----------------------------- */
 
-const SYSTEM_PROMPT_BASE = `
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max);
+}
+
+type SeverityBandRule = {
+  minScore: number;
+  window: number;
+};
+
+const SEVERITY_BAND_RULES: readonly SeverityBandRule[] = [
+  { minScore: 85, window: 2 },
+  { minScore: 70, window: 3 },
+  { minScore: 55, window: 4 },
+  { minScore: 40, window: 5 },
+  { minScore: 0, window: Number.MAX_SAFE_INTEGER },
+];
+
+function bandOptions(options: readonly string[], score: number): readonly string[] {
+  const list = Array.from(options);
+  const len = list.length;
+  if (len === 0) return list;
+
+  const severityIndex = clamp(Math.round(((100 - score) / 100) * (len - 1)), 0, len - 1);
+  const rule =
+    SEVERITY_BAND_RULES.find((band) => score >= band.minScore) ??
+    SEVERITY_BAND_RULES[SEVERITY_BAND_RULES.length - 1];
+  const span = Math.min(len, Math.max(1, rule.window));
+  const start = clamp(severityIndex - (span - 1), 0, len - span);
+  const sliced = list.slice(start, start + span);
+  if (sliced.length) return sliced;
+  return [list[severityIndex]];
+}
+
+function buildAllowedOptions(scores: Scores): SubmetricOptions {
+  return metricKeys.reduce((acc, metric) => {
+    const metricScore = scores[metric] ?? 50;
+    const originalOptions = CATEGORY_OPTIONS[metric] ?? [];
+    acc[metric] = originalOptions.map((options) => bandOptions(options, metricScore));
+    return acc;
+  }, {} as SubmetricOptions);
+}
+
+function optionsForSlot(
+  metric: MetricKey,
+  index: number,
+  allowed: SubmetricOptions
+): readonly string[] {
+  const band = allowed[metric]?.[index] ?? [];
+  if (band.length) return band;
+  const fallback = CATEGORY_OPTIONS[metric]?.[index] ?? [];
+  return fallback;
+}
+
+function buildResponseSchema(allowed: SubmetricOptions) {
+  const properties: Record<string, unknown> = {};
+
+  for (const metric of metricKeys) {
+    const items: Array<Record<string, unknown>> = [];
+    for (let i = 0; i < 4; i++) {
+      const options = Array.from(new Set(optionsForSlot(metric, i, allowed)));
+      items.push({ type: "string", enum: options });
+    }
+
+    properties[metric] = {
+      type: "array",
+      minItems: 4,
+      maxItems: 4,
+      items,
+      additionalItems: false,
+    };
+  }
+
+  return {
+    name: "explainer_labels_v4",
+    schema: {
+      type: "object",
+      additionalProperties: false,
+      required: metricKeys,
+      properties,
+    },
+  } as const;
+}
+
+function buildSystemPrompt(allowed: SubmetricOptions): string {
+  const categoryRules = formatCategoryRules(allowed);
+  return `
 You are a facial aesthetics reviewer. Write observations like a careful stylist: neutral, concise, practical.
 
 Output EXACTLY FOUR short lines per metric, mapped to the following sub-metrics and order:
@@ -415,13 +497,14 @@ Output EXACTLY FOUR short lines per metric, mapped to the following sub-metrics 
 - facial_symmetry: ["Horizontal Alignment","Vertical Balance","Eye-Line Level","Nose-Line Centering"]
 - sexual_dimorphism (write as "masculinity cues"): ["Face Power","Hormone Balance","Contour Strength","Softness Level"]
 
-${CATEGORY_RULES}
+${categoryRules}
 
 
 Rules
 - Describe only what is visible in the image(s). Present tense. No causes, routines, medical, identity or ethnicity claims.
 - Keep language simple and respectful. Everyday words only. Avoid jargon like "dimorphism", "malar", "gonial", "dorsum".
-- Each line ≤ 110 characters. Include at least one checklist token relevant to the metric.
+- Only output labels from the allowed lists; the JSON schema will reject any other phrasing.
+- Each line  110 characters. Include at least one checklist token relevant to the metric.
 - If a sub-metric is already ideal, write a clear confirmation (e.g., "well centered", "clean edge"), not generic praise.
 - If a refinement helps, state ONE precise direction (edge/angle/height/spacing/texture/light) without prescribing products.
 - Symmetry: name the side and dimension if relevant (e.g., "left height slightly higher").
@@ -438,7 +521,7 @@ Rules
   "sexual_dimorphism": [s1,s2,s3,s4]
 }
 
-Checklist tokens (use ≥1 per line):
+Checklist tokens (use 1 per line):
 - jawline: ${METRIC_CHECKLIST.jawline}
 - facial_symmetry: ${METRIC_CHECKLIST.facial_symmetry}
 - eyes_symmetry: ${METRIC_CHECKLIST.eyes_symmetry}
@@ -447,6 +530,8 @@ Checklist tokens (use ≥1 per line):
 - skin_quality: ${METRIC_CHECKLIST.skin_quality}
 - masculinity cues: ${METRIC_CHECKLIST.sexual_dimorphism}
 `.trim();
+}
+
 
 /* ----------------------------- Single-image ------------------------------- */
 
@@ -476,6 +561,10 @@ Scores JSON:
 ${JSON.stringify(scores)}
 `.trim();
 
+  const allowedOptions = buildAllowedOptions(scores);
+  const responseSchema = buildResponseSchema(allowedOptions);
+  const systemPrompt = buildSystemPrompt(allowedOptions);
+
   const key = cacheKeySingleExplain(bytes, scores);
 
   const cached = lruGet(key);
@@ -490,9 +579,12 @@ ${JSON.stringify(scores)}
       temperature: 0.4,
       top_p: 0.9,
       max_tokens: 1300,
-      response_format: { type: "json_object" },
+      response_format: {
+        type: "json_schema",
+        json_schema: responseSchema,
+      },
       messages: [
-        { role: "system", content: SYSTEM_PROMPT_BASE },
+        { role: "system", content: systemPrompt },
         {
           role: "user",
           content: [
@@ -503,7 +595,7 @@ ${JSON.stringify(scores)}
       ],
     });
 
-    const parsed = normalizeResponse(resp.choices?.[0]?.message?.content);
+    const parsed = normalizeResponse(resp.choices?.[0]?.message?.content, scores, allowedOptions);
     lruSet(key, parsed);
     return parsed;
   })().finally(() => inFlight.delete(key));
@@ -545,6 +637,10 @@ Scores JSON:
 ${JSON.stringify(scores)}
 `.trim();
 
+  const allowedOptions = buildAllowedOptions(scores);
+  const responseSchema = buildResponseSchema(allowedOptions);
+  const systemPrompt = buildSystemPrompt(allowedOptions);
+
   const key = cacheKeyPairExplain(frontalBytes, sideBytes, scores);
 
   const cached = lruGet(key);
@@ -559,9 +655,12 @@ ${JSON.stringify(scores)}
       temperature: 0.4,
       top_p: 0.9,
       max_tokens: 1500,
-      response_format: { type: "json_object" },
+      response_format: {
+        type: "json_schema",
+        json_schema: responseSchema,
+      },
       messages: [
-        { role: "system", content: SYSTEM_PROMPT_BASE },
+        { role: "system", content: systemPrompt },
         {
           role: "user",
           content: [
@@ -573,7 +672,7 @@ ${JSON.stringify(scores)}
       ],
     });
 
-    const parsed = normalizeResponse(resp.choices?.[0]?.message?.content);
+    const parsed = normalizeResponse(resp.choices?.[0]?.message?.content, scores, allowedOptions);
     lruSet(key, parsed);
     return parsed;
   })().finally(() => inFlight.delete(key));
@@ -599,7 +698,11 @@ function cacheKeyPairExplain(frontal: Buffer, side: Buffer, scores: Scores) {
 
 /* ------------------------------- Utilities -------------------------------- */
 
-function normalizeResponse(raw: string | null | undefined): Record<MetricKey, string[]> {
+function normalizeResponse(
+  raw: string | null | undefined,
+  scores: Scores,
+  allowedOptions: SubmetricOptions
+): Record<MetricKey, string[]> {
   let data: any;
   try {
     data = JSON.parse(raw || "{}");
@@ -618,17 +721,32 @@ function normalizeResponse(raw: string | null | undefined): Record<MetricKey, st
   }
 
   const optionLookup = metricKeys.reduce((acc, metric) => {
-    const subOptions = CATEGORY_OPTIONS[metric] ?? [];
-    acc[metric] = subOptions.map((options) => {
+    const slotMaps: Array<Record<string, string>> = [];
+    for (let i = 0; i < 4; i++) {
+      const slotOptions = optionsForSlot(metric, i, allowedOptions);
       const map: Record<string, string> = {};
-      for (const option of options) {
+      for (const option of slotOptions) {
         const key = slug(option);
         if (key) map[key] = option;
       }
-      return map;
-    });
+      slotMaps.push(map);
+    }
+    acc[metric] = slotMaps;
     return acc;
   }, {} as Record<MetricKey, Array<Record<string, string>>>);
+
+  function pickFallback(
+    metric: MetricKey,
+    index: number,
+    score: number,
+    allowed: SubmetricOptions
+  ): string {
+    const options = optionsForSlot(metric, index, allowed);
+    if (!options.length) return "";
+    const len = options.length;
+    const severityIndex = clamp(Math.round(((100 - score) / 100) * (len - 1)), 0, len - 1);
+    return options[severityIndex];
+  }
 
   function optClean(value: unknown): string {
     if (typeof value !== "string") return "";
@@ -641,7 +759,7 @@ function normalizeResponse(raw: string | null | undefined): Record<MetricKey, st
     const key = slug(cleaned);
     if (!key) return "";
     const map = optionLookup[metric]?.[index];
-    if (!map) return cleaned;
+    if (!map || Object.keys(map).length === 0) return "";
 
     if (map[key]) return map[key];
 
@@ -669,7 +787,7 @@ function normalizeResponse(raw: string | null | undefined): Record<MetricKey, st
       return bestLabel;
     }
 
-    return cleaned;
+    return "";
   }
 
   const out: Record<MetricKey, string[]> = {} as Record<MetricKey, string[]>;
@@ -677,8 +795,14 @@ function normalizeResponse(raw: string | null | undefined): Record<MetricKey, st
   for (const metric of metricKeys) {
     const values = Array.isArray(data?.[metric]) ? data[metric] : [];
     const normalized: string[] = [];
+    const metricScore = scores[metric] ?? 50;
     for (let i = 0; i < 4; i++) {
-      normalized.push(canonicalize(values[i], metric, i));
+      const canonical = canonicalize(values[i], metric, i);
+      if (canonical) {
+        normalized.push(canonical);
+        continue;
+      }
+      normalized.push(pickFallback(metric, i, metricScore, allowedOptions));
     }
     out[metric] = normalized;
   }
