@@ -6,10 +6,11 @@ import crypto from "crypto";
 
 /* ------------------------------ Config/Env -------------------------------- */
 
-const MODEL = process.env.OPENAI_SCORES_MODEL || "gpt-4o-mini";
+const MODEL = process.env.OPENAI_SCORES_MODEL || "gpt-4o";
+
 const CACHE_TTL_MS = Number(process.env.SCORE_CACHE_TTL_MS ?? 1000 * 60 * 60 * 24 * 30); // 30d
 const CACHE_MAX_ITEMS = Number(process.env.SCORE_CACHE_MAX_ITEMS ?? 5000); // simple LRU-ish cap
-const PROMPT_VERSION = "v3.2"; // bump to invalidate cache if you change prompts/rules
+const PROMPT_VERSION = "v3.3"; // bump to invalidate cache if you change prompts/rules
 
 /* ------------------------------- Shared keys ------------------------------ */
 const SCORE_KEYS: MetricKey[] = [
@@ -103,6 +104,46 @@ RANGE DISCIPLINE (NO REGRESSION TO THE MEAN):
 - Never "balance" a low metric by inflating an unrelated metric. Each metric is independent and evidence-based.
 `.trim();
 
+const TIER_ANCHORS = `
+CALIBRATION ANCHORS (determine the tier first, then pick an integer inside it):
+- jawline:
+  * 15–30: Blurred mandibular edge, heavy under-jaw softness, gonial corner hidden.
+  * 31–50: Edge partially defined but softened by submental fold or shallow chin line.
+  * 51–72: Visible jaw trace with minor waviness or light fullness under the chin.
+  * 73–90: Crisp mandibular edge, clean cervicomental angle, distinct chin corner.
+- facial_symmetry:
+  * 15–30: Clear tilt or offset across eyes, nose, or mouth; contour imbalance obvious.
+  * 31–50: Noticeable but moderate cant, eyebrow height mismatch, or nasal drift.
+  * 51–72: Mostly aligned features with small height/width offsets.
+  * 73–90: Balanced feature heights, centered nasal axis, matching contours.
+- skin_quality:
+  * 15–30: Prominent texture, breakouts, or uneven lighting revealing roughness.
+  * 31–50: Mixed smooth and rough zones, patchy tone, visible pores or shine bands.
+  * 51–72: Generally smooth with isolated texture or mild tonal variation.
+  * 73–90: Even tone, soft gradients, minimal visible blemishes or roughness.
+- cheekbones:
+  * 15–30: Flat midface, little malar lift, shadow collapses toward mouth.
+  * 31–50: Slight cheek shelf but weak projection or blurred contour line.
+  * 51–72: Defined highlight with moderate lift and some cheek hollow separation.
+  * 73–90: Strong zygomatic projection, lifted highlight, clean midface contour.
+- eyes_symmetry:
+  * 15–30: Marked difference in lid height, tilt, or spacing; one eye noticeably smaller.
+  * 31–50: Moderate asymmetry in canthal tilt, crease height, or inner corner alignment.
+  * 51–72: Lids largely matched with small tilt or height variations.
+  * 73–90: Aligned inner/outer corners, consistent aperture, even creases.
+- nose_harmony:
+  * 15–30: Strong deviation, flattened tip, or width out of balance with midface.
+  * 31–50: Noticeable bridge bend, bulbous tip, or flared width yet still centered overall.
+  * 51–72: Mostly straight bridge with modest tip softness or slight width mismatch.
+  * 73–90: Straight dorsum, defined yet proportional tip, width blends with cheeks.
+- sexual_dimorphism:
+  * 15–30: Traits strongly contrast typical masculine bone/soft-tissue cues (soft jaw, rounded brow, low mass).
+  * 31–50: Mixed cues; some angularity but softened by fuller contours or gentle brow.
+  * 51–72: Noticeable angularity with moderate contour depth and definition.
+  * 73–90: Pronounced structural power—firm jaw, defined brow, lean midface.
+Choose numbers outside these bands only for extreme cases beyond the descriptions above.
+`.trim();
+
 const SYSTEM_MSG_SINGLE = `
 You are a facial aesthetician. Judge only visible facial structure from the provided image.
 Return neutral, professional evaluations against a defined aesthetic rubric.
@@ -117,6 +158,8 @@ Scoring (0–100, integers only, independent per metric):
 - eyes_symmetry: palpebral aperture parity, canthal tilt alignment, lid crease consistency.
 - nose_harmony: dorsum straightness, tip definition, width vs midface balance, deviation.
 - sexual_dimorphism: degree of culturally typical trait expression in bone/soft-tissue proportions. Do NOT infer identity.
+
+${TIER_ANCHORS}
 
 ${RANGE_DISCIPLINE}
 
@@ -144,6 +187,8 @@ No medical claims or sexual content. If content is unclear/occluded/low-res, inc
 
 Metrics and scoring same as single-image prompt.
 Rules: Use BOTH views to refine judgments (e.g., jawline, cheekbones, symmetry, nose). If views disagree, still output a single score per metric.
+
+${TIER_ANCHORS}
 
 ${RANGE_DISCIPLINE}
 ${ANTI_FIVE_SENTENCE}
