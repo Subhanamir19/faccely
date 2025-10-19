@@ -88,17 +88,7 @@ const SUBMETRICS: Record<MetricKey, [string, string, string, string]> = {
   sexual_dimorphism: ["Face Power", "Hormone Balance", "Contour Strength", "Softness Level"],
 };
 
-// Optional default one-line verdicts so UI never looks empty.
-// Replace these gradually with real per-submetric text from your explanations pipeline.
-const DEFAULT_VERDICTS: Partial<Record<MetricKey, string[]>> = {
-  eyes_symmetry: ["Almond Eyes", "Perfectly Symmetrical", "Neutral Tilt", "Clear Bright"],
-  jawline: ["Well-Defined", "Balanced", "Optimal Angle", "Good Projection"],
-  cheekbones: ["Well-Defined", "Lean Defined", "Well-Developed", "Ideal Width"],
-  nose_harmony: ["Straight Nose", "Perfectly Straight", "Perfectly Balanced", "Sharp Tip"],
-  skin_quality: ["Excellent Clarity", "Very Smooth", "Consistent Tone", "Youthful"],
-  facial_symmetry: ["Well-Balanced", "Perfectly Centered", "Even Placement", "Mostly Centered"],
-  sexual_dimorphism: ["Strong Masculine", "Balanced Hormones", "Sharp Contours", "Appropriate Firmness"],
-};
+
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -183,25 +173,32 @@ export default function AnalysisScreen() {
             const current = band(score) ? `Current: ${band(score)}` : undefined;
 
             const verdicts = getSubmetricVerdicts(explanations, metric);
-            const finalVerdicts =
-              verdicts.some((line) => line && line.trim().length > 0)
-                ? verdicts
-                : DEFAULT_VERDICTS[metric] ?? ["", "", "", ""];
+            const cleanedVerdicts = verdicts.map((line) => {
+              const trimmed = line?.trim();
+              return trimmed && trimmed.length > 0 ? trimmed : undefined;
+            });
+            const hasVerdictCopy = cleanedVerdicts.some(Boolean);
 
             const titles = SUBMETRICS[metric];
             const submetrics: SubmetricView[] = titles.map((t, i) => ({
               title: t,
-              verdict: finalVerdicts[i],
+              verdict: hasVerdictCopy ? cleanedVerdicts[i] : undefined,
             }));
 
             return (
               <View key={metric} style={styles.page}>
                 <View style={styles.cardWrap}>
                 <AnalysisCard
-  metric={metric}
-  copy={{ title: LABELS[metric], currentLabel: current }}
-  submetrics={submetrics}
-/>
+                    metric={metric}
+                    copy={{ title: LABELS[metric], currentLabel: current }}
+                    submetrics={submetrics}
+                  />
+                  {!hasVerdictCopy && !explLoading && (explanations || explError) ? (
+                    <Text style={styles.placeholderNote}>
+                      Detailed insights aren't available for this metric right now. Please try the
+                      analysis again in a bit.
+                    </Text>
+                  ) : null}
 
                 </View>
               </View>
@@ -270,6 +267,13 @@ const styles = StyleSheet.create({
     alignSelf: "center",
   },
 
+  placeholderNote: {
+    marginTop: 12,
+    color: "rgba(255,255,255,0.7)",
+    fontSize: 13,
+    lineHeight: 18,
+    textAlign: "center",
+  },
   // Card shell
   card: {
     borderRadius: 24,

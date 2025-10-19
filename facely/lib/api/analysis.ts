@@ -4,7 +4,8 @@ import {
   ApiResponseError,
   LONG_REQUEST_TIMEOUT_MS,
   buildApiError,
-  fetchWithTimeout,
+  fetchWithRetry,
+
 } from "./client";
 
 import type { Scores } from "./scores";
@@ -45,23 +46,27 @@ function toPart(uri: string, name: string): {
   return { uri: normalized, name: `${name}.jpg`, type: "image/jpeg" };
 }
 
-function clampWords(value: string): string {
+const MAX_SUBMETRIC_CHAR = 140;
+
+function normalizeLine(value: string): string {
   const trimmed = value.trim().replace(/\s+/g, " ");
   if (!trimmed) return "";
-  const words = trimmed.split(" ").filter(Boolean).slice(0, 2);
-  return words.join(" ");
+  if (trimmed.length <= MAX_SUBMETRIC_CHAR) return trimmed;
+  const sliced = trimmed.slice(0, MAX_SUBMETRIC_CHAR).trimEnd();
+  return `${sliced}…`;
 }
 
 function ensureArray4(v: unknown): string[] {
   if (typeof v === "string") {
-    const s = clampWords(v);
+    const s = normalizeLine(v);
+
 
     return s ? [s, "", "", ""] : ["", "", "", ""];
   }
   if (Array.isArray(v)) {
     const arr = v
-      .filter(x => typeof x === "string")
-      .map(s => clampWords(s as string))
+    .filter((x) => typeof x === "string")
+    .map((s) => normalizeLine(s as string))
 
 
       .filter(Boolean)
@@ -123,13 +128,18 @@ export async function explainMetrics(
   const fd = new FormData();
   fd.append("image", toPart(imageUri, "image") as any);
   fd.append("scores", JSON.stringify(scores));
-  const res = await fetchWithTimeout(`${API_BASE}/analyze/explain`, {
-    method: "POST",
-    headers: { Accept: "application/json" },
-    body: fd,
-    signal,
-    timeoutMs: LONG_REQUEST_TIMEOUT_MS,
-  });
+  const res = await fetchWithRetry(
+    `${API_BASE}/analyze/explain`,
+    {
+      method: "POST",
+      headers: { Accept: "application/json" },
+      body: fd,
+      signal,
+      timeoutMs: LONG_REQUEST_TIMEOUT_MS,
+    },
+    3,
+    1200
+  );
   return parseExplanations(res, "Explanation request failed");
 }
 
@@ -156,13 +166,18 @@ export async function explainMetricsPair(
   };
 
   const attempt = async (path: string): Promise<Record<string, string[]>> => {
-    const res = await fetchWithTimeout(`${API_BASE}${path}`, {
-      method: "POST",
-      headers: { Accept: "application/json" },
-      body: buildFormData(),
-      signal,
-      timeoutMs: LONG_REQUEST_TIMEOUT_MS,
-    });
+    const res = await fetchWithRetry(
+      `${API_BASE}${path}`,
+      {
+        method: "POST",
+        headers: { Accept: "application/json" },
+        body: buildFormData(),
+        signal,
+        timeoutMs: LONG_REQUEST_TIMEOUT_MS,
+      },
+      3,
+      1200
+    );
     return parseExplanations(res, "Pair explanation request failed");
   };
 
