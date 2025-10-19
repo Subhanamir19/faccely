@@ -20,8 +20,8 @@ import Text from "@/components/ui/T";
 
 // Stores / nav
 import { useScores, getSubmetricVerdicts } from "../../store/scores";
-import { useRoutine } from "@/store/routine";
-import { buildRoutineReq } from "@/lib/api/routine";
+import { useRoutine } from "@/store/routine.ts";
+import { buildRoutineReq } from "@/lib/api/routine.ts";
 import { useRouter } from "expo-router";
 
 // UI
@@ -78,7 +78,8 @@ const LABELS: Record<MetricKey, string> = {
 
 // Sub-metric titles per feature (exactly what you mocked)
 const SUBMETRICS: Record<MetricKey, [string, string, string, string]> = {
-  eyes_symmetry: ["Symmetry", "Shape", "Canthal Tilt", "Color"],
+  eyes_symmetry: ["Shape", "Symmetry", "Canthal Tilt", "Color"],
+
   jawline: ["Sharpness", "Symmetry", "Gonial Angle", "Projection"],
   cheekbones: ["Definition", "Face Fat", "Maxilla Development", "Bizygomatic Width"],
   nose_harmony: ["Nose Shape", "Straightness", "Nose Balance", "Nose Tip Type"],
@@ -90,28 +91,13 @@ const SUBMETRICS: Record<MetricKey, [string, string, string, string]> = {
 // Optional default one-line verdicts so UI never looks empty.
 // Replace these gradually with real per-submetric text from your explanations pipeline.
 const DEFAULT_VERDICTS: Partial<Record<MetricKey, string[]>> = {
-  eyes_symmetry: [
-    "Left eyelid slightly higher",
-    "Almond shape, ideal",
-    "Neutral - a slight lift improves sharpness",
-    "Clear and vibrant",
-  ],
-  jawline: [
-    "Crisp and well-defined",
-    "Balanced on both sides",
-    "Ideal, around 120 deg",
-    "Not recessed, well-pronounced",
-  ],
-  cheekbones: [
-    "Sharp and angular",
-    "Low, well-defined",
-    "Developed, ideal",
-    "Masculine, ideal",
-  ],
-  nose_harmony: ["Ideal", "Straight", "Well-proportioned", "Slightly bulbous"],
-  skin_quality: ["No acne or blemishes", "Smooth and soft", "Even tone", "Youthful appearance"],
-  facial_symmetry: ["Well-centered", "Upper-tilt left", "Aligned", "Centered"],
-  sexual_dimorphism: ["Solid and defined", "Leans masculine", "Clear edges throughout", "Firm, minimal softness"],
+  eyes_symmetry: ["Almond Eyes", "Perfectly Symmetrical", "Neutral Tilt", "Clear Bright"],
+  jawline: ["Well-Defined", "Balanced", "Optimal Angle", "Good Projection"],
+  cheekbones: ["Well-Defined", "Lean Defined", "Well-Developed", "Ideal Width"],
+  nose_harmony: ["Straight Nose", "Perfectly Straight", "Perfectly Balanced", "Sharp Tip"],
+  skin_quality: ["Excellent Clarity", "Very Smooth", "Consistent Tone", "Youthful"],
+  facial_symmetry: ["Well-Balanced", "Perfectly Centered", "Even Placement", "Mostly Centered"],
+  sexual_dimorphism: ["Strong Masculine", "Balanced Hormones", "Sharp Contours", "Appropriate Firmness"],
 };
 
 // ---------------------------------------------------------------------------

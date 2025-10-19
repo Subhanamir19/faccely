@@ -45,15 +45,25 @@ function toPart(uri: string, name: string): {
   return { uri: normalized, name: `${name}.jpg`, type: "image/jpeg" };
 }
 
+function clampWords(value: string): string {
+  const trimmed = value.trim().replace(/\s+/g, " ");
+  if (!trimmed) return "";
+  const words = trimmed.split(" ").filter(Boolean).slice(0, 2);
+  return words.join(" ");
+}
+
 function ensureArray4(v: unknown): string[] {
   if (typeof v === "string") {
-    const s = v.trim();
+    const s = clampWords(v);
+
     return s ? [s, "", "", ""] : ["", "", "", ""];
   }
   if (Array.isArray(v)) {
     const arr = v
       .filter(x => typeof x === "string")
-      .map(s => (s as string).trim())
+      .map(s => clampWords(s as string))
+
+
       .filter(Boolean)
       .slice(0, 4);
     while (arr.length < 4) arr.push("");

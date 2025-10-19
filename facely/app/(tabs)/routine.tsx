@@ -15,8 +15,8 @@ import T from "@/components/ui/T";
 import GlassCard from "@/components/ui/GlassCard";
 import GlassBtn from "@/components/ui/GlassBtn";
 import { COLORS } from "@/lib/tokens";
-import { buildRoutineReq } from "@/lib/api/routine";
-import { useRoutine } from "@/store/routine";
+import { buildRoutineReq } from "@/lib/api/routine.ts";
+import { useRoutine } from "@/store/routine.ts";
 import { useScores } from "@/store/scores";
 import type { Scores } from "@/store/scores";
 

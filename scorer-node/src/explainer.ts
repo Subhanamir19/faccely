@@ -53,13 +53,319 @@ function lruSet(key: string, value: ExplainerPayload) {
 /* Must match the mobile UI exactly (2×2 grid order). */
 
 const SUBMETRIC_ORDER: Record<MetricKey, readonly [string, string, string, string]> = {
-  eyes_symmetry: ["Symmetry", "Shape", "Canthal Tilt", "Color"],
+  eyes_symmetry: ["Shape", "Symmetry", "Canthal Tilt", "Color Vibrancy"],
   jawline: ["Sharpness", "Symmetry", "Gonial Angle", "Projection"],
   cheekbones: ["Definition", "Face Fat", "Maxilla Development", "Bizygomatic Width"],
   nose_harmony: ["Nose Shape", "Straightness", "Nose Balance", "Nose Tip Type"],
   skin_quality: ["Clarity", "Smoothness", "Evenness", "Youthfulness"],
   facial_symmetry: ["Horizontal Alignment", "Vertical Balance", "Eye-Line Level", "Nose-Line Centering"],
   sexual_dimorphism: ["Face Power", "Hormone Balance", "Contour Strength", "Softness Level"],
+};
+
+type SubmetricOptions = Record<MetricKey, readonly (readonly string[])[]>;
+
+const CATEGORY_OPTIONS: SubmetricOptions = {
+  eyes_symmetry: [
+    [
+      "Hunter Eyes",
+      "Almond Eyes",
+      "Upturned Eyes",
+      "Neutral Eyes",
+      "Slightly Hooded",
+      "Prey Eyes",
+      "Downturned Eyes",
+      "Bulging Eyes",
+      "Sanpaku Eyes",
+    ],
+    [
+      "Perfectly Symmetrical",
+      "Well-Centered",
+      "Minimal Asymmetry",
+      "Slight Asymmetry",
+      "Eye Larger",
+      "Noticeable Asymmetry",
+      "Size Difference",
+      "Uneven Height",
+      "Different Shapes",
+    ],
+    ["Positive Tilt", "Neutral-Positive", "Neutral Tilt", "Minimal Tilt", "Negative Tilt", "Severe Negative"],
+    [
+      "Vibrant Striking",
+      "Rich Color",
+      "Clear Bright",
+      "Moderate Vibrancy",
+      "Soft Color",
+      "Dull Muted",
+      "Bloodshot Sclera",
+      "Faded Color",
+    ],
+  ],
+  jawline: [
+    [
+      "Razor Sharp",
+      "Well-Defined",
+      "Chiseled",
+      "Moderate Definition",
+      "Decent Edge",
+      "Soft Definition",
+      "Undefined",
+      "Double Chin",
+      "Weak Jawline",
+    ],
+    [
+      "Perfectly Symmetrical",
+      "Balanced",
+      "Mirror Image",
+      "Slight Asymmetry",
+      "Side Stronger",
+      "Noticeable Asymmetry",
+      "Side Weaker",
+      "Crooked Jaw",
+    ],
+    [
+      "Acute Angle",
+      "Optimal Angle",
+      "Well-Defined",
+      "Moderate Angle",
+      "Rounded Normal",
+      "Obtuse Angle",
+      "Severely Rounded",
+      "Invisible Corner",
+    ],
+    [
+      "Strong Projection",
+      "Good Projection",
+      "Well-Proportioned",
+      "Moderate Projection",
+      "Adequate Projection",
+      "Weak Projection",
+      "Recessed",
+      "Severely Recessed",
+    ],
+  ],
+  cheekbones: [
+    [
+      "High Prominence",
+      "Well-Defined",
+      "Sculpted",
+      "Moderate Prominence",
+      "Visible",
+      "Low Cheekbones",
+      "Flat Midface",
+      "Undefined",
+    ],
+    [
+      "Very Lean",
+      "Lean Defined",
+      "Athletic",
+      "Moderate Fullness",
+      "Slight Fullness",
+      "High Fullness",
+      "Puffy Cheeks",
+      "Chipmunk Cheeks",
+    ],
+    [
+      "Well-Developed",
+      "Adequate Development",
+      "Forward Grown",
+      "Moderate Development",
+      "Acceptable Structure",
+      "Underdeveloped",
+      "Recessed",
+      "Severely Recessed",
+    ],
+    [
+      "Wide Proportional",
+      "Ideal Width",
+      "Well-Spaced",
+      "Moderate Width",
+      "Standard Spacing",
+      "Narrow Width",
+      "Too Wide",
+      "Pinched",
+    ],
+  ],
+  nose_harmony: [
+    [
+      "Straight Nose",
+      "Roman Nose",
+      "Well-Defined",
+      "Refined Nose",
+      "Standard Shape",
+      "Moderate Definition",
+      "Bulbous",
+      "Crooked",
+      "Hooked",
+      "Flat Wide",
+      "Upturned",
+    ],
+    [
+      "Perfectly Straight",
+      "Minimal Deviation",
+      "Well-Aligned",
+      "Slight Curve",
+      "Mostly Straight",
+      "Noticeably Crooked",
+      "Deviated Septum",
+      "Severely Curved",
+      "Off-Center",
+    ],
+    [
+      "Perfectly Balanced",
+      "Proportional",
+      "Golden Ratio",
+      "Slightly Long",
+      "Slightly Short",
+      "Acceptable Balance",
+      "Too Long",
+      "Too Short",
+      "Too Wide",
+      "Too Narrow",
+    ],
+    [
+      "Sharp Tip",
+      "Well-Defined",
+      "Projected Tip",
+      "Moderate Tip",
+      "Round Tip",
+      "Bulbous Tip",
+      "Drooping Tip",
+      "Undefined Tip",
+      "Boxy Tip",
+    ],
+  ],
+  skin_quality: [
+    [
+      "Flawless",
+      "Excellent Clarity",
+      "Clean Clear",
+      "Good Clarity",
+      "Acceptable Clarity",
+      "Poor Clarity",
+      "Blemished",
+      "Very Rough",
+      "Severely Damaged",
+    ],
+    [
+      "Glass Skin",
+      "Very Smooth",
+      "Polished",
+      "Moderately Smooth",
+      "Normal Texture",
+      "Rough Texture",
+      "Textured",
+      "Very Rough",
+      "Damaged",
+    ],
+    [
+      "Perfectly Even",
+      "Consistent Tone",
+      "Balanced Color",
+      "Mostly Even",
+      "Slight Discoloration",
+      "Uneven Tone",
+      "Discolored",
+      "Blotchy",
+      "Severe Discoloration",
+    ],
+    [
+      "Youthful",
+      "Fresh Appearance",
+      "Age-Defying",
+      "Age-Appropriate",
+      "Slight Aging",
+      "Aged Appearance",
+      "Significant Aging",
+      "Premature Aging",
+      "Severely Aged",
+    ],
+  ],
+  facial_symmetry: [
+    [
+      "Perfectly Aligned",
+      "Minimal Asymmetry",
+      "Well-Balanced",
+      "Slight Asymmetry",
+      "Minor Imbalance",
+      "Noticeable Asymmetry",
+      "Significant Imbalance",
+      "Side Drooping",
+    ],
+    [
+      "Perfectly Centered",
+      "Excellent Alignment",
+      "Balanced Axis",
+      "Slightly Off",
+      "Minor Shift",
+      "Noticeably Off",
+      "Crooked Features",
+      "Asymmetrical Halves",
+    ],
+    [
+      "Perfectly Level",
+      "Minimal Tilt",
+      "Even Placement",
+      "Slight Tilt",
+      "Minor Difference",
+      "Noticeable Tilt",
+      "Uneven Eyes",
+      "Eye Droop",
+    ],
+    [
+      "Perfectly Centered",
+      "Excellent Alignment",
+      "Symmetrical Position",
+      "Slightly Off",
+      "Mostly Centered",
+      "Noticeably Off",
+      "Deviated",
+      "Crooked Nose",
+    ],
+  ],
+  sexual_dimorphism: [
+    [
+      "High Dominance",
+      "Strong Masculine",
+      "Moderate Power",
+      "Average Masculinity",
+      "Moderate Presence",
+      "Low Masculinity",
+      "Weak Appearance",
+      "Feminine Features",
+    ],
+    [
+      "High Testosterone",
+      "Balanced Hormones",
+      "Optimal Development",
+      "Normal Markers",
+      "Adequate Balance",
+      "Low Markers",
+      "Imbalanced",
+      "Hormonal Issues",
+    ],
+    [
+      "Sharp Contours",
+      "Strong Definition",
+      "Chiseled",
+      "Moderate Contours",
+      "Adequate Structure",
+      "Weak Contours",
+      "Soft Rounded",
+      "Undefined",
+      "Puffy",
+    ],
+    [
+      "Minimal Softness",
+      "Low Softness",
+      "Appropriate Firmness",
+      "Moderate Softness",
+      "Normal Padding",
+      "High Softness",
+      "Very Soft",
+      "Puffy Bloated",
+      "Baby Face",
+    ],
+  ],
 };
 
 /* -------------------------- Prompt discipline lists ----------------------- */
@@ -74,13 +380,17 @@ const METRIC_CHECKLIST = {
   sexual_dimorphism: `["brow","jaw","lips","contour","cheek"]`,
 };
 
+const CATEGORY_RULES = `
+Output only the label (12 words).
+`.trim();
+
 /* ------------------------------ System prompt ----------------------------- */
 
 const SYSTEM_PROMPT_BASE = `
 You are a facial aesthetics reviewer. Write observations like a careful stylist: neutral, concise, practical.
 
 Output EXACTLY FOUR short lines per metric, mapped to the following sub-metrics and order:
-- eyes_symmetry: ["Symmetry","Shape","Canthal Tilt","Color"]
+- eyes_symmetry: ["Shape","Symmetry","Canthal Tilt","Color Vibrancy"]
 - jawline: ["Sharpness","Symmetry","Gonial Angle","Projection"]
 - cheekbones: ["Definition","Face Fat","Maxilla Development","Bizygomatic Width"]
 - nose_harmony: ["Nose Shape","Straightness","Nose Balance","Nose Tip Type"]
@@ -278,38 +588,51 @@ function normalizeResponse(raw: string | null | undefined): Record<MetricKey, st
     data = JSON.parse(cleaned || "{}");
   }
 
-  const out: Record<MetricKey, string[]> = {} as any;
-
-  const normalizeFour = (arr: unknown, metric: MetricKey): string[] => {
-    if (!Array.isArray(arr)) return ["", "", "", ""];
-    const lines = arr
-      .filter((x) => typeof x === "string")
-      .map((s) => String(s).trim().replace(/\s+/g, " "))
-      .filter(Boolean)
-      .slice(0, 4);
-    while (lines.length < 4) lines.push("");
-    // Cap to 110 chars each
-    for (let i = 0; i < 4; i++) {
-      if (lines[i].length > 110) lines[i] = lines[i].slice(0, 110).trim();
-    }
-    // Gentle guard: if the model ignored ordering, still return 4 trimmed lines.
-    return lines;
-  };
-
-  for (const k of metricKeys) {
-    out[k] = normalizeFour(data?.[k], k);
+  function clampWords(value: string): string {
+    const words = value.trim().split(/\s+/).filter(Boolean);
+    return words.slice(0, 2).join(" ");
   }
 
-  // Minimal de-duplication guard: nudge repeated lines slightly.
-  for (const k of metricKeys) {
-    const seen = new Set<string>();
-    out[k] = out[k].map((line) => {
-      const lower = line.toLowerCase();
-      if (!line) return line;
-      if (seen.has(lower)) return `${line} (refine)`;
-      seen.add(lower);
-      return line;
+  function slug(value: string): string {
+    return value.toLowerCase().replace(/[^a-z0-9]+/g, "");
+  }
+
+  const optionLookup = metricKeys.reduce((acc, metric) => {
+    const subOptions = CATEGORY_OPTIONS[metric] ?? [];
+    acc[metric] = subOptions.map((options) => {
+      const map: Record<string, string> = {};
+      for (const option of options) {
+        const key = slug(option);
+        if (key) map[key] = option;
+      }
+      return map;
     });
+    return acc;
+  }, {} as Record<MetricKey, Array<Record<string, string>>>);
+
+  function optClean(value: unknown): string {
+    if (typeof value !== "string") return "";
+    return clampWords(value);
+  }
+
+  function canonicalize(value: unknown, metric: MetricKey, index: number): string {
+    const cleaned = optClean(value);
+    if (!cleaned) return "";
+    const key = slug(cleaned);
+    if (!key) return "";
+    const map = optionLookup[metric]?.[index];
+    return map?.[key] ?? "";
+  }
+
+  const out: Record<MetricKey, string[]> = {} as Record<MetricKey, string[]>;
+
+  for (const metric of metricKeys) {
+    const values = Array.isArray(data?.[metric]) ? data[metric] : [];
+    const normalized: string[] = [];
+    for (let i = 0; i < 4; i++) {
+      normalized.push(canonicalize(values[i], metric, i));
+    }
+    out[metric] = normalized;
   }
 
   return out;
