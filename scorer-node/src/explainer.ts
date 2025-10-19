@@ -12,7 +12,8 @@ import { Scores, metricKeys, type MetricKey } from "./validators.js";
  */
 
 const MODEL = process.env.OPENAI_EXPLAINER_MODEL || "gpt-4o-mini";
-const PROMPT_VERSION_EXPLAIN = "exp.v3.0"; // bumped
+const PROMPT_VERSION_EXPLAIN = "exp.v3.1"; // bumped
+
 const CACHE_TTL_MS = Number(process.env.EXPLAINER_CACHE_TTL_MS ?? 1000 * 60 * 60 * 24 * 30); // 30d
 const CACHE_MAX_ITEMS = Number(process.env.EXPLAINER_CACHE_MAX_ITEMS ?? 5000);
 
@@ -380,9 +381,33 @@ const METRIC_CHECKLIST = {
   sexual_dimorphism: `["brow","jaw","lips","contour","cheek"]`,
 };
 
-const CATEGORY_RULES = `
-Output only the label (12 words).
-`.trim();
+function formatCategoryRules(): string {
+  const lines: string[] = [
+    "Label discipline:",
+    "- For EACH sub-metric choose EXACTLY one label from the allowed list.",
+    "- Return only the label text (case-sensitive). No extra words, punctuation, or commentary.",
+    "- If uncertain, pick the closest fitting label from the list. Never invent new labels.",
+    "Allowed options per sub-metric:",
+  ];
+
+  for (const metric of metricKeys) {
+    const submetrics = SUBMETRIC_ORDER[metric];
+    const options = CATEGORY_OPTIONS[metric];
+    const metricLabel = metric === "sexual_dimorphism" ? "masculinity cues" : metric.replace(/_/g, " ");
+    lines.push(`- ${metricLabel}:`);
+    if (submetrics && options) {
+      submetrics.forEach((sub, idx) => {
+        const opts = options[idx] ?? [];
+        if (!opts.length) return;
+        lines.push(`  - ${sub}: ${opts.join(" | ")}`);
+      });
+    }
+  }
+
+  return lines.join("\n");
+}
+
+const CATEGORY_RULES = formatCategoryRules();
 
 /* ------------------------------ System prompt ----------------------------- */
 
@@ -397,6 +422,9 @@ Output EXACTLY FOUR short lines per metric, mapped to the following sub-metrics 
 - skin_quality: ["Clarity","Smoothness","Evenness","Youthfulness"]
 - facial_symmetry: ["Horizontal Alignment","Vertical Balance","Eye-Line Level","Nose-Line Centering"]
 - sexual_dimorphism (write as "masculinity cues"): ["Face Power","Hormone Balance","Contour Strength","Softness Level"]
+
+${CATEGORY_RULES}
+
 
 Rules
 - Describe only what is visible in the image(s). Present tense. No causes, routines, medical, identity or ethnicity claims.
@@ -621,7 +649,35 @@ function normalizeResponse(raw: string | null | undefined): Record<MetricKey, st
     const key = slug(cleaned);
     if (!key) return "";
     const map = optionLookup[metric]?.[index];
-    return map?.[key] ?? "";
+    if (!map) return cleaned;
+
+    if (map[key]) return map[key];
+
+    const entries = Object.entries(map);
+
+    for (const [slugged, label] of entries) {
+      if (slugged.startsWith(key) || key.startsWith(slugged)) {
+        return label;
+      }
+    }
+
+    let bestLabel = "";
+    let bestScore = Number.POSITIVE_INFINITY;
+
+    for (const [slugged, label] of entries) {
+      const distance = levenshtein(slugged, key);
+      const norm = distance / Math.max(slugged.length, key.length, 1);
+      if (norm < bestScore) {
+        bestScore = norm;
+        bestLabel = label;
+      }
+    }
+
+    if (bestScore <= 0.35 && bestLabel) {
+      return bestLabel;
+    }
+
+    return cleaned;
   }
 
   const out: Record<MetricKey, string[]> = {} as Record<MetricKey, string[]>;
@@ -636,4 +692,29 @@ function normalizeResponse(raw: string | null | undefined): Record<MetricKey, st
   }
 
   return out;
+}
+
+function levenshtein(a: string, b: string): number {
+  const aLen = a.length;
+  const bLen = b.length;
+  if (aLen === 0) return bLen;
+  if (bLen === 0) return aLen;
+
+  const matrix: number[][] = Array.from({ length: aLen + 1 }, () => new Array(bLen + 1).fill(0));
+
+  for (let i = 0; i <= aLen; i++) matrix[i][0] = i;
+  for (let j = 0; j <= bLen; j++) matrix[0][j] = j;
+
+  for (let i = 1; i <= aLen; i++) {
+    for (let j = 1; j <= bLen; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      matrix[i][j] = Math.min(
+        matrix[i - 1][j] + 1,
+        matrix[i][j - 1] + 1,
+        matrix[i - 1][j - 1] + cost
+      );
+    }
+  }
+
+  return matrix[aLen][bLen];
 }

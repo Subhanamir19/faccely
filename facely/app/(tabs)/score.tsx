@@ -230,13 +230,13 @@ function tierIndexFor(score: number) {
 }
 
 const ANCHORS: Record<string, [string, string, string, string]> = {
-  "Jawline": ["Soft", "Average", "Sharp", "Elite"],
-  "Cheekbones": ["Flat", "Moderate", "Projected", "Sculpted"],
-  "Facial Symmetry": ["Tilted", "Slight offset", "Balanced", "Mirror-clean"],
-  "Eye Symmetry": ["Uneven", "Slight offset", "Aligned", "Highly aligned"],
-  "Skin Quality": ["Textured", "Mixed", "Clear", "Glassy"],
-  "Nose Balance": ["Off-scale", "Acceptable", "Proportionate", "Seamless"],
-  "Masculinity/Femininity": ["Subtle", "Mixed", "Clear", "Strong"],
+"Jawline": ["Soft", "Weak", "Sharp", "Elite"],
+  "Cheekbones": ["Flat", "Visibly off", "Projected", "Sculpted"],
+  "Facial Symmetry": ["Tilted", "Asymmetrical", "Balanced", "Mirror-clean"],
+  "Eye Symmetry": ["Uneven", "Off-aligned", "Aligned", "Highly aligned"],
+  "Skin Quality": ["Textured", "Dull", "Clear", "Glassy"],
+  "Nose Balance": ["Off-scale", "Imbalance", "Proportionate", "Seamless"],
+  "Masculinity/Femininity": ["Subtle", "Undefined", "Clear", "Strong"],
 };
 
 function anchorsFor(title: string): [string, string, string, string] {
