@@ -12,12 +12,14 @@ import {
   ImageBackground,
   Platform,
   StyleSheet,
+  useWindowDimensions,
 } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as ImagePicker from "expo-image-picker";
 import * as FileSystem from "expo-file-system";
 import { router } from "expo-router";
 import Svg, { Line, Circle, Rect, Path } from "react-native-svg";
+import { LinearGradient } from "expo-linear-gradient";
 import { useScores } from "../../store/scores";
 
 // NEW: shared pre-upload compressor (JPEG, max 1080px)
@@ -41,11 +43,11 @@ async function persistToCache(uri: string): Promise<string> {
 }
 
 /* ============================== TOKENS ============================== */
-const ACCENT = "#8FA31E"; // neon lime
-const TEXT = "rgba(255,255,255,0.92)";
-const TEXT_DIM = "rgba(255,255,255,0.65)";
-const CARD_BORDER = "rgba(255,255,255,0.12)";
-const BG = "#0B0B0C";
+const ACCENT = "#B4F34D"; // Sigma Max lime
+const TEXT = "#FFFFFF";
+const TEXT_DIM = "rgba(255,255,255,0.72)";
+const CARD_BORDER = "rgba(255,255,255,0.08)";
+const BG = "#0B0B0B";
 
 /* ============================== HELPERS ============================== */
 function toFileUri(u: string) {
@@ -71,7 +73,8 @@ async function ensureFileUriAsync(raw?: string | null): Promise<string | null> {
   return toFileUri(raw);
 }
 
-type Step = "frontal" | "side" | "review";
+type Step = "intro" | "capture" | "review";
+
 
 /* ============================== UI ============================== */
 function LimeButton({
@@ -105,7 +108,8 @@ function LimeButton({
     >
       <Text
         style={{
-          color: disabled ? TEXT_DIM : "#0D0E0D",
+          color: disabled ? TEXT_DIM : BG,
+
           fontSize: 16,
           fontFamily: Platform.select({
             ios: "Poppins-SemiBold",
@@ -212,7 +216,8 @@ export default function TakePicture() {
   const [perm, requestPerm] = useCameraPermissions();
   const permissionDenied = perm?.granted === false;
 
-  const [step, setStep] = useState<Step>("frontal");
+  const [step, setStep] = useState<Step>("intro");
+  const [pose, setPose] = useState<"frontal" | "side">("frontal");
   const [frontalUri, setFrontalUri] = useState<string | null>(null);
   const [sideUri, setSideUri] = useState<string | null>(null);
 
@@ -221,16 +226,30 @@ export default function TakePicture() {
   const [chooserOpen, setChooserOpen] = useState(false);
   const cameraRef = useRef<CameraView>(null);
 
+  const window = useWindowDimensions();
+
+  const cardWidth = Math.max(window.width - 48, 320);
+  const CARD_BASE_WIDTH = 1032;
+  const cardScale = cardWidth / CARD_BASE_WIDTH;
+  const cardHeight = cardWidth * (1320 / CARD_BASE_WIDTH);
+  const ctaWidth = Math.min(cardWidth, cardWidth * (760 / CARD_BASE_WIDTH));
+  const ctaHeight = Math.max(64, 112 * cardScale);
+  const ctaRadius = Math.max(36, 56 * cardScale);
+  const subtitleOffset = 260 * cardScale;
+  const gridCell = Math.max(60, 80 * cardScale);
+
   // capture selection
   const handleChosen = async (uri: string | null) => {
     if (!uri) return;
     try {
       // immediately persist to our own cache so Expo doesn’t delete it
       const stable = await persistToCache(uri);
-      if (step === "frontal") {
+      if (pose === "frontal") {
+
         setFrontalUri(stable);
-        setStep("side");
-      } else if (step === "side") {
+        setPose("side");
+        setStep("capture");
+      } else {
         setSideUri(stable);
         setStep("review");
       }
@@ -239,8 +258,9 @@ export default function TakePicture() {
     }
   };
 
-  const changePose = (pose: "frontal" | "side") => {
-    setStep(pose);
+  const changePose = (nextPose: "frontal" | "side") => {
+    setPose(nextPose);
+    setStep("capture");
     setChooserOpen(true);
   };
 
@@ -284,6 +304,17 @@ export default function TakePicture() {
 
   const canContinue = !!frontalUri && !!sideUri && !submitting;
 
+  const beginScan = () => {
+    setFrontalUri(null);
+    setSideUri(null);
+    setPose("frontal");
+    setStep("capture");
+  };
+
+  const goToAnalysis = () => {
+    router.push("/(tabs)/analysis");
+  };
+
   const useBoth = async () => {
     if (!canContinue) return;
     try {
@@ -319,6 +350,197 @@ export default function TakePicture() {
       setSubmitting(false);
     }
   };
+
+  const renderGridOverlay = () => {
+    const verticalCount = Math.floor(cardWidth / gridCell);
+    const horizontalCount = Math.floor(cardHeight / gridCell);
+    const verticalLines = Array.from({ length: Math.max(0, verticalCount - 1) });
+    const horizontalLines = Array.from({ length: Math.max(0, horizontalCount - 1) });
+
+    return (
+      <View
+        pointerEvents="none"
+        style={{
+          ...StyleSheet.absoluteFillObject,
+          opacity: 0.1,
+        }}
+      >
+        {verticalLines.map((_, i) => {
+          const left = ((i + 1) * gridCell) / cardWidth;
+          return (
+            <View
+              key={`v-${i}`}
+              style={{
+                position: "absolute",
+                top: 0,
+                bottom: 0,
+                left: `${left * 100}%`,
+                width: 2,
+                backgroundColor: "#FFFFFF",
+              }}
+            />
+          );
+        })}
+        {horizontalLines.map((_, i) => {
+          const top = ((i + 1) * gridCell) / cardHeight;
+          return (
+            <View
+              key={`h-${i}`}
+              style={{
+                position: "absolute",
+                left: 0,
+                right: 0,
+                top: `${top * 100}%`,
+                height: 2,
+                backgroundColor: "#FFFFFF",
+              }}
+            />
+          );
+        })}
+      </View>
+    );
+  };
+
+  const renderIntro = () => (
+    <View style={{ flex: 1, backgroundColor: BG }}>
+      <StatusBar barStyle="light-content" />
+      <SafeAreaView style={{ flex: 1 }}>
+        <View style={{ flex: 1 }}>
+          <View
+            style={{
+              paddingHorizontal: 24,
+              marginTop: 36,
+              flexDirection: "row",
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}
+          >
+            <Text
+              style={{
+                color: "#FFFFFF",
+                fontFamily: Platform.select({
+                  ios: "Poppins-SemiBold",
+                  android: "Poppins-SemiBold",
+                  default: "Poppins-SemiBold",
+                }),
+                fontSize: 34,
+                lineHeight: 40,
+                letterSpacing: -0.34,
+              }}
+            >
+              Face scan
+            </Text>
+            <Pressable onPress={goToAnalysis} hitSlop={16}>
+              <Text
+                style={{
+                  color: "#FFFFFF",
+                  fontFamily: Platform.select({
+                    ios: "Poppins-SemiBold",
+                    android: "Poppins-SemiBold",
+                    default: "Poppins-SemiBold",
+                  }),
+                  fontSize: 34,
+                  lineHeight: 40,
+                  letterSpacing: -0.34,
+                }}
+              >
+                Analysis
+              </Text>
+            </Pressable>
+          </View>
+
+          <View style={{ flex: 1, alignItems: "center" }}>
+            <View
+              style={{
+                marginTop: 24,
+                width: cardWidth,
+                height: cardHeight,
+                borderRadius: 36,
+                backgroundColor: "#121212",
+                overflow: "hidden",
+              }}
+            >
+              <Image
+                source={require("../../assets/capture-guides/frontal-guide.jpg")}
+                style={{ width: "100%", height: "100%" }}
+                resizeMode="cover"
+              />
+              {renderGridOverlay()}
+              <LinearGradient
+                colors={["rgba(0,0,0,0)", "rgba(0,0,0,0.55)"]}
+                start={{ x: 0, y: 0.6 }}
+                end={{ x: 0, y: 1 }}
+                style={StyleSheet.absoluteFill}
+              />
+              <View
+                style={{
+                  position: "absolute",
+                  left: 0,
+                  right: 0,
+                  bottom: subtitleOffset,
+                  paddingHorizontal: 24,
+                }}
+              >
+                <Text
+                  style={{
+                    color: "#FFFFFF",
+                    textAlign: "center",
+                    fontFamily: Platform.select({
+                      ios: "Poppins-SemiBold",
+                      android: "Poppins-SemiBold",
+                      default: "Poppins-SemiBold",
+                    }),
+                    fontSize: 36 * cardScale,
+                    lineHeight: 44 * cardScale,
+                    letterSpacing: -0.36,
+                  }}
+                >
+                  Get your facial ratings and insights
+                </Text>
+              </View>
+
+              <Pressable
+                onPress={beginScan}
+                hitSlop={8}
+                style={({ pressed }) => ({
+                  position: "absolute",
+                  left: (cardWidth - ctaWidth) / 2,
+                  right: (cardWidth - ctaWidth) / 2,
+                  bottom: 48 * cardScale,
+                  height: ctaHeight,
+                  borderRadius: ctaRadius,
+                  backgroundColor: "#B4F34D",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  transform: [{ scale: pressed ? 0.98 : 1 }],
+                  shadowColor: "#000",
+                  shadowOpacity: 0.45,
+                  shadowRadius: 24,
+                  shadowOffset: { width: 0, height: 12 },
+                  elevation: 10,
+                })}
+              >
+                <Text
+                  style={{
+                    color: BG,
+                    fontFamily: Platform.select({
+                      ios: "Poppins-SemiBold",
+                      android: "Poppins-SemiBold",
+                      default: "Poppins-SemiBold",
+                    }),
+                    fontSize: Math.max(18, 24 * cardScale),
+                    lineHeight: Math.max(24, 30 * cardScale),
+                  }}
+                >
+                  Begin scan
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </SafeAreaView>
+    </View>
+  );
 
   const renderGuide = ({
     guideSrc,
@@ -416,17 +638,15 @@ export default function TakePicture() {
 
   return (
     <>
-      {step === "frontal" &&
+      {step === "intro" && renderIntro()}
+      {step === "capture" &&
         renderGuide({
-          guideSrc: require("../../assets/capture-guides/frontal-guide.jpg"),
-          title: "Take Frontal Photo",
-          overlay: "frontal",
-        })}
-      {step === "side" &&
-        renderGuide({
-          guideSrc: require("../../assets/capture-guides/side-guide.jpg"),
-          title: "Take Side Photo",
-          overlay: "side",
+          guideSrc:
+          pose === "frontal"
+            ? require("../../assets/capture-guides/frontal-guide.jpg")
+            : require("../../assets/capture-guides/side-guide.jpg"),
+        title: pose === "frontal" ? "Take Frontal Photo" : "Take Side Photo",
+        overlay: pose,
         })}
 
       {step === "review" && (
