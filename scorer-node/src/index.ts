@@ -8,6 +8,8 @@ import rateLimit from "express-rate-limit";
 import multer from "multer";
 import OpenAI from "openai";
 import sharp from "sharp";
+import * as fs from "fs";
+
 import { ZodError, type ZodIssue } from "zod";
 
 import { generateRecommendations, RecommendationsParseError } from "./recommender.js";
@@ -30,12 +32,24 @@ import {
 import { scoreImageBytes, scoreImagePairBytes } from "./scorer.js";
 import { explainImageBytes, explainImagePairBytes } from "./explainer.js";
 
+
 /* -------------------------------------------------------------------------- */
 /*   App core                                                                 */
 /* -------------------------------------------------------------------------- */
 
 const app = express();
 const openai = new OpenAI({ apiKey: ENV.OPENAI_API_KEY });
+
+// --- one-time schema sanity check (shows up in Railway logs) ---
+try {
+  // dist/index.js and dist/explainer.js live in the same folder at runtime
+  const js = fs.readFileSync(new URL("./explainer.js", import.meta.url)).toString();
+  const hasTuple = js.includes("items:[{") || js.includes("items: [ {");
+  console.log("[SCHEMA_CHECK] dist/explainer.js tuple schema =", hasTuple ? "YES" : "NO");
+} catch (e: any) {
+  console.log("[SCHEMA_CHECK] could not read dist/explainer.js:", e?.message || e);
+}
+
 
 /* ---------------------------- Request logging ----------------------------- */
 app.use((req, _res, next) => {
