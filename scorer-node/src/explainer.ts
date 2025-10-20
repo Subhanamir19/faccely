@@ -12,7 +12,7 @@ import { Scores, metricKeys, type MetricKey } from "./validators.js";
  */
 
 const MODEL = process.env.OPENAI_EXPLAINER_MODEL || "gpt-4o-mini";
-const PROMPT_VERSION_EXPLAIN = "exp.v3.1"; // bumped
+const PROMPT_VERSION_EXPLAIN = "exp.v3.2"; // bumped
 
 const CACHE_TTL_MS = Number(process.env.EXPLAINER_CACHE_TTL_MS ?? 1000 * 60 * 60 * 24 * 30); // 30d
 const CACHE_MAX_ITEMS = Number(process.env.EXPLAINER_CACHE_MAX_ITEMS ?? 5000);
@@ -420,6 +420,9 @@ Output EXACTLY FOUR short lines per metric, mapped to the following sub-metrics 
 
 ${CATEGORY_RULES}
 
+Reasoning discipline (think silently before writing; do NOT output this section):
+- Translate each provided score into its qualitative tier (Developing, Improving, Sharp, Elite) before writing.
+- Identify the strongest visible cue supporting that tier and the clearest refinement direction.
 
 Rules
 - Describe only what is visible in the image(s). Present tense. No causes, routines, medical, identity or ethnicity claims.
@@ -464,6 +467,8 @@ export async function explainImageBytes(
   const tierGuide = `
 Use score ranges only to calibrate language strength (do NOT output scores):
 - 0–40 developing, 41–64 improving, 65–79 sharp, 80–100 elite.
+Before writing each metric, silently match the score to its tier and note the clearest visual evidence.
+Each line must point to that evidence or the sharpest refinement, not generic praise.
 Keep wording neutral and specific regardless of tier.
 `.trim();
 
@@ -543,6 +548,8 @@ export async function explainImagePairBytes(
   const tierGuide = `
 Use score ranges only to calibrate language strength (do NOT output scores):
 - 0–40 developing, 41–64 improving, 65–79 sharp, 80–100 elite.
+Before writing each metric, silently match the score to its tier and note the clearest visual evidence.
+Each line must point to that evidence or the sharpest refinement, not generic praise.
 Keep wording neutral and specific regardless of tier.
 `.trim();
 

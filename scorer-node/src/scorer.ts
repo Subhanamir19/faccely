@@ -106,6 +106,16 @@ RANGE DISCIPLINE (NO REGRESSION TO THE MEAN):
 - Never "balance" a low metric by inflating an unrelated metric. Each metric is independent and evidence-based.
 `.trim();
 
+const CATEGORY_GUIDE = `
+CATEGORIZATION GUIDE (decide the qualitative tier, then pick the specific score):
+- 0–35 "Needs attention": Strong negative or absent cues that dominate the observation.
+- 36–55 "Developing": Mixed signals; definition emerging but offset by notable inconsistencies.
+- 56–75 "Refined": Solid, reliable cues with only light softness or minor imbalance.
+- 76–100 "Elite": Clearly distinguished cues with professional-grade definition and harmony.
+Do NOT collapse around the middle; pick the tier that best matches visible evidence.
+Within a tier, spread scores so the strongest and weakest metrics stay differentiated.
+`.trim();
+
 const TIER_ANCHORS = `
 CALIBRATION ANCHORS (determine the tier first, then pick an integer inside it):
 - jawline:
@@ -152,6 +162,9 @@ Return neutral, professional evaluations against a defined aesthetic rubric.
 Do not identify the person or infer age, gender identity, race/ethnicity, health, or other protected attributes.
 No medical claims or sexual content. If content is unclear/occluded/low-res, increase uncertainty but do NOT inflate scores.
 
+${CATEGORY_GUIDE}
+
+
 Scoring (0–100, integers only, independent per metric):
 - jawline: mandibular outline sharpness, gonial angle definition, submental shadow/line, cervicomental angle.
 - facial_symmetry: left/right feature alignment (eyes, brows, nasal axis, mouth cant), contour parity.
@@ -189,6 +202,8 @@ No medical claims or sexual content. If content is unclear/occluded/low-res, inc
 
 Metrics and scoring same as single-image prompt.
 Rules: Use BOTH views to refine judgments (e.g., jawline, cheekbones, symmetry, nose). If views disagree, still output a single score per metric.
+
+${CATEGORY_GUIDE}
 
 ${TIER_ANCHORS}
 
