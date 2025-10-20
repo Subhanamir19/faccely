@@ -20,6 +20,8 @@ export class RecommendationsParseError extends Error {
 
 const openai = new OpenAI({ apiKey: ENV.OPENAI_API_KEY });
 
+let recommenderResponseFormatLogged = false;
+
 /**
  * generateRecommendations
  * Validates input, calls OpenAI with a tightly-scoped prompt,
@@ -58,6 +60,16 @@ export async function generateRecommendations(
 
   const user = JSON.stringify(req);
 
+  const response_format: { type: "json_object"; json_schema?: unknown } = {
+    type: "json_object",
+  };
+  if (!recommenderResponseFormatLogged) {
+    console.log("[RF-CHECK]", {
+      type: response_format.type,
+      hasSchema: !!response_format.json_schema,
+    });
+    recommenderResponseFormatLogged = true;
+  }
   const completion = await openai.chat.completions.create({
     model: "gpt-4o-mini",
     temperature: 0.4,
@@ -66,6 +78,8 @@ export async function generateRecommendations(
       { role: "user", content: user },
     ],
     max_tokens: 600,
+    response_format,
+
   });
 
   const raw = completion.choices[0]?.message?.content?.trim() ?? "";

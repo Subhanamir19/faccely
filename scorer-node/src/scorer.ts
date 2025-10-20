@@ -60,6 +60,8 @@ type CacheEntry = { value: Scores; ts: number };
 const memCache = new Map<string, CacheEntry>();
 const inFlight = new Map<string, Promise<Scores>>(); // in-flight de-duplication
 
+let scoresResponseFormatLogged = false;
+
 function cacheGet(key: string): Scores | null {
   const now = Date.now();
   const hit = memCache.get(key);
@@ -243,10 +245,22 @@ export async function scoreImageBytes(
 
   const task = (async () => {
     const t1 = Date.now();
+
+    const response_format: { type: "json_object"; json_schema?: unknown } = {
+      type: "json_object",
+    };
+    if (!scoresResponseFormatLogged) {
+      console.log("[RF-CHECK]", {
+        type: response_format.type,
+        hasSchema: !!response_format.json_schema,
+      });
+      scoresResponseFormatLogged = true;
+    }
     const resp = await client.chat.completions.create({
       model: MODEL,
       temperature: 0.1,
-      response_format: { type: "json_object" },
+      response_format,
+
       messages: [
         { role: "system", content: SYSTEM_MSG_SINGLE },
         {
@@ -319,10 +333,22 @@ export async function scoreImagePairBytes(
 
   const task = (async () => {
     const t1 = Date.now();
+
+    const response_format: { type: "json_object"; json_schema?: unknown } = {
+      type: "json_object",
+    };
+    if (!scoresResponseFormatLogged) {
+      console.log("[RF-CHECK]", {
+        type: response_format.type,
+        hasSchema: !!response_format.json_schema,
+      });
+      scoresResponseFormatLogged = true;
+    }
     const resp = await client.chat.completions.create({
       model: MODEL,
       temperature: 0.1,
-      response_format: { type: "json_object" },
+      response_format,
+
       messages: [
         { role: "system", content: SYSTEM_MSG_PAIR },
         {

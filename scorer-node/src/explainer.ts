@@ -401,46 +401,8 @@ function formatCategoryRules(): string {
 
 const CATEGORY_RULES = formatCategoryRules();
 
-function buildResponseSchema(allowed: SubmetricOptions) {
-  const properties = {} as Record<
-    MetricKey,
-    {
-      type: "array";
-      minItems: number;
-      maxItems: number;
-      items: { type: "string"; enum: string[] };
-      additionalItems: false;
-    }
-  >;
+let explainResponseFormatLogged = false;
 
-  for (const metric of metricKeys) {
-    const union = Array.from(
-      new Set((allowed[metric] ?? []).flatMap((opts) => Array.from(opts)))
-    );
-
-    properties[metric] = {
-      type: "array",
-      minItems: 4,
-      maxItems: 4,
-      items: {
-        type: "string",
-        enum: union,
-      },
-      additionalItems: false,
-    };
-  }
-
-  return {
-    name: "explainer_labels_v4",
-    strict: true,
-    schema: {
-      type: "object",
-      additionalProperties: false,
-      required: metricKeys,
-      properties,
-    },
-  };
-}
 
 /* ------------------------------ System prompt ----------------------------- */
 
@@ -526,12 +488,24 @@ ${JSON.stringify(scores)}
   if (inflight) return inflight;
 
   const task = (async () => {
+
+    const response_format: { type: "json_object"; json_schema?: unknown } = {
+      type: "json_object",
+    };
+    if (!explainResponseFormatLogged) {
+      console.log("[RF-CHECK]", {
+        type: response_format.type,
+        hasSchema: !!response_format.json_schema,
+      });
+      explainResponseFormatLogged = true;
+    }
     const resp = await client.chat.completions.create({
       model: MODEL,
       temperature: 0.4,
       top_p: 0.9,
       max_tokens: 1300,
-      response_format: { type: "json_object" },
+      response_format,
+
       messages: [
         { role: "system", content: SYSTEM_PROMPT_BASE },
         {
@@ -595,12 +569,25 @@ ${JSON.stringify(scores)}
   if (inflight) return inflight;
 
   const task = (async () => {
+
+    const response_format: { type: "json_object"; json_schema?: unknown } = {
+      type: "json_object",
+    };
+    if (!explainResponseFormatLogged) {
+      console.log("[RF-CHECK]", {
+        type: response_format.type,
+        hasSchema: !!response_format.json_schema,
+      });
+      explainResponseFormatLogged = true;
+    }
+
     const resp = await client.chat.completions.create({
       model: MODEL,
       temperature: 0.4,
       top_p: 0.9,
       max_tokens: 1500,
-      response_format: { type: "json_object" },
+      response_format,
+
       messages: [
         { role: "system", content: SYSTEM_PROMPT_BASE },
         {
@@ -720,7 +707,7 @@ function normalizeResponse(raw: string | null | undefined): Record<MetricKey, st
     const normalized: string[] = [];
     for (let i = 0; i < 4; i++) {
       normalized.push(canonicalize(values[i], metric, i));
-    }
+     }
     out[metric] = normalized;
   }
 

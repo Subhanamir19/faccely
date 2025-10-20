@@ -17,6 +17,8 @@ const inFlight = new Map<string, Promise<RoutinePlan>>();
 
 const openai = new OpenAI({ apiKey: ENV.OPENAI_API_KEY });
 
+let routineResponseFormatLogged = false;
+
 export class RoutineParseError extends Error {
   readonly rawPreview: string;
 
@@ -170,11 +172,23 @@ export async function generateRoutinePlan(req: RoutineReq): Promise<RoutinePlan>
   const task = (async () => {
     const requestPayload = { ...req, daily_minutes: req.daily_minutes ?? 20 };
 
+    const response_format: { type: "json_object"; json_schema?: unknown } = {
+      type: "json_object",
+    };
+    if (!routineResponseFormatLogged) {
+      console.log("[RF-CHECK]", {
+        type: response_format.type,
+        hasSchema: !!response_format.json_schema,
+      });
+      routineResponseFormatLogged = true;
+    }
+
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       temperature: 0.2,
       max_tokens: 2000,
-      response_format: { type: "json_object" },
+      response_format,
+
       messages: [
         { role: "system", content: ROUTINE_SYSTEM_PROMPT },
         { role: "user", content: JSON.stringify(requestPayload) },

@@ -44,7 +44,8 @@ const openai = new OpenAI({ apiKey: ENV.OPENAI_API_KEY });
 try {
   // dist/index.js and dist/explainer.js live in the same folder at runtime
   const js = fs.readFileSync(new URL("./explainer.js", import.meta.url)).toString();
-  const hasTuple = js.includes("items:[{") || js.includes("items: [ {");
+  const tupleNeedle = "items:" + "[";
+  const hasTuple = js.includes(`${tupleNeedle}{`) || js.includes(`${tupleNeedle} {`);
   console.log("[SCHEMA_CHECK] dist/explainer.js tuple schema =", hasTuple ? "YES" : "NO");
 } catch (e: any) {
   console.log("[SCHEMA_CHECK] could not read dist/explainer.js:", e?.message || e);
