@@ -4,7 +4,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import * as FileSystem from "expo-file-system";
 
 import CinematicLoader from "@/components/ui/CinematicLoader";
-import { LOADING_STAGE_COPY, resolveLoadingStage } from "@/lib/loadingStages";
+
 import { useOnboarding } from "@/store/onboarding";
 import { useScores } from "../store/scores";
 import { ensureJpegCompressed } from "../lib/api/media";
@@ -73,8 +73,7 @@ export default function LoadingScreen() {
   const sideMime = takeFirst(params.sideMime);
   const normalized = takeFirst(params.normalized);
 
-  const stageKey = resolveLoadingStage({ mode, phase });
-  const stageCopy = LOADING_STAGE_COPY[stageKey];
+
 
   const [isLoading, setIsLoading] = useState(true);
 
@@ -247,10 +246,7 @@ export default function LoadingScreen() {
   ]);
 
   return (
-    <CinematicLoader
-      title={stageCopy.title}
-      subtitle={stageCopy.subtitle}
-      loading={isLoading}
-    />
+    <CinematicLoader loading={isLoading} />
+
   );
 }
