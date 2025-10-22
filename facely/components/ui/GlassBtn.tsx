@@ -1,6 +1,7 @@
 // components/ui/GlassBtn.tsx
 import React from "react";
-import { Pressable, StyleSheet, View, Platform } from "react-native";
+import { Pressable, StyleSheet, View, Platform, ActivityIndicator } from "react-native";
+
 import { LinearGradient } from "expo-linear-gradient";
 import T from "@/components/ui/T";
 import { Ionicons } from "@expo/vector-icons";
@@ -14,6 +15,8 @@ export default function GlassBtn({
   disabled,
   variant = "glass",
   height = 56,
+  loading = false,
+
 }: {
   label: string;
   icon?: keyof typeof Ionicons.glyphMap | null;
@@ -21,21 +24,45 @@ export default function GlassBtn({
   disabled?: boolean;
   variant?: Variant;
   height?: number;
+  loading?: boolean;
+
 }) {
   const isPrimary = variant === "primary";
 
   // Wrapper shadow: lime glow for primary, neutral soft for glass
   const shadowStyle =
-    isPrimary && !disabled
+  isPrimary && (!disabled || loading)
+
       ? styles.shadowPrimary
       : styles.shadowGlass;
 
   return (
-    <Pressable onPress={onPress} disabled={disabled} style={styles.pressable}>
+<Pressable
+      onPress={onPress}
+      disabled={disabled || loading}
+      style={styles.pressable}
+    >
       {({ pressed }) => (
         <View style={[styles.shadowWrap, shadowStyle]}>
           {isPrimary ? (
-            disabled ? (
+loading ? (
+  <View
+    style={[styles.primaryBase, { height }, pressed && styles.pressed]}
+  >
+    <LinearGradient
+      colors={["#D7FF83", "#B4F34D"]}
+      start={{ x: 0.2, y: 0 }}
+      end={{ x: 0.8, y: 1 }}
+      style={StyleSheet.absoluteFillObject}
+    />
+    <ActivityIndicator
+      size="small"
+      color="#0A0A0A"
+      style={styles.spinnerLeft}
+    />
+    <T style={[styles.primaryText, styles.loadingText]}>{label}</T>
+  </View>
+) : disabled ? (
               // Disabled primary: flat slate pill, no gradient, no glow
               <View
                 style={[
@@ -82,11 +109,18 @@ export default function GlassBtn({
               style={[
                 styles.glassBase,
                 { height },
-                disabled && styles.glassDisabled,
+                disabled && !loading && styles.glassDisabled,
+                loading && styles.glassLoading,
                 pressed && styles.pressed,
               ]}
             >
-              {icon ? (
+           {loading ? (
+                <ActivityIndicator
+                  size="small"
+                  color="#EDEDED"
+                  style={styles.spinnerLeft}
+                />
+              ) : icon ? (
                 <Ionicons
                   name={icon as any}
                   size={18}
@@ -159,6 +193,11 @@ const styles = StyleSheet.create({
       default: "Poppins-SemiBold",
     }),
   },
+
+  loadingText: {
+    opacity: 0.9,
+  },
+
   iconLeftPrimary: {
     position: "absolute",
     left: 16,
@@ -198,7 +237,12 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: "#2D2D2D",
   },
-  glassDisabled: { opacity: 0.6 },
+  glassLoading: {
+    borderColor: "#3A3A3A",
+  },
+  glassDisabled: {
+    opacity: 0.6,
+  },
   glassText: {
     fontSize: 18,
     color: "#EDEDED",
@@ -208,7 +252,18 @@ const styles = StyleSheet.create({
       default: "Poppins-SemiBold",
     }),
   },
-  iconLeftGlass: { position: "absolute", left: 16 },
+  iconLeftGlass: {
+    position: "absolute",
+    left: 16,
+    top: "50%",
+    marginTop: -9,
+  },
+  spinnerLeft: {
+    position: "absolute",
+    left: 16,
+    top: "50%",
+    marginTop: -9,
+  },
 
   // Pressed state
   pressed: { transform: [{ translateY: 1 }] },

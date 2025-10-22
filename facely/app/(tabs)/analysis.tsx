@@ -9,6 +9,8 @@ import {
   StatusBar,
   ActivityIndicator,
   Dimensions,
+  Alert,
+
 } from "react-native";
 import PagerView from "react-native-pager-view";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -108,6 +110,10 @@ export default function AnalysisScreen() {
   const { scores, explanations, explLoading, explError } = useScores();
   const prefetchRoutine = useRoutine((state) => state.prefetch);
 
+  const routineBusy = useRoutine(
+    (state) => state.isLoading || state.isRefreshing
+  );
+
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
@@ -123,7 +129,8 @@ export default function AnalysisScreen() {
 
   async function handleRoutine() {
 
-    if (!scores) return;
+    if (!scores || routineBusy) return;
+
     const mapped = ORDER.reduce<Record<string, number | undefined>>((acc, key) => {
       acc[key] = scores[key];
       return acc;
@@ -137,8 +144,10 @@ export default function AnalysisScreen() {
     try {
       await prefetchRoutine(req);
       router.push("/(tabs)/routine");
-    } catch {
-      /* swallow - store exposes error */
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to fetch routine";
+      Alert.alert("Routine unavailable", message);
     }
   }
 
@@ -233,7 +242,12 @@ export default function AnalysisScreen() {
           {!isLast ? (
             <GlassBtn label="Next" icon="chevron-forward" onPress={() => goTo(idx + 1)} />
           ) : (
-            <GlassBtn label="Routine" icon="sparkles" onPress={handleRoutine} />
+            <GlassBtn
+              label="Routine"
+              icon="sparkles"
+              onPress={handleRoutine}
+              loading={routineBusy}
+            />
           )}
         </View>
       </SafeAreaView>

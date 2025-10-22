@@ -169,16 +169,23 @@ export type RecommendationsResponse = z.infer<
   export type RoutineReq = z.infer<typeof RoutineRequestSchema>;
   
   export const RoutineTaskSchema = z.object({
+    id: z.union([z.string(), z.number()]).optional(),
+
     headline: z.string().min(1),
     category: z.string().min(1),
-    protocol: z.string().min(1).max(60),
+    protocol: z.string().min(1).max(80),
+
     done: z.boolean().optional(),
   });
   export type RoutineTask = z.infer<typeof RoutineTaskSchema>;
   
   export const RoutineDaySchema = z.object({
     day: z.number().int().min(1),
+    focus: z.string().optional(),
+    week_focus: z.string().optional(),
     components: z.array(RoutineTaskSchema).length(5),
+    tasks: z.array(RoutineTaskSchema).length(5).optional(),
+
     notes: z.array(z.string()).optional(),
     review_checks: z.array(z.string()).optional(),
   });

@@ -14,12 +14,22 @@ const DAY_PLAN_SCHEMA = z.object({
   day: z.number().int().nonnegative().optional(),
   focus: z.string().optional(),
   weekFocus: z.string().optional(),
-  tasks: z.array(ROUTINE_TASK_SCHEMA).default([]),
+  week_focus: z.string().optional(),
+  tasks: z.array(ROUTINE_TASK_SCHEMA).optional(),
+  components: z.array(ROUTINE_TASK_SCHEMA).optional(),
+  notes: z.array(z.string()).optional(),
+  review_checks: z.array(z.string()).optional(),
 });
 
 const WEEK_FOCUS_ENTRY = z.object({
   week: z.number().int().nonnegative().optional(),
   focus: z.string().optional(),
+});
+
+const PHASE_PLAN_ENTRY = z.object({
+  week: z.number().int().nonnegative().optional(),
+  focus: z.string().optional(),
+  volume_pct: z.number().optional(),
 });
 
 const ROUTINE_PLAN_SCHEMA = z.object({
@@ -29,15 +39,27 @@ const ROUTINE_PLAN_SCHEMA = z.object({
   currentWeekFocus: z.string().optional(),
   focusByWeek: z.record(z.string(), z.string()).optional(),
   weeks: z.array(WEEK_FOCUS_ENTRY).optional(),
+  phase_plan: z.array(PHASE_PLAN_ENTRY).optional(),
+  metric: z.string().optional(),
   days: z.array(DAY_PLAN_SCHEMA).default([]),
+  global_rules_applied: z.array(z.string()).optional(),
+
 });
 
-export type RoutineTask = z.infer<typeof ROUTINE_TASK_SCHEMA> & { id: string; headline: string };
+export type RoutineTask = {
+  id: string;
+  headline: string;
+  category?: string;
+  protocol?: string;
+  done: boolean;
+};
 export type DayPlan = {
   day: number;
   focus?: string | null;
   weekFocus?: string | null;
   tasks: RoutineTask[];
+  notes?: string[];
+  reviewChecks?: string[];
 };
 export type RoutinePlan = {
   planHash: string | null;
@@ -45,6 +67,9 @@ export type RoutinePlan = {
   title?: string | null;
   currentWeekFocus?: string | null;
   weekFocusByWeek: Record<number, string>;
+  metric?: string | null;
+  phasePlan?: Array<{ week: number; focus: string; volumePct?: number | null }>;
+  globalRulesApplied?: string[];
   days: DayPlan[];
 };
 
@@ -115,14 +140,26 @@ function normalizeRoutinePlan(input: unknown): RoutinePlan {
   const focusByWeek = collectWeekFocus(parsed);
 
   const days = parsed.days.slice(0, 30).map((day, index) => {
-    const sanitizedTasks = day.tasks
-      .map((task, taskIndex) => ({
-        id: String(task.id ?? `${index}-${taskIndex}`),
-        headline: task.headline?.trim() || `Task ${taskIndex + 1}`,
-        category: task.category?.trim() || undefined,
-        protocol: task.protocol?.trim() || undefined,
-        done: task.done ?? false,
-      }))
+    const rawTasks = Array.isArray(day.tasks) && day.tasks.length > 0
+      ? day.tasks
+      : Array.isArray(day.components) && day.components.length > 0
+      ? day.components
+      : [];
+
+    const sanitizedTasks = rawTasks
+      .map((task, taskIndex) => {
+        const headline = task.headline?.trim();
+        const protocol = task.protocol?.trim();
+        const category = task.category?.trim();
+
+        return {
+          id: String(task.id ?? `${index}-${taskIndex}`),
+          headline: headline && headline.length > 0 ? headline : `Task ${taskIndex + 1}`,
+          category: category && category.length > 0 ? category : undefined,
+          protocol: protocol && protocol.length > 0 ? protocol : undefined,
+          done: task.done ?? false,
+        };
+      })
       .slice(0, 5);
 
     while (sanitizedTasks.length < 5) {
@@ -136,21 +173,63 @@ function normalizeRoutinePlan(input: unknown): RoutinePlan {
       });
     }
 
+    const notes = Array.isArray(day.notes)
+    ? day.notes
+        .map((note) => note?.trim())
+        .filter((note): note is string => !!note && note.length > 0)
+    : [];
+
+  const reviewChecks = Array.isArray(day.review_checks)
+    ? day.review_checks
+        .map((check) => check?.trim())
+        .filter((check): check is string => !!check && check.length > 0)
+    : [];
+
+  const weekFocusOverride =
+    day.weekFocus?.trim() ||
+    (typeof day.week_focus === "string" ? day.week_focus.trim() : undefined);
+
     return {
       day: typeof day.day === "number" && Number.isFinite(day.day) ? day.day : index + 1,
       focus: day.focus?.trim() || null,
-      weekFocus: day.weekFocus?.trim() || focusByWeek.get(Math.floor(index / 7)) || null,
+      weekFocus: weekFocusOverride || focusByWeek.get(Math.floor(index / 7)) || null,
+
       tasks: sanitizedTasks,
+      notes: notes.length > 0 ? notes : undefined,
+      reviewChecks: reviewChecks.length > 0 ? reviewChecks : undefined,
     };
   });
+
+  const phasePlan = (parsed.phase_plan ?? [])
+    .map((entry, idx) => {
+      const focus = entry.focus?.trim();
+      if (!focus) return null;
+      const weekNumber =
+        typeof entry.week === "number" && Number.isFinite(entry.week)
+          ? Math.max(1, Math.floor(entry.week))
+          : idx + 1;
+      const volumePct =
+        typeof entry.volume_pct === "number" && Number.isFinite(entry.volume_pct)
+          ? entry.volume_pct
+          : null;
+      return { week: weekNumber, focus, volumePct };
+    })
+    .filter((entry): entry is { week: number; focus: string; volumePct: number | null } => entry !== null);
+
+  const globalRules = (parsed.global_rules_applied ?? [])
+    .map((rule) => rule?.trim())
+    .filter((rule): rule is string => !!rule && rule.length > 0);
 
   const autoHash = fingerprintPlan(days, focusByWeek);
   return {
     planHash: parsed.planHash ?? autoHash,
     startDateISO: parsed.startDateISO ?? null,
-    title: parsed.title ?? null,
-    currentWeekFocus: parsed.currentWeekFocus ?? undefined,
+    title: parsed.title?.trim() || null,
+    currentWeekFocus: parsed.currentWeekFocus?.trim() || undefined,
     weekFocusByWeek: Object.fromEntries(focusByWeek.entries()),
+    metric: parsed.metric?.trim() || null,
+    phasePlan: phasePlan.length > 0 ? phasePlan : undefined,
+    globalRulesApplied: globalRules.length > 0 ? globalRules : undefined,
     days,
   };
 }
@@ -158,25 +237,49 @@ function normalizeRoutinePlan(input: unknown): RoutinePlan {
 function collectWeekFocus(parsed: z.infer<typeof ROUTINE_PLAN_SCHEMA>): Map<number, string> {
   const focus = new Map<number, string>();
 
+  const applyFocus = (weekIndex: number, raw?: string | null) => {
+    if (!raw) return;
+    const trimmed = raw.trim();
+    if (!trimmed) return;
+    focus.set(Math.max(0, weekIndex), trimmed);
+  };
+
   if (parsed.focusByWeek) {
     for (const [weekKey, value] of Object.entries(parsed.focusByWeek)) {
-      const week = Number(weekKey);
-      if (!Number.isNaN(week) && value) {
-        focus.set(week, value.trim());
-      }
+      const weekNumber = Number(weekKey);
+      if (Number.isNaN(weekNumber)) continue;
+      const normalized = weekNumber >= 1 ? Math.floor(weekNumber) - 1 : Math.floor(weekNumber);
+      applyFocus(normalized, value);
     }
   }
 
   if (parsed.weeks) {
     parsed.weeks.forEach((entry, idx) => {
-      if (!entry.focus) return;
-      const week = typeof entry.week === "number" && Number.isFinite(entry.week) ? entry.week : idx;
-      focus.set(week, entry.focus.trim());
+      const normalizedWeek =
+        typeof entry.week === "number" && Number.isFinite(entry.week)
+          ? entry.week >= 1
+            ? Math.floor(entry.week) - 1
+            : Math.floor(entry.week)
+          : idx;
+      applyFocus(normalizedWeek, entry.focus);
+    });
+  }
+
+  if (parsed.phase_plan) {
+    parsed.phase_plan.forEach((entry, idx) => {
+      const normalizedWeek =
+        typeof entry.week === "number" && Number.isFinite(entry.week)
+          ? entry.week >= 1
+            ? Math.floor(entry.week) - 1
+            : Math.floor(entry.week)
+          : idx;
+      applyFocus(normalizedWeek, entry.focus);
     });
   }
 
   if (parsed.currentWeekFocus) {
-    focus.set(0, parsed.currentWeekFocus.trim());
+    applyFocus(0, parsed.currentWeekFocus);
+
   }
 
   return focus;

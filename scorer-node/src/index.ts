@@ -16,6 +16,7 @@ import { generateRecommendations, RecommendationsParseError } from "./recommende
 import {
   generateRoutinePlan,
   RoutineParseError,
+  RoutineRefusalError,
   ValidationError,
 } from "./routine.js";
 import { ENV } from "./env.js";
@@ -219,6 +220,14 @@ app.post("/analyze/pair-bytes", async (req, res) => {
   } catch (err: any) {
     if (err.message === "server_overloaded")
       return res.status(503).json({ error: "too_many_requests", hint: "retry later" });
+
+    if (err instanceof RoutineRefusalError) {
+      console.error("[/routine] completion refused:", err.message);
+      return res.status(502).json({
+        error: "routine_generation_refused",
+        detail: err.message,
+      });
+    }
     console.error("[/analyze/pair-bytes] error:", err?.response?.data ?? err);
     if (err instanceof ZodError)
       return res.status(422).json({ error: "invalid_scores_shape", issues: err.issues });

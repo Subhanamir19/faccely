@@ -1,6 +1,9 @@
 // scorer-node/src/routine.ts
 import crypto from "crypto";
 import OpenAI from "openai";
+import { zodResponseFormat } from "openai/helpers/zod";
+import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
+
 import { ZodError, type ZodIssue } from "zod";
 
 import { ENV } from "./env.js";
@@ -15,19 +18,61 @@ const CACHE_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
 const cache = new Map<string, { value: RoutinePlan; ts: number }>();
 const inFlight = new Map<string, Promise<RoutinePlan>>();
 
+const ROUTINE_RESPONSE_FORMAT = zodResponseFormat(
+  RoutinePlanSchema,
+  "RoutinePlan"
+);
+
+const originalRoutineParser = (ROUTINE_RESPONSE_FORMAT as {
+  $parseRaw?: (content: string) => RoutinePlan;
+}).$parseRaw?.bind(ROUTINE_RESPONSE_FORMAT);
+
+if (originalRoutineParser) {
+  (ROUTINE_RESPONSE_FORMAT as { $parseRaw?: (content: string) => RoutinePlan }).$parseRaw = (
+    content: string
+  ) => {
+    try {
+      return originalRoutineParser(content);
+    } catch (err) {
+      if (err instanceof ZodError) {
+        throw err;
+      }
+
+      throw new RoutineParseError(content, err);
+    }
+  };
+}
 const openai = new OpenAI({ apiKey: ENV.OPENAI_API_KEY });
+const MAX_GENERATION_ATTEMPTS = 3;
+const RETRY_DELAY_MS = 400;
 
 let routineResponseFormatLogged = false;
 
 export class RoutineParseError extends Error {
   readonly rawPreview: string;
 
-  constructor(raw: string) {
-    super("Routine generation failed: upstream response was not valid JSON.");
+  constructor(raw: string, cause?: unknown) {
+    const normalizedCause = cause instanceof Error ? cause : undefined;
+    const message =
+      normalizedCause?.message && normalizedCause.message.length > 0
+        ? `Routine generation failed: ${normalizedCause.message}`
+        : "Routine generation failed: upstream response was not valid JSON.";
+    super(message);
     this.name = "RoutineParseError";
     this.rawPreview = truncate(raw, 1200);
+    if (normalizedCause) {
+      (this as Error & { cause?: Error }).cause = normalizedCause;
+    }
   }
 }
+
+export class RoutineRefusalError extends Error {
+  constructor(raw: string | null) {
+    super(raw?.trim() || "Routine generation was refused by the model.");
+    this.name = "RoutineRefusalError";
+  }
+}
+
 
 export class ValidationError extends Error {
   readonly issues?: ZodIssue[];
@@ -172,52 +217,121 @@ export async function generateRoutinePlan(req: RoutineReq): Promise<RoutinePlan>
   const task = (async () => {
     const requestPayload = { ...req, daily_minutes: req.daily_minutes ?? 20 };
 
-    const response_format: { type: "json_object"; json_schema?: unknown } = {
-      type: "json_object",
-    };
-    if (!routineResponseFormatLogged) {
-      console.log("[RF-CHECK]", {
-        type: response_format.type,
-        hasSchema: !!response_format.json_schema,
-      });
-      routineResponseFormatLogged = true;
-    }
 
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      temperature: 0.2,
-      max_tokens: 2000,
-      response_format,
+    const baseMessages: ChatCompletionMessageParam[] = [
+      { role: "system", content: ROUTINE_SYSTEM_PROMPT },
+      { role: "user", content: JSON.stringify(requestPayload) },
+    ];
 
-      messages: [
-        { role: "system", content: ROUTINE_SYSTEM_PROMPT },
-        { role: "user", content: JSON.stringify(requestPayload) },
-      ],
-    });
+    for (let attempt = 1; attempt <= MAX_GENERATION_ATTEMPTS; attempt++) {
+      try {
+        const attemptMessages: ChatCompletionMessageParam[] =
+          attempt === 1
+            ? baseMessages
+            : [
+                ...baseMessages,
+                {
+                  role: "system",
+                  content:
+                    "Previous response was invalid JSON. Reply again with ONLY strict JSON that conforms to the provided schema.",
+                },
+              ];
 
-    const raw = completion.choices?.[0]?.message?.content?.trim() ?? "";
+        const completion = await openai.chat.completions.parse({
+          model: "gpt-4o-mini",
+          temperature: 0.2,
+          max_output_tokens: 2000,
+          response_format: ROUTINE_RESPONSE_FORMAT,
+          messages: attemptMessages,
+        });
 
-    if (raw) {
-      console.debug("[generateRoutinePlan] completion preview:", truncate(raw, 1200));
-    }
+        if (!routineResponseFormatLogged) {
+          const format = ROUTINE_RESPONSE_FORMAT as unknown as {
+            type: string;
+            json_schema?: unknown;
+          };
+          console.log("[RF-CHECK]", {
+            type: format.type,
+            hasSchema: Boolean(format.json_schema),
+          });
+          routineResponseFormatLogged = true;
+        }
 
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(raw);
-    } catch {
-      throw new RoutineParseError(raw);
-    }
+        const choice = completion.choices?.[0];
+        const message = choice?.message;
+        const raw = typeof message?.content === "string" ? message.content.trim() : "";
 
-    try {
-      const validated = RoutinePlanSchema.parse(parsed);
-      setCache(key, validated);
-      return validated;
-    } catch (err) {
-      if (err instanceof ZodError) {
-        throw new ValidationError("RoutinePlan", err.issues);
+        if (raw) {
+          console.debug(
+            `[generateRoutinePlan] completion preview (attempt ${attempt}):`,
+            truncate(raw, 1200)
+          );
+        }
+
+        if (!message) {
+          throw new RoutineParseError(raw || "", new Error("No completion message returned."));
+        }
+
+        if (message.refusal) {
+          throw new RoutineRefusalError(message.refusal);
+        }
+
+        const finishReason = choice?.finish_reason;
+        if (finishReason && finishReason !== "stop") {
+          throw new RoutineParseError(
+            raw || "",
+            new Error(`Model stopped early (finish_reason=${finishReason}).`)
+          );
+        }
+
+        const candidatePayload = selectPayloadForValidation(message, raw);
+
+        try {
+          const validated = RoutinePlanSchema.parse(candidatePayload);
+          setCache(key, validated);
+          return validated;
+        } catch (err) {
+          if (err instanceof ZodError) {
+            throw new ValidationError("RoutinePlan", err.issues);
+          }
+          throw err;
+        }
+      } catch (err) {
+        if (err instanceof RoutineRefusalError || err instanceof ValidationError) {
+          throw err;
+        }
+
+        if (err instanceof RoutineParseError) {
+          if (attempt >= MAX_GENERATION_ATTEMPTS) {
+            throw err;
+          }
+          console.warn(
+            `[generateRoutinePlan] invalid routine payload from model (attempt ${attempt}); retrying.`
+          );
+        } else if (err instanceof ZodError) {
+          if (attempt >= MAX_GENERATION_ATTEMPTS) {
+            throw new ValidationError("RoutinePlan", err.issues);
+          }
+          console.warn(
+            `[generateRoutinePlan] routine payload failed schema validation (attempt ${attempt}); retrying.`,
+            err.issues
+          );
+        } else {
+          if (attempt >= MAX_GENERATION_ATTEMPTS) {
+            throw err;
+          }
+          console.warn(
+            `[generateRoutinePlan] unexpected routine generation error (attempt ${attempt}); retrying.`,
+            err
+          );
+        }
+
+        await delay(RETRY_DELAY_MS * attempt);
       }
-      throw err;
     }
+
+    throw new RoutineParseError("", new Error("Exceeded routine generation retry budget."));
+
   })()
     .catch((err) => {
       throw err;
@@ -228,6 +342,47 @@ export async function generateRoutinePlan(req: RoutineReq): Promise<RoutinePlan>
 
   inFlight.set(key, task);
   return task;
+}
+
+function selectPayloadForValidation(
+  message: { parsed?: unknown } | undefined,
+  raw: string
+): unknown {
+  const parsed = message?.parsed;
+  if (parsed != null) {
+    return parsed;
+  }
+
+  const normalizedRaw = raw.trim();
+  if (!normalizedRaw) {
+    throw new RoutineParseError("", new Error("Model response missing structured payload."));
+  }
+
+  console.debug("[generateRoutinePlan] attempting JSON repair for raw completion payload.");
+  const repaired = repairJsonString(normalizedRaw);
+
+  try {
+    return JSON.parse(repaired);
+  } catch (err) {
+    throw new RoutineParseError(normalizedRaw, err ?? new Error("JSON parse failed after repair."));
+  }
+}
+
+function repairJsonString(input: string): string {
+  let output = input.trim();
+
+  // Normalize curly quotes to ASCII to satisfy JSON parser.
+  output = output
+    .replace(/[\u201C\u201D\u2033]/g, '"')
+    .replace(/[\u2018\u2019\u2032]/g, "'");
+
+  // Remove trailing commas before closing braces/brackets.
+  output = output.replace(/,\s*(\}|\])/g, "$1");
+
+  // Drop stray Unicode line separators that break JSON.parse.
+  output = output.replace(/[\u2028\u2029]/g, "");
+
+  return output;
 }
 
 function normalizeRoutineRequest(req: RoutineReq) {
@@ -277,5 +432,9 @@ function sha256Hex(input: string) {
 
 function truncate(raw: string, max: number) {
   if (raw.length <= max) return raw;
-  return `${raw.slice(0, max)}…(truncated)`;
+  return `${raw.slice(0, max)}...(truncated)`;
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
