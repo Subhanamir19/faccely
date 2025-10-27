@@ -9,6 +9,7 @@ import {
   StatusBar,
   ActivityIndicator,
   Dimensions,
+  Alert,
 } from "react-native";
 import PagerView from "react-native-pager-view";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -20,10 +21,6 @@ import Text from "@/components/ui/T";
 
 // Stores / nav
 import { useScores, getSubmetricVerdicts } from "../../store/scores";
-import { useRoutine } from "@/store/routine.ts";
-import { buildRoutineReq } from "@/lib/api/routine.ts";
-import { useRouter } from "expo-router";
-
 // UI
 import GlassBtn from "@/components/ui/GlassBtn";
 
@@ -106,9 +103,7 @@ function band(score: number | undefined) {
 // ---------------------------------------------------------------------------
 export default function AnalysisScreen() {
   const { scores, explanations, explLoading, explError } = useScores();
-  const prefetchRoutine = useRoutine((state) => state.prefetch);
 
-  const router = useRouter();
   const insets = useSafeAreaInsets();
 
   const pagerRef = useRef<PagerView>(null);
@@ -121,25 +116,8 @@ export default function AnalysisScreen() {
     pagerRef.current?.setPage(page);
   }
 
-  async function handleRoutine() {
-
-    if (!scores) return;
-    const mapped = ORDER.reduce<Record<string, number | undefined>>((acc, key) => {
-      acc[key] = scores[key];
-      return acc;
-    }, {});
-    const req = buildRoutineReq({
-      age: 24,
-      gender: undefined,
-      ethnicity: undefined,
-      scores: mapped,
-    });
-    try {
-      await prefetchRoutine(req);
-      router.push("/(tabs)/routine");
-    } catch {
-      /* swallow - store exposes error */
-    }
+  function handleRoutine() {
+    Alert.alert("Routine unavailable", "Routine planning has been retired.");
   }
 
   return (

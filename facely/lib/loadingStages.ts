@@ -3,8 +3,7 @@ export type LoadingStageKey =
   | "post-age"
   | "post-paywall"
   | "score"
-  | "analysis"
-  | "routine";
+  | "analysis";
 
 export type LoadingStageCopy = {
   title: string;
@@ -32,10 +31,6 @@ export const LOADING_STAGE_COPY: Record<LoadingStageKey, LoadingStageCopy> = {
     title: "Analyzing your structure",
     subtitle: "mapping proportions & harmony",
   },
-  routine: {
-    title: "Designing your 30-day plan",
-    subtitle: "selecting top routines",
-  },
 };
 
 const PHASE_ALIASES: Record<string, LoadingStageKey> = {
@@ -44,11 +39,9 @@ const PHASE_ALIASES: Record<string, LoadingStageKey> = {
   "paywall-sync": "post-paywall",
   scoring: "score",
   analysis: "analysis",
-  "routine-plan": "routine",
   "post-age": "post-age",
   "post-paywall": "post-paywall",
   score: "score",
-  routine: "routine",
 };
 
 export function resolveLoadingStage({

@@ -54,7 +54,7 @@ const GLOW_LEFT = width / 2 - GLOW_RADIUS;
 
 const FEATURE_ITEMS = [
   "Aesthetics scoring",
-  "Routine generation",
+  "Personalized recommendations",
   "Facial improvement analysis",
   "See your 10 by 10 version",
 ] as const;

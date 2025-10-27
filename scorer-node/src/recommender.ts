@@ -12,7 +12,7 @@ export class RecommendationsParseError extends Error {
   readonly rawPreview: string;
 
   constructor(raw: string) {
-    super("Routine generation failed: upstream response was not valid JSON.");
+    super("Recommendations generation failed: upstream response was not valid JSON.");
     this.name = "RecommendationsParseError";
     this.rawPreview = truncate(raw, 1200);
   }
