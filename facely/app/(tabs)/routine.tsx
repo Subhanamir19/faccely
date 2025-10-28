@@ -1,90 +1,84 @@
-import React from "react";
-import { SafeAreaView, View, ImageBackground, StyleSheet } from "react-native";
-import { useRouter } from "expo-router";
-import T from "@/components/ui/T";
-import GlassCard from "@/components/ui/GlassCard";
-import GlassBtn from "@/components/ui/GlassBtn";
+// app/(tabs)/routine.tsx
+import React, { useEffect, useState } from "react";
+import { SafeAreaView, ScrollView, View, ActivityIndicator, StyleSheet, Alert } from "react-native";
+import Text from "@/components/ui/T";
+import { useScores } from "@/store/scores";
+import { fetchRoutine } from "@/lib/api/routine";
 
-const BG = require("../../assets/bg/score-bg.jpg");
+type Task = { headline: string; category: string; protocol: string };
+type Day = { day: number; components: Task[] };
+type Routine = { days: Day[] };
 
 export default function RoutineScreen() {
-  const router = useRouter();
+  const { scores } = useScores();
+  const [data, setData] = useState<Routine | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  function handleGoToAnalysis() {
-    router.push("/(tabs)/analysis");
+  useEffect(() => {
+    (async () => {
+      try {
+        if (!scores) throw new Error("Scores missing. Re-run analysis.");
+        const r = await fetchRoutine(scores, "Use The Sauce protocols only.");
+        setData(r);
+      } catch (e: any) {
+        Alert.alert("Routine error", String(e?.message ?? e));
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [scores]);
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.center}>
+        <ActivityIndicator />
+        <Text style={styles.muted}>Generating your 5×5 routine…</Text>
+      </SafeAreaView>
+    );
+  }
+
+  if (!data) {
+    return (
+      <SafeAreaView style={styles.center}>
+        <Text style={styles.err}>No routine available.</Text>
+      </SafeAreaView>
+    );
   }
 
   return (
-    <ImageBackground source={BG} style={styles.flex} resizeMode="cover">
-      <SafeAreaView style={styles.flex}>
-        <View style={styles.scrim} />
-        <View style={styles.content}>
-          <T style={styles.title}>Routine</T>
-          <GlassCard style={styles.card}>
-            <View style={styles.cardInner}>
-              <T style={styles.message}>Routine planning has been retired.</T>
-              <T style={styles.subMessage}>
-                You can still review your analysis and recommendations anytime.
-              </T>
-              <View style={styles.buttonWrap}>
-                <GlassBtn
-                  label="Go to Analysis"
-                  icon="chevron-forward"
-                  variant="primary"
-                  onPress={handleGoToAnalysis}
-                />
+    <SafeAreaView style={{ flex: 1 }}>
+      <ScrollView contentContainerStyle={{ padding: 16, gap: 16 }}>
+        {data.days.map((d) => (
+          <View key={d.day} style={styles.card}>
+            <Text style={styles.day}>Day {d.day}</Text>
+            {d.components.map((c, i) => (
+              <View key={i} style={styles.row}>
+                <Text style={styles.cat}>{c.category}</Text>
+                <Text style={styles.head}>{c.headline}</Text>
+                <Text style={styles.protocol}>{c.protocol}</Text>
               </View>
-            </View>
-          </GlassCard>
-        </View>
-      </SafeAreaView>
-    </ImageBackground>
+            ))}
+          </View>
+        ))}
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  flex: {
-    flex: 1,
-  },
-  scrim: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.54)",
-  },
-  content: {
-    flex: 1,
-    justifyContent: "center",
-    paddingHorizontal: 24,
-  },
-  title: {
-    fontSize: 32,
-    color: "#FFFFFF",
-    fontWeight: "600",
-    marginBottom: 24,
-    textAlign: "center",
-  },
+  center: { flex: 1, alignItems: "center", justifyContent: "center" },
+  muted: { color: "rgba(255,255,255,0.7)", marginTop: 8 },
+  err: { color: "#FF6B6B" },
   card: {
-    borderRadius: 28,
-    backgroundColor: "rgba(10,11,12,0.6)",
+    backgroundColor: "rgba(8,9,10,0.6)",
+    borderColor: "rgba(255,255,255,0.06)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
+    borderRadius: 20,
+    padding: 14,
   },
-  cardInner: {
-    paddingHorizontal: 24,
-    paddingVertical: 36,
-    gap: 16,
-    alignItems: "center",
-  },
-  message: {
-    fontSize: 20,
-    color: "#FFFFFF",
-    textAlign: "center",
-  },
-  subMessage: {
-    fontSize: 14,
-    color: "rgba(255,255,255,0.72)",
-    textAlign: "center",
-  },
-  buttonWrap: {
-    alignSelf: "stretch",
-  },
+  day: { fontSize: 18, color: "white", marginBottom: 8, fontWeight: "600" },
+  row: { paddingVertical: 8, borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.06)" },
+  cat: { color: "#B8FF59", fontSize: 12, marginBottom: 2 },
+  head: { color: "white", fontWeight: "600" },
+  protocol: { color: "rgba(255,255,255,0.8)", marginTop: 2, fontSize: 13 },
 });

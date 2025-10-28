@@ -23,6 +23,9 @@ import Text from "@/components/ui/T";
 import { useScores, getSubmetricVerdicts } from "../../store/scores";
 // UI
 import GlassBtn from "@/components/ui/GlassBtn";
+import { router } from "expo-router";
+import { fetchRoutine } from "@/lib/api/routine";
+
 
 const BG = require("../../assets/bg/score-bg.jpg");
 const { width } = Dimensions.get("window");
@@ -108,6 +111,8 @@ export default function AnalysisScreen() {
 
   const pagerRef = useRef<PagerView>(null);
   const [idx, setIdx] = useState(0);
+const [rtLoading, setRtLoading] = useState(false);
+
 
   const isFirst = idx === 0;
   const isLast = idx === ORDER.length - 1;
@@ -116,9 +121,19 @@ export default function AnalysisScreen() {
     pagerRef.current?.setPage(page);
   }
 
-  function handleRoutine() {
-    Alert.alert("Routine unavailable", "Routine planning has been retired.");
+  async function handleRoutine() {
+    try {
+      setRtLoading(true);
+      if (!scores) throw new Error("Scores missing. Run analysis first.");
+      await fetchRoutine(scores, "Use The Sauce protocols only.");
+      router.push("/(tabs)/routine");
+    } catch (e: any) {
+      Alert.alert("Routine error", String(e?.message ?? e));
+    } finally {
+      setRtLoading(false);
+    }
   }
+  
 
   return (
     <ImageBackground source={BG} style={{ flex: 1 }} resizeMode="cover">
@@ -211,7 +226,13 @@ export default function AnalysisScreen() {
           {!isLast ? (
             <GlassBtn label="Next" icon="chevron-forward" onPress={() => goTo(idx + 1)} />
           ) : (
-            <GlassBtn label="Routine" icon="sparkles" onPress={handleRoutine} />
+            <GlassBtn
+  label={rtLoading ? "Generating…" : "Routine"}
+  icon="sparkles"
+  onPress={handleRoutine}
+  disabled={rtLoading}
+/>
+
           )}
         </View>
       </SafeAreaView>
