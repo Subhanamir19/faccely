@@ -25,6 +25,11 @@ import {
 } from "./validators.js";
 import { scoreImageBytes, scoreImagePairBytes } from "./scorer.js";
 import { explainImageBytes, explainImagePairBytes } from "./explainer.js";
+import {
+  router as routineRouter,
+  setRoutineOpenAIClient,
+} from "./routes/routine.js";
+
 
 
 /* -------------------------------------------------------------------------- */
@@ -33,6 +38,8 @@ import { explainImageBytes, explainImagePairBytes } from "./explainer.js";
 
 const app = express();
 const openai = new OpenAI({ apiKey: ENV.OPENAI_API_KEY });
+setRoutineOpenAIClient(openai);
+
 
 // --- one-time schema sanity check (shows up in Railway logs) ---
 try {
@@ -189,6 +196,8 @@ function release() {
 /* -------------------------------------------------------------------------- */
 /*   Routes                                                                   */
 /* -------------------------------------------------------------------------- */
+app.use("/routine", routineRouter);
+
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
 
