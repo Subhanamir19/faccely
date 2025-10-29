@@ -14,6 +14,7 @@ import {
 import PagerView from "react-native-pager-view";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AnalysisCard, { type SubmetricView } from "@/components/analysis/AnalysisCard";
+import { useRoutineStore } from "@/store/routineStore";
 
 
 // Poppins wrapper
@@ -124,8 +125,22 @@ const [rtLoading, setRtLoading] = useState(false);
   async function handleRoutine() {
     try {
       setRtLoading(true);
+      const { scores } = useScores.getState(); // get latest from store
+      const { routine, hydrateFromAPI, resetRoutine } = useRoutineStore.getState();
+  
       if (!scores) throw new Error("Scores missing. Run analysis first.");
-      await fetchRoutine(scores, "Use The Sauce protocols only.");
+  
+      // If user already has a routine and doesn’t want a new one, hydrate existing
+      if (routine && routine.days?.length > 0) {
+        console.log("[ROUTINE] using existing routine from store");
+        router.push("/(tabs)/routine");
+        return;
+      }
+  
+      console.log("[ROUTINE] fetching new routine from API...");
+      const data = await fetchRoutine(scores, "Use The Sauce protocols only.");
+      resetRoutine(); // clear previous metadata if any
+      hydrateFromAPI(data); // store handles startDate, fetchedAt
       router.push("/(tabs)/routine");
     } catch (e: any) {
       Alert.alert("Routine error", String(e?.message ?? e));
@@ -133,6 +148,7 @@ const [rtLoading, setRtLoading] = useState(false);
       setRtLoading(false);
     }
   }
+  
   
 
   return (

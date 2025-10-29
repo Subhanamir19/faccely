@@ -21,6 +21,7 @@
     "expo-router": "~5.1.7",
     "expo-splash-screen": "~0.30.10",
     "expo-status-bar": "~2.2.3",
+    "immer": "^10.2.0",
     "lucide-react-native": "^0.542.0",
     "nativewind": "^4.1.23",
     "openai": "^6.0.1",
