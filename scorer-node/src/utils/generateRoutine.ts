@@ -32,6 +32,21 @@ type OpenAIClient = {
   };
 };
 
+function normalizeProtocol(value: string): string {
+  return value.trim().replace(/\s+/g, " ");
+}
+
+// Strict enforcement OFF by default; opt-in only.
+const STRICT_SAUCE =
+  String(process.env.ROUTINE_STRICT_SAUCE ?? "").toLowerCase() === "true";
+
+const ALLOWED_SET = new Set<string>(
+  Object.values(PROTOCOL_LIBRARY)
+    .flat()
+    .map((p) => normalizeProtocol(p))
+);
+
+
 type AttemptResult =
   | { success: true; routine: Routine }
   | {
@@ -43,18 +58,49 @@ type AttemptResult =
 
     export function finalizeRoutine(r: any): Routine {
       const routine = RoutineSchema.parse(r);
-      if (routine.days.length !== 5) throw new Error("invalid_day_count");
-      for (const d of routine.days) if (d.components.length !== 5) throw new Error("invalid_component_count");
     
-      const STRICT_SAUCE = process.env.ROUTINE_STRICT_SAUCE !== "false";
-      if (STRICT_SAUCE) {
-        const allowed = new Set<string>(Object.values(PROTOCOL_LIBRARY).flat().map(s => s.trim()));
-        for (const d of routine.days) for (const c of d.components) {
-          if (typeof c.headline !== "string" || typeof c.category !== "string" || typeof c.protocol !== "string")
+      if (routine.days.length !== 5) throw new Error("invalid_day_count");
+      for (const d of routine.days) {
+        if (d.components.length !== 5) throw new Error("invalid_component_count");
+        for (const c of d.components) {
+          if (
+            typeof c.headline !== "string" ||
+            typeof c.category !== "string" ||
+            typeof c.protocol !== "string"
+          ) {
             throw new Error("component_missing_field");
-          if (!allowed.has(c.protocol.trim())) throw new Error("protocol_not_in_library");
+          }
         }
       }
+    
+      if (STRICT_SAUCE) {
+        for (const d of routine.days) {
+          for (const c of d.components) {
+            const normalizedProtocol = normalizeProtocol(c.protocol);
+            if (!ALLOWED_SET.has(normalizedProtocol)) {
+              console.warn("[routine] reject protocol", {
+                protocol: c.protocol,
+                normalizedProtocol,
+              });
+              throw new Error("protocol_not_in_library");
+            }
+          }
+        }
+      } else {
+        // Lenient mode: warn, don’t block
+        for (const d of routine.days) {
+          for (const c of d.components) {
+            const normalizedProtocol = normalizeProtocol(c.protocol);
+            if (!ALLOWED_SET.has(normalizedProtocol)) {
+              console.warn("[routine] lenient pass for protocol", {
+                protocol: c.protocol,
+                normalizedProtocol,
+              });
+            }
+          }
+        }
+      }
+    
       return routine;
     }
     
