@@ -1,12 +1,16 @@
 ﻿// app/(tabs)/routine.tsx
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { SafeAreaView, ScrollView, View, StyleSheet, Alert } from "react-native";
 import Text from "@/components/ui/T";
 import GlassBtn from "@/components/ui/GlassBtn";
-import { useRoutineStore } from "../../store/routineStore"; // safer relative path
+import { useRoutineStore } from "../../store/routineStore";
+import { useScores } from "../../store/scores";
+import { fetchRoutine } from "../../lib/api/routine";
 
 export default function RoutineScreen() {
-  const { routine, todayIndex, toggleTask, refreshDayIndex, resetRoutine } = useRoutineStore();
+  const { routine, todayIndex, toggleTask, refreshDayIndex, resetRoutine, hydrateFromAPI } =
+    useRoutineStore();
+  const [genLoading, setGenLoading] = useState(false);
 
   useEffect(() => {
     try {
@@ -26,6 +30,20 @@ export default function RoutineScreen() {
 
   const { days } = routine;
   const isReadOnly = (dayIdx: number) => dayIdx < todayIndex;
+
+  async function handleNewRoutine() {
+    try {
+      setGenLoading(true);
+      const { scores } = useScores.getState();
+      if (!scores) return Alert.alert("Run analysis first");
+      const data = await fetchRoutine(scores, "Use The Sauce protocols only.");
+      hydrateFromAPI(data);
+    } catch (e: any) {
+      Alert.alert("Routine error", String(e?.message ?? e));
+    } finally {
+      setGenLoading(false);
+    }
+  }
 
   return (
     <SafeAreaView style={{ flex: 1 }}>
@@ -68,7 +86,12 @@ export default function RoutineScreen() {
       </ScrollView>
 
       <View style={styles.bottom}>
-        <GlassBtn label="Generate New Routine" icon="refresh" onPress={resetRoutine} />
+        <GlassBtn label="Reset Cached Routine" icon="trash" onPress={resetRoutine} />
+        <GlassBtn
+          label={genLoading ? "Generating…" : "Generate New Routine"}
+          icon="refresh"
+          onPress={handleNewRoutine}
+        />
       </View>
     </SafeAreaView>
   );
@@ -97,5 +120,6 @@ const styles = StyleSheet.create({
     padding: 16,
     borderTopWidth: 1,
     borderTopColor: "rgba(255,255,255,0.06)",
+    gap: 12,
   },
 });
