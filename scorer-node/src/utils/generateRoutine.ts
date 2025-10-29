@@ -1,13 +1,13 @@
-// scorer-node/src/utils/generateRoutine.ts
 import { z } from "zod";
 
 import { RoutineSchema, type Routine } from "../schemas/RoutineSchema.js";
 import type { Scores } from "../validators.js";
 import { PROTOCOL_LIBRARY } from "../data/protocolLibrary.js";
 
-
 const MODEL = "gpt-4o-mini";
 const MAX_RESPONSE_BYTES = 800 * 1024;
+const DEFAULT_N_DAYS = 15;
+const TASKS_PER_DAY = 5;
 
 const responseFormat = { type: "json_object" as const };
 
@@ -46,7 +46,6 @@ const ALLOWED_SET = new Set<string>(
     .map((p) => normalizeProtocol(p))
 );
 
-
 type AttemptResult =
   | { success: true; routine: Routine }
   | {
@@ -56,67 +55,68 @@ type AttemptResult =
       error: Error;
     };
 
-    export function finalizeRoutine(r: any): Routine {
-      const routine = RoutineSchema.parse(r);
-    
-      if (routine.days.length !== 5) throw new Error("invalid_day_count");
-      for (const d of routine.days) {
-        if (d.components.length !== 5) throw new Error("invalid_component_count");
-        for (const c of d.components) {
-          if (
-            typeof c.headline !== "string" ||
-            typeof c.category !== "string" ||
-            typeof c.protocol !== "string"
-          ) {
-            throw new Error("component_missing_field");
-          }
-        }
+export function finalizeRoutine(r: any): Routine {
+  const routine = RoutineSchema.parse(r);
+
+  if (routine.days.length !== DEFAULT_N_DAYS) throw new Error("invalid_day_count");
+  for (const d of routine.days) {
+    if (d.components.length !== TASKS_PER_DAY)
+      throw new Error("invalid_component_count");
+    for (const c of d.components) {
+      if (
+        typeof c.headline !== "string" ||
+        typeof c.category !== "string" ||
+        typeof c.protocol !== "string"
+      ) {
+        throw new Error("component_missing_field");
       }
-    
-      if (STRICT_SAUCE) {
-        for (const d of routine.days) {
-          for (const c of d.components) {
-            const normalizedProtocol = normalizeProtocol(c.protocol);
-            if (!ALLOWED_SET.has(normalizedProtocol)) {
-              console.warn("[routine] reject protocol", {
-                protocol: c.protocol,
-                normalizedProtocol,
-              });
-              throw new Error("protocol_not_in_library");
-            }
-          }
-        }
-      } else {
-        // Lenient mode: warn, don’t block
-        for (const d of routine.days) {
-          for (const c of d.components) {
-            const normalizedProtocol = normalizeProtocol(c.protocol);
-            if (!ALLOWED_SET.has(normalizedProtocol)) {
-              console.warn("[routine] lenient pass for protocol", {
-                protocol: c.protocol,
-                normalizedProtocol,
-              });
-            }
-          }
-        }
-      }
-    
-      return routine;
     }
-    
+  }
+
+  if (STRICT_SAUCE) {
+    for (const d of routine.days) {
+      for (const c of d.components) {
+        const normalizedProtocol = normalizeProtocol(c.protocol);
+        if (!ALLOWED_SET.has(normalizedProtocol)) {
+          console.warn("[routine] reject protocol", {
+            protocol: c.protocol,
+            normalizedProtocol,
+          });
+          throw new Error("protocol_not_in_library");
+        }
+      }
+    }
+  } else {
+    // Lenient mode: warn, don’t block
+    for (const d of routine.days) {
+      for (const c of d.components) {
+        const normalizedProtocol = normalizeProtocol(c.protocol);
+        if (!ALLOWED_SET.has(normalizedProtocol)) {
+          console.warn("[routine] lenient pass for protocol", {
+            protocol: c.protocol,
+            normalizedProtocol,
+          });
+        }
+      }
+    }
+  }
+
+  return routine;
+}
 
 export async function generateRoutine(
   scores: Scores,
   context_hint?: string,
-  openai?: OpenAIClient
+  openai?: OpenAIClient,
+  n_days: number = DEFAULT_N_DAYS
 ): Promise<Routine> {
   if (!openai) {
     throw new Error("generateRoutine requires an OpenAI client instance.");
   }
 
   const baseMessages: ChatMessage[] = [
-    { role: "system", content: buildPrimarySystemPrompt() },
-    { role: "user", content: buildPrimaryUserPrompt(scores, context_hint) },
+    { role: "system", content: buildPrimarySystemPrompt(n_days) },
+    { role: "user", content: buildPrimaryUserPrompt(scores, context_hint, n_days) },
   ];
 
   const direct = await runAttempt(openai, "direct", baseMessages);
@@ -155,7 +155,7 @@ async function runAttempt(
     model: MODEL,
     temperature: 0.2,
     messages,
-    max_tokens: 2000,
+    max_tokens: 4000,
     response_format: responseFormat,
   });
 
@@ -182,6 +182,7 @@ async function runAttempt(
     hasClosingBrace,
     dayCount,
     counts,
+    targetDays: DEFAULT_N_DAYS,
   });
 
   if (!parsed) {
@@ -207,7 +208,9 @@ async function runAttempt(
       };
     }
     const error =
-      err instanceof Error ? err : new Error(`Routine validation failed: ${String(err)}`);
+      err instanceof Error
+        ? err
+        : new Error(`Routine validation failed: ${String(err)}`);
     return { success: false, raw, finishReason, error };
   }
 }
@@ -247,40 +250,42 @@ function attemptParse(raw: string): {
   return { parsed, dayCount: days.length, counts };
 }
 
-function buildPrimarySystemPrompt(): string {
+function buildPrimarySystemPrompt(n_days: number): string {
   return [
     "You output STRICT JSON only. No prose. No extra keys.",
-    'Schema: { "days":[{ "day":1,"components":[{ "headline":string,"category":string,"protocol":string } x5]} x5] }',
-    "Exactly 5 days (1..5). Exactly 5 components per day.",
+    `Schema: { "days":[{ "day":1,"components":[{ "headline":string,"category":string,"protocol":string } x${TASKS_PER_DAY}]} x${n_days}] }`,
+    `Exactly ${n_days} days (1..${n_days}). Exactly ${TASKS_PER_DAY} components per day.`,
     "protocol MUST be chosen ONLY from the allowed library (The Sauce). Do NOT invent or paraphrase.",
     "category MUST be one of: Glass Skin, Debloating, Facial Symmetry, Maxilla, Hunter Eyes, Cheekbones, Nose, Jawline.",
     "Forbidden terms: makeup, contour, highlighter, bronzer, jade roller, mask, cream, serum, toner, facial yoga, selfie, visualization.",
     "If unsure, pick the closest valid protocol from the library. Never output forbidden items.",
     "Allowed protocol library (The Sauce):",
     JSON.stringify(PROTOCOL_LIBRARY, null, 2),
-    "Output JSON only."
+    "Output JSON only.",
   ].join("\n");
 }
 
-
-function buildPrimaryUserPrompt(scores: Scores, context_hint?: string): string {
-  const payload = { scores, context_hint: context_hint ?? null };
+function buildPrimaryUserPrompt(
+  scores: Scores,
+  context_hint: string | undefined,
+  n_days: number
+): string {
+  const payload = { scores, context_hint: context_hint ?? null, n_days };
   return [
-    "Generate a 5-day routine with 5 components/day using ONLY protocols from The Sauce.",
+    `Generate a ${n_days}-day routine with ${TASKS_PER_DAY} components/day using ONLY protocols from The Sauce.`,
     "Forbidden terms are disallowed under any circumstance.",
     JSON.stringify(payload, null, 2),
-    "Return JSON only matching the schema."
+    "Return JSON only matching the schema.",
   ].join("\n");
 }
-
 
 function buildRepairSystemPrompt(): string {
   return [
     "You repair JSON to match the required schema exactly.",
     "Rules:",
     "- Preserve meaningful content but fix structure/keys/lengths.",
-    "- Output strictly valid JSON with the same schema described below.",
-    "- Exactly 5 days numbered 1-5, each with 5 components (headline, category, protocol).",
+    `- Output strictly valid JSON with the same schema described below.`,
+    `- Exactly ${DEFAULT_N_DAYS} days numbered 1-${DEFAULT_N_DAYS}, each with ${TASKS_PER_DAY} components (headline, category, protocol).`,
     "- No extra fields, comments, or prose.",
   ].join("\n");
 }
@@ -293,10 +298,10 @@ function buildRepairUserPrompt(
   const schemaReminder = [
     "Target schema:",
     "{",
-    '  "days": [',
-    '    { "day": number 1-5, "components": [',
-    '      { "headline": string, "category": string, "protocol": string } x5',
-    "    ] } x5",
+    `  "days": [`,
+    `    { "day": number 1-${DEFAULT_N_DAYS}, "components": [`,
+    `      { "headline": string, "category": string, "protocol": string } x${TASKS_PER_DAY}`,
+    "    ] } x" + DEFAULT_N_DAYS,
     "  ]",
     "}",
   ].join("\n");
