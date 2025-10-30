@@ -8,8 +8,16 @@ import { useScores } from "../../store/scores";
 import { fetchRoutine } from "../../lib/api/routine";
 
 export default function RoutineScreen() {
-  const { routine, todayIndex, toggleTask, refreshDayIndex, resetRoutine, hydrateFromAPI } =
-    useRoutineStore();
+  const {
+    routine,
+    todayIndex,
+    toggleTask,
+    refreshDayIndex,
+    resetRoutine,
+    hydrateFromAPI,
+    completionPercent,
+  } = useRoutineStore();
+
   const [genLoading, setGenLoading] = useState(false);
 
   useEffect(() => {
@@ -29,6 +37,8 @@ export default function RoutineScreen() {
   }
 
   const { days } = routine;
+  const total = days.length;
+  const progress = completionPercent();
   const isReadOnly = (dayIdx: number) => dayIdx < todayIndex;
 
   async function handleNewRoutine() {
@@ -47,6 +57,13 @@ export default function RoutineScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1 }}>
+      {/* Header showing day/progress */}
+      <View style={styles.header}>
+        <Text style={styles.headerText}>
+          Day {todayIndex + 1} / {total} • {progress}% complete
+        </Text>
+      </View>
+
       <ScrollView contentContainerStyle={{ padding: 16, gap: 16 }}>
         {days.map((d, di) => (
           <View
@@ -98,6 +115,15 @@ export default function RoutineScreen() {
 }
 
 const styles = StyleSheet.create({
+  header: {
+    padding: 16,
+    paddingBottom: 0,
+  },
+  headerText: {
+    color: "#B8FF59",
+    fontWeight: "600",
+    fontSize: 16,
+  },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   err: { color: "#FF6B6B" },
   card: {

@@ -1,4 +1,4 @@
-// src/store/routineStore.ts
+// facely/store/routineStore.ts
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { produce } from "immer";
@@ -32,6 +32,8 @@ export type RoutineStore = {
   toggleTask: (dayIndex: number, taskIndex: number) => void;
   resetRoutine: () => void;
   refreshDayIndex: () => void;
+  setStartDate: (iso: string) => void;
+  completionPercent: () => number;
 };
 
 /* --------------------------- Zustand Store -------------------------- */
@@ -81,7 +83,6 @@ export const useRoutineStore = create<RoutineStore>()(
             if (!day) return;
             const comp = day.components?.[taskIndex];
             if (!comp) return;
-            // add done flag if missing
             (comp as any).done = !(comp as any).done;
           })
         );
@@ -103,10 +104,30 @@ export const useRoutineStore = create<RoutineStore>()(
           console.log("[ROUTINE_STORE] rolled to next day:", newIndex);
         }
       },
+
+      setStartDate(iso) {
+        const r = get().routine;
+        if (!r) return;
+        set(
+          produce((state: RoutineStore) => {
+            if (state.routine) state.routine.startDate = iso;
+          })
+        );
+        get().refreshDayIndex();
+        console.log("[ROUTINE_STORE] dev set start date:", iso);
+      },
+
+      completionPercent() {
+        const r = get().routine;
+        if (!r) return 0;
+        const total = r.days.length;
+        const idx = get().todayIndex + 1;
+        return Math.round((idx / total) * 100);
+      },
     }),
     {
       name: "sigma_routine_v1",
-      version: 1,
+      version: 2,
       onRehydrateStorage: () => (state) => {
         if (!state?.routine) return;
         const idx = computeTodayIndex(
@@ -115,6 +136,9 @@ export const useRoutineStore = create<RoutineStore>()(
         );
         state.todayIndex = idx;
         console.log("[ROUTINE_STORE] rehydrated", { todayIndex: idx });
+        try {
+          useRoutineStore.getState().refreshDayIndex();
+        } catch {}
       },
     }
   )
