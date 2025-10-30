@@ -128,11 +128,14 @@ sigmaRouter.post("/message", async (req: Request, res: Response) => {
       context.active_routine_day = thread.meta.active_routine_day;
     }
 
-    // Call model
-    const prompt = composeSigmaPrompt(parsed, context);
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const OpenAI = require("openai"); // keep it lazy to avoid startup failures if key missing in other routes
-    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+   // Call model
+const prompt = composeSigmaPrompt(parsed, context);
+
+// ESM-safe dynamic import of OpenAI client
+const OpenAIMod = await import("openai");
+const OpenAI = OpenAIMod.default ?? OpenAIMod;
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
 
     const result = await generateSigmaAnswer(openai, prompt);
 
