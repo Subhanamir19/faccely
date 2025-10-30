@@ -9,6 +9,8 @@ import multer from "multer";
 import OpenAI from "openai";
 import sharp from "sharp";
 import * as fs from "fs";
+import sigmaRouter from "./routes/sigma.js";
+
 
 import { ZodError, type ZodIssue } from "zod";
 
@@ -37,6 +39,8 @@ import {
 /* -------------------------------------------------------------------------- */
 
 const app = express();
+app.set("trust proxy", 1); // we are behind Railway's proxy; needed for correct client IPs
+
 const openai = new OpenAI({ apiKey: ENV.OPENAI_API_KEY });
 setRoutineOpenAIClient(openai);
 
@@ -88,7 +92,15 @@ app.options("*", cors(corsOptions));
 app.use(express.json({ limit: "25mb" }));
 
 /* ------------------------------ Rate limiting ------------------------------ */
-app.use(rateLimit({ windowMs: 60_000, max: ENV.RATE_LIMIT_PER_MIN }));
+app.use(rateLimit({
+  windowMs: 60_000,
+  limit: ENV.RATE_LIMIT_PER_MIN,
+  standardHeaders: true,
+  legacyHeaders: false,
+  // Safety valve if trust proxy is ever misconfigured:
+  // validate: { xForwardedForHeader: false },
+}));
+
 
 /* -------------------------- Multer memory storage -------------------------- */
 const upload = multer({
@@ -198,6 +210,7 @@ function release() {
 /* -------------------------------------------------------------------------- */
 app.use("/routine", routineRouter);
 
+app.use("/sigma", sigmaRouter); // ← add this
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
 
