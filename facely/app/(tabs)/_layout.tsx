@@ -2,7 +2,7 @@
 import React from "react";
 import { Tabs } from "expo-router";
 import { Platform } from "react-native";
-import { Camera, ListChecks } from "lucide-react-native";
+import { Camera, ListChecks, MessageSquare } from "lucide-react-native";
 import { COLORS } from "@/lib/tokens";
 
 const ACTIVE = COLORS.accent;
@@ -45,13 +45,20 @@ export default function TabsLayout() {
       />
 
       {/* Visible tab #2: Routine */}
-
       <Tabs.Screen
         name="routine"
         options={{
           title: "Routine",
-
           tabBarIcon: ({ color, size }) => <ListChecks color={color} size={size ?? 22} />,
+        }}
+      />
+
+      {/* Visible tab #3: Sigma (chatbot) */}
+      <Tabs.Screen
+        name="sigma"
+        options={{
+          title: "Sigma",
+          tabBarIcon: ({ color, size }) => <MessageSquare color={color} size={size ?? 22} />,
         }}
       />
 
