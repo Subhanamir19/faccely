@@ -10,8 +10,11 @@ import OpenAI from "openai";
 import sharp from "sharp";
 import * as fs from "fs";
 import sigmaRouter from "./routes/sigma.js";
+import jobsRouter from "./routes/jobs.js";           // ← add this
 import { idempotency } from "./middleware/idempotency.js";
 import { bootQueues, queuesProbe } from "./queue/index.js";
+import routineAsyncRouter from "./routes/routineAsync.js";
+
 
 
 import config from "./config/index.js";
@@ -220,11 +223,13 @@ function release() {
 /*   Routes                                                                   */
 /* -------------------------------------------------------------------------- */
 app.use("/routine", idempotency(), routineRouter);
+app.use("/routine/async", routineAsyncRouter);
 
-
-app.use("/sigma", sigmaRouter); // ← add this
+app.use("/sigma", sigmaRouter);
+app.use("/jobs", jobsRouter);                    // ← add this line
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
+
 
 // Queue health probe (enabled only when REDIS_URL is set)
 app.get("/queues/health", async (_req, res) => {
