@@ -122,14 +122,7 @@ export default function AgeScreen() {
               onPress={next}
               style={({ pressed }) => [styles.primaryBtn, pressed && styles.pressed]}
             >
-              <LinearGradient
-                colors={["#D7FF83", ACCENT]}
-                start={{ x: 0.2, y: 0 }}
-                end={{ x: 0.8, y: 1 }}
-                style={styles.primaryBtnFill}
-              >
-                <T style={styles.primaryLabel}>Next</T>
-              </LinearGradient>
+              <T style={styles.primaryLabel}>Next</T>
             </Pressable>
 
             <Pressable
@@ -286,24 +279,21 @@ const styles = StyleSheet.create({
   primaryBtn: {
     height: 56,
     borderRadius: 28,
-    overflow: "hidden",
-    marginBottom: 12,
-    ...(Platform.OS === "android"
-      ? { elevation: 6 }
-      : {
-          shadowColor: ACCENT,
-          shadowOpacity: 0.25,
-          shadowRadius: 15,
-          shadowOffset: { width: 0, height: 2 },
-        }),
-  },
-  primaryBtnFill: {
-    flex: 1,
     alignItems: "center",
     justifyContent: "center",
+    marginBottom: 12,
+    backgroundColor: ACCENT,
+    ...(Platform.OS === "android"
+      ? { elevation: 12 }
+      : {
+          shadowColor: ACCENT,
+          shadowOpacity: 0.35,
+          shadowRadius: 24,
+          shadowOffset: { width: 0, height: 8 },
+        }),
   },
   primaryLabel: {
-    color: "#000000",
+    color: "#0B0B0B",
     fontSize: 18,
   },
 

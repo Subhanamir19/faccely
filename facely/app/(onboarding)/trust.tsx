@@ -1,10 +1,11 @@
 // app/(onboarding)/trust.tsx
-import React, { useCallback, useEffect, useMemo } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AccessibilityInfo,
   Pressable,
   StyleSheet,
   View,
+  Platform,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
@@ -12,7 +13,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, {
   Easing,
   runOnJS,
-  useAnimatedProps,
+  useAnimatedReaction,
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
@@ -23,7 +24,6 @@ import Animated, {
 import T from "@/components/ui/T";
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
-const AnimatedT = Animated.createAnimatedComponent(T);
 
 type TrackFn = (event: string, params?: Record<string, unknown>) => void;
 
@@ -31,10 +31,12 @@ const track: TrackFn = () => {};
 
 const RAW_TARGET_ACCURACY = 98.5;
 const ANIMATION_DURATION = 1400;
+const ACCENT = "#B4F34D";
 
-const clampToRange = (value: number, min: number, max: number) =>
-
-  Math.min(max, Math.max(min, value));
+const clampToRange = (value: number, min: number, max: number) => {
+  "worklet";
+  return Math.min(max, Math.max(min, value));
+};
 
 const formatAccuracy = (value: number) => {
   'worklet';
@@ -79,6 +81,7 @@ export default function TrustAccuracyScreen() {
 
   const animatedAccuracy = useSharedValue(0);
   const buttonScale = useSharedValue(1);
+  const [metricText, setMetricText] = useState(formatAccuracy(0));
 
   const announceAccuracy = useCallback(() => {
     AccessibilityInfo.announceForAccessibility(
@@ -99,11 +102,13 @@ export default function TrustAccuracyScreen() {
 
     if (prefersReducedMotion) {
       animatedAccuracy.value = targetAccuracy;
+      setMetricText(finalAccuracyText);
       handleAnimationComplete();
       return;
     }
 
     animatedAccuracy.value = 0;
+    setMetricText(formatAccuracy(0));
     animatedAccuracy.value = withTiming(
       targetAccuracy,
       {
@@ -119,22 +124,37 @@ export default function TrustAccuracyScreen() {
 
     return () => {
       animatedAccuracy.value = targetAccuracy;
+      setMetricText(finalAccuracyText);
     };
   }, [
     animatedAccuracy,
+    finalAccuracyText,
     handleAnimationComplete,
     prefersReducedMotion,
     targetAccuracy,
   ]);
 
-  const animatedMetricProps = useAnimatedProps(() => {
-    const rawValue = animatedAccuracy.value;
-    const current = rawValue < 0 ? 0 : rawValue > 100 ? 100 : rawValue;
-    const rounded = Math.round(current * 10) / 10;
-    return {
-      text: formatAccuracy(rounded),
-    };
-  });
+  useAnimatedReaction(
+    () => animatedAccuracy.value,
+    (value, previous) => {
+      const clamped = clampToRange(value, 0, 100);
+      const rounded = Math.round(clamped * 10) / 10;
+      const nextText = formatAccuracy(rounded);
+
+      if (previous == null) {
+        runOnJS(setMetricText)(nextText);
+        return;
+      }
+
+      const prevClamped = clampToRange(previous, 0, 100);
+      const prevRounded = Math.round(prevClamped * 10) / 10;
+
+      if (rounded !== prevRounded) {
+        runOnJS(setMetricText)(nextText);
+      }
+    },
+    [setMetricText],
+  );
 
   const buttonAnimatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: buttonScale.value }],
@@ -191,13 +211,12 @@ export default function TrustAccuracyScreen() {
           </T>
 
           <View style={styles.metricBlock}>
-            <AnimatedT
-              animatedProps={animatedMetricProps}
+            <T
               style={styles.metric}
-              accessibilityLabel={`Accuracy ${finalAccuracyText.replace("%", " percent")}`}
+              accessibilityLabel={`Accuracy ${metricText.replace("%", " percent")}`}
             >
-              {formatAccuracy(0)}
-            </AnimatedT>
+              {metricText}
+            </T>
             <T style={styles.metricCaption}>Accuracy</T>
           </View>
         </View>
@@ -248,7 +267,7 @@ const styles = StyleSheet.create({
     marginTop: 48,
   },
   metric: {
-    color: "#B4F34D",
+    color: ACCENT,
     fontSize: 96,
     lineHeight: 100,
     letterSpacing: -0.5,
@@ -257,7 +276,7 @@ const styles = StyleSheet.create({
   },
   metricCaption: {
     marginTop: 12,
-    color: "#B4F34D",
+    color: ACCENT,
     fontSize: 16,
     lineHeight: 20,
     fontFamily: "Poppins-SemiBold",
@@ -267,14 +286,17 @@ const styles = StyleSheet.create({
     width: "100%",
     height: 64,
     borderRadius: 999,
-    backgroundColor: "#B4F34D",
+    backgroundColor: ACCENT,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "rgba(180,243,77,0.35)",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 1,
-    shadowRadius: 24,
-    elevation: 8,
+    ...(Platform.OS === "android"
+      ? { elevation: 12 }
+      : {
+          shadowColor: ACCENT,
+          shadowOpacity: 0.35,
+          shadowRadius: 24,
+          shadowOffset: { width: 0, height: 8 },
+        }),
   },
   ctaLabel: {
     color: "#0B0B0B",

@@ -1,9 +1,9 @@
 // components/ui/GlassBtn.tsx
 import React from "react";
 import { Pressable, StyleSheet, View, Platform } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
 import T from "@/components/ui/T";
 import { Ionicons } from "@expo/vector-icons";
+import { COLORS } from "@/lib/tokens";
 
 type Variant = "glass" | "primary";
 
@@ -30,10 +30,16 @@ export default function GlassBtn({
       ? styles.shadowPrimary
       : styles.shadowGlass;
 
+  const wrapStyle = [
+    styles.shadowWrap,
+    shadowStyle,
+    isPrimary ? styles.shadowWrapPrimary : styles.shadowWrapGlass,
+  ];
+
   return (
     <Pressable onPress={onPress} disabled={disabled} style={styles.pressable}>
       {({ pressed }) => (
-        <View style={[styles.shadowWrap, shadowStyle]}>
+        <View style={wrapStyle}>
           {isPrimary ? (
             disabled ? (
               // Disabled primary: flat slate pill, no gradient, no glow
@@ -55,22 +61,16 @@ export default function GlassBtn({
                 ) : null}
               </View>
             ) : (
-              // Active primary: lime gradient with subtle top highlight
+              // Active primary: solid accent pill with glow
               <View
                 style={[styles.primaryBase, { height }, pressed && styles.pressed]}
               >
-                <LinearGradient
-                  colors={["#D7FF83", "#B4F34D"]}
-                  start={{ x: 0.2, y: 0 }}
-                  end={{ x: 0.8, y: 1 }}
-                  style={StyleSheet.absoluteFillObject}
-                />
                 <T style={styles.primaryText}>{label}</T>
                 {icon ? (
                   <Ionicons
                     name={icon as any}
                     size={18}
-                    color="#0A0A0A"
+                    color="#0B0B0B"
                     style={styles.iconLeftPrimary}
                   />
                 ) : null}
@@ -104,6 +104,7 @@ export default function GlassBtn({
 }
 
 const R = 28;
+const ACCENT = COLORS.accent;
 
 const styles = StyleSheet.create({
   pressable: {
@@ -112,20 +113,24 @@ const styles = StyleSheet.create({
   },
   shadowWrap: {
     borderRadius: R,
-    overflow: "hidden",
     marginHorizontal: 6,
+  },
+  shadowWrapPrimary: {
+    overflow: "visible",
+  },
+  shadowWrapGlass: {
+    overflow: "hidden",
   },
 
   // Spec: 0 8 24 rgba(180,243,77,0.18)
   shadowPrimary: {
     ...(Platform.OS === "android"
       ? {
-          // Android elevation can't tint; keep minimal to avoid black blob
-          elevation: 0,
+          elevation: 12,
         }
       : {
-          shadowColor: "rgba(180,243,77,1)",
-          shadowOpacity: 0.18,
+          shadowColor: ACCENT,
+          shadowOpacity: 0.35,
           shadowRadius: 24,
           shadowOffset: { width: 0, height: 8 },
         }),
@@ -148,11 +153,11 @@ const styles = StyleSheet.create({
     borderRadius: R,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#B4F34D",
+    backgroundColor: ACCENT,
   },
   primaryText: {
     fontSize: 18,
-    color: "#0A0A0A",
+    color: "#0B0B0B",
     fontFamily: Platform.select({
       ios: "Poppins-SemiBold",
       android: "Poppins-SemiBold",

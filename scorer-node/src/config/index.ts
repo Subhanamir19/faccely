@@ -127,13 +127,16 @@ export const FEATURES = {
   asyncRoutine: isTruthyFlag(env.FF_ASYNC_ROUTINE),
 };
 
-// Queue and job naming (stable, namespaced)
+/**
+ * Queue and job naming (must NOT include ':').
+ * Use BullMQ's `prefix` (we set it to SERVICE.name) for namespacing instead.
+ */
 export const QUEUES = {
-  image: `${SERVICE.name}:image:v1`,
-  analyze: `${SERVICE.name}:analyze:v1`,
-  explain: `${SERVICE.name}:explain:v1`,
-  routine: `${SERVICE.name}:routine:v1`,
-  dlq: `${SERVICE.name}:dlq:v1`,
+  image: "image_v1",
+  analyze: "analyze_v1",
+  explain: "explain_v1",
+  routine: "routine_v1",
+  dlq: "dlq_v1",
 } as const;
 
 // SLO targets for dashboards/alerts

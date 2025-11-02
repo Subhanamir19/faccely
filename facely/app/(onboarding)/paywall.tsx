@@ -7,6 +7,7 @@ import {
   StyleSheet,
   Text,
   View,
+  Platform,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import Animated, {
@@ -348,9 +349,15 @@ const PaywallScreen: React.FC = () => {
     transform: [{ scale: primaryScale.value }],
   }));
 
-  const primaryGlowStyle = useAnimatedStyle(() => ({
-    shadowOpacity: 0.18 + primaryGlow.value * 0.07,
-  }));
+  const primaryGlowStyle = useAnimatedStyle(() => {
+    if (Platform.OS === "android") {
+      return {};
+    }
+
+    return {
+      shadowOpacity: 0.35 + primaryGlow.value * 0.1,
+    };
+  });
 
   const onPrimaryPressIn = () => {
     primaryScale.value = withTiming(0.96, {
@@ -478,13 +485,6 @@ const PaywallScreen: React.FC = () => {
               onPressIn={onPrimaryPressIn}
               onPressOut={onPrimaryPressOut}
             >
-              <LinearGradient
-                colors={[COLORS.lime, COLORS.limeHi]}
-                start={{ x: 0, y: 0.5 }}
-                end={{ x: 1, y: 0.5 }}
-                style={StyleSheet.absoluteFill}
-              />
-              <View style={styles.primaryButtonOverlay} />
               <Text style={styles.primaryButtonText}>Continue</Text>
             </AnimatedPressable>
             <Pressable style={styles.secondaryButton} onPress={onContinue}>
@@ -679,30 +679,25 @@ const styles = StyleSheet.create({
     width: CONTENT_WIDTH,
     height: 56,
     borderRadius: RADII.xl,
-    borderWidth: 1,
-    borderColor: COLORS.cardBorder,
     justifyContent: "center",
     alignItems: "center",
-    shadowColor: COLORS.lime,
-    shadowOpacity: 0.18,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    overflow: "hidden",
+    backgroundColor: COLORS.lime,
+    overflow: "visible",
+    ...(Platform.OS === "android"
+      ? { elevation: 12 }
+      : {
+          shadowColor: COLORS.lime,
+          shadowOpacity: 0.35,
+          shadowRadius: 24,
+          shadowOffset: { width: 0, height: 8 },
+        }),
     marginTop: 44,
   },
   primaryButtonText: {
     fontFamily: "Poppins-SemiBold",
     fontSize: 16,
     lineHeight: 20,
-    color: "#111111",
-  },
-  primaryButtonOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    borderRadius: RADII.xl,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-    backgroundColor: "rgba(255,255,255,0.12)",
-    opacity: 0.18,
+    color: "#0B0B0B",
   },
   secondaryButton: {
     marginTop: 16,
