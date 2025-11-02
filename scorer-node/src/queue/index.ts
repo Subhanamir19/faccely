@@ -20,9 +20,14 @@ function maskRedis(url?: string | null) {
   }
 }
 
+async function wait(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
 /**
  * Boot BullMQ workers if REDIS_URL is set.
- * Never crash the process — log and continue if Redis is missing/unreachable.
+ * - Retries a few times to avoid race with Redis readiness.
+ * - Never crashes the API; logs and continues if queues can't start.
  */
 export async function bootQueues(): Promise<void> {
   if (started) return;
@@ -30,19 +35,30 @@ export async function bootQueues(): Promise<void> {
   const masked = maskRedis(REDIS.url);
   if (!REDIS.url) {
     console.warn(`[QUEUES] REDIS_URL not set — queues disabled (env=${masked})`);
-    started = true; // prevent repeated logs
+    started = true; // avoid repeating the warning
     return;
   }
 
-  try {
-    const workers = await startWorkers(); // may throw if getRedis() returns null
-    closers = workers.map((w) => () => w.close());
-    started = true;
-    console.log(`[QUEUES] workers started (redis=${masked})`);
-  } catch (err) {
-    const msg = (err as Error)?.message || String(err);
-    console.warn(`[QUEUES] failed to start workers (redis=${masked}) → ${msg}`);
-    // Do NOT throw — keep API up even if queues are down.
+  const maxAttempts = 5;
+  let attempt = 0;
+  while (attempt < maxAttempts && !started) {
+    attempt++;
+    try {
+      const workers = await startWorkers(); // will throw if Redis not ready
+      closers = workers.map((w) => () => w.close());
+      started = true;
+      console.log(`[QUEUES] workers started (redis=${masked})`);
+      break;
+    } catch (err) {
+      const msg = (err as Error)?.message || String(err);
+      const delay = Math.min(500 * Math.pow(2, attempt - 1), 5000); // 0.5s → 5s
+      console.warn(`[QUEUES] start attempt ${attempt}/${maxAttempts} failed → ${msg}. retrying in ${delay}ms`);
+      await wait(delay);
+    }
+  }
+
+  if (!started) {
+    console.warn(`[QUEUES] giving up after ${maxAttempts} attempts — queues disabled (redis=${masked})`);
   }
 
   // graceful shutdown
