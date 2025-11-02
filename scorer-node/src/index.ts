@@ -11,6 +11,8 @@ import sharp from "sharp";
 import * as fs from "fs";
 import sigmaRouter from "./routes/sigma.js";
 import { idempotency } from "./middleware/idempotency.js";
+import { bootQueues, queuesProbe } from "./queue/index.js";
+
 
 import config from "./config/index.js";
 
@@ -223,6 +225,13 @@ app.use("/routine", idempotency(), routineRouter);
 app.use("/sigma", sigmaRouter); // ← add this
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
+
+// Queue health probe (enabled only when REDIS_URL is set)
+app.get("/queues/health", async (_req, res) => {
+  const probe = await queuesProbe();
+  res.json(probe);
+});
+
 
 /* ---------------------- /analyze/pair-bytes (fallback) -------------------- */
 app.post("/analyze/pair-bytes", async (req, res) => {
@@ -473,9 +482,14 @@ app.post("/recommendations", upload.none(), idempotency(), async (req, res) => {
 /* -------------------------------------------------------------------------- */
 /*   Server bind + graceful shutdown                                          */
 /* -------------------------------------------------------------------------- */
+
+// Boot BullMQ workers if REDIS_URL is set; no-op otherwise
+void bootQueues();
+
 const server = app.listen(ENV.PORT, "0.0.0.0", () => {
   console.log(`Scorer listening on 0.0.0.0:${ENV.PORT} (MAX_CONCURRENT=${MAX_CONCURRENT})`);
 });
+
 
 process.on("SIGTERM", () => {
   console.log("SIGTERM received, closing server...");
