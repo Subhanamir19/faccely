@@ -13,11 +13,24 @@ module.exports = {
         line: "#2D2D2D",      // ghost outlines
         track: "#2A2A2A",     // inactive progress
         accent: "#B4F34D",    // neon lime
+        sigma: {
+          bg: "#000000",
+          lime: "#B4F34D",
+          white: "#FFFFFF",
+          muted: "#C7CBD1",
+          glass: "rgba(255,255,255,0.05)",
+          border: "rgba(180,243,77,0.25)",
+          glow: "#B4F34D55",
+          shadow: "#000000AA",
+        },
       },
       borderRadius: {
         xl: "2rem",           // 32 px card radius
         pill: "1.75rem",      // 28 px button radius
         glass: "1.25rem",
+      },
+      backdropBlur: {
+        sigma: "20px",
       },
       boxShadow: {
         soft: "0 2px 15px rgba(180,243,77,0.25)", // accent glow

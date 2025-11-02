@@ -1,12 +1,11 @@
-// facely/store/sigma.ts
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import {
   type SigmaThread,
-  type CreateThreadResponse,
-  type SendMessageResponse,
+  type SigmaMessage,
+  type SigmaError,
 } from "../lib/types/sigma";
 import {
   createSigmaThread,
@@ -15,24 +14,41 @@ import {
   makeLocalUserMessage,
 } from "../lib/api/sigma";
 
-/* ============================================================
- * Sigma Store (robust)
- * - No deadlocks: sendInProgress is cleared in finally
- * - Debounce concurrent sends
- * - Lazy-create thread if missing
- * ============================================================
- */
-
 interface SigmaStore {
   thread: SigmaThread | null;
   loading: boolean;
   error?: string;
   sendInProgress: boolean;
+  ensureThread: () => Promise<string>;
   initThread: () => Promise<void>;
-  sendMessage: (text: string) => Promise<void>;
   reloadThread: () => Promise<void>;
+  sendMessage: (text: string) => Promise<void>;
+  newChat: () => Promise<void>;
   resetThread: () => void;
 }
+
+let creatingThread: Promise<SigmaThread> | null = null;
+
+const toSigmaError = (error: unknown): SigmaError => {
+  if (error && typeof error === "object" && "code" in error && "message" in error) {
+    return error as SigmaError;
+  }
+
+  return {
+    code: "UNKNOWN",
+    message:
+      error instanceof Error
+        ? error.message
+        : typeof error === "string"
+        ? error
+        : "Something went wrong",
+  };
+};
+
+const snapshotThread = (thread: SigmaThread): SigmaThread => ({
+  ...thread,
+  messages: [...thread.messages],
+});
 
 export const useSigmaStore = create<SigmaStore>()(
   persist(
@@ -42,82 +58,133 @@ export const useSigmaStore = create<SigmaStore>()(
       error: undefined,
       sendInProgress: false,
 
-      /** Create a new thread on backend */
+      ensureThread: async () => {
+        const current = get().thread;
+        if (current) return current.id;
+
+        if (!creatingThread) {
+          creatingThread = (async () => {
+            set({ loading: true, error: undefined });
+            try {
+              const resp = await createSigmaThread();
+              const fresh: SigmaThread = { id: resp.id, messages: [] as SigmaMessage[] };
+              set({ thread: fresh });
+              return fresh;
+            } catch (err) {
+              const mapped = toSigmaError(err);
+              set({ error: mapped.message });
+              throw mapped;
+            } finally {
+              set({ loading: false });
+            }
+          })();
+        }
+
+        try {
+          const thread = await creatingThread;
+          return thread.id;
+        } finally {
+          creatingThread = null;
+        }
+      },
+
       initThread: async () => {
         try {
-          set({ loading: true, error: undefined });
-          const resp: CreateThreadResponse = await createSigmaThread();
-          const thread: SigmaThread = { id: resp.id, messages: [] };
-          set({ thread, loading: false });
-        } catch (e: any) {
-          set({ error: e?.message ?? "Failed to initialize Sigma thread", loading: false });
+          await get().ensureThread();
+        } catch {
+          // handled in ensureThread
         }
       },
 
-      /** Reload messages from backend */
       reloadThread: async () => {
-        const t = get().thread;
-        if (!t) return;
+        const existing = get().thread;
+        const threadId = existing?.id ?? (await get().ensureThread().catch(() => null));
+        if (!threadId) return;
+
         try {
-          set({ loading: true });
-          const fresh = await getSigmaThread(t.id);
+          set({ loading: true, error: undefined });
+          const fresh = await getSigmaThread(threadId);
           set({ thread: fresh, loading: false });
-        } catch (e: any) {
-          set({ error: e?.message ?? "Failed to reload Sigma thread", loading: false });
+        } catch (err) {
+          const mapped = toSigmaError(err);
+          set({ error: mapped.message, loading: false });
         }
       },
 
-      /** Send user message -> optimistic append -> fetch assistant reply */
       sendMessage: async (text: string) => {
         const trimmed = text.trim();
         if (!trimmed) return;
-
-        // Prevent overlapping sends
         if (get().sendInProgress) return;
 
-        let t = get().thread;
-
-        // Lazy-init if user types before init finishes
-        if (!t) {
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          let threadId: string;
           try {
-            const resp: CreateThreadResponse = await createSigmaThread();
-            t = { id: resp.id, messages: [] };
-            set({ thread: t });
-          } catch (e: any) {
-            set({ error: e?.message ?? "No active Sigma thread" });
+            threadId = await get().ensureThread();
+          } catch (err) {
+            const mapped = toSigmaError(err);
+            set({ error: mapped.message });
+            return;
+          }
+
+          const currentThread = get().thread;
+          if (!currentThread) {
+            continue;
+          }
+
+          const baseSnapshot = snapshotThread(currentThread);
+          const optimistic = makeLocalUserMessage(trimmed);
+          const optimisticThread: SigmaThread = {
+            ...baseSnapshot,
+            messages: [...baseSnapshot.messages, optimistic],
+          };
+
+          set({ thread: optimisticThread, sendInProgress: true, error: undefined });
+
+          try {
+            const reply = await sendSigmaMessage({
+              thread_id: threadId,
+              user_text: trimmed,
+              share_scores: false,
+              share_routine: false,
+            });
+
+            const completed: SigmaThread = {
+              ...optimisticThread,
+              messages: [...optimisticThread.messages, reply.assistant_message],
+            };
+            set({ thread: completed, sendInProgress: false });
+            return;
+          } catch (err) {
+            const mapped = toSigmaError(err);
+
+            if (mapped.code === "THREAD_NOT_FOUND" && attempt === 0) {
+              set({ thread: baseSnapshot, sendInProgress: false });
+              await get().newChat();
+              continue;
+            }
+
+            set({ thread: baseSnapshot, error: mapped.message, sendInProgress: false });
             return;
           }
         }
+      },
 
-        // Optimistic append
-        const optimistic = makeLocalUserMessage(trimmed);
-        const updated: SigmaThread = { ...t, messages: [...t.messages, optimistic] };
-        set({ thread: updated, sendInProgress: true, error: undefined });
-
+      newChat: async () => {
+        creatingThread = null;
+        set({ thread: null, loading: true, error: undefined, sendInProgress: false });
         try {
-          const reply: SendMessageResponse = await sendSigmaMessage({
-            thread_id: t.id,
-            user_text: trimmed,
-            share_scores: false,
-            share_routine: false,
-          });
-
-          const thread: SigmaThread = {
-            ...updated,
-            messages: [...updated.messages, reply.assistant_message],
-          };
-          set({ thread });
-        } catch (e: any) {
-          console.error("Sigma sendMessage failed:", e);
-          set({ error: e?.message ?? "Sigma message failed" });
-        } finally {
-          // Always clear the flag so the composer never deadlocks
-          set({ sendInProgress: false });
+          const resp = await createSigmaThread();
+          const fresh: SigmaThread = { id: resp.id, messages: [] as SigmaMessage[] };
+          set({ thread: fresh, loading: false });
+        } catch (err) {
+          const mapped = toSigmaError(err);
+          set({ error: mapped.message, loading: false });
+          throw mapped;
         }
       },
 
-      /** Start fresh */
       resetThread: () => {
+        creatingThread = null;
         set({ thread: null, error: undefined, sendInProgress: false });
       },
     }),

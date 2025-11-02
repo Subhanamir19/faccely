@@ -6,10 +6,21 @@ export const COLORS = {
   bgTop: "#000000",
   bgBottom: "#0B0B0B",
 
+  // Sigma chat palette
+  sigmaBg: "#000000",
+  sigmaLime: "#B4F34D",
+  sigmaWhite: "#FFFFFF",
+  sigmaMuted: "#C7CBD1",
+  sigmaGlass: "rgba(255,255,255,0.05)",
+  sigmaBorder: "rgba(180,243,77,0.25)",
+  sigmaGlow: "#B4F34D55",
+  sigmaShadow: "#000000AA",
+
   // Card glass
   card: "rgba(18,18,18,0.90)",        // #121212 @ 90%
   cardBorder: "rgba(255,255,255,0.08)",
   whiteGlass: "rgba(255,255,255,0.06)",
+  inputBg: "rgba(18,18,18,0.90)",
 
   // Text
   text: "#FFFFFF",

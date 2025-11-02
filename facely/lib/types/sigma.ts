@@ -42,7 +42,8 @@ export type SendMessageResponse = z.infer<typeof SendMessageResponseSchema>;
 
 /** Error payload shape from backend */
 export const SigmaErrorSchema = z.object({
-  error: z.string(),
+  code: z.string(),
+  message: z.string(),
   detail: z.string().optional(),
 });
 export type SigmaError = z.infer<typeof SigmaErrorSchema>;

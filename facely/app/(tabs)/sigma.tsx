@@ -1,36 +1,62 @@
-// facely/app/(tabs)/sigma.tsx
-import React, { useEffect, useState, useRef, useMemo } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
-  View,
-  TextInput,
+  Animated,
+  Easing,
   FlatList,
   KeyboardAvoidingView,
   Platform,
-  TouchableOpacity,
+  Pressable,
+  StyleSheet,
   Text,
-  ActivityIndicator,
+  View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import T from "../../components/ui/T";
-import GlassCard from "../../components/ui/GlassCard";
+import { LinearGradient } from "expo-linear-gradient";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { useRouter } from "expo-router";
 
-import { useSigmaStore } from "../../store/sigma";
+import Chip from "../../components/sigma/Chip";
+import InputBar from "../../components/sigma/InputBar";
+import { COLORS } from "../../lib/tokens";
 import { type SigmaMessage } from "../../lib/types/sigma";
+import { useSigmaStore } from "../../store/sigma";
 
-function MessageBubble({ msg }: { msg: SigmaMessage }) {
-  const isUser = msg.role === "user";
+const SUGGESTIONS = [
+  "Do chin tucks work?",
+  "What should I do to improve my jawline?",
+  "How can I get a better physique?",
+];
+
+const AnimatedFlatList = Animated.FlatList<SigmaMessage>;
+
+function MessageBubble({ message }: { message: SigmaMessage }) {
+  const isUser = message.role === "user";
   return (
-    <View className={`w-full mb-3 ${isUser ? "items-end" : "items-start"}`}>
+    <View
+      style={[
+        styles.messageRow,
+        isUser ? styles.messageRowUser : styles.messageRowAssistant,
+      ]}
+    >
       <View
-        className={[
-          "max-w-[88%] rounded-2xl px-4 py-3",
-          "border",
-          isUser
-            ? "bg-black/40 border-white/10"
-            : "bg-white/10 border-white/15",
-        ].join(" ")}
+        style={[
+          styles.messageBubble,
+          isUser ? styles.userBubble : styles.assistantBubble,
+        ]}
       >
-        <Text className="text-white leading-6">{msg.content}</Text>
+        <Text
+          style={[
+            styles.messageText,
+            isUser ? styles.userText : styles.assistantText,
+          ]}
+        >
+          {message.content}
+        </Text>
       </View>
     </View>
   );
@@ -38,12 +64,12 @@ function MessageBubble({ msg }: { msg: SigmaMessage }) {
 
 function TypingBubble() {
   return (
-    <View className="w-full items-start mb-3">
-      <View className="max-w-[60%] rounded-2xl px-4 py-3 bg-white/10 border border-white/15">
-        <View className="flex-row gap-1">
-          <View className="w-2 h-2 rounded-full bg-white/60" />
-          <View className="w-2 h-2 rounded-full bg-white/50" />
-          <View className="w-2 h-2 rounded-full bg-white/40" />
+    <View style={[styles.messageRow, styles.messageRowAssistant]}>
+      <View style={[styles.messageBubble, styles.assistantBubble, styles.typingBubble]}>
+        <View style={styles.typingDotsRow}>
+          <View style={[styles.typingDot, { opacity: 0.9 }]} />
+          <View style={[styles.typingDot, { opacity: 0.7 }]} />
+          <View style={[styles.typingDot, { opacity: 0.5 }]} />
         </View>
       </View>
     </View>
@@ -51,136 +77,361 @@ function TypingBubble() {
 }
 
 export default function SigmaScreen() {
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
   const {
     thread,
     loading,
     error,
     sendInProgress,
-    initThread,
-    reloadThread,
+    ensureThread,
     sendMessage,
-    resetThread,
+    newChat,
   } = useSigmaStore();
 
-  const [text, setText] = useState("");
-  const flatRef = useRef<FlatList<SigmaMessage>>(null);
+  const [inputValue, setInputValue] = useState("");
+  const listRef = useRef<FlatList<SigmaMessage>>(null);
+  const revealAnim = useRef(new Animated.Value(0)).current;
+  const prevCount = useRef(0);
+  const lastChipRef = useRef<string | null>(null);
 
-  // Start a thread on mount
+  const messages = thread?.messages ?? [];
+  const bottomPadding = 60 + 24 + insets.bottom;
+
   useEffect(() => {
-    if (!thread && !loading) initThread();
+    ensureThread().catch(() => {
+      /* handled in store */
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Auto-scroll on new messages
   useEffect(() => {
-    const id = setTimeout(() => flatRef.current?.scrollToEnd({ animated: true }), 60);
-    return () => clearTimeout(id);
-  }, [thread?.messages?.length, sendInProgress]);
+    const count = messages.length;
+    if (prevCount.current === 0 && count > 0) {
+      revealAnim.setValue(0);
+      Animated.timing(revealAnim, {
+        toValue: 1,
+        duration: 220,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }).start();
+    }
+    if (count === 0) {
+      revealAnim.setValue(0);
+    }
+    prevCount.current = count;
+  }, [messages.length, revealAnim]);
 
-  const onSend = async () => {
-    const trimmed = text.trim();
-    if (!trimmed || sendInProgress) return;
-    setText("");
+  useEffect(() => {
+    if (!messages.length) return;
+    const timeout = setTimeout(() => {
+      listRef.current?.scrollToEnd({ animated: true });
+    }, 60);
+    return () => clearTimeout(timeout);
+  }, [messages.length, sendInProgress]);
+
+  const handleSend = useCallback(async () => {
+    const trimmed = inputValue.trim();
+    if (!trimmed) return;
+    setInputValue("");
+    lastChipRef.current = null;
     await sendMessage(trimmed);
-  };
+  }, [inputValue, sendMessage]);
 
-  const onNewChat = async () => {
-    // clear local thread then start a new one
-    resetThread();
-    await initThread();
-    setText("");
-  };
+  const handleChange = useCallback((text: string) => {
+    setInputValue(text);
+    if (text !== lastChipRef.current) {
+      lastChipRef.current = null;
+    }
+  }, []);
 
-  const renderItem = ({ item }: { item: SigmaMessage }) => <MessageBubble msg={item} />;
+  const handleChipPress = useCallback(
+    (label: string) => {
+      if (inputValue.trim() === label && lastChipRef.current === label) {
+        handleSend();
+        return;
+      }
+      setInputValue(label);
+      lastChipRef.current = label;
+    },
+    [handleSend, inputValue]
+  );
 
-  // Show typing bubble like ChatGPT while waiting
-  const dataWithTyping = useMemo(() => {
-    const msgs = thread?.messages ?? [];
-    return sendInProgress ? [...msgs] : msgs;
-  }, [thread?.messages, sendInProgress]);
+  const handleNewChat = useCallback(async () => {
+    await newChat();
+    setInputValue("");
+    lastChipRef.current = null;
+  }, [newChat]);
+
+  const renderItem = useCallback(
+    ({ item }: { item: SigmaMessage }) => <MessageBubble message={item} />,
+    []
+  );
+
+  const chatAnimatedStyle = useMemo(
+    () => ({
+      opacity: revealAnim.interpolate({
+        inputRange: [0, 1],
+        outputRange: [0.15, 1],
+      }),
+      transform: [
+        {
+          translateY: revealAnim.interpolate({
+            inputRange: [0, 1],
+            outputRange: [8, 0],
+          }),
+        },
+      ],
+    }),
+    [revealAnim]
+  );
+
+  const listEmpty = useMemo(
+    () => (
+      <View style={styles.emptyState}>
+        {loading ? (
+          <Text style={styles.statusText}>Warming up Sigma…</Text>
+        ) : error ? (
+          <Text style={[styles.statusText, styles.errorText]}>{error}</Text>
+        ) : (
+          <Text style={styles.statusText}>Ask anything to get started.</Text>
+        )}
+      </View>
+    ),
+    [error, loading]
+  );
+
+  const footer = useMemo(
+    () => (sendInProgress ? <TypingBubble /> : <View style={styles.footerSpacer} />),
+    [sendInProgress]
+  );
 
   return (
-    <SafeAreaView className="flex-1 bg-black">
-      {/* Header */}
-      <View className="px-5 pt-2">
-        <GlassCard style={{ padding: 16 }}>
-          <View className="flex-row items-center justify-between">
-            <View>
-              <T className="text-xl text-white font-semibold">Sigma</T>
-              <T className="text-white/60 mt-1">
-                Your facial aesthetics coach. Evidence first. No nonsense.
-              </T>
-            </View>
-            <View className="flex-row gap-2">
-              <TouchableOpacity
-                onPress={reloadThread}
-                className="px-3 py-2 rounded-xl bg-white/8"
-              >
-                <Text className="text-white/70">Reload</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={onNewChat}
-                className="px-3 py-2 rounded-xl"
-                style={{ backgroundColor: "rgba(180,243,77,0.18)", borderWidth: 1, borderColor: "rgba(180,243,77,0.45)" }}
-              >
-                <Text className="text-[#B4F34D]">New chat</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          <View className="mt-3 flex-row gap-3 items-center">
-            {loading ? <ActivityIndicator /> : null}
-            {error ? <Text className="text-red-400">{String(error)}</Text> : null}
-          </View>
-        </GlassCard>
-      </View>
-
-      {/* Chat list */}
-      <FlatList
-        ref={flatRef}
-        data={dataWithTyping}
-        renderItem={renderItem}
-        keyExtractor={(m) => m.id}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 108 }}
-        ListFooterComponent={sendInProgress ? <TypingBubble /> : null}
-        keyboardShouldPersistTaps="handled"
-      />
-
-      {/* Composer */}
+    <SafeAreaView style={styles.safeArea} edges={["top", "bottom"]}>
       <KeyboardAvoidingView
+        style={styles.flex}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
-        keyboardVerticalOffset={80}
-        className="absolute bottom-0 w-full px-4 pb-5 bg-black"
+        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
       >
-        <View className="flex-row items-end bg-white/8 border border-white/15 rounded-2xl px-3 py-2">
-          <TextInput
-            value={text}
-            onChangeText={setText}
-            placeholder="Ask Sigma…"
-            placeholderTextColor="rgba(255,255,255,0.45)"
-            className="flex-1 text-white min-h-[40px] max-h-[120px] px-1 py-1"
-            multiline
-            autoCapitalize="sentences"
-            autoCorrect
-            returnKeyType="send"
-            onSubmitEditing={onSend}
-            blurOnSubmit={false}
-            editable={!sendInProgress}
+        <View style={styles.screen}>
+          <View style={styles.header}>
+            <Pressable
+              style={styles.backButton}
+              onPress={router.back}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Go back"
+            >
+              <Text style={styles.backIcon}>←</Text>
+            </Pressable>
+            <View style={styles.headerContent}>
+              <Text style={styles.headerTitle}>SIGMA</Text>
+              <Text style={styles.headerSubtitle}>online</Text>
+            </View>
+          </View>
+
+          <View style={styles.chipRow}>
+            {SUGGESTIONS.map((label) => (
+              <Chip key={label} label={label} onPress={handleChipPress} />
+            ))}
+          </View>
+
+          <View style={styles.chatWrapper}>
+            <LinearGradient
+              colors={[COLORS.sigmaBg, "#00000000"]}
+              locations={[0, 0.8]}
+              style={styles.topFade}
+              pointerEvents="none"
+            />
+            <AnimatedFlatList
+              ref={listRef}
+              data={messages}
+              renderItem={renderItem}
+              keyExtractor={(item: SigmaMessage) => item.id}
+              contentContainerStyle={[
+                styles.listContent,
+                { paddingBottom: bottomPadding + 12 },
+              ]}
+              contentInset={{ bottom: bottomPadding + 12 }}
+              scrollIndicatorInsets={{ bottom: bottomPadding + 12 }}
+              ListEmptyComponent={listEmpty}
+              ListFooterComponent={footer}
+              style={[styles.chatList, chatAnimatedStyle]}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            />
+          </View>
+        </View>
+
+        <View style={[styles.inputContainer, { paddingBottom: insets.bottom + 24 }]}>
+          <InputBar
+            value={inputValue}
+            onChange={handleChange}
+            onSend={handleSend}
+            onNewChat={handleNewChat}
+            sending={sendInProgress}
+            disabled={loading}
           />
-          <TouchableOpacity
-            onPress={onSend}
-            disabled={sendInProgress || !text.trim()}
-            className={`ml-2 rounded-xl px-3 py-2 ${
-              sendInProgress || !text.trim()
-                ? "bg-white/10 border border-white/15"
-                : "bg-white/20 border border-white/30"
-            }`}
-          >
-            {sendInProgress ? <ActivityIndicator /> : <Text className="text-white">Send</Text>}
-          </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: COLORS.sigmaBg,
+  },
+  flex: {
+    flex: 1,
+  },
+  screen: {
+    flex: 1,
+    paddingHorizontal: 16,
+  },
+  header: {
+    height: 56,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 20,
+  },
+  backButton: {
+    position: "absolute",
+    left: 0,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  backIcon: {
+    fontSize: 20,
+    color: "#FFFFFFE6",
+    fontFamily: "Poppins-SemiBold",
+  },
+  headerContent: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerTitle: {
+    fontFamily: "Poppins-SemiBold",
+    fontSize: 18,
+    lineHeight: 24,
+    letterSpacing: 0.25,
+    color: COLORS.sigmaWhite,
+  },
+  headerSubtitle: {
+    fontFamily: "Poppins-Medium",
+    fontSize: 13,
+    lineHeight: 18,
+    color: COLORS.sigmaLime,
+    marginTop: 2,
+  },
+  chipRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    columnGap: 8,
+    rowGap: 8,
+    marginBottom: 16,
+  },
+  chatWrapper: {
+    flex: 1,
+    position: "relative",
+  },
+  chatList: {
+    flex: 1,
+  },
+  topFade: {
+    position: "absolute",
+    top: 0,
+    left: -16,
+    right: -16,
+    height: 72,
+    zIndex: 1,
+  },
+  listContent: {
+    paddingTop: 12,
+    paddingBottom: 0,
+  },
+  messageRow: {
+    width: "100%",
+    marginBottom: 12,
+  },
+  messageRowUser: {
+    alignItems: "flex-end",
+  },
+  messageRowAssistant: {
+    alignItems: "flex-start",
+  },
+  messageBubble: {
+    maxWidth: "84%",
+    borderRadius: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderWidth: 1,
+  },
+  userBubble: {
+    backgroundColor: COLORS.sigmaLime,
+    borderColor: COLORS.sigmaLime,
+    shadowColor: COLORS.sigmaGlow,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+  },
+  assistantBubble: {
+    backgroundColor: "rgba(255,255,255,0.06)",
+    borderColor: "rgba(255,255,255,0.08)",
+  },
+  messageText: {
+    fontFamily: "Poppins-Medium",
+    fontSize: 15,
+    lineHeight: 22,
+  },
+  userText: {
+    color: COLORS.sigmaBg,
+  },
+  assistantText: {
+    color: COLORS.sigmaWhite,
+  },
+  typingBubble: {
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+  },
+  typingDotsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-start",
+    gap: 6,
+  },
+  typingDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: COLORS.sigmaWhite,
+  },
+  emptyState: {
+    height: 200,
+    width: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  statusText: {
+    fontFamily: "Poppins-Medium",
+    fontSize: 15,
+    lineHeight: 20,
+    color: COLORS.sigmaMuted,
+    textAlign: "center",
+  },
+  errorText: {
+    color: "#FF6B6B",
+  },
+  footerSpacer: {
+    height: 24,
+  },
+  inputContainer: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    backgroundColor: COLORS.sigmaBg,
+  },
+});
