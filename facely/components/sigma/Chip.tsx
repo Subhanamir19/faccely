@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useRef } from "react";
-import { Animated, Easing, Pressable, StyleSheet } from "react-native";
+import { Animated, Easing, Pressable, StyleSheet, View } from "react-native";
 
 import { COLORS } from "../../lib/tokens";
 import T from "../ui/T";
@@ -9,7 +9,8 @@ type Props = {
   onPress: (label: string) => void;
 };
 
-const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+const AnimatedGlowView = Animated.createAnimatedComponent(View);
+const AnimatedScaleView = Animated.createAnimatedComponent(View);
 
 export default function Chip({ label, onPress }: Props) {
   const scale = useRef(new Animated.Value(1)).current;
@@ -65,24 +66,40 @@ export default function Chip({ label, onPress }: Props) {
   }, [label, onPress]);
 
   return (
-    <AnimatedPressable
-      onPressIn={handlePressIn}
-      onPressOut={handlePressOut}
-      onPress={handlePress}
-      style={[styles.chip, glowStyle, scaleStyle]}
-    >
-      <T
-        style={styles.text}
-        accessibilityRole="text"
-        numberOfLines={1}
+    <AnimatedGlowView style={[styles.glowWrapper, glowStyle]}>
+      <Pressable
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        onPress={handlePress}
+        style={styles.pressable}
       >
-        {label}
-      </T>
-    </AnimatedPressable>
+        <AnimatedScaleView style={[styles.chip, scaleStyle]}>
+          <T
+            style={styles.text}
+            accessibilityRole="text"
+            numberOfLines={1}
+          >
+            {label}
+          </T>
+        </AnimatedScaleView>
+      </Pressable>
+    </AnimatedGlowView>
   );
 }
 
 const styles = StyleSheet.create({
+  glowWrapper: {
+    alignSelf: "flex-start",
+    borderRadius: 18,
+    shadowColor: COLORS.sigmaLime,
+    shadowOffset: { width: 0, height: 0 },
+    shadowRadius: 8,
+    shadowOpacity: 0,
+  },
+  pressable: {
+    borderRadius: 18,
+    overflow: "hidden",
+  },
   chip: {
     height: 36,
     paddingHorizontal: 14,
@@ -90,10 +107,6 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     backgroundColor: COLORS.sigmaLime,
     justifyContent: "center",
-    shadowColor: COLORS.sigmaLime,
-    shadowOffset: { width: 0, height: 0 },
-    shadowRadius: 8,
-    shadowOpacity: 0,
     elevation: 4,
   },
   text: {
