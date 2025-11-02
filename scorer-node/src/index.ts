@@ -10,7 +10,14 @@ import OpenAI from "openai";
 import sharp from "sharp";
 import * as fs from "fs";
 import sigmaRouter from "./routes/sigma.js";
+import { idempotency } from "./middleware/idempotency.js";
 
+import config from "./config/index.js";
+
+console.log("[BOOT]", {
+  env: config.NODE_ENV,
+  service: config.SERVICE,
+});
 
 import { ZodError, type ZodIssue } from "zod";
 
@@ -100,7 +107,9 @@ app.use(rateLimit({
   // Safety valve if trust proxy is ever misconfigured:
   // validate: { xForwardedForHeader: false },
 }));
-
+/* ----------------------------- Request ID middleware ----------------------------- */
+import { requestId } from "./middleware/requestId.js";
+app.use(requestId());
 
 /* -------------------------- Multer memory storage -------------------------- */
 const upload = multer({
@@ -208,7 +217,8 @@ function release() {
 /* -------------------------------------------------------------------------- */
 /*   Routes                                                                   */
 /* -------------------------------------------------------------------------- */
-app.use("/routine", routineRouter);
+app.use("/routine", idempotency(), routineRouter);
+
 
 app.use("/sigma", sigmaRouter); // ← add this
 
@@ -246,7 +256,8 @@ app.post("/analyze/pair-bytes", async (req, res) => {
 });
 
 /* --------------------------- /analyze (single) ---------------------------- */
-app.post("/analyze", upload.single("image"), async (req, res) => {
+app.post("/analyze", idempotency(), upload.single("image"), async (req, res) => {
+
   const t0 = Date.now();
   try {
     await enqueue();
@@ -281,7 +292,9 @@ app.post("/analyze", upload.single("image"), async (req, res) => {
 /* --------------------------- /analyze/pair -------------------------------- */
 app.post(
   "/analyze/pair",
+  idempotency(),
   upload.fields([
+
     { name: "frontal", maxCount: 1 },
     { name: "side", maxCount: 1 },
   ]),
@@ -320,7 +333,8 @@ app.post(
 );
 
 /* ---------------------- /analyze/explain & /pair --------------------------- */
-app.post("/analyze/explain", upload.single("image"), async (req, res) => {
+app.post("/analyze/explain", idempotency(), upload.single("image"), async (req, res) => {
+
   const t0 = Date.now();
   try {
     await enqueue();
@@ -357,7 +371,9 @@ app.post("/analyze/explain", upload.single("image"), async (req, res) => {
 
 app.post(
   "/analyze/explain/pair",
+  idempotency(),
   upload.fields([
+
     { name: "frontal", maxCount: 1 },
     { name: "side", maxCount: 1 },
   ]),
@@ -408,7 +424,8 @@ app.post(
 );
 
 /* ---------------------------- /recommendations ---------------------------- */
-app.post("/recommendations", upload.none(), async (req, res) => {
+app.post("/recommendations", upload.none(), idempotency(), async (req, res) => {
+
   const parsedReq = RecommendationsRequestSchema.safeParse(req.body);
   if (!parsedReq.success)
     return res.status(400).json({
