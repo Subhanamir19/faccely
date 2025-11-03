@@ -1,21 +1,16 @@
 // scorer-node/src/utils/generateRoutine.ts
 import { z } from "zod";
-import { createHash } from "node:crypto";
 
 import { RoutineSchema, type Routine } from "../schemas/RoutineSchema.js";
 import type { Scores } from "../validators.js";
 import { PROTOCOL_LIBRARY } from "../data/protocolLibrary.js";
-
-// NEW: Redis helpers for caching
-import { redisGet, redisSetEx, k as kNS } from "../lib/redis.js";
-import { TTL } from "../config/index.js";
 
 const MODEL = "gpt-4o-mini";
 const MAX_RESPONSE_BYTES = 800 * 1024;
 const DEFAULT_N_DAYS = 15;
 const TASKS_PER_DAY = 5;
 
-// strict cap for LLM runtime; env-driven
+// LLM timeout: handled via Promise.race (do NOT pass signal to SDK)
 const DEFAULT_LLM_TIMEOUT_MS = Number(process.env.ROUTINE_LLM_TIMEOUT_MS ?? 25_000);
 
 const responseFormat = { type: "json_object" as const };
@@ -31,7 +26,7 @@ type OpenAIClient = {
         messages: ChatMessage[];
         max_tokens: number;
         response_format: typeof responseFormat;
-        signal?: AbortSignal;
+        // no 'signal' here; SDK was serializing it into JSON and server rejected it
       }) => Promise<{
         choices: Array<{
           finish_reason?: string | null;
@@ -52,14 +47,11 @@ function normalizeProtocol(value: string): string {
   return value.trim().replace(/\s+/g, " ");
 }
 
-// Strict enforcement OFF by default; opt-in only.
 const STRICT_SAUCE =
   String(process.env.ROUTINE_STRICT_SAUCE ?? "").toLowerCase() === "true";
 
 const ALLOWED_SET = new Set<string>(
-  Object.values(PROTOCOL_LIBRARY)
-    .flat()
-    .map((p) => normalizeProtocol(p))
+  Object.values(PROTOCOL_LIBRARY).flat().map((p) => normalizeProtocol(p))
 );
 
 type AttemptResult =
@@ -70,50 +62,6 @@ type AttemptResult =
       finishReason: string | null | undefined;
       error: Error;
     };
-
-// ---------- Cache key helpers ----------
-function canonicalize(x: unknown): string {
-  if (x === null || typeof x !== "object") return JSON.stringify(x);
-  if (Array.isArray(x)) return `[${x.map(canonicalize).join(",")}]`;
-  const entries = Object.entries(x as Record<string, unknown>).sort(([a], [b]) =>
-    a < b ? -1 : a > b ? 1 : 0
-  );
-  return `{${entries.map(([k, v]) => JSON.stringify(k) + ":" + canonicalize(v)).join(",")}}`;
-}
-function sha256(s: string): string {
-  return createHash("sha256").update(s).digest("hex");
-}
-function buildCacheKey(scores: Scores, context_hint: string | undefined, n_days: number) {
-  // Include structural parameters so key changes when constraints change
-  const basis = {
-    scores,
-    context_hint: context_hint ?? null,
-    n_days,
-    tasks_per_day: TASKS_PER_DAY,
-    model: MODEL,
-  };
-  const h = sha256(canonicalize(basis));
-  return kNS("cache", "routine", h); // scorer-node:cache:routine:<hash>
-}
-
-// ---------- Abort/timeout utility ----------
-function withAbortTimeout(parent: AbortSignal | undefined, ms: number) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), ms);
-  const onAbort = () => controller.abort();
-
-  if (parent) {
-    if (parent.aborted) controller.abort();
-    else parent.addEventListener("abort", onAbort, { once: true });
-  }
-
-  const cleanup = () => {
-    clearTimeout(timer);
-    if (parent) parent.removeEventListener("abort", onAbort);
-  };
-
-  return { signal: controller.signal, cleanup };
-}
 
 export function finalizeRoutine(r: any): Routine {
   const routine = RoutineSchema.parse(r);
@@ -147,7 +95,6 @@ export function finalizeRoutine(r: any): Routine {
       }
     }
   } else {
-    // Lenient mode: warn, don’t block
     for (const d of routine.days) {
       for (const c of d.components) {
         const normalizedProtocol = normalizeProtocol(c.protocol);
@@ -170,34 +117,7 @@ export async function generateRoutine(
   openai?: OpenAIClient,
   n_days: number = DEFAULT_N_DAYS
 ): Promise<Routine> {
-  if (!openai) {
-    throw new Error("generateRoutine requires an OpenAI client instance.");
-  }
-
-  // ---------- Cache: read-through ----------
-  const cacheKey = buildCacheKey(scores, context_hint, n_days);
-  try {
-    const cached = await redisGet(cacheKey);
-    if (cached) {
-      try {
-        const parsed = JSON.parse(cached);
-        const routine = finalizeRoutine(parsed);
-        console.log("[routine-cache] HIT", { key: cacheKey });
-        return routine;
-      } catch (e) {
-        console.warn("[routine-cache] CORRUPT_EVICT", {
-          key: cacheKey,
-          err: (e as Error)?.message,
-        });
-        // Best-effort: let fresh generation proceed
-      }
-    } else {
-      console.log("[routine-cache] MISS", { key: cacheKey });
-    }
-  } catch (e) {
-    console.warn("[routine-cache] READ_FAIL", { err: (e as Error)?.message });
-    // proceed without cache
-  }
+  if (!openai) throw new Error("generateRoutine requires an OpenAI client instance.");
 
   const baseMessages: ChatMessage[] = [
     { role: "system", content: buildPrimarySystemPrompt(n_days) },
@@ -205,27 +125,14 @@ export async function generateRoutine(
   ];
 
   const direct = await runAttempt(openai, "direct", baseMessages);
-
-  if (direct.success) {
-    // write-through cache
-    void tryStore(cacheKey, direct.routine);
-    return direct.routine;
-  }
+  if (direct.success) return direct.routine;
 
   const repairMessages: ChatMessage[] = [
     { role: "system", content: buildRepairSystemPrompt() },
-    {
-      role: "user",
-      content: buildRepairUserPrompt(direct.raw, scores, context_hint),
-    },
+    { role: "user", content: buildRepairUserPrompt(direct.raw, scores, context_hint) },
   ];
-
   const repair = await runAttempt(openai, "repair", repairMessages);
-
-  if (repair.success) {
-    void tryStore(cacheKey, repair.routine);
-    return repair.routine;
-  }
+  if (repair.success) return repair.routine;
 
   const error = new Error(
     `Routine generation failed after repair attempt: ${repair.error.message}`
@@ -234,116 +141,43 @@ export async function generateRoutine(
   throw error;
 }
 
-async function tryStore(cacheKey: string, routine: Routine) {
-  try {
-    const ok = await redisSetEx(cacheKey, TTL.routineS, JSON.stringify(routine));
-    if (ok) console.log("[routine-cache] STORE", { key: cacheKey, ttl_s: TTL.routineS });
-    else console.log("[routine-cache] STORE_SKIP_NOREDIS", { key: cacheKey });
-  } catch (e) {
-    console.warn("[routine-cache] STORE_FAIL", { key: cacheKey, err: (e as Error)?.message });
-  }
-}
-
 async function runAttempt(
   openai: OpenAIClient,
   path: "direct" | "repair",
   messages: ChatMessage[]
 ): Promise<AttemptResult> {
-  // wall-clock + abortable LLM call
   const t0 = Date.now();
-  const { signal, cleanup } = withAbortTimeout(undefined, DEFAULT_LLM_TIMEOUT_MS);
 
+  // Promise.race timeout; we do NOT pass 'signal' to the SDK
+  const llmCall = openai.chat.completions.create({
+    model: MODEL,
+    temperature: 0.2,
+    messages,
+    max_tokens: 4000,
+    response_format: responseFormat,
+  });
+
+  const timeout = new Promise<never>((_, rej) =>
+    setTimeout(() => {
+      const e: any = new Error(
+        `LLM timeout after ${Date.now() - t0} ms (limit ${DEFAULT_LLM_TIMEOUT_MS} ms)`
+      );
+      e.code = "LLM_TIMEOUT";
+      rej(e);
+    }, DEFAULT_LLM_TIMEOUT_MS)
+  );
+
+  let completion: Awaited<ReturnType<typeof openai.chat.completions.create>>;
   try {
-    const completion = await openai.chat.completions.create({
-      model: MODEL,
-      temperature: 0.2,
-      messages,
-      max_tokens: 4000,
-      response_format: responseFormat,
-      signal,
-    });
-
-    const t1 = Date.now();
-    const latency_ms = t1 - t0;
-
-    const choice = completion.choices[0];
-    const finishReason = choice?.finish_reason ?? null;
-    const raw = choice?.message?.content?.trim() ?? "";
-
-    const meta = {
-      model: completion.model ?? MODEL,
-      tokens_in: completion.usage?.prompt_tokens ?? undefined,
-      tokens_out: completion.usage?.completion_tokens ?? undefined,
-      total_tokens: completion.usage?.total_tokens ?? undefined,
-      latency_ms,
-      finish_reason: finishReason,
-      path,
-    };
-
-    // Size guard before parsing
-    const byteLength = Buffer.byteLength(raw, "utf8");
-    if (byteLength > MAX_RESPONSE_BYTES) {
-      const error = new Error(
-        `Routine response exceeded ${MAX_RESPONSE_BYTES} bytes (${byteLength}).`
-      );
-      console.warn("[generateRoutine] oversize", { ...meta, byteLength });
-      return { success: false, raw, finishReason, error };
-    }
-
-    const rawLength = raw.length;
-    const hasClosingBrace = /}\s*$/.test(raw);
-    const { parsed, dayCount, counts } = attemptParse(raw);
-
-    console.log("[generateRoutine] guard", {
-      ...meta,
-      rawLength,
-      hasClosingBrace,
-      dayCount,
-      counts,
-      targetDays: DEFAULT_N_DAYS,
-    });
-
-    if (!parsed) {
-      const error = new Error("Routine response was not valid JSON.");
-      return { success: false, raw, finishReason, error };
-    }
-
-    if (finishReason === "length") {
-      const error = new Error("Routine response was truncated.");
-      return { success: false, raw, finishReason, error };
-    }
-
-    try {
-      const routine = finalizeRoutine(parsed);
-      return { success: true, routine };
-    } catch (err) {
-      if (err instanceof z.ZodError) {
-        return {
-          success: false,
-          raw,
-          finishReason,
-          error: new Error(`Routine schema validation failed: ${err.message}`),
-        };
-      }
-      const error =
-        err instanceof Error
-          ? err
-          : new Error(`Routine validation failed: ${String(err)}`);
-      return { success: false, raw, finishReason, error };
-    }
+    completion = await Promise.race([llmCall, timeout]);
   } catch (err: any) {
-    if (err?.name === "AbortError") {
-      const elapsed = Date.now() - t0;
-      const e = new Error(
-        `LLM timeout after ${elapsed} ms (limit ${DEFAULT_LLM_TIMEOUT_MS} ms)`
-      );
-      (e as any).code = "LLM_TIMEOUT";
+    if (err?.code === "LLM_TIMEOUT") {
       console.error("[generateRoutine] timeout", {
         path,
-        elapsed_ms: elapsed,
+        elapsed_ms: Date.now() - t0,
         limit_ms: DEFAULT_LLM_TIMEOUT_MS,
       });
-      return { success: false, raw: "", finishReason: "timeout", error: e };
+      return { success: false, raw: "", finishReason: "timeout", error: err };
     }
     console.error("[generateRoutine] attempt_error", { path, message: String(err) });
     return {
@@ -352,8 +186,72 @@ async function runAttempt(
       finishReason: "error",
       error: err instanceof Error ? err : new Error(String(err)),
     };
-  } finally {
-    cleanup();
+  }
+
+  const t1 = Date.now();
+  const latency_ms = t1 - t0;
+
+  const choice = completion.choices[0];
+  const finishReason = choice?.finish_reason ?? null;
+  const raw = choice?.message?.content?.trim() ?? "";
+
+  const meta = {
+    model: completion.model ?? MODEL,
+    tokens_in: completion.usage?.prompt_tokens ?? undefined,
+    tokens_out: completion.usage?.completion_tokens ?? undefined,
+    total_tokens: completion.usage?.total_tokens ?? undefined,
+    latency_ms,
+    finish_reason: finishReason,
+    path,
+  };
+
+  const byteLength = Buffer.byteLength(raw, "utf8");
+  if (byteLength > MAX_RESPONSE_BYTES) {
+    console.warn("[generateRoutine] oversize", { ...meta, byteLength });
+    const error = new Error(
+      `Routine response exceeded ${MAX_RESPONSE_BYTES} bytes (${byteLength}).`
+    );
+    return { success: false, raw, finishReason, error };
+  }
+
+  const rawLength = raw.length;
+  const hasClosingBrace = /}\s*$/.test(raw);
+  const { parsed, dayCount, counts } = attemptParse(raw);
+
+  console.log("[generateRoutine] guard", {
+    ...meta,
+    rawLength,
+    hasClosingBrace,
+    dayCount,
+    counts,
+    targetDays: DEFAULT_N_DAYS,
+  });
+
+  if (!parsed) {
+    const error = new Error("Routine response was not valid JSON.");
+    return { success: false, raw, finishReason, error };
+  }
+
+  if (finishReason === "length") {
+    const error = new Error("Routine response was truncated.");
+    return { success: false, raw, finishReason, error };
+  }
+
+  try {
+    const routine = finalizeRoutine(parsed);
+    return { success: true, routine };
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      return {
+        success: false,
+        raw,
+        finishReason,
+        error: new Error(`Routine schema validation failed: ${err.message}`),
+      };
+    }
+    const error =
+      err instanceof Error ? err : new Error(`Routine validation failed: ${String(err)}`);
+    return { success: false, raw, finishReason, error };
   }
 }
 
@@ -374,9 +272,7 @@ function attemptParse(raw: string): {
   }
 
   const days = (parsed as { days?: unknown }).days;
-  if (!Array.isArray(days)) {
-    return { parsed, dayCount: 0, counts: [] };
-  }
+  if (!Array.isArray(days)) return { parsed, dayCount: 0, counts: [] };
 
   const counts = days.map((day) => {
     if (

@@ -33,7 +33,11 @@ export async function buildWorker(): Promise<WorkerBundle> {
   if (!connection) throw new Error("Redis required for workers");
 
   // Provision OpenAI for the worker runtime
-  const openai = new OpenAI({ apiKey: ENV.OPENAI_API_KEY });
+  const openai = new OpenAI({
+    apiKey: ENV.OPENAI_API_KEY,
+    // hard cap so the SDK itself doesn't hang forever
+    timeout: Number(process.env.ROUTINE_LLM_TIMEOUT_MS ?? 25000),
+  });
   setRoutineOpenAIClient(openai);
 
   // NEW: dead-letter queue handle (compact payloads; auto-clean on complete)

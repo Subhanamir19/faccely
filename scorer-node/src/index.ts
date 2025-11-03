@@ -57,7 +57,11 @@ app.set("trust proxy", 1); // we are behind Railway's proxy; needed for correct 
 // Mount metrics early; harmless order-wise
 initMetrics(app, { enabled: true, path: "/metrics" }); // <-- ADD THIS
 
-const openai = new OpenAI({ apiKey: ENV.OPENAI_API_KEY });
+const openai = new OpenAI({
+  apiKey: ENV.OPENAI_API_KEY,
+  timeout: Number(process.env.ROUTINE_LLM_TIMEOUT_MS ?? 25000),
+});
+
 setRoutineOpenAIClient(openai);
 
 
