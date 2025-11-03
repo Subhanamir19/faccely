@@ -5,6 +5,7 @@ import { REDIS } from "../config/index.js";
 
 let started = false;
 let closers: Array<() => Promise<void> | void> = [];
+type Closable = { close: () => Promise<void> };
 
 function maskRedis(url?: string | null) {
   if (!url) return "absent";
@@ -44,8 +45,8 @@ export async function bootQueues(): Promise<void> {
   while (attempt < maxAttempts && !started) {
     attempt++;
     try {
-      const workers = await startWorkers(); // will throw if Redis not ready
-      closers = workers.map((w) => () => w.close());
+      const { workers } = await startWorkers(); // will throw if Redis not ready
+      closers = workers.map((w: Closable) => () => w.close());
       started = true;
       console.log(`[QUEUES] workers started (redis=${masked})`);
       break;

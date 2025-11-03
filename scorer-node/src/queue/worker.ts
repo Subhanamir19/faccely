@@ -1,80 +1,77 @@
-// src/queue/worker.ts
-import { Worker, type Processor, type WorkerOptions } from "bullmq";
+// scorer-node/src/queue/worker.ts
+// BullMQ workers: wire OpenAI client inside the worker so generateRoutine has a client.
+
+import { Worker, QueueEvents, type Processor } from "bullmq";
+import OpenAI from "openai";
 import { getRedis } from "../lib/redis.js";
 import { QUEUES, SERVICE } from "../config/index.js";
+import { ENV } from "../env.js";
+
+// Same setter your HTTP routes use
+import { setRoutineOpenAIClient } from "../routes/routine.js";
 import { generateRoutine } from "../utils/generateRoutine.js";
-import { explainImageBytes } from "../explainer.js";
-import { scoreImageBytes } from "../scorer.js";
-import OpenAI from "openai";
+import type { Scores } from "../validators.js";
 
-/**
- * Boots BullMQ workers for heavy jobs.
- * - Uses the shared Redis connection
- * - Creates its own OpenAI client (workers run outside the web request)
- */
+type ClosableHandle = { close: () => Promise<void> };
+type WorkerBundle = { workers: ClosableHandle[]; stop: () => Promise<void> };
 
-type JobPayload = Record<string, any>;
+type RoutineJob = {
+  requestId?: string;
+  scores: Scores;                          // <- use your strict Scores type
+  protocolVersion?: string;
+  context?: Record<string, unknown>;
+};
 
-// single OpenAI client for worker processes
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+export async function buildWorker(): Promise<WorkerBundle> {
+  const connection = await getRedis();
+  if (!connection) throw new Error("Redis required for workers");
 
-function makeWorkerOptions(r: unknown): WorkerOptions {
-  // BullMQ accepts an ioredis instance for `connection`
-  return {
-    concurrency: 4,
-    connection: r as any,
-    prefix: SERVICE.name,
+  // CRITICAL: create and inject OpenAI for the worker runtime
+  const openai = new OpenAI({ apiKey: ENV.OPENAI_API_KEY });
+  setRoutineOpenAIClient(openai);
+
+  const routineProc: Processor<RoutineJob> = async (job) => {
+    const { scores, protocolVersion, context } = job.data ?? {};
+    if (!scores) throw new Error("routine job missing scores");
+    const contextHint =
+      protocolVersion || context
+        ? JSON.stringify({
+            ...(protocolVersion ? { protocolVersion } : {}),
+            ...(context ? { context } : {}),
+          })
+        : undefined;
+    // generateRoutine reads the injected client via setRoutineOpenAIClient(...)
+    return await generateRoutine(scores, contextHint, openai);
   };
+
+  const routineWorker = new Worker<RoutineJob>(QUEUES.routine, routineProc, {
+    connection,
+    concurrency: 3,
+    prefix: SERVICE.name || "scorer-node",
+    lockDuration: 60_000,
+    autorun: true,
+  });
+
+  // events (cheap hooks, ready for metrics later)
+  const routineEvents = new QueueEvents(QUEUES.routine, { connection, autorun: true });
+
+  routineWorker.on("failed", (job, err) => {
+    console.error("[worker:routine] failed", { id: job?.id, err: err?.message });
+  });
+  routineWorker.on("completed", (job) => {
+    console.log("[worker:routine] completed", { id: job?.id });
+  });
+
+  const closables: ClosableHandle[] = [routineWorker, routineEvents];
+  const stop = async () => {
+    for (const c of closables) {
+      await c.close();
+    }
+  };
+
+  return { stop, workers: closables };
 }
 
-async function buildWorker<Q extends string>(
-  queueName: Q,
-  processor: Processor<JobPayload>
-) {
-  const r = await getRedis();
-  if (!r) throw new Error("Redis required for workers");
-  const worker = new Worker(queueName, processor, makeWorkerOptions(r));
-
-  worker.on("ready", () => console.log(`[WORKER:${queueName}] ready`));
-  worker.on("active", (job) => console.log(`[WORKER:${queueName}] started job ${job.id}`));
-  worker.on("completed", (job) => console.log(`[WORKER:${queueName}] completed ${job.id}`));
-  worker.on("failed", (job, err) =>
-    console.error(`[WORKER:${queueName}] failed ${job?.id}:`, err?.message)
-  );
-
-  return worker;
-}
-
-/* --------------------------- Job processor logic --------------------------- */
-
-const analyzeProc: Processor = async (job) => {
-  const { buffer, mime } = job.data;
-  // NOTE: long-term we’ll pass hashes/urls, not buffers
-  const res = await scoreImageBytes(openai, buffer, mime);
-  return res;
-};
-
-const explainProc: Processor = async (job) => {
-  const { buffer, mime, scores } = job.data;
-  const res = await explainImageBytes(openai, buffer, mime, scores);
-  return res;
-};
-
-const routineProc: Processor = async (job) => {
-  const { scores, context } = job.data;
-  const res = await generateRoutine(scores, context);
-  return res;
-};
-
-/* --------------------------- Worker boot sequence -------------------------- */
-
-export async function startWorkers() {
-  const workers = await Promise.all([
-    buildWorker(QUEUES.analyze, analyzeProc),
-    buildWorker(QUEUES.explain, explainProc),
-    buildWorker(QUEUES.routine, routineProc),
-  ]);
-
-  console.log(`[WORKERS] launched → ${workers.length} workers`);
-  return workers;
+export async function startWorkers(): Promise<WorkerBundle> {
+  return buildWorker();
 }
