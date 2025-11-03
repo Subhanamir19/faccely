@@ -1,3 +1,4 @@
+// scorer-node/src/utils/generateRoutine.ts
 import { z } from "zod";
 
 import { RoutineSchema, type Routine } from "../schemas/RoutineSchema.js";
@@ -8,6 +9,9 @@ const MODEL = "gpt-4o-mini";
 const MAX_RESPONSE_BYTES = 800 * 1024;
 const DEFAULT_N_DAYS = 15;
 const TASKS_PER_DAY = 5;
+
+// NEW: strict cap for LLM runtime; keep env-driven to avoid API changes.
+const DEFAULT_LLM_TIMEOUT_MS = Number(process.env.ROUTINE_LLM_TIMEOUT_MS ?? 25_000);
 
 const responseFormat = { type: "json_object" as const };
 
@@ -22,11 +26,20 @@ type OpenAIClient = {
         messages: ChatMessage[];
         max_tokens: number;
         response_format: typeof responseFormat;
+        // NEW: allow AbortSignal for timeout propagation (supported by modern SDKs)
+        signal?: AbortSignal;
       }) => Promise<{
         choices: Array<{
           finish_reason?: string | null;
           message?: { content?: string | null };
         }>;
+        // NEW: usage/meta are optional in some SDKs; type them defensively
+        usage?: {
+          prompt_tokens?: number;
+          completion_tokens?: number;
+          total_tokens?: number;
+        } | null;
+        model?: string | null;
       }>;
     };
   };
@@ -54,6 +67,25 @@ type AttemptResult =
       finishReason: string | null | undefined;
       error: Error;
     };
+
+// --- NEW: Abort/timeout utility with cleanup ---
+function withAbortTimeout(parent: AbortSignal | undefined, ms: number) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  const onAbort = () => controller.abort();
+
+  if (parent) {
+    if (parent.aborted) controller.abort();
+    else parent.addEventListener("abort", onAbort, { once: true });
+  }
+
+  const cleanup = () => {
+    clearTimeout(timer);
+    if (parent) parent.removeEventListener("abort", onAbort);
+  };
+
+  return { signal: controller.signal, cleanup };
+}
 
 export function finalizeRoutine(r: any): Routine {
   const routine = RoutineSchema.parse(r);
@@ -151,67 +183,115 @@ async function runAttempt(
   path: "direct" | "repair",
   messages: ChatMessage[]
 ): Promise<AttemptResult> {
-  const completion = await openai.chat.completions.create({
-    model: MODEL,
-    temperature: 0.2,
-    messages,
-    max_tokens: 4000,
-    response_format: responseFormat,
-  });
-
-  const choice = completion.choices[0];
-  const finishReason = choice?.finish_reason;
-  const raw = choice?.message?.content?.trim() ?? "";
-
-  const rawLength = raw.length;
-  const hasClosingBrace = /}\s*$/.test(raw);
-
-  const byteLength = Buffer.byteLength(raw, "utf8");
-  if (byteLength > MAX_RESPONSE_BYTES) {
-    const error = new Error(
-      `Routine response exceeded ${MAX_RESPONSE_BYTES} bytes (${byteLength}).`
-    );
-    return { success: false, raw, finishReason, error };
-  }
-
-  const { parsed, dayCount, counts } = attemptParse(raw);
-
-  console.log("[generateRoutine] guard", {
-    path,
-    rawLength,
-    hasClosingBrace,
-    dayCount,
-    counts,
-    targetDays: DEFAULT_N_DAYS,
-  });
-
-  if (!parsed) {
-    const error = new Error("Routine response was not valid JSON.");
-    return { success: false, raw, finishReason, error };
-  }
-
-  if (finishReason === "length") {
-    const error = new Error("Routine response was truncated.");
-    return { success: false, raw, finishReason, error };
-  }
+  // NEW: wall-clock + abortable LLM call
+  const t0 = Date.now();
+  const { signal, cleanup } = withAbortTimeout(undefined, DEFAULT_LLM_TIMEOUT_MS);
 
   try {
-    const routine = finalizeRoutine(parsed);
-    return { success: true, routine };
-  } catch (err) {
-    if (err instanceof z.ZodError) {
-      return {
-        success: false,
-        raw,
-        finishReason,
-        error: new Error(`Routine schema validation failed: ${err.message}`),
-      };
+    const completion = await openai.chat.completions.create({
+      model: MODEL,
+      temperature: 0.2,
+      messages,
+      max_tokens: 4000,
+      response_format: responseFormat,
+      signal, // hard timeout protection
+    });
+
+    const t1 = Date.now();
+    const latency_ms = t1 - t0;
+
+    const choice = completion.choices[0];
+    const finishReason = choice?.finish_reason ?? null;
+    const raw = choice?.message?.content?.trim() ?? "";
+
+    // Meta: token usage if available
+    const meta = {
+      model: completion.model ?? MODEL,
+      tokens_in: completion.usage?.prompt_tokens ?? undefined,
+      tokens_out: completion.usage?.completion_tokens ?? undefined,
+      total_tokens: completion.usage?.total_tokens ?? undefined,
+      latency_ms,
+      finish_reason: finishReason,
+      path,
+    };
+
+    // Size guard before parsing
+    const byteLength = Buffer.byteLength(raw, "utf8");
+    if (byteLength > MAX_RESPONSE_BYTES) {
+      const error = new Error(
+        `Routine response exceeded ${MAX_RESPONSE_BYTES} bytes (${byteLength}).`
+      );
+      // Structured log to aid Phase 2 observability (pino later; console for now)
+      console.warn("[generateRoutine] oversize", { ...meta, byteLength });
+      return { success: false, raw, finishReason, error };
     }
-    const error =
-      err instanceof Error
-        ? err
-        : new Error(`Routine validation failed: ${String(err)}`);
-    return { success: false, raw, finishReason, error };
+
+    const rawLength = raw.length;
+    const hasClosingBrace = /}\s*$/.test(raw);
+
+    const { parsed, dayCount, counts } = attemptParse(raw);
+
+    console.log("[generateRoutine] guard", {
+      ...meta,
+      rawLength,
+      hasClosingBrace,
+      dayCount,
+      counts,
+      targetDays: DEFAULT_N_DAYS,
+    });
+
+    if (!parsed) {
+      const error = new Error("Routine response was not valid JSON.");
+      return { success: false, raw, finishReason, error };
+    }
+
+    if (finishReason === "length") {
+      const error = new Error("Routine response was truncated.");
+      return { success: false, raw, finishReason, error };
+    }
+
+    try {
+      const routine = finalizeRoutine(parsed);
+      return { success: true, routine };
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return {
+          success: false,
+          raw,
+          finishReason,
+          error: new Error(`Routine schema validation failed: ${err.message}`),
+        };
+      }
+      const error =
+        err instanceof Error
+          ? err
+          : new Error(`Routine validation failed: ${String(err)}`);
+      return { success: false, raw, finishReason, error };
+    }
+  } catch (err: any) {
+    // Normalize timeout vs generic failure
+    if (err?.name === "AbortError") {
+      const elapsed = Date.now() - t0;
+      const e = new Error(
+        `LLM timeout after ${elapsed} ms (limit ${DEFAULT_LLM_TIMEOUT_MS} ms)`
+      );
+      (e as any).code = "LLM_TIMEOUT";
+      console.error("[generateRoutine] timeout", {
+        path,
+        elapsed_ms: elapsed,
+        limit_ms: DEFAULT_LLM_TIMEOUT_MS,
+      });
+      return { success: false, raw: "", finishReason: "timeout", error: e };
+    }
+    console.error("[generateRoutine] attempt_error", { path, message: String(err) });
+    return {
+      success: false,
+      raw: "",
+      finishReason: "error",
+      error: err instanceof Error ? err : new Error(String(err)),
+    };
+  } finally {
+    cleanup();
   }
 }
 

@@ -82,10 +82,10 @@ async function ensureQueues() {
 function defaultJobOptions(): JobsOptions {
   return {
     // give jobs a reasonable TTL in queue if workers are down
-    removeOnComplete: { age: 3600, count: 1000 },
-    removeOnFail: { age: 86400, count: 1000 },
+    removeOnComplete: { age: 3600, count: 2000 },
+    removeOnFail: { age: 86400, count: 2000 },
     attempts: 3,
-    backoff: { type: "exponential", delay: 1000 },
+    backoff: { type: "exponential", delay: 2000 },
   };
 }
 

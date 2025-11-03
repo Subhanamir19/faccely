@@ -14,6 +14,7 @@ import jobsRouter from "./routes/jobs.js";           // ← add this
 import { idempotency } from "./middleware/idempotency.js";
 import { bootQueues, queuesProbe } from "./queue/index.js";
 import routineAsyncRouter from "./routes/routineAsync.js";
+import { initMetrics } from "./observability/metrics.js";
 
 
 
@@ -52,6 +53,9 @@ import {
 
 const app = express();
 app.set("trust proxy", 1); // we are behind Railway's proxy; needed for correct client IPs
+
+// Mount metrics early; harmless order-wise
+initMetrics(app, { enabled: true, path: "/metrics" }); // <-- ADD THIS
 
 const openai = new OpenAI({ apiKey: ENV.OPENAI_API_KEY });
 setRoutineOpenAIClient(openai);

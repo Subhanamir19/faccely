@@ -1,3 +1,4 @@
+// src/routes/jobs.ts
 import { Router } from "express";
 import { Queue, Job } from "bullmq";
 import { QUEUES, SERVICE } from "../config/index.js";
@@ -19,9 +20,10 @@ async function openQueue(name: KnownQueueName): Promise<Queue | null> {
 }
 
 async function findJob(id: string, queueHint?: string) {
-  const names = queueHint && (KNOWN_QUEUES as string[]).includes(queueHint)
-    ? [queueHint as KnownQueueName]
-    : KNOWN_QUEUES;
+  const names =
+    queueHint && (KNOWN_QUEUES as string[]).includes(queueHint)
+      ? [queueHint as KnownQueueName]
+      : KNOWN_QUEUES;
 
   for (const name of names) {
     const q = await openQueue(name);
@@ -41,7 +43,9 @@ function trimIfBig(v: unknown) {
     const s = JSON.stringify(v);
     if (s.length > 180_000) return { truncated: true, bytes: s.length };
     return v;
-  } catch { return undefined; }
+  } catch {
+    return undefined;
+  }
 }
 
 const router = Router();
@@ -62,9 +66,22 @@ router.get("/:id", async (req, res) => {
     let result: unknown;
     let error: unknown;
 
-    if (state === "completed") result = trimIfBig(job.returnvalue);
+    if (state === "completed") {
+      result = trimIfBig(job.returnvalue);
+
+      // Write-through to idempotency layer if present
+      try {
+        await res.locals.idempotency?.setCompleted?.(result);
+      } catch (e) {
+        console.warn("[idempotency:setCompleted] failed", (e as Error)?.message);
+      }
+    }
+
     if (state === "failed") {
-      error = { message: job.failedReason, stacktraces: job.stacktrace?.slice(0, 3) };
+      error = {
+        message: job.failedReason,
+        stacktraces: job.stacktrace?.slice(0, 3),
+      };
     }
 
     res.json({
@@ -81,7 +98,9 @@ router.get("/:id", async (req, res) => {
       },
     });
   } catch (e: any) {
-    res.status(500).json({ error: "job_lookup_failed", detail: String(e?.message || e) });
+    res
+      .status(500)
+      .json({ error: "job_lookup_failed", detail: String(e?.message || e) });
   }
 });
 

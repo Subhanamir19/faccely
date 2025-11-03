@@ -3,29 +3,55 @@ import { createHash } from "node:crypto";
 import type { Request, Response, NextFunction } from "express";
 import { TTL, SERVICE } from "../config/index.js";
 import { getRequestId } from "./requestId.js";
-import { getRedis, redisSetEx, k as kNS } from "../lib/redis.js";
+import { getRedis, k as kNS } from "../lib/redis.js";
 
 /**
- * Idempotency guard for write-ish or heavy endpoints.
+ * Idempotency guard with replay.
  *
  * Behavior:
- * - If client sends X-Idempotency-Key, we honor it.
- * - Else we derive a key from method + path + query + body snapshot.
- * - We try to "claim" the key in Redis with NX + TTL.
- * - If claim fails, we return 409 Conflict (duplicate_request).
+ * - Key: prefer client "X-Idempotency-Key"; else derive from method|path|query|body.
+ * - On hit:
+ *    • state=PENDING → 202 with original { job_id, status_url, queue }
+ *    • state=COMPLETED → 200 with stored response body
+ * - On miss:
+ *    • claim the key (NX) with TTL, attach helpers on res.locals to record PENDING/COMPLETED
+ *    • proceed to route handler (which enqueues job and calls setPending)
  *
- * Notes:
- * - Works even when Redis is absent: falls back to process-local Map (best effort).
- * - Attach the resolved key to res.locals.idempotencyKey and echo as header.
- * - Place AFTER JSON parser (and, if you want file content in the key, after Multer).
+ * Works without Redis via process-local fallback (best effort).
  */
 
 const HEADER = "x-idempotency-key";
-const localClaims = new Map<string, number>(); // fallback when Redis is off
+const localStore = new Map<
+  string,
+  {
+    state: "PENDING" | "COMPLETED";
+    job_id?: string;
+    status_url?: string;
+    body?: any;
+    queue?: string;
+    claimedAt: number;
+  }
+>();
+
+type RecordShape = {
+  state: "PENDING" | "COMPLETED";
+  job_id?: string;
+  status_url?: string;
+  body?: any;
+  queue?: string;
+  claimedAt: number;
+};
 
 function stableJson(x: unknown): string {
   try {
-    return JSON.stringify(x, Object.keys(x as object).sort());
+    if (x && typeof x === "object" && !Array.isArray(x)) {
+      const obj = x as Record<string, unknown>;
+      const keys = Object.keys(obj).sort();
+      const out: Record<string, unknown> = {};
+      for (const k of keys) out[k] = obj[k];
+      return JSON.stringify(out);
+    }
+    return JSON.stringify(x);
   } catch {
     return "";
   }
@@ -35,7 +61,6 @@ function deriveKey(req: Request): string {
   const provided = String(req.headers[HEADER] ?? "").trim();
   if (provided) return provided;
 
-  // Avoid pulling huge buffers here; keep it cheap and deterministic.
   const basis = [
     req.method.toUpperCase(),
     req.path,
@@ -47,49 +72,143 @@ function deriveKey(req: Request): string {
   return `${SERVICE.name}:idem:${h}`;
 }
 
+// ==== Redis helpers (ioredis-style positional args) ====
+
+async function redisGet(nsKey: string): Promise<RecordShape | null> {
+  const r = await getRedis().catch(() => null);
+  if (!r) return null;
+  const raw = await (r as any).get(nsKey);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as RecordShape;
+  } catch {
+    return null;
+  }
+}
+
+async function redisSetNX(nsKey: string, value: RecordShape, ttlS: number): Promise<boolean> {
+  const r = await getRedis().catch(() => null);
+  if (!r) return false;
+  // ioredis: set key value 'EX' ttl 'NX'
+  const res = await (r as any).set(nsKey, JSON.stringify(value), "EX", ttlS, "NX");
+  return res === "OK";
+}
+
+async function redisSet(nsKey: string, value: RecordShape, ttlS: number): Promise<void> {
+  const r = await getRedis().catch(() => null);
+  if (!r) return;
+  // ioredis: set key value 'EX' ttl
+  await (r as any).set(nsKey, JSON.stringify(value), "EX", ttlS);
+}
+
+// ======================================================
+
 export function idempotency() {
   return async function idempotencyMiddleware(req: Request, res: Response, next: NextFunction) {
     const key = deriveKey(req);
+    const nsKey = kNS("idem", key);
     res.setHeader("X-Idempotency-Key", key);
     res.locals.idempotencyKey = key;
 
-    // Tag logs via request id if present
-    const rid = getRequestId();
-    const nsKey = kNS("idem", key);
+    const ttlS = Number(TTL?.idempotencyS ?? 15 * 60);
+    const _rid = getRequestId(); // tagging hook if you log per-request
 
-    // Prefer Redis when available
+    // 1) Redis path
     try {
-      const r = await getRedis();
-      if (r) {
-        // SET NX with TTL
-        const ok = await r.set(nsKey, rid ?? "1", "EX", TTL.idempotencyS, "NX");
-        if (ok !== "OK") {
-          return res.status(409).json({
-            error: "duplicate_request",
-            hint: "An identical request is already being processed. Retry later.",
+      const existing = await redisGet(nsKey);
+      if (existing) {
+        if (existing.state === "COMPLETED") {
+          return res.status(200).json(existing.body);
+        }
+        if (existing.state === "PENDING") {
+          return res.status(202).json({
+            job_id: existing.job_id,
+            status_url: existing.status_url,
+            queue: existing.queue ?? SERVICE.name,
+            idempotencyKey: key,
           });
         }
-        return next();
       }
-    } catch (e) {
-      // fall through to local map
-      console.warn("[idem] Redis unavailable, using local fallback:", (e as Error)?.message);
-    }
 
-    // Local best-effort fallback
-    const now = Date.now();
-    const seenAt = localClaims.get(key);
-    if (seenAt && now - seenAt < TTL.idempotencyS * 1000) {
-      return res.status(409).json({
-        error: "duplicate_request",
-        hint: "An identical request is already being processed. Retry later.",
-      });
+      // Claim NX with TTL
+      const claimed: RecordShape = {
+        state: "PENDING",
+        claimedAt: Date.now(),
+        job_id: undefined,
+        status_url: undefined,
+        queue: SERVICE.name,
+      };
+      const ok = await redisSetNX(nsKey, claimed, ttlS);
+      if (!ok) {
+        const again = await redisGet(nsKey);
+        if (again?.state === "COMPLETED") {
+          return res.status(200).json(again.body);
+        }
+        return res.status(202).json({
+          job_id: again?.job_id,
+          status_url: again?.status_url,
+          queue: again?.queue ?? SERVICE.name,
+          idempotencyKey: key,
+        });
+      }
+
+      // Attach helpers for route to write-through
+      res.locals.idempotency = {
+        key,
+        async setPending(job_id: string, status_url: string) {
+          const cur = (await redisGet(nsKey)) ?? { state: "PENDING", claimedAt: Date.now(), queue: SERVICE.name };
+          await redisSet(nsKey, { ...cur, state: "PENDING", job_id, status_url, queue: SERVICE.name }, ttlS);
+        },
+        async setCompleted(body: any) {
+          const cur = (await redisGet(nsKey)) ?? { state: "PENDING", claimedAt: Date.now(), queue: SERVICE.name };
+          await redisSet(nsKey, { ...cur, state: "COMPLETED", body, queue: SERVICE.name }, ttlS);
+        },
+      };
+
+      return next();
+    } catch (e) {
+      // 2) Local fallback
+      console.warn("[idem] Redis unavailable; falling back to local store:", (e as Error)?.message);
+
+      const now = Date.now();
+      const local = localStore.get(key);
+      if (local) {
+        if (local.state === "COMPLETED") {
+          return res.status(200).json(local.body);
+        }
+        if (now - local.claimedAt < ttlS * 1000) {
+          return res.status(202).json({
+            job_id: local.job_id,
+            status_url: local.status_url,
+            queue: local.queue ?? SERVICE.name,
+            idempotencyKey: key,
+          });
+        }
+      }
+
+      const record: RecordShape = { state: "PENDING", claimedAt: now, queue: SERVICE.name };
+      localStore.set(key, record);
+
+      res.locals.idempotency = {
+        key,
+        async setPending(job_id: string, status_url: string) {
+          const cur = localStore.get(key) ?? record;
+          localStore.set(key, { ...cur, state: "PENDING", job_id, status_url, queue: SERVICE.name });
+        },
+        async setCompleted(body: any) {
+          const cur = localStore.get(key) ?? record;
+          localStore.set(key, { ...cur, state: "COMPLETED", body, queue: SERVICE.name });
+        },
+      };
+
+      // prune expired
+      if (localStore.size > 5000) {
+        for (const [k, rec] of localStore) {
+          if (now - rec.claimedAt > ttlS * 1000) localStore.delete(k);
+        }
+      }
+
+      return next();
     }
-    localClaims.set(key, now);
-    // lazy cleanup
-    if (localClaims.size > 5000) {
-      for (const [k, t] of localClaims) if (now - t > TTL.idempotencyS * 1000) localClaims.delete(k);
-    }
-    next();
   };
 }
