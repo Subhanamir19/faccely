@@ -1,16 +1,21 @@
 // scorer-node/src/utils/generateRoutine.ts
 import { z } from "zod";
+import { createHash } from "node:crypto";
 
 import { RoutineSchema, type Routine } from "../schemas/RoutineSchema.js";
 import type { Scores } from "../validators.js";
 import { PROTOCOL_LIBRARY } from "../data/protocolLibrary.js";
+
+// NEW: Redis helpers for caching
+import { redisGet, redisSetEx, k as kNS } from "../lib/redis.js";
+import { TTL } from "../config/index.js";
 
 const MODEL = "gpt-4o-mini";
 const MAX_RESPONSE_BYTES = 800 * 1024;
 const DEFAULT_N_DAYS = 15;
 const TASKS_PER_DAY = 5;
 
-// NEW: strict cap for LLM runtime; keep env-driven to avoid API changes.
+// strict cap for LLM runtime; env-driven
 const DEFAULT_LLM_TIMEOUT_MS = Number(process.env.ROUTINE_LLM_TIMEOUT_MS ?? 25_000);
 
 const responseFormat = { type: "json_object" as const };
@@ -26,14 +31,12 @@ type OpenAIClient = {
         messages: ChatMessage[];
         max_tokens: number;
         response_format: typeof responseFormat;
-        // NEW: allow AbortSignal for timeout propagation (supported by modern SDKs)
         signal?: AbortSignal;
       }) => Promise<{
         choices: Array<{
           finish_reason?: string | null;
           message?: { content?: string | null };
         }>;
-        // NEW: usage/meta are optional in some SDKs; type them defensively
         usage?: {
           prompt_tokens?: number;
           completion_tokens?: number;
@@ -68,7 +71,32 @@ type AttemptResult =
       error: Error;
     };
 
-// --- NEW: Abort/timeout utility with cleanup ---
+// ---------- Cache key helpers ----------
+function canonicalize(x: unknown): string {
+  if (x === null || typeof x !== "object") return JSON.stringify(x);
+  if (Array.isArray(x)) return `[${x.map(canonicalize).join(",")}]`;
+  const entries = Object.entries(x as Record<string, unknown>).sort(([a], [b]) =>
+    a < b ? -1 : a > b ? 1 : 0
+  );
+  return `{${entries.map(([k, v]) => JSON.stringify(k) + ":" + canonicalize(v)).join(",")}}`;
+}
+function sha256(s: string): string {
+  return createHash("sha256").update(s).digest("hex");
+}
+function buildCacheKey(scores: Scores, context_hint: string | undefined, n_days: number) {
+  // Include structural parameters so key changes when constraints change
+  const basis = {
+    scores,
+    context_hint: context_hint ?? null,
+    n_days,
+    tasks_per_day: TASKS_PER_DAY,
+    model: MODEL,
+  };
+  const h = sha256(canonicalize(basis));
+  return kNS("cache", "routine", h); // scorer-node:cache:routine:<hash>
+}
+
+// ---------- Abort/timeout utility ----------
 function withAbortTimeout(parent: AbortSignal | undefined, ms: number) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), ms);
@@ -146,6 +174,31 @@ export async function generateRoutine(
     throw new Error("generateRoutine requires an OpenAI client instance.");
   }
 
+  // ---------- Cache: read-through ----------
+  const cacheKey = buildCacheKey(scores, context_hint, n_days);
+  try {
+    const cached = await redisGet(cacheKey);
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        const routine = finalizeRoutine(parsed);
+        console.log("[routine-cache] HIT", { key: cacheKey });
+        return routine;
+      } catch (e) {
+        console.warn("[routine-cache] CORRUPT_EVICT", {
+          key: cacheKey,
+          err: (e as Error)?.message,
+        });
+        // Best-effort: let fresh generation proceed
+      }
+    } else {
+      console.log("[routine-cache] MISS", { key: cacheKey });
+    }
+  } catch (e) {
+    console.warn("[routine-cache] READ_FAIL", { err: (e as Error)?.message });
+    // proceed without cache
+  }
+
   const baseMessages: ChatMessage[] = [
     { role: "system", content: buildPrimarySystemPrompt(n_days) },
     { role: "user", content: buildPrimaryUserPrompt(scores, context_hint, n_days) },
@@ -154,6 +207,8 @@ export async function generateRoutine(
   const direct = await runAttempt(openai, "direct", baseMessages);
 
   if (direct.success) {
+    // write-through cache
+    void tryStore(cacheKey, direct.routine);
     return direct.routine;
   }
 
@@ -168,6 +223,7 @@ export async function generateRoutine(
   const repair = await runAttempt(openai, "repair", repairMessages);
 
   if (repair.success) {
+    void tryStore(cacheKey, repair.routine);
     return repair.routine;
   }
 
@@ -178,12 +234,22 @@ export async function generateRoutine(
   throw error;
 }
 
+async function tryStore(cacheKey: string, routine: Routine) {
+  try {
+    const ok = await redisSetEx(cacheKey, TTL.routineS, JSON.stringify(routine));
+    if (ok) console.log("[routine-cache] STORE", { key: cacheKey, ttl_s: TTL.routineS });
+    else console.log("[routine-cache] STORE_SKIP_NOREDIS", { key: cacheKey });
+  } catch (e) {
+    console.warn("[routine-cache] STORE_FAIL", { key: cacheKey, err: (e as Error)?.message });
+  }
+}
+
 async function runAttempt(
   openai: OpenAIClient,
   path: "direct" | "repair",
   messages: ChatMessage[]
 ): Promise<AttemptResult> {
-  // NEW: wall-clock + abortable LLM call
+  // wall-clock + abortable LLM call
   const t0 = Date.now();
   const { signal, cleanup } = withAbortTimeout(undefined, DEFAULT_LLM_TIMEOUT_MS);
 
@@ -194,7 +260,7 @@ async function runAttempt(
       messages,
       max_tokens: 4000,
       response_format: responseFormat,
-      signal, // hard timeout protection
+      signal,
     });
 
     const t1 = Date.now();
@@ -204,7 +270,6 @@ async function runAttempt(
     const finishReason = choice?.finish_reason ?? null;
     const raw = choice?.message?.content?.trim() ?? "";
 
-    // Meta: token usage if available
     const meta = {
       model: completion.model ?? MODEL,
       tokens_in: completion.usage?.prompt_tokens ?? undefined,
@@ -221,14 +286,12 @@ async function runAttempt(
       const error = new Error(
         `Routine response exceeded ${MAX_RESPONSE_BYTES} bytes (${byteLength}).`
       );
-      // Structured log to aid Phase 2 observability (pino later; console for now)
       console.warn("[generateRoutine] oversize", { ...meta, byteLength });
       return { success: false, raw, finishReason, error };
     }
 
     const rawLength = raw.length;
     const hasClosingBrace = /}\s*$/.test(raw);
-
     const { parsed, dayCount, counts } = attemptParse(raw);
 
     console.log("[generateRoutine] guard", {
@@ -269,7 +332,6 @@ async function runAttempt(
       return { success: false, raw, finishReason, error };
     }
   } catch (err: any) {
-    // Normalize timeout vs generic failure
     if (err?.name === "AbortError") {
       const elapsed = Date.now() - t0;
       const e = new Error(
