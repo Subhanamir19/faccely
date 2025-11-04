@@ -10,8 +10,7 @@ const MAX_RESPONSE_BYTES = 800 * 1024;
 const DEFAULT_N_DAYS = 15;
 const TASKS_PER_DAY = 5;
 
-// Keep as a config hint for logs/observability. The actual timeout is enforced
-// by the OpenAI client (worker constructs it with `timeout`) and the worker wall-clock.
+// NEW: strict cap for LLM runtime; keep env-driven to avoid API changes.
 const DEFAULT_LLM_TIMEOUT_MS = Number(process.env.ROUTINE_LLM_TIMEOUT_MS ?? 25_000);
 
 const responseFormat = { type: "json_object" as const };
@@ -27,7 +26,6 @@ type OpenAIClient = {
         messages: ChatMessage[];
         max_tokens: number;
         response_format: typeof responseFormat;
-        // DO NOT pass AbortSignal here. Some SDK builds reject unknown args.
       }) => Promise<{
         choices: Array<{
           finish_reason?: string | null;
@@ -48,15 +46,33 @@ function normalizeProtocol(value: string): string {
   return value.trim().replace(/\s+/g, " ");
 }
 
-// Strict enforcement OFF by default; opt-in only via env.
+// Strict enforcement OFF by default; opt-in only.
 const STRICT_SAUCE =
   String(process.env.ROUTINE_STRICT_SAUCE ?? "").toLowerCase() === "true";
 
+// Library sets and helpers
+type ProtocolCategory = keyof typeof PROTOCOL_LIBRARY;
+const CATEGORY_KEYS = Object.keys(PROTOCOL_LIBRARY) as ProtocolCategory[];
+
 const ALLOWED_SET = new Set<string>(
-  Object.values(PROTOCOL_LIBRARY)
-    .flat()
-    .map((p) => normalizeProtocol(p))
+  Object.values(PROTOCOL_LIBRARY).flat().map((p) => normalizeProtocol(p))
 );
+
+// Pick a deterministic safe default from the Sauce (first entry of first category)
+const SAFE_DEFAULT_PROTOCOL: string = (() => {
+  for (const key of CATEGORY_KEYS) {
+    const arr = PROTOCOL_LIBRARY[key] as readonly string[];
+    if (Array.isArray(arr) && arr.length) return normalizeProtocol(arr[0]);
+  }
+  
+  // Absolute fallback if library were empty (shouldn’t happen)
+  return "Nasal breathe 5 min";
+})();
+
+function looksLikeVersionTag(s: string) {
+  const t = s.trim().toLowerCase();
+  return t === "v1" || t === "v2" || /^v\d+$/i.test(t);
+}
 
 type AttemptResult =
   | { success: true; routine: Routine }
@@ -66,6 +82,11 @@ type AttemptResult =
       finishReason: string | null | undefined;
       error: Error;
     };
+
+// --- Abort/timeout utility (outer worker enforces wall-clock) ---
+function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
+}
 
 export function finalizeRoutine(r: any): Routine {
   const routine = RoutineSchema.parse(r);
@@ -86,6 +107,7 @@ export function finalizeRoutine(r: any): Routine {
   }
 
   if (STRICT_SAUCE) {
+    // Hard enforcement
     for (const d of routine.days) {
       for (const c of d.components) {
         const normalizedProtocol = normalizeProtocol(c.protocol);
@@ -99,21 +121,36 @@ export function finalizeRoutine(r: any): Routine {
       }
     }
   } else {
-    // Lenient mode: warn, don’t block
-    for (const d of routine.days) {
-      for (const c of d.components) {
-        const normalizedProtocol = normalizeProtocol(c.protocol);
-        if (!ALLOWED_SET.has(normalizedProtocol)) {
-          console.warn("[routine] lenient pass for protocol", {
-            protocol: c.protocol,
-            normalizedProtocol,
-          });
-        }
-      }
-    }
+    // Lenient: warn, then sanitize obvious garbage like version tags
+    cleanRoutineInLenientMode(routine);
   }
 
   return routine;
+}
+
+// NEW: lenient sanitizer – only for CLEAR junk like "v1"/"v2" etc.
+function cleanRoutineInLenientMode(routine: Routine) {
+  for (const d of routine.days) {
+    for (const c of d.components) {
+      const np = normalizeProtocol(c.protocol);
+      if (ALLOWED_SET.has(np)) continue;
+
+      if (looksLikeVersionTag(np)) {
+        console.warn("[routine] fixed version-like protocol", {
+          bad_protocol: c.protocol,
+          replaced_with: SAFE_DEFAULT_PROTOCOL,
+        });
+        c.protocol = SAFE_DEFAULT_PROTOCOL;
+        continue;
+      }
+
+      // Keep warning for any other unknowns. We do NOT auto-fix arbitrary text.
+      console.warn("[routine] lenient pass for protocol", {
+        protocol: c.protocol,
+        normalizedProtocol: np,
+      });
+    }
+  }
 }
 
 export async function generateRoutine(
@@ -132,15 +169,24 @@ export async function generateRoutine(
   ];
 
   const direct = await runAttempt(openai, "direct", baseMessages);
-  if (direct.success) return direct.routine;
+
+  if (direct.success) {
+    return direct.routine;
+  }
 
   const repairMessages: ChatMessage[] = [
     { role: "system", content: buildRepairSystemPrompt() },
-    { role: "user", content: buildRepairUserPrompt(direct.raw, scores, context_hint) },
+    {
+      role: "user",
+      content: buildRepairUserPrompt(direct.raw, scores, context_hint),
+    },
   ];
 
   const repair = await runAttempt(openai, "repair", repairMessages);
-  if (repair.success) return repair.routine;
+
+  if (repair.success) {
+    return repair.routine;
+  }
 
   const error = new Error(
     `Routine generation failed after repair attempt: ${repair.error.message}`
@@ -157,13 +203,13 @@ async function runAttempt(
   const t0 = Date.now();
 
   try {
+    // Use OpenAI client’s own timeout (configured in worker); no AbortSignal.
     const completion = await openai.chat.completions.create({
       model: MODEL,
       temperature: 0.2,
       messages,
       max_tokens: 4000,
       response_format: responseFormat,
-      // No `signal` here. Timeout handled by client construction and worker guard.
     });
 
     const t1 = Date.now();
@@ -181,10 +227,8 @@ async function runAttempt(
       latency_ms,
       finish_reason: finishReason,
       path,
-      llm_timeout_hint_ms: DEFAULT_LLM_TIMEOUT_MS,
     };
 
-    // Size guard before parsing
     const byteLength = Buffer.byteLength(raw, "utf8");
     if (byteLength > MAX_RESPONSE_BYTES) {
       const error = new Error(
@@ -196,6 +240,7 @@ async function runAttempt(
 
     const rawLength = raw.length;
     const hasClosingBrace = /}\s*$/.test(raw);
+
     const { parsed, dayCount, counts } = attemptParse(raw);
 
     console.log("[generateRoutine] guard", {
@@ -205,6 +250,7 @@ async function runAttempt(
       dayCount,
       counts,
       targetDays: DEFAULT_N_DAYS,
+      llm_timeout_hint_ms: DEFAULT_LLM_TIMEOUT_MS,
     });
 
     if (!parsed) {
@@ -236,11 +282,7 @@ async function runAttempt(
       return { success: false, raw, finishReason, error };
     }
   } catch (err: any) {
-    // If the OpenAI client times out, it will throw here (worker logs will show WORKER_TIMEOUT or client timeout).
-    console.error("[generateRoutine] attempt_error", {
-      path,
-      message: String(err?.message || err),
-    });
+    console.error("[generateRoutine] attempt_error", { path, message: String(err) });
     return {
       success: false,
       raw: "",
@@ -291,6 +333,7 @@ function buildPrimarySystemPrompt(n_days: number): string {
     `Schema: { "days":[{ "day":1,"components":[{ "headline":string,"category":string,"protocol":string } x${TASKS_PER_DAY}]} x${n_days}] }`,
     `Exactly ${n_days} days (1..${n_days}). Exactly ${TASKS_PER_DAY} components per day.`,
     "protocol MUST be chosen ONLY from the allowed library (The Sauce). Do NOT invent or paraphrase.",
+    "Never output version tags (e.g., v1, v2) or placeholders as protocols.",
     "category MUST be one of: Glass Skin, Debloating, Facial Symmetry, Maxilla, Hunter Eyes, Cheekbones, Nose, Jawline.",
     "Forbidden terms: makeup, contour, highlighter, bronzer, jade roller, mask, cream, serum, toner, facial yoga, selfie, visualization.",
     "If unsure, pick the closest valid protocol from the library. Never output forbidden items.",
@@ -309,6 +352,7 @@ function buildPrimaryUserPrompt(
   return [
     `Generate a ${n_days}-day routine with ${TASKS_PER_DAY} components/day using ONLY protocols from The Sauce.`,
     "Forbidden terms are disallowed under any circumstance.",
+    "Never output version tags (e.g., v1, v2) as protocols.",
     JSON.stringify(payload, null, 2),
     "Return JSON only matching the schema.",
   ].join("\n");
@@ -321,7 +365,12 @@ function buildRepairSystemPrompt(): string {
     "- Preserve meaningful content but fix structure/keys/lengths.",
     `- Output strictly valid JSON with the same schema described below.`,
     `- Exactly ${DEFAULT_N_DAYS} days numbered 1-${DEFAULT_N_DAYS}, each with ${TASKS_PER_DAY} components (headline, category, protocol).`,
-    "- No extra fields, comments, or prose.",
+    "- protocol MUST be chosen ONLY from the allowed library (The Sauce) below.",
+    "- Never output version tags (e.g., v1, v2) or placeholders as protocols.",
+    "- Apply the forbidden list exactly as stated (no makeup/contour/etc.).",
+    "Allowed protocol library (The Sauce):",
+    JSON.stringify(PROTOCOL_LIBRARY, null, 2),
+    "- No extra fields, comments, or prose. Output JSON only.",
   ].join("\n");
 }
 
