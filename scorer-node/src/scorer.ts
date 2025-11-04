@@ -7,6 +7,9 @@ import crypto from "crypto";
 /* ------------------------------ Config/Env -------------------------------- */
 
 const MODEL = process.env.OPENAI_SCORES_MODEL || "gpt-4o";
+const FALLBACK_MODEL_ENV = process.env.OPENAI_SCORES_MODEL_FALLBACK?.trim();
+const FALLBACK_MODEL =
+  FALLBACK_MODEL_ENV && FALLBACK_MODEL_ENV.length > 0 ? FALLBACK_MODEL_ENV : "gpt-4o-mini";
 
 const CACHE_TTL_MS = Number(process.env.SCORE_CACHE_TTL_MS ?? 1000 * 60 * 60 * 24 * 30); // 30d
 const CACHE_MAX_ITEMS = Number(process.env.SCORE_CACHE_MAX_ITEMS ?? 5000); // simple LRU-ish cap
@@ -61,6 +64,14 @@ const memCache = new Map<string, CacheEntry>();
 const inFlight = new Map<string, Promise<Scores>>(); // in-flight de-duplication
 
 let scoresResponseFormatLogged = false;
+
+const MODEL_SEQUENCE: string[] = Array.from(
+  new Set(
+    [MODEL, FALLBACK_MODEL]
+      .map((m) => m?.trim())
+      .filter((m): m is string => !!m && m.length > 0)
+  )
+);
 
 function cacheGet(key: string): Scores | null {
   const now = Date.now();
@@ -226,7 +237,17 @@ const USER_PROMPT_SINGLE = `Score this face per the rubric. Return ONLY a JSON o
 
 const USER_PROMPT_PAIR = `Score using BOTH images (frontal then right-side). Return ONLY a JSON object with exactly these keys: ${SCORE_KEYS.join(
   ", "
-)}. Values must be integers 0–100 and should not preferentially end in 0 or 5. No extra fields.`.trim();
+)}. Values must be integers 0-100 and should not preferentially end in 0 or 5. No extra fields.`.trim();
+
+function isAllZero(scores: Scores): boolean {
+  return SCORE_KEYS.every((key) => scores[key] === 0);
+}
+
+function logModelFailure(scope: "single" | "pair", model: string, err: unknown, attempt: number) {
+  const message =
+    (err as any)?.message || (err as any)?.name || (typeof err === "string" ? err : "unknown_error");
+  console.warn(`[${scope}] model ${model} attempt ${attempt} failed: ${message}`);
+}
 
 /* --------------------------------- API ------------------------------------ */
 export async function scoreImageBytes(
@@ -259,42 +280,67 @@ export async function scoreImageBytes(
   }
 
   const task = (async () => {
-    const t1 = Date.now();
+    let lastErr: any = null;
 
-    const response_format: { type: "json_object"; json_schema?: unknown } = {
-      type: "json_object",
-    };
-    if (!scoresResponseFormatLogged) {
-      console.log("[RF-CHECK]", {
-        type: response_format.type,
-        hasSchema: !!response_format.json_schema,
-      });
-      scoresResponseFormatLogged = true;
+    for (let i = 0; i < MODEL_SEQUENCE.length; i++) {
+      const modelName = MODEL_SEQUENCE[i];
+      const attempt = i + 1;
+      const attemptStart = Date.now();
+
+      try {
+        const response_format: { type: "json_object"; json_schema?: unknown } = {
+          type: "json_object",
+        };
+        if (!scoresResponseFormatLogged) {
+          console.log("[RF-CHECK]", {
+            type: response_format.type,
+            hasSchema: !!response_format.json_schema,
+          });
+          scoresResponseFormatLogged = true;
+        }
+
+        const resp = await client.chat.completions.create({
+          model: modelName,
+          temperature: 0.1,
+          response_format,
+
+          messages: [
+            { role: "system", content: SYSTEM_MSG_SINGLE },
+            {
+              role: "user",
+              content: [
+                { type: "text", text: USER_PROMPT_SINGLE },
+                { type: "image_url", image_url: { url: dataUrl } },
+              ] as any,
+            },
+          ],
+        });
+        console.log(
+          `[single] openai ms (model=${modelName}) =`,
+          Date.now() - attemptStart
+        );
+
+        const raw = resp.choices?.[0]?.message?.content ?? "";
+        const parsed = parseScoresStrict(raw);
+        const adjusted = antiFiveSnap(parsed, `${key}|${modelName}`);
+
+        if (isAllZero(adjusted)) {
+          const err = new Error("llm_returned_all_zero_scores");
+          logModelFailure("single", modelName, err, attempt);
+          lastErr = err;
+          continue;
+        }
+
+        console.log("[single] FINAL ADJUSTED SCORES =>", adjusted);
+        cacheSet(key, adjusted);
+        return adjusted;
+      } catch (err: any) {
+        logModelFailure("single", modelName, err, attempt);
+        lastErr = err;
+      }
     }
-    const resp = await client.chat.completions.create({
-      model: MODEL,
-      temperature: 0.1,
-      response_format,
 
-      messages: [
-        { role: "system", content: SYSTEM_MSG_SINGLE },
-        {
-          role: "user",
-          content: [
-            { type: "text", text: USER_PROMPT_SINGLE },
-            { type: "image_url", image_url: { url: dataUrl } },
-          ] as any,
-        },
-      ],
-    });
-    console.log("[single] openai ms =", Date.now() - t1);
-
-    const raw = resp.choices?.[0]?.message?.content ?? "";
-    const parsed = parseScoresStrict(raw);
-    const adjusted = antiFiveSnap(parsed, key); // deterministic de-rounding
-    console.log("[single] FINAL ADJUSTED SCORES =>", adjusted);
-    cacheSet(key, adjusted);
-    return adjusted;
+    throw lastErr ?? new Error("score_generation_failed");
   })()
     .catch((e) => {
       throw e;
@@ -347,43 +393,67 @@ export async function scoreImagePairBytes(
   }
 
   const task = (async () => {
-    const t1 = Date.now();
+    let lastErr: any = null;
 
-    const response_format: { type: "json_object"; json_schema?: unknown } = {
-      type: "json_object",
-    };
-    if (!scoresResponseFormatLogged) {
-      console.log("[RF-CHECK]", {
-        type: response_format.type,
-        hasSchema: !!response_format.json_schema,
-      });
-      scoresResponseFormatLogged = true;
+    for (let i = 0; i < MODEL_SEQUENCE.length; i++) {
+      const modelName = MODEL_SEQUENCE[i];
+      const attempt = i + 1;
+      const attemptStart = Date.now();
+
+      try {
+        const response_format: { type: "json_object"; json_schema?: unknown } = {
+          type: "json_object",
+        };
+        if (!scoresResponseFormatLogged) {
+          console.log("[RF-CHECK]", {
+            type: response_format.type,
+            hasSchema: !!response_format.json_schema,
+          });
+          scoresResponseFormatLogged = true;
+        }
+        const resp = await client.chat.completions.create({
+          model: modelName,
+          temperature: 0.1,
+          response_format,
+
+          messages: [
+            { role: "system", content: SYSTEM_MSG_PAIR },
+            {
+              role: "user",
+              content: [
+                { type: "text", text: USER_PROMPT_PAIR },
+                { type: "image_url", image_url: { url: frontalDataUrl } },
+                { type: "image_url", image_url: { url: sideDataUrl } },
+              ] as any,
+            },
+          ],
+        });
+        console.log(
+          `[pair] openai ms (model=${modelName}) =`,
+          Date.now() - attemptStart
+        );
+
+        const raw = resp.choices?.[0]?.message?.content ?? "";
+        const parsed = parseScoresStrict(raw);
+        const adjusted = antiFiveSnap(parsed, `${key}|${modelName}`);
+
+        if (isAllZero(adjusted)) {
+          const err = new Error("llm_returned_all_zero_scores");
+          logModelFailure("pair", modelName, err, attempt);
+          lastErr = err;
+          continue;
+        }
+
+        console.log("[pair] FINAL ADJUSTED SCORES =>", adjusted);
+        cacheSet(key, adjusted);
+        return adjusted;
+      } catch (err: any) {
+        logModelFailure("pair", modelName, err, attempt);
+        lastErr = err;
+      }
     }
-    const resp = await client.chat.completions.create({
-      model: MODEL,
-      temperature: 0.1,
-      response_format,
 
-      messages: [
-        { role: "system", content: SYSTEM_MSG_PAIR },
-        {
-          role: "user",
-          content: [
-            { type: "text", text: USER_PROMPT_PAIR },
-            { type: "image_url", image_url: { url: frontalDataUrl } },
-            { type: "image_url", image_url: { url: sideDataUrl } },
-          ] as any,
-        },
-      ],
-    });
-    console.log("[pair] openai ms =", Date.now() - t1);
-
-    const raw = resp.choices?.[0]?.message?.content ?? "";
-    const parsed = parseScoresStrict(raw);
-    const adjusted = antiFiveSnap(parsed, key); // deterministic de-rounding
-    console.log("[pair] FINAL ADJUSTED SCORES =>", adjusted);
-    cacheSet(key, adjusted);
-    return adjusted;
+    throw lastErr ?? new Error("score_generation_failed");
   })()
     .catch((e) => {
       throw e;

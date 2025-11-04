@@ -40,12 +40,37 @@ const METRIC_KEYS: (keyof Scores)[] = [
 ];
 
 export function normalizeScores(raw: Partial<Scores> | null | undefined): Scores {
-  const safe: any = {};
-  for (const k of METRIC_KEYS) {
-    const v = (raw as any)?.[k];
-    safe[k] = typeof v === "number" && Number.isFinite(v) ? v : 0;
+  const sanitized: Partial<Scores> = {};
+  const missing: string[] = [];
+
+  for (const key of METRIC_KEYS) {
+    const value = (raw as any)?.[key];
+    const numeric =
+      typeof value === "number"
+        ? value
+        : typeof value === "string" && value.trim().length > 0
+        ? Number(value)
+        : NaN;
+
+    if (!Number.isFinite(numeric)) {
+      missing.push(key);
+      continue;
+    }
+
+    const clamped = Math.max(0, Math.min(100, Math.round(numeric)));
+    sanitized[key] = clamped as Scores[typeof key];
   }
-  return safe as Scores;
+
+  if (missing.length > 0) {
+    throw new Error("Analysis results were incomplete. Please retry the scan.");
+  }
+
+  const values = METRIC_KEYS.map((key) => sanitized[key] as number);
+  if (values.every((v) => v === 0)) {
+    throw new Error("Analysis returned empty scores. Please retry with a clearer photo.");
+  }
+
+  return sanitized as Scores;
 }
 
 /* -------------------------------------------------------------------------- */
