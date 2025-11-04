@@ -10,7 +10,8 @@ const MAX_RESPONSE_BYTES = 800 * 1024;
 const DEFAULT_N_DAYS = 15;
 const TASKS_PER_DAY = 5;
 
-// LLM timeout: handled via Promise.race (do NOT pass signal to SDK)
+// Keep as a config hint for logs/observability. The actual timeout is enforced
+// by the OpenAI client (worker constructs it with `timeout`) and the worker wall-clock.
 const DEFAULT_LLM_TIMEOUT_MS = Number(process.env.ROUTINE_LLM_TIMEOUT_MS ?? 25_000);
 
 const responseFormat = { type: "json_object" as const };
@@ -26,7 +27,7 @@ type OpenAIClient = {
         messages: ChatMessage[];
         max_tokens: number;
         response_format: typeof responseFormat;
-        // no 'signal' here; SDK was serializing it into JSON and server rejected it
+        // DO NOT pass AbortSignal here. Some SDK builds reject unknown args.
       }) => Promise<{
         choices: Array<{
           finish_reason?: string | null;
@@ -47,11 +48,14 @@ function normalizeProtocol(value: string): string {
   return value.trim().replace(/\s+/g, " ");
 }
 
+// Strict enforcement OFF by default; opt-in only via env.
 const STRICT_SAUCE =
   String(process.env.ROUTINE_STRICT_SAUCE ?? "").toLowerCase() === "true";
 
 const ALLOWED_SET = new Set<string>(
-  Object.values(PROTOCOL_LIBRARY).flat().map((p) => normalizeProtocol(p))
+  Object.values(PROTOCOL_LIBRARY)
+    .flat()
+    .map((p) => normalizeProtocol(p))
 );
 
 type AttemptResult =
@@ -95,6 +99,7 @@ export function finalizeRoutine(r: any): Routine {
       }
     }
   } else {
+    // Lenient mode: warn, don’t block
     for (const d of routine.days) {
       for (const c of d.components) {
         const normalizedProtocol = normalizeProtocol(c.protocol);
@@ -117,7 +122,9 @@ export async function generateRoutine(
   openai?: OpenAIClient,
   n_days: number = DEFAULT_N_DAYS
 ): Promise<Routine> {
-  if (!openai) throw new Error("generateRoutine requires an OpenAI client instance.");
+  if (!openai) {
+    throw new Error("generateRoutine requires an OpenAI client instance.");
+  }
 
   const baseMessages: ChatMessage[] = [
     { role: "system", content: buildPrimarySystemPrompt(n_days) },
@@ -131,6 +138,7 @@ export async function generateRoutine(
     { role: "system", content: buildRepairSystemPrompt() },
     { role: "user", content: buildRepairUserPrompt(direct.raw, scores, context_hint) },
   ];
+
   const repair = await runAttempt(openai, "repair", repairMessages);
   if (repair.success) return repair.routine;
 
@@ -148,110 +156,97 @@ async function runAttempt(
 ): Promise<AttemptResult> {
   const t0 = Date.now();
 
-  // Promise.race timeout; we do NOT pass 'signal' to the SDK
-  const llmCall = openai.chat.completions.create({
-    model: MODEL,
-    temperature: 0.2,
-    messages,
-    max_tokens: 4000,
-    response_format: responseFormat,
-  });
-
-  const timeout = new Promise<never>((_, rej) =>
-    setTimeout(() => {
-      const e: any = new Error(
-        `LLM timeout after ${Date.now() - t0} ms (limit ${DEFAULT_LLM_TIMEOUT_MS} ms)`
-      );
-      e.code = "LLM_TIMEOUT";
-      rej(e);
-    }, DEFAULT_LLM_TIMEOUT_MS)
-  );
-
-  let completion: Awaited<ReturnType<typeof openai.chat.completions.create>>;
   try {
-    completion = await Promise.race([llmCall, timeout]);
-  } catch (err: any) {
-    if (err?.code === "LLM_TIMEOUT") {
-      console.error("[generateRoutine] timeout", {
-        path,
-        elapsed_ms: Date.now() - t0,
-        limit_ms: DEFAULT_LLM_TIMEOUT_MS,
-      });
-      return { success: false, raw: "", finishReason: "timeout", error: err };
+    const completion = await openai.chat.completions.create({
+      model: MODEL,
+      temperature: 0.2,
+      messages,
+      max_tokens: 4000,
+      response_format: responseFormat,
+      // No `signal` here. Timeout handled by client construction and worker guard.
+    });
+
+    const t1 = Date.now();
+    const latency_ms = t1 - t0;
+
+    const choice = completion.choices[0];
+    const finishReason = choice?.finish_reason ?? null;
+    const raw = choice?.message?.content?.trim() ?? "";
+
+    const meta = {
+      model: completion.model ?? MODEL,
+      tokens_in: completion.usage?.prompt_tokens ?? undefined,
+      tokens_out: completion.usage?.completion_tokens ?? undefined,
+      total_tokens: completion.usage?.total_tokens ?? undefined,
+      latency_ms,
+      finish_reason: finishReason,
+      path,
+      llm_timeout_hint_ms: DEFAULT_LLM_TIMEOUT_MS,
+    };
+
+    // Size guard before parsing
+    const byteLength = Buffer.byteLength(raw, "utf8");
+    if (byteLength > MAX_RESPONSE_BYTES) {
+      const error = new Error(
+        `Routine response exceeded ${MAX_RESPONSE_BYTES} bytes (${byteLength}).`
+      );
+      console.warn("[generateRoutine] oversize", { ...meta, byteLength });
+      return { success: false, raw, finishReason, error };
     }
-    console.error("[generateRoutine] attempt_error", { path, message: String(err) });
+
+    const rawLength = raw.length;
+    const hasClosingBrace = /}\s*$/.test(raw);
+    const { parsed, dayCount, counts } = attemptParse(raw);
+
+    console.log("[generateRoutine] guard", {
+      ...meta,
+      rawLength,
+      hasClosingBrace,
+      dayCount,
+      counts,
+      targetDays: DEFAULT_N_DAYS,
+    });
+
+    if (!parsed) {
+      const error = new Error("Routine response was not valid JSON.");
+      return { success: false, raw, finishReason, error };
+    }
+
+    if (finishReason === "length") {
+      const error = new Error("Routine response was truncated.");
+      return { success: false, raw, finishReason, error };
+    }
+
+    try {
+      const routine = finalizeRoutine(parsed);
+      return { success: true, routine };
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return {
+          success: false,
+          raw,
+          finishReason,
+          error: new Error(`Routine schema validation failed: ${err.message}`),
+        };
+      }
+      const error =
+        err instanceof Error
+          ? err
+          : new Error(`Routine validation failed: ${String(err)}`);
+      return { success: false, raw, finishReason, error };
+    }
+  } catch (err: any) {
+    // If the OpenAI client times out, it will throw here (worker logs will show WORKER_TIMEOUT or client timeout).
+    console.error("[generateRoutine] attempt_error", {
+      path,
+      message: String(err?.message || err),
+    });
     return {
       success: false,
       raw: "",
       finishReason: "error",
       error: err instanceof Error ? err : new Error(String(err)),
     };
-  }
-
-  const t1 = Date.now();
-  const latency_ms = t1 - t0;
-
-  const choice = completion.choices[0];
-  const finishReason = choice?.finish_reason ?? null;
-  const raw = choice?.message?.content?.trim() ?? "";
-
-  const meta = {
-    model: completion.model ?? MODEL,
-    tokens_in: completion.usage?.prompt_tokens ?? undefined,
-    tokens_out: completion.usage?.completion_tokens ?? undefined,
-    total_tokens: completion.usage?.total_tokens ?? undefined,
-    latency_ms,
-    finish_reason: finishReason,
-    path,
-  };
-
-  const byteLength = Buffer.byteLength(raw, "utf8");
-  if (byteLength > MAX_RESPONSE_BYTES) {
-    console.warn("[generateRoutine] oversize", { ...meta, byteLength });
-    const error = new Error(
-      `Routine response exceeded ${MAX_RESPONSE_BYTES} bytes (${byteLength}).`
-    );
-    return { success: false, raw, finishReason, error };
-  }
-
-  const rawLength = raw.length;
-  const hasClosingBrace = /}\s*$/.test(raw);
-  const { parsed, dayCount, counts } = attemptParse(raw);
-
-  console.log("[generateRoutine] guard", {
-    ...meta,
-    rawLength,
-    hasClosingBrace,
-    dayCount,
-    counts,
-    targetDays: DEFAULT_N_DAYS,
-  });
-
-  if (!parsed) {
-    const error = new Error("Routine response was not valid JSON.");
-    return { success: false, raw, finishReason, error };
-  }
-
-  if (finishReason === "length") {
-    const error = new Error("Routine response was truncated.");
-    return { success: false, raw, finishReason, error };
-  }
-
-  try {
-    const routine = finalizeRoutine(parsed);
-    return { success: true, routine };
-  } catch (err) {
-    if (err instanceof z.ZodError) {
-      return {
-        success: false,
-        raw,
-        finishReason,
-        error: new Error(`Routine schema validation failed: ${err.message}`),
-      };
-    }
-    const error =
-      err instanceof Error ? err : new Error(`Routine validation failed: ${String(err)}`);
-    return { success: false, raw, finishReason, error };
   }
 }
 
@@ -272,7 +267,9 @@ function attemptParse(raw: string): {
   }
 
   const days = (parsed as { days?: unknown }).days;
-  if (!Array.isArray(days)) return { parsed, dayCount: 0, counts: [] };
+  if (!Array.isArray(days)) {
+    return { parsed, dayCount: 0, counts: [] };
+  }
 
   const counts = days.map((day) => {
     if (
