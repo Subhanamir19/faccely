@@ -1,4 +1,5 @@
 // facely/lib/api/client.ts
+import { z } from "zod";
 // Centralised helpers for talking to the scorer API.
 // Keeps timeout/error handling consistent and observable.
 
@@ -207,4 +208,50 @@ export function toUserFacingError(err: unknown, fallback: string): Error {
   if (err instanceof Error && err.message) return err;
   if (typeof err === "string" && err.trim()) return new Error(err);
   return new Error(fallback);
+}
+
+/* -------------------------------------------------------------------------- */
+/*   Typed JSON requester with shared retry/error handling                    */
+/* -------------------------------------------------------------------------- */
+
+export type RequestJSONOptions<T> = FetchWithTimeoutOptions & {
+  schema?: z.ZodType<T>;
+  context?: string;
+  parse?: (res: Response) => Promise<unknown>;
+};
+
+export async function requestJSON<T = unknown>(
+  input: RequestInfo,
+  options: RequestJSONOptions<T> = {}
+): Promise<T> {
+  const { schema, context = "Request failed", parse, ...fetchOptions } = options;
+
+  const res = await fetchWithRetry(input, fetchOptions);
+  if (!res.ok) throw await buildApiError(res, context);
+
+  let payload: unknown;
+  try {
+    payload = parse ? await parse(res) : await res.json();
+  } catch (err) {
+    throw new ApiResponseError(
+      res.status,
+      `${context}: invalid_payload - ${err instanceof Error ? err.message : String(err)}`,
+      undefined
+    );
+  }
+
+  if (!schema) return payload as T;
+
+  try {
+    return schema.parse(payload);
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      throw new ApiResponseError(
+        res.status,
+        `${context}: invalid_payload - ${err.message}`,
+        payload
+      );
+    }
+    throw err;
+  }
 }

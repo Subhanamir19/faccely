@@ -11,6 +11,7 @@ import {
   type SigmaError,
 } from "../types/sigma";
 import { API_BASE } from "./config";
+import { ApiResponseError, requestJSON } from "./client";
 
 const SIGMA_BASE = `${API_BASE}/sigma`;
 
@@ -59,29 +60,6 @@ const statusToError = (status: number): SigmaError => {
   };
 };
 
-const parsePayload = (text: string): unknown => {
-  if (!text) return undefined;
-  try {
-    return JSON.parse(text);
-  } catch {
-    return text.trim().length > 0 ? text : undefined;
-  }
-};
-
-const parseWithSchema = <T>(payload: unknown, schema: z.ZodType<T>): T => {
-  try {
-    return schema.parse(payload);
-  } catch (err) {
-    if (err instanceof z.ZodError) {
-      throw {
-        ...BAD_PAYLOAD_ERROR,
-        detail: err.message,
-      } satisfies SigmaError;
-    }
-    throw BAD_PAYLOAD_ERROR;
-  }
-};
-
 const mapErrorPayload = (payload: unknown, status: number): SigmaError => {
   if (payload) {
     try {
@@ -99,40 +77,34 @@ const mapErrorPayload = (payload: unknown, status: number): SigmaError => {
   return statusToError(status);
 };
 
-const request = async <T>(
+const requestSigma = async <T>(
   path: string,
   init: RequestInit,
   schema: z.ZodType<T>
 ): Promise<T> => {
-  let response: Response;
   try {
-    response = await fetch(path, init);
-  } catch {
+    return await requestJSON<T>(path, {
+      ...init,
+      schema,
+      context: "Sigma request failed",
+    });
+  } catch (err) {
+    if (err instanceof ApiResponseError) {
+      if (err.status === 200) throw BAD_PAYLOAD_ERROR;
+      throw mapErrorPayload(err.body, err.status);
+    }
     throw NETWORK_ERROR;
   }
-
-  const text = await response.text();
-  const payload = parsePayload(text);
-
-  if (!response.ok) {
-    throw mapErrorPayload(payload, response.status);
-  }
-
-  if (payload === undefined || typeof payload === "string") {
-    throw BAD_PAYLOAD_ERROR;
-  }
-
-  return parseWithSchema(payload, schema);
 };
 
 /** Create a new chat thread */
 export async function createSigmaThread(): Promise<CreateThreadResponse> {
-  return request(`${SIGMA_BASE}/thread`, { method: "POST" }, CreateThreadResponseSchema);
+  return requestSigma(`${SIGMA_BASE}/thread`, { method: "POST" }, CreateThreadResponseSchema);
 }
 
 /** Fetch an existing thread by ID */
 export async function getSigmaThread(id: string): Promise<SigmaThread> {
-  return request(`${SIGMA_BASE}/thread/${id}`, { method: "GET" }, SigmaThreadSchema);
+  return requestSigma(`${SIGMA_BASE}/thread/${id}`, { method: "GET" }, SigmaThreadSchema);
 }
 
 /** Send a message to Sigma and receive assistant reply */
@@ -142,7 +114,7 @@ export async function sendSigmaMessage(args: {
   share_scores?: boolean;
   share_routine?: boolean;
 }): Promise<SendMessageResponse> {
-  return request(
+  return requestSigma(
     `${SIGMA_BASE}/message`,
     {
       method: "POST",

@@ -1,30 +1,18 @@
 // facely/lib/api/analysis.ts
+import { z } from "zod";
 import { API_BASE } from "./config";
 import {
   ApiResponseError,
   LONG_REQUEST_TIMEOUT_MS,
   buildApiError,
   fetchWithRetry,
-
 } from "./client";
-
 import type { Scores } from "./scores";
+import { prepareUploadPart, type UploadInput } from "./media";
 
-/**
- * Backend returns per-metric notes. Shape can vary (string | string[]).
- * We normalize to string[4] per metric in this module so UI stays stable.
- *
- * Example raw:
- * {
- *   jawline: ["Tier: Developing — soft mandibular border", "Refinement: reduce submental fat"],
- *   ...
- * }
- */
-export type Explanations = Record<string, string[] | string>;
+export type Explanations = Record<string, string[]>;
 
-/* ---------- constants used for gentle normalization ---------- */
-
-const EXPECTED_METRICS = [
+const METRICS = [
   "eyes_symmetry",
   "jawline",
   "cheekbones",
@@ -34,17 +22,22 @@ const EXPECTED_METRICS = [
   "sexual_dimorphism",
 ] as const;
 
-/* ---------- internal helpers ---------- */
+type MetricKey = (typeof METRICS)[number];
 
-function toPart(uri: string, name: string): {
-  uri: string;
-  name: string;
-  type: string;
-} {
-  const normalized =
-    uri.startsWith("file://") ? uri : uri.startsWith("/") ? `file://${uri}` : uri;
-  return { uri: normalized, name: `${name}.jpg`, type: "image/jpeg" };
-}
+const ExplanationLinesSchema = z.array(z.string()).length(4);
+const ExplanationsPayloadSchema = z.object({
+  eyes_symmetry: ExplanationLinesSchema,
+  jawline: ExplanationLinesSchema,
+  cheekbones: ExplanationLinesSchema,
+  nose_harmony: ExplanationLinesSchema,
+  facial_symmetry: ExplanationLinesSchema,
+  skin_quality: ExplanationLinesSchema,
+  sexual_dimorphism: ExplanationLinesSchema,
+});
+
+type ExplanationsPayload = z.infer<typeof ExplanationsPayloadSchema>;
+
+/* ---------- helpers ---------- */
 
 const MAX_SUBMETRIC_CHAR = 140;
 
@@ -53,62 +46,35 @@ function normalizeLine(value: string): string {
   if (!trimmed) return "";
   if (trimmed.length <= MAX_SUBMETRIC_CHAR) return trimmed;
   const sliced = trimmed.slice(0, MAX_SUBMETRIC_CHAR).trimEnd();
-  return `${sliced}…`;
+  return `${sliced}...`;
 }
 
-function ensureArray4(v: unknown): string[] {
-  if (typeof v === "string") {
-    const s = normalizeLine(v);
-
-
-    return s ? [s, "", "", ""] : ["", "", "", ""];
-  }
-  if (Array.isArray(v)) {
-    const arr = v
-    .filter((x) => typeof x === "string")
-    .map((s) => normalizeLine(s as string))
-
-
-      .filter(Boolean)
-      .slice(0, 4);
-    while (arr.length < 4) arr.push("");
-    return arr;
-  }
-  return ["", "", "", ""];
-}
-
-/**
- * Normalize any server shape into a clean `Record<metric, string[4]>`.
- * - Guarantees keys for our expected metrics (pads with empty strings).
- * - Preserves unexpected metrics from server too (also normalized).
- */
-export function normalizeExplanations(raw: Explanations | null | undefined): Record<string, string[]> {
+function normalizeExplanations(raw: ExplanationsPayload): Explanations {
   const out: Record<string, string[]> = {};
-
-  if (raw && typeof raw === "object") {
-    // Normalize whatever keys the server sent
-    for (const k of Object.keys(raw)) {
-      out[k] = ensureArray4((raw as any)[k]);
-    }
+  for (const metric of METRICS) {
+    out[metric] = raw[metric].map((line) => normalizeLine(line));
   }
-
-  // Make sure our expected metrics are always present
-  for (const k of EXPECTED_METRICS) {
-    if (!out[k]) out[k] = ["", "", "", ""];
-  }
-
   return out;
 }
 
 async function parseExplanations(
   res: Response,
   context: string
-): Promise<Record<string, string[]>> {
+): Promise<Explanations> {
   if (!res.ok) {
     throw await buildApiError(res, context);
   }
-  const json = (await res.json()) as Explanations;
-  return normalizeExplanations(json);
+
+  const raw = await res.json();
+  try {
+    const parsed = ExplanationsPayloadSchema.parse(raw);
+    return normalizeExplanations(parsed);
+  } catch (err) {
+    const detail = err instanceof z.ZodError ? err.message : String(err);
+    // eslint-disable-next-line no-console
+    console.warn("[analysis] invalid payload", detail, raw);
+    throw new ApiResponseError(res.status, `${context}: invalid_payload - ${detail}`, raw);
+  }
 }
 
 /* ---------- public API ---------- */
@@ -116,17 +82,15 @@ async function parseExplanations(
 /**
  * POST /analyze/explain for single image.
  * Sends multipart with the image and a small JSON scores blob so server can tailor notes.
- * Fields:
- *   - image: file
- *   - scores: application/json as string
  */
 export async function explainMetrics(
-  imageUri: string,
+  image: UploadInput,
   scores: Scores,
   signal?: AbortSignal
-): Promise<Record<string, string[]>> {
+): Promise<Explanations> {
   const fd = new FormData();
-  fd.append("image", toPart(imageUri, "image") as any);
+  const imagePart = await prepareUploadPart(image, "image.jpg");
+  fd.append("image", imagePart as any);
   fd.append("scores", JSON.stringify(scores));
   const res = await fetchWithRetry(
     `${API_BASE}/analyze/explain`,
@@ -145,33 +109,32 @@ export async function explainMetrics(
 
 /**
  * POST /analyze/explain/pair for frontal + side pair.
- * Sends multipart with both files and the scores JSON.
- * Fields:
- *   - frontal: file
- *   - side: file
- *   - scores: application/json as string
  */
 export async function explainMetricsPair(
-  frontalUri: string,
-  sideUri: string,
+  frontal: UploadInput,
+  side: UploadInput,
   scores: Scores,
   signal?: AbortSignal
-): Promise<Record<string, string[]>> {
-  const buildFormData = () => {
+): Promise<Explanations> {
+  const buildFormData = async () => {
+    const [frontalPart, sidePart] = await Promise.all([
+      prepareUploadPart(frontal, "frontal.jpg"),
+      prepareUploadPart(side, "side.jpg"),
+    ]);
     const fd = new FormData();
-    fd.append("frontal", toPart(frontalUri, "frontal") as any);
-    fd.append("side", toPart(sideUri, "side") as any);
+    fd.append("frontal", frontalPart as any);
+    fd.append("side", sidePart as any);
     fd.append("scores", JSON.stringify(scores));
     return fd;
   };
 
-  const attempt = async (path: string): Promise<Record<string, string[]>> => {
+  const attempt = async (path: string) => {
     const res = await fetchWithRetry(
       `${API_BASE}${path}`,
       {
         method: "POST",
         headers: { Accept: "application/json" },
-        body: buildFormData(),
+        body: await buildFormData(),
         signal,
         timeoutMs: LONG_REQUEST_TIMEOUT_MS,
       },
@@ -188,11 +151,7 @@ export async function explainMetricsPair(
       (err instanceof ApiResponseError && err.status === 404) ||
       (err instanceof TypeError && (err as any).message?.includes("Network request failed"));
 
-    if (!shouldRetryLegacy) {
-      throw err;
-    }
-
-    // legacy route fallback
+    if (!shouldRetryLegacy) throw err;
     return await attempt("/analyze/pair/explain");
   }
 }

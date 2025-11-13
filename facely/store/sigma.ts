@@ -67,7 +67,7 @@ export const useSigmaStore = create<SigmaStore>()(
             set({ loading: true, error: undefined });
             try {
               const resp = await createSigmaThread();
-              const fresh: SigmaThread = { id: resp.id, messages: [] as SigmaMessage[] };
+              const fresh: SigmaThread = { id: resp.id, user_id: "local", messages: [] };
               set({ thread: fresh });
               return fresh;
             } catch (err) {
@@ -174,7 +174,7 @@ export const useSigmaStore = create<SigmaStore>()(
         set({ thread: null, loading: true, error: undefined, sendInProgress: false });
         try {
           const resp = await createSigmaThread();
-          const fresh: SigmaThread = { id: resp.id, messages: [] as SigmaMessage[] };
+          const fresh: SigmaThread = { id: resp.id, user_id: "local", messages: [] };
           set({ thread: fresh, loading: false });
         } catch (err) {
           const mapped = toSigmaError(err);

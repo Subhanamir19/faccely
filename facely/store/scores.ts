@@ -1,12 +1,6 @@
 // facely/store/scores.ts
 import { create } from "zustand";
-import {
-  API_BASE,
-  API_BASE_CONFIGURED,
-  API_BASE_CONFIGURATION_HINT,
-  API_BASE_MISCONFIGURED_MESSAGE,
-  API_BASE_REASON,
-} from "../lib/api/config";
+import { API_BASE, API_BASE_CONFIGURATION_HINT, API_BASE_REASON } from "../lib/api/config";
 import { pingHealth } from "../lib/api/health";
 import {
   analyzeImage,
@@ -22,17 +16,16 @@ import { RequestTimeoutError, toUserFacingError } from "../lib/api/client";
 
 type InputFile = string | { uri: string; name?: string; mime?: string };
 
-const MISCONFIGURED_ERROR_MESSAGE = (() => {
-  if (API_BASE_CONFIGURED) return "";
-  if (API_BASE_CONFIGURATION_HINT.trim().length > 0) {
-    return API_BASE_CONFIGURATION_HINT;
-  }
-  return `${API_BASE_MISCONFIGURED_MESSAGE} (current fallback: ${API_BASE}).`;
+const BACKEND_CONFIGURATION_MESSAGE = (() => {
+  const hint = API_BASE_CONFIGURATION_HINT?.trim();
+  if (hint) return hint;
+  if (API_BASE.trim()) return `Using backend at ${API_BASE}.`;
+  return "Backend base URL missing. Set EXPO_PUBLIC_API_BASE_URL.";
 })();
 
 function ensureBackendConfigured() {
-  if (!API_BASE_CONFIGURED) {
-    throw new Error(MISCONFIGURED_ERROR_MESSAGE);
+  if (!API_BASE || API_BASE.trim().length === 0) {
+    throw new Error(BACKEND_CONFIGURATION_MESSAGE);
   }
 }
 
@@ -223,9 +216,6 @@ export function getSubmetricVerdicts(
   metric: keyof Scores
 ): string[] {
   if (!explanations) return ["", "", "", ""];
-  const arr = (explanations as any)[metric];
-  if (Array.isArray(arr) && arr.length > 0) {
-    return arr.slice(0, 4);
-  }
-  return ["", "", "", ""];
+  const arr = explanations[metric as keyof typeof explanations];
+  return Array.isArray(arr) ? [...arr] : ["", "", "", ""];
 }

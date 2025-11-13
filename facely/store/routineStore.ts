@@ -5,29 +5,59 @@ import { produce } from "immer";
 import { Routine } from "@/lib/api/routine";
 
 /* ----------------------------- Helpers ----------------------------- */
-function isoMidnight(date: Date = new Date()): string {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  return d.toISOString();
+const DAY_MS = 24 * 60 * 60 * 1000;
+const HALF_DAY_MS = 12 * 60 * 60 * 1000;
+let skewWarnLogged = false;
+
+function toUtcMidnightMs(date: Date): number {
+  return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
 }
 
-function computeTodayIndex(startDate: string, totalDays: number): number {
-  try {
-    const start = new Date(startDate);
-    const now = new Date();
-    const diffDays = Math.floor(
-      (now.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)
-    );
-    return Math.min(Math.max(diffDays, 0), totalDays - 1);
-  } catch {
+function computeTodayIndex(startDate: string | undefined, totalDays: number): number {
+  if (!startDate) {
+    console.warn("[ROUTINE_STORE] missing createdAt; defaulting to day 0");
     return 0;
   }
+
+  try {
+    const start = new Date(startDate);
+    if (Number.isNaN(start.getTime())) {
+      console.warn("[ROUTINE_STORE] invalid createdAt; defaulting to day 0", startDate);
+      return 0;
+    }
+
+    const now = new Date();
+    const rawDiff = now.getTime() - start.getTime();
+    if (!skewWarnLogged && Math.abs(rawDiff) > HALF_DAY_MS) {
+      console.warn("[ROUTINE_STORE] device/server time skew detected", {
+        createdAt: start.toISOString(),
+        now: now.toISOString(),
+      });
+      skewWarnLogged = true;
+    }
+
+    const startMidnight = toUtcMidnightMs(start);
+    const nowMidnight = toUtcMidnightMs(now);
+    const diffDays = Math.floor((nowMidnight - startMidnight) / DAY_MS);
+    if (!Number.isFinite(diffDays)) return 0;
+
+    const maxIndex = Math.max(totalDays - 1, 0);
+    return Math.min(Math.max(diffDays, 0), maxIndex);
+  } catch {
+    console.warn("[ROUTINE_STORE] failed to parse createdAt; defaulting to day 0");
+    return 0;
+  }
+}
+
+function keyFor(routineId: string, dayIndex: number, taskIndex: number): string {
+  return `${routineId}:${dayIndex}:${taskIndex}`;
 }
 
 /* --------------------------- Store Types --------------------------- */
 export type RoutineStore = {
   routine: Routine | null;
   todayIndex: number;
+  completionMap: Record<string, boolean>;
   hydrateFromAPI: (data: Routine) => void;
   toggleTask: (dayIndex: number, taskIndex: number) => void;
   resetRoutine: () => void;
@@ -42,10 +72,11 @@ export const useRoutineStore = create<RoutineStore>()(
     (set, get) => ({
       routine: null,
       todayIndex: 0,
+      completionMap: {},
 
       hydrateFromAPI(data) {
         const now = new Date();
-        const startDate = data.startDate ?? isoMidnight(now);
+        const startDate = data.createdAt;
         const totalDays = data.days?.length ?? 0;
         const todayIndex = computeTodayIndex(startDate, totalDays);
 
@@ -57,6 +88,7 @@ export const useRoutineStore = create<RoutineStore>()(
               fetchedAt: data.fetchedAt ?? now.toISOString(),
             };
             state.todayIndex = todayIndex;
+            state.completionMap = {};
           })
         );
 
@@ -79,26 +111,22 @@ export const useRoutineStore = create<RoutineStore>()(
 
         set(
           produce((state: RoutineStore) => {
-            const day = state.routine?.days?.[dayIndex];
-            if (!day) return;
-            const comp = day.components?.[taskIndex];
-            if (!comp) return;
-            (comp as any).done = !(comp as any).done;
+            if (!state.routine) return;
+            const key = keyFor(state.routine.routineId, dayIndex, taskIndex);
+            state.completionMap[key] = !state.completionMap[key];
           })
         );
       },
 
       resetRoutine() {
-        set({ routine: null, todayIndex: 0 });
+        set({ routine: null, todayIndex: 0, completionMap: {} });
       },
 
       refreshDayIndex() {
         const r = get().routine;
         if (!r) return;
-        const newIndex = computeTodayIndex(
-          r.startDate ?? isoMidnight(),
-          r.days.length
-        );
+        const startSource = r.startDate ?? r.createdAt;
+        const newIndex = computeTodayIndex(startSource, r.days.length);
         if (newIndex !== get().todayIndex) {
           set({ todayIndex: newIndex });
           console.log("[ROUTINE_STORE] rolled to next day:", newIndex);
@@ -106,8 +134,6 @@ export const useRoutineStore = create<RoutineStore>()(
       },
 
       setStartDate(iso) {
-        const r = get().routine;
-        if (!r) return;
         set(
           produce((state: RoutineStore) => {
             if (state.routine) state.routine.startDate = iso;
@@ -127,18 +153,48 @@ export const useRoutineStore = create<RoutineStore>()(
     }),
     {
       name: "sigma_routine_v1",
-      version: 2,
+      version: 3,
+      migrate: (persistedState, version) => {
+        if (persistedState == null) return persistedState;
+        if (version === undefined || version < 3) {
+          try {
+            const next = persistedState as RoutineStore & {
+              routine?: Routine | null;
+              completionMap?: Record<string, boolean>;
+            };
+            if (next?.routine?.days) {
+              for (const day of next.routine.days) {
+                if (!day?.components) continue;
+                for (const comp of day.components as Array<
+                  Routine["days"][number]["components"][number] & { done?: never }
+                >) {
+                  if (comp && Object.prototype.hasOwnProperty.call(comp, "done")) {
+                    delete (comp as Record<string, unknown>).done;
+                  }
+                }
+              }
+            }
+            next.completionMap = {};
+            return next as RoutineStore;
+          } catch (err) {
+            console.error("[ROUTINE_STORE] migrate failed", err);
+            return { routine: null, todayIndex: 0, completionMap: {} } as RoutineStore;
+          }
+        }
+        return persistedState as RoutineStore;
+      },
       onRehydrateStorage: () => (state) => {
         if (!state?.routine) return;
-        const idx = computeTodayIndex(
-          state.routine.startDate ?? isoMidnight(),
-          state.routine.days.length
-        );
+        state.completionMap = state.completionMap ?? {};
+        const startSource = state.routine.startDate ?? state.routine.createdAt;
+        const idx = computeTodayIndex(startSource, state.routine.days.length);
         state.todayIndex = idx;
         console.log("[ROUTINE_STORE] rehydrated", { todayIndex: idx });
         try {
           useRoutineStore.getState().refreshDayIndex();
-        } catch {}
+        } catch (err) {
+          console.warn("[ROUTINE_STORE] refresh after rehydrate failed", err);
+        }
       },
     }
   )

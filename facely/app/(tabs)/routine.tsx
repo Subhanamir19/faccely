@@ -11,6 +11,7 @@ export default function RoutineScreen() {
   const {
     routine,
     todayIndex,
+    completionMap,
     toggleTask,
     refreshDayIndex,
     resetRoutine,
@@ -40,6 +41,10 @@ export default function RoutineScreen() {
   const total = days.length;
   const progress = completionPercent();
   const isReadOnly = (dayIdx: number) => dayIdx < todayIndex;
+  const completionKey = (dayIdx: number, taskIdx: number) =>
+    `${routine.routineId}:${dayIdx}:${taskIdx}`;
+  const isTaskDone = (dayIdx: number, taskIdx: number) =>
+    Boolean(completionMap[completionKey(dayIdx, taskIdx)]);
 
   async function handleNewRoutine() {
     try {
@@ -83,7 +88,7 @@ export default function RoutineScreen() {
                 key={i}
                 style={[
                   styles.row,
-                  (c as any).done && { backgroundColor: "rgba(184,255,89,0.08)" },
+                  isTaskDone(di, i) && { backgroundColor: "rgba(184,255,89,0.08)" },
                 ]}
               >
                 <Text style={styles.cat}>{c.category}</Text>
@@ -92,7 +97,7 @@ export default function RoutineScreen() {
 
                 {!isReadOnly(di) && (
                   <GlassBtn
-                    label={(c as any).done ? "Undo" : "Done"}
+                    label={isTaskDone(di, i) ? "Undo" : "Done"}
                     onPress={() => toggleTask(di, i)}
                   />
                 )}

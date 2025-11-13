@@ -125,20 +125,51 @@ function guessDevBase(): string | null {
 
 const devFallback = guessDevBase();
 
-/* -------------------------------------------------------------------------- */
-/*   Final base: env, dev fallback, or production default                     */
-/* -------------------------------------------------------------------------- */
-
 // The only live domain now is Render (kept name for continuity).
 const PROD_DEFAULT = "https://faccely-production.up.railway.app";
 
-let baseCandidate = envBase || devFallback || PROD_DEFAULT;
-let reason =
-  envBase
-    ? "env(EXPO_PUBLIC_API_BASE_URL|EXPO_PUBLIC_API_URL)"
-    : devFallback
-    ? "dev-fallback(hostUri/inferred)"
-    : "prod-default(Render)";
+type BaseSource = "env" | "dev-fallback" | "prod-default";
+
+type ResolveResult = {
+  base: string;
+  source: BaseSource;
+  reason: string;
+};
+
+function resolveApiBase(): ResolveResult {
+  if (envBase) {
+    return {
+      base: envBase,
+      source: "env",
+      reason: "env(EXPO_PUBLIC_API_BASE_URL|EXPO_PUBLIC_API_URL)",
+    };
+  }
+
+  const normalizedDevFallback = devFallback ? normalizeBase(devFallback) : null;
+  if (normalizedDevFallback) {
+    return {
+      base: normalizedDevFallback,
+      source: "dev-fallback",
+      reason: "dev-fallback(hostUri/inferred)",
+    };
+  }
+
+  const normalizedDefault = normalizeBase(PROD_DEFAULT);
+  if (normalizedDefault) {
+    return {
+      base: normalizedDefault,
+      source: "prod-default",
+      reason: "prod-default(Render)",
+    };
+  }
+
+  throw new Error("API base could not be resolved. Set EXPO_PUBLIC_API_BASE_URL.");
+}
+
+const resolved = resolveApiBase();
+
+let baseCandidate = resolved.base;
+let reason = resolved.reason;
 
 /** Ensure Android emulators never use localhost loopback. */
 const { url: sanitizedBase, rewritten } = rewriteLocalhostForAndroid(baseCandidate);
@@ -147,23 +178,25 @@ if (rewritten) {
   baseCandidate = sanitizedBase;
 }
 
+const configurationHint =
+  resolved.source === "env"
+    ? "API base provided via EXPO_PUBLIC_API_BASE_URL (or legacy EXPO_PUBLIC_API_URL)."
+    : resolved.source === "dev-fallback"
+    ? `Using inferred development base (${baseCandidate}).`
+    : `Using production API (${baseCandidate}). Set EXPO_PUBLIC_API_BASE_URL to override.`;
+
 export const API_BASE = baseCandidate;
-export const API_BASE_CONFIGURED = Boolean(envBase || devFallback);
+export const API_BASE_CONFIGURED = Boolean(API_BASE);
 export const API_BASE_IS_SECURE = API_BASE.startsWith("https://");
 export const API_BASE_REASON = reason;
 
-const MISCONFIGURED_HINT = envBase
-  ? "API base provided via EXPO_PUBLIC_API_BASE_URL (or legacy EXPO_PUBLIC_API_URL)."
-  : devFallback
-  ? `Using inferred development base (${devFallback}).`
-  : "Using production default. Set EXPO_PUBLIC_API_BASE_URL to override.";
-
 /** Human readable hint for UI surfaces. */
-export const API_BASE_CONFIGURATION_HINT = MISCONFIGURED_HINT;
-export const API_BASE_MISCONFIGURED_MESSAGE = MISCONFIGURED_HINT;
+export const API_BASE_CONFIGURATION_HINT = configurationHint;
+export const API_BASE_MISCONFIGURED_MESSAGE = configurationHint;
 
 if (isDevLike) {
-  const note = envBase ? "(env)" : devFallback ? "(dev-fallback)" : "(default)";
+  const note =
+    resolved.source === "env" ? "(env)" : resolved.source === "dev-fallback" ? "(dev-fallback)" : "(default)";
   // eslint-disable-next-line no-console
   console.log("[API] BASE =", API_BASE, note, "| reason:", API_BASE_REASON);
 }

@@ -1,6 +1,7 @@
-// src/lib/api/routine.ts
+// facely/lib/api/routine.ts
 import { z } from "zod";
 import { API_BASE } from "./config";
+import { requestJSON, DEFAULT_REQUEST_TIMEOUT_MS } from "./client";
 
 export const ScoresSchema = z.object({
   jawline: z.number().min(0).max(100),
@@ -13,71 +14,96 @@ export const ScoresSchema = z.object({
 });
 export type Scores = z.infer<typeof ScoresSchema>;
 
-const TaskSchema = z.object({
-  headline: z.string(),
-  category: z.string(),
-  protocol: z.string(),
-});
-const DaySchema = z.object({
-  day: z.number().int().positive(),
-  components: z.array(TaskSchema).min(1),
-});
-export const RoutineSchema = z.object({
-  routineId: z.string().optional(),
-  startDate: z.string().datetime().optional(),
-  fetchedAt: z.string().datetime().optional(),
-  days: z.array(DaySchema).min(1),
-});
-export type Routine = z.infer<typeof RoutineSchema>;
+/**
+ * Routine schema mirrors the backend's strict contract.
+ * Keep in sync with scorer-node/src/schemas/RoutineSchema.ts.
+ */
+const TaskSchema = z
+  .object({
+    headline: z.string(),
+    category: z.string(),
+    protocol: z.string(),
+  })
+  .strict();
+
+const DaySchema = z
+  .object({
+    day: z.number().int().min(1).max(15),
+    components: z.array(TaskSchema).min(1).max(5),
+  })
+  .strict();
+
+const RoutineSchema = z
+  .object({
+    routineId: z.string().uuid(),
+    createdAt: z.string().datetime(),
+    version: z.literal("v1"),
+    dayCount: z.number().int().min(1).max(15),
+    taskCount: z.number().int().min(1).max(5),
+    days: z.array(DaySchema).min(1).max(15),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.days.length !== value.dayCount) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["dayCount"],
+        message: `dayCount (${value.dayCount}) must equal days.length (${value.days.length}).`,
+      });
+    }
+
+    const maxTasksPerDay = value.days.reduce(
+      (max, day) => Math.max(max, day.components.length),
+      0
+    );
+    if (maxTasksPerDay > value.taskCount) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["taskCount"],
+        message: `taskCount (${value.taskCount}) must be >= max components per day (${maxTasksPerDay}).`,
+      });
+    }
+  });
+
+type RoutineBase = z.infer<typeof RoutineSchema>;
+export type Routine = RoutineBase & {
+  /**
+   * Client-only mirrors for local stores (never sent back to server).
+   */
+  fetchedAt?: string;
+  startDate?: string;
+};
 
 const ROUTINE_URL = `${API_BASE}/routine`;
-const FETCH_TIMEOUT_MS = 60_000;
 let inflight = false;
 
-function isAbortError(e: unknown): boolean {
-  if (typeof e !== "object" || e === null) return false;
-  if (typeof DOMException !== "undefined" && e instanceof DOMException) return e.name === "AbortError";
-  return (e as any).name === "AbortError";
-}
-
-export async function fetchRoutine(scores: Scores, contextHint?: string): Promise<Routine> {
-  if (inflight) throw new Error("inflight");
+/**
+ * Fetches a routine via the shared API client so retries/timeouts stay consistent.
+ */
+export async function fetchRoutine(
+  scores: Scores,
+  contextHint?: string
+): Promise<Routine> {
+  if (inflight) throw new Error("network_error:inflight");
   inflight = true;
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
   try {
     const body = JSON.stringify({ scores, context_hint: contextHint ?? null });
-
-    const res = await fetch(ROUTINE_URL, {
+    const parsed = await requestJSON<RoutineBase>(ROUTINE_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body,
-      signal: controller.signal,
+      timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS,
+      context: "Routine request failed",
+      schema: RoutineSchema,
     });
-
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      throw new Error(`validation_failed:${text.slice(0, 400)}`);
-    }
-
-    const json = await res.json();
-    const parsed = RoutineSchema.safeParse(json);
-    if (!parsed.success) throw new Error("routine_shape_invalid");
-
     const now = new Date().toISOString();
     return {
-      ...parsed.data,
-      fetchedAt: parsed.data.fetchedAt ?? now,
-      startDate: parsed.data.startDate ?? now,
+      ...parsed,
+      fetchedAt: now,
+      startDate: parsed.createdAt,
     };
-  } catch (err) {
-    if (isAbortError(err)) throw new Error("network_error:Aborted");
-    const msg = err instanceof Error && err.message ? err.message : "unknown";
-    throw new Error(`network_error:${msg}`);
   } finally {
     inflight = false;
-    clearTimeout(timeout);
   }
 }

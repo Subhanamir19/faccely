@@ -8,6 +8,11 @@ import {
   DEFAULT_UPLOAD_TIMEOUT_MS,
   SHORT_REQUEST_TIMEOUT_MS,
 } from "./client";
+import {
+  prepareUploadPart,
+  resolveExistingPath,
+  type UploadInput,
+} from "./media";
 
 /* -------------------------------------------------------------------------- */
 /*   Types                                                                    */
@@ -23,7 +28,7 @@ export type Scores = {
   sexual_dimorphism: number;
 };
 
-type InputFile = string | { uri: string; name?: string; mime?: string };
+type InputFile = UploadInput;
 
 /* -------------------------------------------------------------------------- */
 /*   Safe normalization                                                       */
@@ -74,43 +79,6 @@ export function normalizeScores(raw: Partial<Scores> | null | undefined): Scores
 }
 
 /* -------------------------------------------------------------------------- */
-/*   Resolve a readable file path without copying                             */
-/* -------------------------------------------------------------------------- */
-
-async function resolveExistingPath(uri: string): Promise<string> {
-  const candidates = [uri];
-
-  try {
-    const u = new URL(uri);
-    const path = u.pathname || "";
-    const enc = `file://${encodeURI(path)}`;
-    const dec = `file://${decodeURI(path)}`;
-    for (const v of [enc, dec]) {
-      if (!candidates.includes(v)) candidates.push(v);
-    }
-  } catch {
-    if (!candidates.includes(encodeURI(uri))) candidates.push(encodeURI(uri));
-    if (!candidates.includes(decodeURI(uri))) candidates.push(decodeURI(uri));
-  }
-
-  for (const cand of candidates) {
-    try {
-      const info = await FileSystem.getInfoAsync(cand);
-      if (info.exists) return cand;
-    } catch {
-      /* ignore and try next */
-    }
-  }
-
-  const msg =
-    "Selected image is no longer available on disk. Re-select the photo and try again.";
-  const err = new Error(msg);
-  (err as any).code = "FILE_GONE";
-  (err as any).details = { uri, tried: candidates };
-  throw err;
-}
-
-/* -------------------------------------------------------------------------- */
 /*   Health check (legacy fallback)                                           */
 /* -------------------------------------------------------------------------- */
 
@@ -128,40 +96,13 @@ export async function pingHealth(): Promise<boolean> {
 }
 
 /* -------------------------------------------------------------------------- */
-/*   Helpers: normalize InputFile -> FormData part                            */
-/* -------------------------------------------------------------------------- */
-
-function toFileMeta(input: InputFile, fallbackName: string) {
-  if (typeof input === "string") {
-    return { uri: input, name: fallbackName, mime: "image/jpeg" as const };
-  }
-  const name = input.name && input.name.trim().length > 0 ? input.name : fallbackName;
-  const mime = input.mime && input.mime.trim().length > 0 ? input.mime : "image/jpeg";
-  return { uri: input.uri, name, mime: mime as "image/jpeg" };
-}
-
-async function toFormPart(
-  input: InputFile,
-  fallbackName: string
-): Promise<{ uri: string; name: string; type: string }> {
-  const meta = toFileMeta(input, fallbackName);
-  const path = await resolveExistingPath(meta.uri);
-  // Important: Android/Expo needs file:// uri, .jpg name, and correct type
-  return { uri: path, name: ensureJpegName(meta.name), type: meta.mime || "image/jpeg" } as any;
-}
-
-function ensureJpegName(name: string) {
-  return /\.jpe?g$/i.test(name) ? name : `${name.replace(/\.[^./\\]+$/, "")}.jpg`;
-}
-
-/* -------------------------------------------------------------------------- */
 /*   Multipart upload: pair                                                   */
 /* -------------------------------------------------------------------------- */
 
 async function analyzePairMultipart(front: InputFile, side: InputFile): Promise<Scores> {
   const [frontPart, sidePart] = await Promise.all([
-    toFormPart(front, "front.jpg"),
-    toFormPart(side, "side.jpg"),
+    prepareUploadPart(front, "front.jpg"),
+    prepareUploadPart(side, "side.jpg"),
   ]);
 
   const form = new FormData();
@@ -281,15 +222,14 @@ export async function analyzePair(front: InputFile, side: InputFile): Promise<Sc
 /* -------------------------------------------------------------------------- */
 
 export async function analyzeImage(input: InputFile): Promise<Scores> {
-  const meta = toFileMeta(input, "image.jpg");
-  const path = await resolveExistingPath(meta.uri);
+  const part = await prepareUploadPart(input, "image.jpg");
 
   const form = new FormData();
-  form.append("image", { uri: path, name: ensureJpegName(meta.name), type: meta.mime } as any);
+  form.append("image", part as any);
 
   const url = `${API_BASE}/analyze`;
   const start = Date.now();
-  console.log("[scores] POST", url, { path });
+  console.log("[scores] POST", url, { path: part.uri });
 
   let res: Response;
   try {

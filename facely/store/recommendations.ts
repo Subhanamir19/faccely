@@ -6,8 +6,7 @@ import {
 } from "../lib/api/recommendations";
 
 /**
- * UI expects a stable, task-like shape.
- * We normalize ANY backend payload to this.
+ * UI expects a stable, task-like shape derived from the backend response.
  */
 export type NormalizedRecommendations = {
   summary?: string;
@@ -36,77 +35,19 @@ function hashReq(req: RecommendationsReq) {
   return JSON.stringify(req);
 }
 
-/* -------------------------------- Normalizer --------------------------------
-   Accepts legacy or future API forms and returns a stable shape for the UI.
-   Handles these possibilities:
-   1) { summary?: string, items: Array<Item> }                      // ideal
-   2) { summary?: string, recommendations: Array<ItemLike> }        // legacy
-   3) Array<string|ItemLike>                                        // ultra-legacy
-   4) { items: Array<string> } or { recommendations: Array<string>} // text-only
------------------------------------------------------------------------------ */
-
 function normalize(res: RecommendationsRes): NormalizedRecommendations {
-  // Type helpers without being precious about exact backend types
-  const toItem = (x: any): NormalizedRecommendations["items"][number] => {
-    if (x && typeof x === "object") {
-      return {
-        metric: String(x.metric ?? "general"),
-        title: typeof x.title === "string" ? x.title : undefined,
-        recommendation:
-          typeof x.recommendation === "string" ? x.recommendation : undefined,
-        finding: typeof x.finding === "string" ? x.finding : undefined,
-        priority:
-          x.priority === "low" || x.priority === "medium" || x.priority === "high"
-            ? x.priority
-            : undefined,
-        expected_gain:
-          typeof x.expected_gain === "number" ? x.expected_gain : undefined,
-        score: typeof x.score === "number" ? x.score : undefined,
-      };
-    }
-    if (typeof x === "string") {
-      return { metric: "general", title: x, recommendation: x };
-    }
-    return { metric: "general" };
+  return {
+    summary: res.summary,
+    items: res.items.map((item) => ({
+      metric: item.metric,
+      title: item.title,
+      recommendation: item.recommendation,
+      finding: item.finding,
+      priority: item.priority,
+      expected_gain: item.expected_gain,
+      score: item.score,
+    })),
   };
-
-  // Case 1: already normalized
-  if (
-    res &&
-    typeof res === "object" &&
-    Array.isArray((res as any).items) &&
-    ((res as any).items.length === 0 || (res as any).items.every((it: any) => it && typeof it === "object"))
-  ) {
-    const r = res as any;
-    return {
-      summary: typeof r.summary === "string" ? r.summary : undefined,
-      items: r.items.map(toItem),
-    };
-  }
-
-  // Case 2: legacy { recommendations: [...] }
-  if (res && typeof res === "object" && Array.isArray((res as any).recommendations)) {
-    const r = res as any;
-    return {
-      summary: typeof r.summary === "string" ? r.summary : undefined,
-      items: r.recommendations.map(toItem),
-    };
-  }
-
-  // Case 3: raw array
-  if (Array.isArray(res)) {
-    return { items: res.map(toItem) };
-  }
-
-  // Case 4: objects that only contain text arrays
-  if (res && typeof res === "object") {
-    const r = res as any;
-    if (Array.isArray(r.items)) return { items: r.items.map(toItem) };
-    if (Array.isArray(r.list)) return { items: r.list.map(toItem) };
-  }
-
-  // Fallback: wrap as single generic item so the UI never dies
-  return { items: [{ metric: "general", recommendation: JSON.stringify(res) }] };
 }
 
 export const useRecommendations = create<State>((set, get) => ({

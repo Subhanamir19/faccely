@@ -5,6 +5,79 @@
 import * as ImageManipulator from "expo-image-manipulator";
 import * as FileSystem from "expo-file-system";
 
+export type UploadInput = string | { uri: string; name?: string; mime?: string };
+
+const JPEG_MIME = "image/jpeg";
+
+export class UploadNormalizationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "UploadNormalizationError";
+  }
+}
+
+function ensureJpegName(name: string) {
+  return /\.jpe?g$/i.test(name) ? name : `${name.replace(/\.[^./\\]+$/, "")}.jpg`;
+}
+
+function toFileMeta(input: UploadInput, fallbackName: string) {
+  if (typeof input === "string") {
+    return { uri: input, name: fallbackName, mime: JPEG_MIME };
+  }
+  const name = input.name && input.name.trim().length > 0 ? input.name : fallbackName;
+  const mime = input.mime && input.mime.trim().length > 0 ? input.mime : JPEG_MIME;
+  return { uri: input.uri, name, mime };
+}
+
+export async function resolveExistingPath(uri: string): Promise<string> {
+  const candidates = [uri];
+
+  try {
+    const u = new URL(uri);
+    const path = u.pathname || "";
+    const enc = `file://${encodeURI(path)}`;
+    const dec = `file://${decodeURI(path)}`;
+    for (const candidate of [enc, dec]) {
+      if (!candidates.includes(candidate)) candidates.push(candidate);
+    }
+  } catch {
+    const enc = encodeURI(uri);
+    const dec = decodeURI(uri);
+    if (!candidates.includes(enc)) candidates.push(enc);
+    if (!candidates.includes(dec)) candidates.push(dec);
+  }
+
+  for (const cand of candidates) {
+    try {
+      const info = await FileSystem.getInfoAsync(cand);
+      if (info.exists) return cand;
+    } catch {
+      /* ignore and continue */
+    }
+  }
+
+  throw new UploadNormalizationError(
+    "Selected image is no longer available on disk. Re-select the photo and try again."
+  );
+}
+
+export async function prepareUploadPart(
+  input: UploadInput,
+  fallbackName: string
+): Promise<{ uri: string; name: string; type: string }> {
+  const meta = toFileMeta(input, fallbackName);
+  if (!meta.uri || meta.uri.trim().length === 0) {
+    throw new UploadNormalizationError("Image path is empty. Please select the photo again.");
+  }
+
+  const path = await resolveExistingPath(meta.uri);
+  return {
+    uri: path,
+    name: ensureJpegName(meta.name),
+    type: meta.mime || JPEG_MIME,
+  };
+}
+
 /**
  * Convert/resize/compress before upload.
  * - Resize to max width 1080 (keeps aspect)

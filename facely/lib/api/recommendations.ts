@@ -1,5 +1,7 @@
 // facely/lib/api/recommendations.ts
+import { z } from "zod";
 import { API_BASE } from "./config";
+import { requestJSON } from "./client";
 
 /** Metric keys (kept consistent with backend) */
 const METRIC_KEYS = [
@@ -27,8 +29,30 @@ export type RecommendationsReq = {
   metrics: MetricInput[];
 };
 
-/** Shape is intentionally flexible; the store/consumers will normalize. */
-export type RecommendationsRes = unknown;
+const RecommendationItemSchema = z.object({
+  metric: z.enum(METRIC_KEYS),
+  score: z.number().min(0).max(100),
+  title: z.string().max(40).optional(),
+  finding: z.string().max(120).optional(),
+  recommendation: z.string().max(220),
+  priority: z.enum(["low", "medium", "high"]),
+  expected_gain: z
+    .union([z.number(), z.string()])
+    .optional()
+    .transform((val) => (typeof val === "string" ? Number.parseFloat(val) : val))
+    .refine(
+      (val) => val === undefined || Number.isFinite(val),
+      "expected_gain must be numeric"
+    ),
+});
+
+const RecommendationsResponseSchema = z.object({
+  summary: z.string(),
+  items: z.array(RecommendationItemSchema),
+  version: z.literal("v1"),
+});
+
+export type RecommendationsRes = z.infer<typeof RecommendationsResponseSchema>;
 
 /** Build a typed request body from loose inputs. */
 export function buildRecommendationsReq(input: {
@@ -63,32 +87,14 @@ export async function fetchRecommendations(
   body: RecommendationsReq,
   signal?: AbortSignal
 ): Promise<RecommendationsRes> {
-  const res = await fetch(`${API_BASE}/recommendations`, {
+  return requestJSON<RecommendationsRes>(`${API_BASE}/recommendations`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
     signal,
+    context: "Recommendations request failed",
+    schema: RecommendationsResponseSchema,
   });
-
-  if (!res.ok) {
-    const raw = await res.text().catch(() => "");
-    let message = `HTTP ${res.status}`;
-    if (raw) {
-      try {
-        const parsed = JSON.parse(raw);
-        const parts = [parsed?.detail, parsed?.error, parsed?.status]
-          .filter((x) => typeof x === "string" || typeof x === "number")
-          .map(String);
-        if (parts.length) message = parts.join(" · ");
-      } catch {
-        message = `${message} ${raw}`.trim();
-      }
-    }
-    throw new Error(message || "Request failed");
-  }
-
-  // Do NOT enforce a rigid shape here. Let the store normalize.
-  return (await res.json()) as RecommendationsRes;
 }
 
 /* --------------------------- utils --------------------------- */

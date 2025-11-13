@@ -25,23 +25,6 @@ import { useScores } from "../../store/scores";
 // NEW: shared pre-upload compressor (JPEG, max 1080px)
 import { ensureJpegCompressed } from "../../lib/api/media";
 
-// ⬇️ persist a picked/captured asset into our cache so it survives until upload
-async function persistToCache(uri: string): Promise<string> {
-  const m = /\.([A-Za-z0-9]+)(?:\?|#|$)/.exec(uri);
-  const ext = (m?.[1] || "jpg").toLowerCase();
-  const dest = `${FileSystem.cacheDirectory}persist-${Date.now()}-${Math.random()
-    .toString(36)
-    .slice(2)}.${ext}`;
-  try {
-    await FileSystem.copyAsync({ from: uri, to: dest });
-    return dest;
-  } catch {
-    const decoded = decodeURI(uri);
-    await FileSystem.copyAsync({ from: decoded, to: dest });
-    return dest;
-  }
-}
-
 /* ============================== TOKENS ============================== */
 const ACCENT = "#B4F34D"; // Sigma Max lime
 const TEXT = "#FFFFFF";
@@ -71,6 +54,12 @@ async function ensureFileUriAsync(raw?: string | null): Promise<string | null> {
     }
   }
   return toFileUri(raw);
+}
+
+function toUserFacingMessage(err: unknown, fallback = "Network or file error") {
+  if (err instanceof Error && err.message) return err.message;
+  const msg = String((err as any)?.message ?? err ?? "").trim();
+  return msg || fallback;
 }
 
 type Step = "intro" | "capture" | "review";
@@ -242,19 +231,19 @@ export default function TakePicture() {
   const handleChosen = async (uri: string | null) => {
     if (!uri) return;
     try {
-      // immediately persist to our own cache so Expo doesn’t delete it
-      const stable = await persistToCache(uri);
+      const normalized = await ensureFileUriAsync(uri);
+      if (!normalized) throw new Error("Bad photo path");
       if (pose === "frontal") {
-
-        setFrontalUri(stable);
+        setFrontalUri(normalized);
         setPose("side");
         setStep("capture");
       } else {
-        setSideUri(stable);
+        setSideUri(normalized);
         setStep("review");
       }
-    } catch {
-      Alert.alert("File error", "Could not persist selected photo.");
+    } catch (e) {
+      console.error("[PIC] normalize failed", e);
+      Alert.alert("File error", "Could not use the selected photo.");
     }
   };
 
@@ -316,16 +305,35 @@ export default function TakePicture() {
   };
 
   const useBoth = async () => {
-    if (!canContinue) return;
-    try {
-      setSubmitting(true);
+    console.log("[PIC] Proceed tapped", { frontalUri, sideUri });
+    if (!canContinue) {
+      console.warn("[PIC] blocked: canContinue=false", { frontalUri, sideUri, submitting });
+      return;
+    }
 
-      // Resolve any content:// leftovers to file://
+    setSubmitting(true);
+
+    try {
       const fResolved = await ensureFileUriAsync(frontalUri!);
       const sResolved = await ensureFileUriAsync(sideUri!);
       if (!fResolved || !sResolved) throw new Error("Could not read selected photos.");
 
-      // Normalize/compress both before navigation to speed up upload
+      const [frontInfo, sideInfo] = await Promise.all([
+        FileSystem.getInfoAsync(fResolved),
+        FileSystem.getInfoAsync(sResolved),
+      ]);
+
+      if (!frontInfo.exists || !sideInfo.exists) {
+        console.warn("[PIC] missing file(s)", {
+          frontExists: frontInfo.exists,
+          sideExists: sideInfo.exists,
+          fResolved,
+          sResolved,
+        });
+        Alert.alert("Photos missing", "Please retake or reselect your photos.");
+        return;
+      }
+
       const [fNorm, sNorm] = await Promise.all([
         ensureJpegCompressed(fResolved),
         ensureJpegCompressed(sResolved),
@@ -346,6 +354,9 @@ export default function TakePicture() {
           normalized: "1",
         },
       });
+    } catch (err) {
+      console.error("[PIC] proceed failed", err);
+      Alert.alert("Couldn't proceed", toUserFacingMessage(err));
     } finally {
       setSubmitting(false);
     }
