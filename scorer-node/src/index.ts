@@ -199,27 +199,39 @@ const MAX_CONCURRENT: number = (() => {
   return Number.isFinite(n) && n > 0 ? n : 20;
 })();
 
+// MAX_CONCURRENT bounds the number of simultaneous heavy jobs (scoring/explain).
 let active = 0;
-const queue: (() => void)[] = [];
+// FIFO of waiters to hand slots to once capacity frees up.
+const queue: Array<() => void> = [];
+// Each acquisition gets a token so we only release slots that were actually granted.
+type ConcurrencyToken = { id: number; released: boolean };
+let nextTokenId = 0;
 
-function enqueue(): Promise<void> {
+function grantSlot(): ConcurrencyToken {
+  active += 1;
+  return { id: ++nextTokenId, released: false };
+}
+
+function enqueue(): Promise<ConcurrencyToken> {
   return new Promise((resolve, reject) => {
     if (active < MAX_CONCURRENT) {
-      active++;
-      resolve();
-    } else if (queue.length < 100) {
-      queue.push(resolve);
-    } else {
-      reject(new Error("server_overloaded"));
+      resolve(grantSlot());
+      return;
     }
+    if (queue.length >= 100) {
+      reject(new Error("server_overloaded"));
+      return;
+    }
+    queue.push(() => resolve(grantSlot()));
   });
 }
 
-function release() {
+function release(token?: ConcurrencyToken | null) {
+  if (!token || token.released) return;
+  token.released = true;
   active = Math.max(0, active - 1);
   const next = queue.shift();
   if (next) {
-    active++;
     next();
   }
   if (active / MAX_CONCURRENT > 0.8) {
@@ -249,8 +261,9 @@ app.get("/queues/health", async (_req, res) => {
 /* ---------------------- /analyze/pair-bytes (fallback) -------------------- */
 app.post("/analyze/pair-bytes", async (req, res) => {
   const t0 = Date.now();
+  let slot: ConcurrencyToken | null = null;
   try {
-    await enqueue();
+    slot = await enqueue();
     const { front, side } = (req.body || {}) as { front?: string; side?: string };
     if (typeof front !== "string" || typeof side !== "string") {
       return res.status(400).json({ error: "fields 'front' and 'side' required as data URLs" });
@@ -272,7 +285,7 @@ app.post("/analyze/pair-bytes", async (req, res) => {
       return res.status(422).json({ error: "invalid_scores_shape", issues: err.issues });
     res.status(500).json({ error: "pair_bytes_failed", detail: err?.message || "unknown" });
   } finally {
-    release();
+    if (slot) release(slot);
     console.log("[/analyze/pair-bytes] ms =", Date.now() - t0);
   }
 });
@@ -281,8 +294,9 @@ app.post("/analyze/pair-bytes", async (req, res) => {
 app.post("/analyze", idempotency(), upload.single("image"), async (req, res) => {
 
   const t0 = Date.now();
+  let slot: ConcurrencyToken | null = null;
   try {
-    await enqueue();
+    slot = await enqueue();
     if (!req.file) return res.status(400).json({ error: "file 'image' required" });
     if (!req.file.buffer?.length)
       return res.status(400).json({
@@ -306,7 +320,7 @@ app.post("/analyze", idempotency(), upload.single("image"), async (req, res) => 
     res.status(500).json(errorPayload(err));
     
   } finally {
-    release();
+    if (slot) release(slot);
     console.log("[/analyze] ms =", Date.now() - t0);
   }
 });
@@ -322,8 +336,9 @@ app.post(
   ]),
   async (req, res) => {
     const t0 = Date.now();
+    let slot: ConcurrencyToken | null = null;
     try {
-      await enqueue();
+      slot = await enqueue();
       const files = req.files as Record<string, Express.Multer.File[]>;
       const frontal = files?.frontal?.[0];
       const side = files?.side?.[0];
@@ -348,7 +363,7 @@ app.post(
         return res.status(422).json({ error: "invalid_scores_shape", issues: err.issues });
       res.status(500).json(errorPayload(err));
     } finally {
-      release();
+      if (slot) release(slot);
       console.log("[/analyze/pair] ms =", Date.now() - t0);
     }
   }
@@ -357,39 +372,40 @@ app.post(
 /* ---------------------- /analyze/explain & /pair --------------------------- */
 app.post("/analyze/explain", idempotency(), upload.single("image"), async (req, res) => {
 
-  const t0 = Date.now();
-  try {
-    await enqueue();
-    if (!req.file) return res.status(400).json({ error: "file 'image' required" });
-    const scoresRaw = req.body?.scores;
-    if (!scoresRaw) return res.status(400).json({ error: "field 'scores' required" });
-
-    const scores = ScoresSchema.parse(JSON.parse(scoresRaw));
-    const { buffer, mime } = await toJpegBuffer(req.file);
-    const notes = await explainImageBytes(openai, buffer, mime, scores);
-
-    // Prefer V2 (4 lines). If it fails, accept V1 and coerce to 4.
-    let parsed: ExplanationsV2;
+    const t0 = Date.now();
+    let slot: ConcurrencyToken | null = null;
     try {
-      parsed = ExplanationsSchemaV2.parse(notes);
-    } catch {
-      const v1 = ExplanationsSchemaV1.parse(notes);
-      parsed = ExplanationsSchemaV2.parse(coerceV1toV2(v1));
-    }
+      slot = await enqueue();
+      if (!req.file) return res.status(400).json({ error: "file 'image' required" });
+      const scoresRaw = req.body?.scores;
+      if (!scoresRaw) return res.status(400).json({ error: "field 'scores' required" });
 
-    res.json(parsed);
-  } catch (err: any) {
-    if (err.message === "server_overloaded")
-      return res.status(503).json({ error: "too_many_requests", hint: "retry later" });
-    console.error("[/analyze/explain] error:", err?.response?.data ?? err);
-    if (err instanceof ZodError)
-      return res.status(422).json({ error: "invalid_explanations_shape", issues: err.issues });
-    res.status(500).json(errorPayload(err));
-  } finally {
-    release();
-    console.log("[/analyze/explain] ms =", Date.now() - t0);
-  }
-});
+      const scores = ScoresSchema.parse(JSON.parse(scoresRaw));
+      const { buffer, mime } = await toJpegBuffer(req.file);
+      const notes = await explainImageBytes(openai, buffer, mime, scores);
+
+      // Prefer V2 (4 lines). If it fails, accept V1 and coerce to 4.
+      let parsed: ExplanationsV2;
+      try {
+        parsed = ExplanationsSchemaV2.parse(notes);
+      } catch {
+        const v1 = ExplanationsSchemaV1.parse(notes);
+        parsed = ExplanationsSchemaV2.parse(coerceV1toV2(v1));
+      }
+
+      res.json(parsed);
+    } catch (err: any) {
+      if (err.message === "server_overloaded")
+        return res.status(503).json({ error: "too_many_requests", hint: "retry later" });
+      console.error("[/analyze/explain] error:", err?.response?.data ?? err);
+      if (err instanceof ZodError)
+        return res.status(422).json({ error: "invalid_explanations_shape", issues: err.issues });
+      res.status(500).json(errorPayload(err));
+    } finally {
+      if (slot) release(slot);
+      console.log("[/analyze/explain] ms =", Date.now() - t0);
+    }
+  });
 
 app.post(
   "/analyze/explain/pair",
@@ -401,8 +417,9 @@ app.post(
   ]),
   async (req, res) => {
     const t0 = Date.now();
+    let slot: ConcurrencyToken | null = null;
     try {
-      await enqueue();
+      slot = await enqueue();
       const files = req.files as Record<string, Express.Multer.File[]>;
       const frontal = files?.frontal?.[0];
       const side = files?.side?.[0];
@@ -439,7 +456,7 @@ app.post(
         return res.status(422).json({ error: "invalid_explanations_shape", issues: err.issues });
       res.status(500).json(errorPayload(err));
     } finally {
-      release();
+      if (slot) release(slot);
       console.log("[/analyze/explain/pair] ms =", Date.now() - t0);
     }
   }
@@ -461,8 +478,9 @@ app.post("/recommendations", upload.none(), idempotency(), async (req, res) => {
     });
 
   const t0 = Date.now();
+  let slot: ConcurrencyToken | null = null;
   try {
-    await enqueue();
+    slot = await enqueue();
     const data = await generateRecommendations(parsedReq.data);
     res.json(data);
   } catch (err: any) {
@@ -487,7 +505,7 @@ app.post("/recommendations", upload.none(), idempotency(), async (req, res) => {
     console.error("[/recommendations] error:", err?.response?.data ?? err);
     res.status(500).json(errorPayload(err));
   } finally {
-    release();
+    if (slot) release(slot);
     console.log("[/recommendations] ms =", Date.now() - t0);
   }
 });

@@ -1,0 +1,99 @@
+* [33m1d61acb[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m)[m finalization of the features
+[31m|[m * [33m76ba443[m[33m ([m[1;31morigin/main[m[33m)[m solving scores displaying
+[31m|[m * [33m5206bca[m phase 3 ended
+[31m|[m * [33m16078e3[m Routine: harden repair prompt to enforce Sauce; ban version tokens; lenient sanitizer for version-like junk
+[31m|[m * [33mb6ecba0[m Fix: remove unsupported signal param from OpenAI call and stabilize LLM timeout handling
+[31m|[m * [33mb28616f[m Remove signal from LLM calls; add client-level timeouts to worker & API
+[31m|[m * [33me35b6df[m phase 3 done
+[31m|[m * [33m6b92054[m Phase 3: add DLQ + metrics observability
+[31m|[m * [33maf6bfbe[m still in the 3rd phase nuking errors
+[31m|[m * [33md036ce5[m phase 3 about to finish
+[31m|[m * [33mc979fa4[m still resolving redis
+[31m|[m * [33mafef6e6[m crashing resolved but where is redis??
+[31m|[m * [33mee5df91[m stopping queue from crashings
+[31m|[m * [33mb535d9f[m phase 2 about to complete
+[31m|[m * [33m2c683c2[m 1st phase of the system upgrdation done
+[31m|[m[31m/[m  
+* [33md2fa8dc[m UI of the routine done , ALhamdulilah
+* [33m4dca137[m UI nearly finished for sigma
+* [33m45b52dd[m chat done without UI/UX
+* [33mdd1426a[m still on the aecond
+* [33m3694390[m secoond phase
+* [33mbedf300[m first phase of the chatbot
+* [33m770e877[m state before the implication of the chatbot
+* [33mcd2cd77[m 15 days mission completed
+* [33m32ac4a0[m 15 days system
+* [33m08c385a[m state management for the routine
+* [33md4f0aa9[m routine fixed after major
+* [33m16b14c1[m Routine feature integrated end-to-end (backend + frontend render stable)
+* [33m3dcee6c[m backend for the routine finalized
+* [33md89c828[m routine removed
+* [33mcfa4d2d[m about to improve the routine
+* [33mbf59d68[m loading
+* [33m0cc1d71[m take picture screen UI
+* [33m9185b76[m 400 errors vanished
+* [33m6f95274[m chore: add schema check log
+* [33mf55f92c[m go
+* [33mc629b97[m choas everywhere
+* [33m29a26e0[m still in the chaos
+* [33m9bd633b[m searching quality output v1
+* [33m143818f[m analysis about to polish
+* [33mebfdbc3[m analysis
+* [33m1312d9f[m analysis improvement
+* [33m67a8d8c[m scores improved
+* [33m8a455b9[m initial loading
+* [33m0054beb[m about to fix the loading
+* [33ma92687c[m paywall screen
+* [33m9b20d31[m loading updated
+* [33m4fd68e0[m loading implication
+* [33m9f1af30[m routine
+* [33mfac65f3[m fixx
+* [33md08a4de[m easy
+* [33m3f3d0df[m errors fixed
+* [33m551c6d8[m nnn
+* [33mc319c43[m uploading to playstore
+* [33mfb869e1[m paywall screen
+* [33m9e98e1a[m buttin
+* [33m1271d95[m bars fixed
+* [33m5dd3b60[m edee
+* [33m783379e[m edge fixing
+* [33m932ee36[m edge screen
+* [33md486552[m onboarding done
+* [33m89c8d0e[m analysis v2
+* [33mf9fac82[m analysis new
+* [33m9ff8ad1[m fixed
+* [33ma0a00a6[m fixing request error
+* [33m2cf8465[m onboarding fixage
+* [33m8b03edc[m alto
+* [33md4c9cb4[m alt
+* [33mcc01766[m help
+* [33m2e55f6b[m nitro
+* [33m73ee698[m yeah
+* [33md99fb5a[m fixed
+* [33mb0e1407[m btc
+* [33m243b1bc[m utc
+* [33mb96f542[m neww
+* [33m87431e5[m dockerfile
+* [33mea33897[m utu
+* [33m1567a32[m strange things
+* [33md7951ae[m updated
+* [33mc0cf23e[m update
+* [33maa0314b[m still
+* [33mb7c309d[m still its broken
+* [33m483a7f3[m still broken
+* [33mdf36009[m last commit
+* [33md82d898[m still in the choas
+* [33m3978f07[m about to eit the hell
+* [33mf91506c[m client.js error
+* [33m80b788b[m error about to fix
+* [33mee2182c[m envbase problem
+* [33m83ef37a[m problems fixed
+* [33m8cfe3c3[m about to fix error 4
+* [33mba155ea[m still fixing 4 error
+* [33mb5567a1[m solving 3rd error
+* [33m3a911a3[m last push before spaghetti code annihilation
+* [33m5b4b93b[m last change
+* [33m96f83d6[m Your commit message
+* [33md48af6d[m Your meaningful commit message
+* [33m769d02e[m update-1
+* [33mc8467db[m first commit

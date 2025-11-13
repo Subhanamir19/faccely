@@ -30,6 +30,33 @@ export type Scores = {
 
 type InputFile = UploadInput;
 
+type PreparedUploadPart = Awaited<ReturnType<typeof prepareUploadPart>>;
+
+export type UploadMeta = {
+  single?: PreparedUploadPart;
+  front?: PreparedUploadPart;
+  side?: PreparedUploadPart;
+};
+
+const UPLOAD_META_SYMBOL = Symbol("facely.scores.uploadMeta");
+
+function attachUploadMeta<T extends Scores>(scores: T, meta: UploadMeta): T {
+  Object.defineProperty(scores, UPLOAD_META_SYMBOL, {
+    value: meta,
+    enumerable: false,
+    configurable: true,
+  });
+  return scores;
+}
+
+export function consumeUploadMeta(scores: Scores): UploadMeta | undefined {
+  const meta = (scores as any)[UPLOAD_META_SYMBOL] as UploadMeta | undefined;
+  if (meta) {
+    delete (scores as any)[UPLOAD_META_SYMBOL];
+  }
+  return meta;
+}
+
 /* -------------------------------------------------------------------------- */
 /*   Safe normalization                                                       */
 /* -------------------------------------------------------------------------- */
@@ -46,19 +73,24 @@ const METRIC_KEYS: (keyof Scores)[] = [
 
 export function normalizeScores(raw: Partial<Scores> | null | undefined): Scores {
   const sanitized: Partial<Scores> = {};
-  const missing: string[] = [];
+  const missingOrInvalid: string[] = [];
 
   for (const key of METRIC_KEYS) {
     const value = (raw as any)?.[key];
-    const numeric =
-      typeof value === "number"
-        ? value
-        : typeof value === "string" && value.trim().length > 0
-        ? Number(value)
-        : NaN;
+    let numeric: number | null = null;
 
-    if (!Number.isFinite(numeric)) {
-      missing.push(key);
+    if (typeof value === "number" && Number.isFinite(value)) {
+      numeric = value;
+    } else if (typeof value === "string" && value.trim().length > 0) {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) {
+        numeric = parsed;
+      }
+    }
+
+    if (numeric === null) {
+      missingOrInvalid.push(key);
+      sanitized[key] = 0 as Scores[typeof key];
       continue;
     }
 
@@ -66,8 +98,11 @@ export function normalizeScores(raw: Partial<Scores> | null | undefined): Scores
     sanitized[key] = clamped as Scores[typeof key];
   }
 
-  if (missing.length > 0) {
-    throw new Error("Analysis results were incomplete. Please retry the scan.");
+  if (missingOrInvalid.length > 0) {
+    console.warn("[scores] normalizeScores missing/invalid metrics:", {
+      missingOrInvalid,
+      raw,
+    });
   }
 
   const values = METRIC_KEYS.map((key) => sanitized[key] as number);
@@ -143,7 +178,7 @@ async function analyzePairMultipart(front: InputFile, side: InputFile): Promise<
   const json = await res.json().catch(() => null);
   if (!json) throw new Error("Invalid JSON from server");
   console.log("[scores] /analyze/pair ok");
-  return normalizeScores(json);
+  return attachUploadMeta(normalizeScores(json), { front: frontPart, side: sidePart });
 }
 
 /* -------------------------------------------------------------------------- */
@@ -193,7 +228,11 @@ async function analyzePairBytes(front: InputFile, side: InputFile): Promise<Scor
   const json = await res.json().catch(() => null);
   if (!json) throw new Error("Invalid JSON from server");
   console.log(`[scores] /analyze/pair-bytes ok (${duration} ms)`);
-  return normalizeScores(json);
+  const meta = {
+    front: { uri: frontPath, name: "front.jpg", type: "image/jpeg" },
+    side: { uri: sidePath, name: "side.jpg", type: "image/jpeg" },
+  };
+  return attachUploadMeta(normalizeScores(json), meta);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -261,5 +300,5 @@ export async function analyzeImage(input: InputFile): Promise<Scores> {
   const json = await res.json().catch(() => null);
   if (!json) throw new Error("Invalid JSON from server");
   console.log("[scores] /analyze ok");
-  return normalizeScores(json);
+  return attachUploadMeta(normalizeScores(json), { single: part });
 }

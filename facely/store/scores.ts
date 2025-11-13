@@ -6,6 +6,7 @@ import {
   analyzeImage,
   analyzePair as apiAnalyzePair,
   type Scores,
+  consumeUploadMeta,
 } from "../lib/api/scores";
 import {
   explainMetrics,
@@ -96,32 +97,38 @@ export const useScores = create<State & Actions>((set, get) => ({
   setSideImage: (uri) => set({ sideImageUri: uri }),
 
   analyze: async (input: InputFile) => {
-    const uri = getUri(input);
-    set({ loading: true, error: null, imageUri: uri });
+    const originalUri = getUri(input);
+    set({ loading: true, error: null });
 
     try {
       await assertBackendReachable();
 
       // Pass through; api layer now accepts string or { uri, name, mime }
       const s = await analyzeImage(input as any);
-      set({ scores: s, loading: false });
+      const meta = consumeUploadMeta(s);
+      const normalizedUri = meta?.single?.uri ?? originalUri;
+      set({ scores: s, loading: false, imageUri: normalizedUri ?? originalUri ?? null });
       return s;
     } catch (err) {
       const friendly = toUserFacingError(
         err,
         `Failed to analyze (base: ${API_BASE}).`
       );
-      set({ error: friendly.message, loading: false });
+      set({
+        error: friendly.message,
+        loading: false,
+        imageUri: originalUri,
+      });
       throw friendly;
     }
   },
 
   analyzePair: async (front: InputFile, side: InputFile) => {
+    const frontUri = getUri(front);
+    const sideUri = getUri(side);
     set({
       loading: true,
       error: null,
-      imageUri: getUri(front),
-      sideImageUri: getUri(side),
     });
 
     try {
@@ -129,14 +136,27 @@ export const useScores = create<State & Actions>((set, get) => ({
 
       // Pass through; api layer now accepts string or { uri, name, mime }
       const s = await apiAnalyzePair(front as any, side as any);
-      set({ scores: s, loading: false });
+      const meta = consumeUploadMeta(s);
+      const normalizedFront = meta?.front?.uri ?? frontUri;
+      const normalizedSide = meta?.side?.uri ?? sideUri;
+      set({
+        scores: s,
+        loading: false,
+        imageUri: normalizedFront ?? frontUri ?? null,
+        sideImageUri: normalizedSide ?? sideUri ?? null,
+      });
       return s;
     } catch (err) {
       const friendly = toUserFacingError(
         err,
         `Failed to analyze pair (base: ${API_BASE}).`
       );
-      set({ error: friendly.message, loading: false });
+      set({
+        error: friendly.message,
+        loading: false,
+        imageUri: frontUri,
+        sideImageUri: sideUri,
+      });
       throw friendly;
     }
   },

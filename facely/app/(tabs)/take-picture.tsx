@@ -224,7 +224,6 @@ export default function TakePicture() {
   const ctaWidth = Math.min(cardWidth, cardWidth * (760 / CARD_BASE_WIDTH));
   const ctaHeight = Math.max(64, 112 * cardScale);
   const ctaRadius = Math.max(36, 56 * cardScale);
-  const subtitleOffset = 260 * cardScale;
   const gridCell = Math.max(60, 80 * cardScale);
 
   // capture selection
@@ -469,45 +468,170 @@ export default function TakePicture() {
                 borderRadius: 36,
                 backgroundColor: "#121212",
                 overflow: "hidden",
+                paddingHorizontal: 28,
+                paddingVertical: 32 * cardScale,
               }}
             >
-              <Image
-                source={require("../../assets/capture-guides/frontal-guide.jpg")}
-                style={{ width: "100%", height: "100%" }}
-                resizeMode="cover"
-              />
-              {renderGridOverlay()}
               <LinearGradient
-                colors={["rgba(0,0,0,0)", "rgba(0,0,0,0.55)"]}
-                start={{ x: 0, y: 0.6 }}
-                end={{ x: 0, y: 1 }}
+                colors={["#151515", "#0A0A0A"]}
+                start={{ x: 0.2, y: 0 }}
+                end={{ x: 1, y: 1 }}
                 style={StyleSheet.absoluteFill}
               />
-              <View
-                style={{
-                  position: "absolute",
-                  left: 0,
-                  right: 0,
-                  bottom: subtitleOffset,
-                  paddingHorizontal: 24,
-                }}
-              >
+              {renderGridOverlay()}
+
+              <View style={{ gap: 12, marginTop: 12 }}>
                 <Text
                   style={{
                     color: "#FFFFFF",
-                    textAlign: "center",
+                    textAlign: "left",
                     fontFamily: Platform.select({
                       ios: "Poppins-SemiBold",
                       android: "Poppins-SemiBold",
                       default: "Poppins-SemiBold",
                     }),
-                    fontSize: 36 * cardScale,
-                    lineHeight: 44 * cardScale,
+                    fontSize: Math.max(26, 34 * cardScale),
+                    lineHeight: Math.max(32, 40 * cardScale),
                     letterSpacing: -0.36,
                   }}
                 >
-                  Get your facial ratings and insights
+                  Get ready for a guided face scan
                 </Text>
+                <Text
+                  style={{
+                    color: TEXT_DIM,
+                    fontFamily: Platform.select({
+                      ios: "Poppins-Regular",
+                      android: "Poppins-Regular",
+                      default: "Poppins-Regular",
+                    }),
+                    fontSize: 14,
+                    lineHeight: 20,
+                  }}
+                >
+                  We’ll walk you through two quick photos—first frontal, then your side profile.
+                </Text>
+              </View>
+
+              <View
+                style={{
+                  marginTop: 28,
+                  flexDirection: "row",
+                  gap: 14,
+                }}
+              >
+                <View
+                  style={{
+                    flex: 1,
+                    borderRadius: 20,
+                    paddingVertical: 18,
+                    paddingHorizontal: 18,
+                    backgroundColor: "rgba(19,19,19,0.72)",
+                    borderWidth: 1,
+                    borderColor: "rgba(255,255,255,0.08)",
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: TEXT_DIM,
+                      fontSize: 12,
+                      textTransform: "uppercase",
+                      letterSpacing: 1,
+                      fontFamily: Platform.select({
+                        ios: "Poppins-SemiBold",
+                        android: "Poppins-SemiBold",
+                        default: "Poppins-SemiBold",
+                      }),
+                    }}
+                  >
+                    Step 1
+                  </Text>
+                  <Text
+                    style={{
+                      color: "#FFFFFF",
+                      marginTop: 6,
+                      fontSize: 18,
+                      fontFamily: Platform.select({
+                        ios: "Poppins-SemiBold",
+                        android: "Poppins-SemiBold",
+                        default: "Poppins-SemiBold",
+                      }),
+                    }}
+                  >
+                    Frontal photo
+                  </Text>
+                  <Text
+                    style={{
+                      color: TEXT_DIM,
+                      marginTop: 8,
+                      fontSize: 13,
+                      lineHeight: 18,
+                      fontFamily: Platform.select({
+                        ios: "Poppins-Regular",
+                        android: "Poppins-Regular",
+                        default: "Poppins-Regular",
+                      }),
+                    }}
+                  >
+                    Center your face within the guide for the sharpest read.
+                  </Text>
+                </View>
+                <View
+                  style={{
+                    flex: 1,
+                    borderRadius: 20,
+                    paddingVertical: 18,
+                    paddingHorizontal: 18,
+                    backgroundColor: "rgba(19,19,19,0.48)",
+                    borderWidth: 1,
+                    borderColor: "rgba(255,255,255,0.04)",
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: TEXT_DIM,
+                      fontSize: 12,
+                      textTransform: "uppercase",
+                      letterSpacing: 1,
+                      fontFamily: Platform.select({
+                        ios: "Poppins-SemiBold",
+                        android: "Poppins-SemiBold",
+                        default: "Poppins-SemiBold",
+                      }),
+                    }}
+                  >
+                    Step 2
+                  </Text>
+                  <Text
+                    style={{
+                      color: "#FFFFFF",
+                      marginTop: 6,
+                      fontSize: 18,
+                      fontFamily: Platform.select({
+                        ios: "Poppins-SemiBold",
+                        android: "Poppins-SemiBold",
+                        default: "Poppins-SemiBold",
+                      }),
+                    }}
+                  >
+                    Side profile
+                  </Text>
+                  <Text
+                    style={{
+                      color: TEXT_DIM,
+                      marginTop: 8,
+                      fontSize: 13,
+                      lineHeight: 18,
+                      fontFamily: Platform.select({
+                        ios: "Poppins-Regular",
+                        android: "Poppins-Regular",
+                        default: "Poppins-Regular",
+                      }),
+                    }}
+                  >
+                    Turn your head slightly right so we can analyze your profile.
+                  </Text>
+                </View>
               </View>
 
               <Pressable
@@ -517,7 +641,7 @@ export default function TakePicture() {
                   position: "absolute",
                   left: (cardWidth - ctaWidth) / 2,
                   right: (cardWidth - ctaWidth) / 2,
-                  bottom: 48 * cardScale,
+                  bottom: 40 * cardScale,
                   height: ctaHeight,
                   borderRadius: ctaRadius,
                   backgroundColor: "#B4F34D",
@@ -653,11 +777,11 @@ export default function TakePicture() {
       {step === "capture" &&
         renderGuide({
           guideSrc:
-          pose === "frontal"
-            ? require("../../assets/capture-guides/frontal-guide.jpg")
-            : require("../../assets/capture-guides/side-guide.jpg"),
-        title: pose === "frontal" ? "Take Frontal Photo" : "Take Side Photo",
-        overlay: pose,
+            pose === "frontal"
+              ? require("../../assets/capture-guides/frontal-guide.jpg")
+              : require("../../assets/capture-guides/side-guide.jpg"),
+          title: pose === "frontal" ? "Take Frontal Photo" : "Take Side Photo",
+          overlay: pose,
         })}
 
       {step === "review" && (

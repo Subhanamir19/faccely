@@ -29,7 +29,26 @@ function toFileMeta(input: UploadInput, fallbackName: string) {
   return { uri: input.uri, name, mime };
 }
 
+async function tryGetInfo(path: string) {
+  try {
+    return await FileSystem.getInfoAsync(path);
+  } catch {
+    return null;
+  }
+}
+
 export async function resolveExistingPath(uri: string): Promise<string> {
+  if (!uri) {
+    throw new UploadNormalizationError(
+      "Selected image is no longer available on disk. Re-select the photo and try again."
+    );
+  }
+
+  const initialInfo = await tryGetInfo(uri);
+  if (initialInfo?.exists) {
+    return uri;
+  }
+
   const candidates = [uri];
 
   try {
@@ -48,11 +67,18 @@ export async function resolveExistingPath(uri: string): Promise<string> {
   }
 
   for (const cand of candidates) {
+    const info = await tryGetInfo(cand);
+    if (info?.exists) return cand;
+  }
+
+  if (!uri.startsWith("file://")) {
+    const dest = `${FileSystem.cacheDirectory ?? ""}upload-${Date.now()}.jpg`;
     try {
-      const info = await FileSystem.getInfoAsync(cand);
-      if (info.exists) return cand;
+      await FileSystem.copyAsync({ from: uri, to: dest });
+      const copiedInfo = await tryGetInfo(dest);
+      if (copiedInfo?.exists) return dest;
     } catch {
-      /* ignore and continue */
+      // ignore; we'll throw below
     }
   }
 

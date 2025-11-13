@@ -1,4 +1,5 @@
 // scorer-node/src/routes/routine.ts
+import { randomUUID } from "crypto";
 import { Router } from "express";
 import { z } from "zod";
 import OpenAI from "openai";
@@ -28,8 +29,24 @@ router.post("/", async (req, res) => {
   }
   try {
     const data = await generateRoutine(parsed.data.scores, parsed.data.context_hint, openaiClient ?? undefined);
+    if (!data || !Array.isArray(data.days)) {
+      throw new Error("invalid routine payload");
+    }
 
-    const validated = RoutineSchema.parse(data);
+    const days = data.days;
+    const routinePayload = {
+      routineId: randomUUID(),
+      createdAt: new Date().toISOString(),
+      version: "v1" as const,
+      dayCount: days.length,
+      taskCount: days.reduce(
+        (max, day) => Math.max(max, Array.isArray(day.components) ? day.components.length : 0),
+        0
+      ),
+      days,
+    };
+
+    const validated = RoutineSchema.parse(routinePayload);
     console.log("[/routine] success");
     return res.status(200).json(validated);
   } catch (err: any) {
