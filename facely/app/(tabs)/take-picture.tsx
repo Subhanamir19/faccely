@@ -333,9 +333,13 @@ export default function TakePicture() {
         return;
       }
 
-      const [fNorm, sNorm] = await Promise.all([
+      const [fNormTemp, sNormTemp] = await Promise.all([
         ensureJpegCompressed(fResolved),
         ensureJpegCompressed(sResolved),
+      ]);
+      const [fNorm, sNorm] = await Promise.all([
+        persistCompressedResult(fNormTemp),
+        persistCompressedResult(sNormTemp),
       ]);
 
       router.push({
@@ -962,4 +966,24 @@ export default function TakePicture() {
       </Modal>
     </>
   );
+}
+async function ensurePersistentImageDir(): Promise<string> {
+  const base = FileSystem.documentDirectory;
+  if (!base) throw new Error("Persistent storage unavailable");
+  const dir = `${base.replace(/\/?$/, "/")}images/`;
+  const info = await FileSystem.getInfoAsync(dir);
+  if (!info.exists) {
+    await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
+  }
+  return dir;
+}
+
+async function persistCompressedResult<T extends { uri: string; name: string }>(
+  result: T
+): Promise<T> {
+  const dir = await ensurePersistentImageDir();
+  const filename = `${Date.now()}-${Math.floor(Math.random() * 1e6)}.jpg`;
+  const dest = `${dir}${filename}`;
+  await FileSystem.copyAsync({ from: result.uri, to: dest });
+  return { ...result, uri: dest };
 }

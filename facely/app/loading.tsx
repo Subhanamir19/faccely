@@ -23,9 +23,26 @@ type Params = {
   normalized?: ParamValue;
 };
 
+type ImageMeta = { uri: string; name: string; mime: string };
+
 function takeFirst(value?: ParamValue): string | undefined {
   if (!value) return undefined;
   return Array.isArray(value) ? value[0] : value;
+}
+
+function normalizeMode(
+  value?: string
+): "analyzePair" | "advanced" | undefined {
+  if (value === "analyzePair" || value === "advanced") return value;
+  return undefined;
+}
+
+function normalizePhase(value?: string): "scoring" | "analysis" {
+  return value === "analysis" ? "analysis" : "scoring";
+}
+
+function normalizeNormalized(value?: string): "0" | "1" {
+  return value === "1" ? "1" : "0";
 }
 
 function safeDecode(value: string): string {
@@ -56,6 +73,39 @@ async function ensureFileUriAsync(raw?: string | null): Promise<string | null> {
   return toFileUri(raw);
 }
 
+async function ensurePersistentImageDir(): Promise<string> {
+  const base = FileSystem.documentDirectory;
+  if (!base) {
+    throw new Error("Persistent storage unavailable. Please restart the app.");
+  }
+  const dir = `${base.replace(/\/?$/, "/")}images/`;
+  const info = await FileSystem.getInfoAsync(dir);
+  if (!info.exists) {
+    await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
+  }
+  return dir;
+}
+
+async function persistCompressedResult<T extends { uri: string; name: string }>(
+  result: T
+): Promise<T> {
+  const dir = await ensurePersistentImageDir();
+  const filename = `${Date.now()}-${Math.floor(Math.random() * 1e6)}.jpg`;
+  const dest = `${dir}${filename}`;
+  await FileSystem.copyAsync({ from: result.uri, to: dest });
+  return { ...result, uri: dest };
+}
+
+async function ensureLocalPairExists(frontUri: string, sideUri: string) {
+  const [i1, i2] = await Promise.all([
+    FileSystem.getInfoAsync(frontUri),
+    FileSystem.getInfoAsync(sideUri),
+  ]);
+  if (!i1.exists || !i2.exists) {
+    throw new Error("Missing local image files. Please reselect.");
+  }
+}
+
 export default function LoadingScreen() {
   const { completed } = useOnboarding();
   const params = useLocalSearchParams<Params>();
@@ -63,17 +113,15 @@ export default function LoadingScreen() {
   const explainPair = useScores((state) => state.explainPair);
   const explain = useScores((state) => state.explain);
 
-  const mode = takeFirst(params.mode);
+  const mode = normalizeMode(takeFirst(params.mode));
   const front = takeFirst(params.front);
   const side = takeFirst(params.side);
-  const phase = takeFirst(params.phase);
+  const phase = normalizePhase(takeFirst(params.phase));
   const frontName = takeFirst(params.frontName);
   const sideName = takeFirst(params.sideName);
   const frontMime = takeFirst(params.frontMime);
   const sideMime = takeFirst(params.sideMime);
-  const normalized = takeFirst(params.normalized);
-
-
+  const normalized = normalizeNormalized(takeFirst(params.normalized));
 
   const [isLoading, setIsLoading] = useState(true);
 
@@ -101,115 +149,122 @@ export default function LoadingScreen() {
       }
     };
 
-    if (mode === "analyzePair") {
-      (async () => {
-        try {
-          if (!front || !side) {
-            throw new Error("Both frontal and side images are required.");
-          }
+    const runAnalyzePairWorkflow = async () => {
+      try {
+        if (!front || !side) {
+          throw new Error("Both frontal and side images are required.");
+        }
 
-          const decodedFront = safeDecode(front);
-          const decodedSide = safeDecode(side);
+        const decodedFront = safeDecode(front);
+        const decodedSide = safeDecode(side);
+        let frontMeta: ImageMeta;
+        let sideMeta: ImageMeta;
 
-          const frontUriRaw = await ensureFileUriAsync(decodedFront);
-          const sideUriRaw = await ensureFileUriAsync(decodedSide);
+        if (normalized === "1") {
+          frontMeta = {
+            uri: decodedFront,
+            name: frontName ?? "front.jpg",
+            mime: frontMime ?? "image/jpeg",
+          };
+          sideMeta = {
+            uri: decodedSide,
+            name: sideName ?? "side.jpg",
+            mime: sideMime ?? "image/jpeg",
+          };
+        } else {
+          const [frontResolved, sideResolved] = await Promise.all([
+            ensureFileUriAsync(decodedFront),
+            ensureFileUriAsync(decodedSide),
+          ]);
 
-          if (!frontUriRaw || !sideUriRaw) {
+          if (!frontResolved || !sideResolved) {
             throw new Error("Image paths could not be resolved.");
           }
-
-          const alreadyNormalized = normalized === "1";
-          let frontMeta: { uri: string; name?: string; mime?: string };
-          let sideMeta: { uri: string; name?: string; mime?: string };
-
-          if (
-            alreadyNormalized &&
-            frontName &&
-            sideName &&
-            frontMime &&
-            sideMime
-          ) {
-            frontMeta = {
-              uri: frontUriRaw,
-              name: frontName || "front.jpg",
-              mime: frontMime || "image/jpeg",
-            };
-            sideMeta = {
-              uri: sideUriRaw,
-              name: sideName || "side.jpg",
-              mime: sideMime || "image/jpeg",
-            };
-          } else {
-            const [frontNorm, sideNorm] = await Promise.all([
-              ensureJpegCompressed(frontUriRaw),
-              ensureJpegCompressed(sideUriRaw),
-            ]);
-            frontMeta = {
-              uri: frontNorm.uri,
-              name: frontNorm.name,
-              mime: "image/jpeg",
-            };
-            sideMeta = {
-              uri: sideNorm.uri,
-              name: sideNorm.name,
-              mime: "image/jpeg",
-            };
-          }
-
-          const scores = await analyzePair(frontMeta as any, sideMeta as any);
           if (cancelled) return;
 
-          const wantsAnalysis = phase === "analysis";
-          if (wantsAnalysis) {
-            const ok = await explainPair(
-              frontMeta.uri,
-              sideMeta.uri,
-              scores,
-            );
-            if (!ok) {
-              throw new Error("Advanced analysis did not return results.");
-            }
-            if (cancelled) return;
-            setIsLoading(false);
-            router.replace("/(tabs)/analysis");
-            return;
-          }
+          const [frontTemp, sideTemp] = await Promise.all([
+            ensureJpegCompressed(frontResolved),
+            ensureJpegCompressed(sideResolved),
+          ]);
+          if (cancelled) return;
 
-          setIsLoading(false);
-          router.replace({
-            pathname: "/(tabs)/score",
-            params: { scoresPayload: JSON.stringify(scores) },
-          });
-        } catch (error) {
-          handleError(error, "Analysis failed");
+          const [frontPersisted, sidePersisted] = await Promise.all([
+            persistCompressedResult(frontTemp),
+            persistCompressedResult(sideTemp),
+          ]);
+
+          frontMeta = {
+            uri: frontPersisted.uri,
+            name: frontPersisted.name,
+            mime: "image/jpeg",
+          };
+          sideMeta = {
+            uri: sidePersisted.uri,
+            name: sidePersisted.name,
+            mime: "image/jpeg",
+          };
         }
-      })();
 
-      return () => {
-        cancelled = true;
-      };
-    }
+        await ensureLocalPairExists(frontMeta.uri, sideMeta.uri);
+        if (cancelled) return;
 
-    if (mode === "advanced") {
-      (async () => {
-        try {
-          const { imageUri: storedImageUri, scores: storedScores } =
-            useScores.getState();
-          if (!storedImageUri || !storedScores) {
-            throw new Error("Scores not found. Please run analysis again.");
-          }
-          const ok = await explain(storedImageUri, storedScores);
+        const scores = await analyzePair(frontMeta, sideMeta);
+        if (cancelled) return;
+
+        if (phase === "analysis") {
+          const ok = await explainPair(
+            frontMeta.uri,
+            sideMeta.uri,
+            scores,
+          );
           if (!ok) {
             throw new Error("Advanced analysis did not return results.");
           }
           if (cancelled) return;
           setIsLoading(false);
           router.replace("/(tabs)/analysis");
-        } catch (error) {
-          handleError(error, "Advanced analysis failed");
+          return;
         }
-      })();
 
+        setIsLoading(false);
+        router.replace({
+          pathname: "/(tabs)/score",
+          params: { scoresPayload: JSON.stringify(scores) } as any,
+        });
+        
+      } catch (error) {
+        handleError(error, "Analysis failed");
+      }
+    };
+
+    const runAdvancedWorkflow = async () => {
+      try {
+        const { imageUri: storedImageUri, scores: storedScores } =
+          useScores.getState();
+        if (!storedImageUri || !storedScores) {
+          throw new Error("Scores not found. Please run analysis again.");
+        }
+        const ok = await explain(storedImageUri, storedScores);
+        if (!ok) {
+          throw new Error("Advanced analysis did not return results.");
+        }
+        if (cancelled) return;
+        setIsLoading(false);
+        router.replace("/(tabs)/analysis");
+      } catch (error) {
+        handleError(error, "Advanced analysis failed");
+      }
+    };
+
+    if (mode === "analyzePair") {
+      runAnalyzePairWorkflow();
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    if (mode === "advanced") {
+      runAdvancedWorkflow();
       return () => {
         cancelled = true;
       };
@@ -245,8 +300,5 @@ export default function LoadingScreen() {
     sideMime,
   ]);
 
-  return (
-    <CinematicLoader loading={isLoading} />
-
-  );
+  return <CinematicLoader loading={isLoading} />;
 }
