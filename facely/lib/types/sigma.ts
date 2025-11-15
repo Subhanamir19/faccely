@@ -10,7 +10,7 @@ import { z } from "zod";
 export const SigmaAttachmentSchema = z.object({
   type: z.enum(["image", "scores", "routine_context"]),
   url: z.string().url().optional(),
-  meta: z.record(z.unknown()).optional(),
+  meta: z.record(z.string(), z.unknown()).optional(),
 });
 export type SigmaAttachment = z.infer<typeof SigmaAttachmentSchema>;
 
@@ -27,7 +27,7 @@ export const SigmaMessageSchema = z.object({
 export type SigmaMessage = z.infer<typeof SigmaMessageSchema>;
 
 const SigmaThreadMetaSchema = z.object({
-  latest_scores: z.record(z.number().min(0).max(100)).optional(),
+  latest_scores: z.record(z.string(), z.number().min(0).max(100)).optional(),
   active_routine_day: z.number().int().nonnegative().optional(),
 });
 

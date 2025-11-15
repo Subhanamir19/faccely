@@ -1,7 +1,7 @@
 // facely/lib/api/scores.ts
 // Stable, concurrency-safe upload helpers for facial scoring.
 
-import API_BASE from "./config";
+import { API_BASE } from "./config";
 import * as FileSystem from "expo-file-system";
 import {
   fetchWithRetry,
@@ -107,7 +107,14 @@ export function normalizeScores(raw: Partial<Scores> | null | undefined): Scores
 
   const values = METRIC_KEYS.map((key) => sanitized[key] as number);
   if (values.every((v) => v === 0)) {
-    throw new Error("Analysis returned empty scores. Please retry with a clearer photo.");
+    console.error("[scores] EMPTY_SCORES_GUARD", {
+      raw,
+      sanitized,
+      missingOrInvalid,
+    });
+    throw new Error(
+      "Analysis returned empty scores. Please retry with a clearer photo."
+    );
   }
 
   return sanitized as Scores;
@@ -176,6 +183,7 @@ async function analyzePairMultipart(front: InputFile, side: InputFile): Promise<
   }
 
   const json = await res.json().catch(() => null);
+  console.log("[scores] /analyze/pair raw:", json);
   if (!json) throw new Error("Invalid JSON from server");
   console.log("[scores] /analyze/pair ok");
   return attachUploadMeta(normalizeScores(json), { front: frontPart, side: sidePart });
@@ -226,6 +234,7 @@ async function analyzePairBytes(front: InputFile, side: InputFile): Promise<Scor
   }
 
   const json = await res.json().catch(() => null);
+  console.log("[scores] /analyze/pair-bytes raw:", json);
   if (!json) throw new Error("Invalid JSON from server");
   console.log(`[scores] /analyze/pair-bytes ok (${duration} ms)`);
   const meta = {
@@ -298,6 +307,7 @@ export async function analyzeImage(input: InputFile): Promise<Scores> {
   }
 
   const json = await res.json().catch(() => null);
+  console.log("[scores] /analyze raw:", json);
   if (!json) throw new Error("Invalid JSON from server");
   console.log("[scores] /analyze ok");
   return attachUploadMeta(normalizeScores(json), { single: part });

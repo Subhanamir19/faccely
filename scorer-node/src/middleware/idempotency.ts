@@ -57,16 +57,96 @@ function stableJson(x: unknown): string {
   }
 }
 
+type MulterFileLike = {
+  fieldname?: string;
+  originalname?: string;
+  mimetype?: string;
+  size?: number;
+  buffer?: Buffer;
+};
+
+function isMulterFileLike(file: unknown): file is MulterFileLike {
+  return Boolean(
+    file &&
+    typeof file === "object" &&
+    Buffer.isBuffer((file as MulterFileLike).buffer)
+  );
+}
+
+function collectMulterFiles(req: Request): MulterFileLike[] {
+  const anyReq = req as Request & {
+    file?: MulterFileLike;
+    files?:
+      | MulterFileLike
+      | MulterFileLike[]
+      | Record<string, MulterFileLike | MulterFileLike[] | undefined>;
+  };
+  const found: MulterFileLike[] = [];
+  if (isMulterFileLike(anyReq.file)) found.push(anyReq.file);
+
+  const multi = anyReq.files;
+  if (!multi) return found;
+
+  if (Array.isArray(multi)) {
+    for (const item of multi) if (isMulterFileLike(item)) found.push(item);
+    return found;
+  }
+
+  if (isMulterFileLike(multi)) {
+    found.push(multi);
+    return found;
+  }
+
+  if (typeof multi === "object") {
+    for (const value of Object.values(multi)) {
+      if (Array.isArray(value)) {
+        for (const item of value) if (isMulterFileLike(item)) found.push(item);
+      } else if (isMulterFileLike(value)) {
+        found.push(value);
+      }
+    }
+  }
+
+  return found;
+}
+
+function filesFingerprint(req: Request): string | undefined {
+  const files = collectMulterFiles(req);
+  if (!files.length) return undefined;
+
+  const h = createHash("sha256");
+  const sorted = files
+    .map((file, idx) => ({
+      file,
+      order: `${file.fieldname ?? ""}:${file.originalname ?? ""}:${idx}`,
+    }))
+    .sort((a, b) => a.order.localeCompare(b.order));
+
+  for (const { file } of sorted) {
+    if (file.fieldname) h.update(file.fieldname);
+    if (file.originalname) h.update(file.originalname);
+    if (file.mimetype) h.update(file.mimetype);
+    h.update(String(file.size ?? file.buffer?.length ?? 0));
+    if (file.buffer) h.update(file.buffer);
+  }
+
+  return h.digest("hex").slice(0, 32);
+}
+
 function deriveKey(req: Request): string {
   const provided = String(req.headers[HEADER] ?? "").trim();
   if (provided) return provided;
 
+  const filesToken = filesFingerprint(req);
   const basis = [
     req.method.toUpperCase(),
     req.path,
     new URLSearchParams(req.query as Record<string, string>).toString(),
     stableJson(req.body ?? {}),
-  ].join("|");
+    filesToken ? `files:${filesToken}` : "",
+  ]
+    .filter(Boolean)
+    .join("|");
 
   const h = createHash("sha256").update(basis).digest("hex").slice(0, 32);
   return `${SERVICE.name}:idem:${h}`;

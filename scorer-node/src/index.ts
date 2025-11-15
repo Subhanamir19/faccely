@@ -165,11 +165,37 @@ async function toJpegBuffer(file: Express.Multer.File) {
 }
 
 
-function errorPayload(err: any) {
-  const openaiMsg =
-    err?.response?.data?.error?.message || err?.error?.message || err?.message || "unknown_error";
-  const status = err?.status || err?.response?.status;
-  return { error: "upstream_failed", status, detail: openaiMsg };
+async function persistIdempotentResult(res: express.Response, body: unknown) {
+  const store = res.locals?.idempotency;
+  if (!store?.setCompleted) return;
+  try {
+    await store.setCompleted(body);
+  } catch (err) {
+    console.warn("[idempotency:setCompleted] failed", (err as Error)?.message || err);
+  }
+}
+
+type ApiErrorOptions = {
+  hint?: string;
+  debugHint?: string;
+  err?: any;
+};
+
+function apiError(code: string, message: string, opts?: ApiErrorOptions) {
+  const payload: { errorCode: string; message: string; hint?: string; debugHint?: string } = {
+    errorCode: code,
+    message,
+  };
+  if (opts?.hint) payload.hint = opts.hint;
+  const rawDebug =
+    opts?.debugHint ||
+    opts?.err?.response?.data?.error?.message ||
+    opts?.err?.error?.message ||
+    opts?.err?.message;
+  if (rawDebug && !config.IS_PROD) {
+    payload.debugHint = rawDebug;
+  }
+  return payload;
 }
 
 function preview(buf?: Buffer) {
@@ -266,7 +292,11 @@ app.post("/analyze/pair-bytes", async (req, res) => {
     slot = await enqueue();
     const { front, side } = (req.body || {}) as { front?: string; side?: string };
     if (typeof front !== "string" || typeof side !== "string") {
-      return res.status(400).json({ error: "fields 'front' and 'side' required as data URLs" });
+      return res.status(400).json(
+        apiError("missing_pair_images", "Fields 'front' and 'side' must be data URLs.", {
+          hint: "Send both images as data:image/jpeg;base64,... strings.",
+        })
+      );
     }
 
     const fB64 = front.replace(/^data:image\/\w+;base64,/, "");
@@ -279,11 +309,27 @@ app.post("/analyze/pair-bytes", async (req, res) => {
     res.json(parsed);
   } catch (err: any) {
     if (err.message === "server_overloaded")
-      return res.status(503).json({ error: "too_many_requests", hint: "retry later" });
+      return res
+        .status(503)
+        .json(
+          apiError("too_many_requests", "Scoring queue is saturated. Please retry shortly.", {
+            hint: "retry later",
+            err,
+          })
+        );
     console.error("[/analyze/pair-bytes] error:", err?.response?.data ?? err);
     if (err instanceof ZodError)
-      return res.status(422).json({ error: "invalid_scores_shape", issues: err.issues });
-    res.status(500).json({ error: "pair_bytes_failed", detail: err?.message || "unknown" });
+      return res.status(422).json({
+        ...apiError(
+          "invalid_scores_shape",
+          "Scoring provider returned data that did not match the Scores schema.",
+          { err }
+        ),
+        issues: err.issues,
+      });
+    res
+      .status(500)
+      .json(apiError("pair_bytes_failed", "Pair analysis failed. Please retry with a clearer photo.", { err }));
   } finally {
     if (slot) release(slot);
     console.log("[/analyze/pair-bytes] ms =", Date.now() - t0);
@@ -291,34 +337,66 @@ app.post("/analyze/pair-bytes", async (req, res) => {
 });
 
 /* --------------------------- /analyze (single) ---------------------------- */
-app.post("/analyze", idempotency(), upload.single("image"), async (req, res) => {
+app.post("/analyze", upload.single("image"), idempotency(), async (req, res) => {
 
   const t0 = Date.now();
   let slot: ConcurrencyToken | null = null;
   try {
     slot = await enqueue();
-    if (!req.file) return res.status(400).json({ error: "file 'image' required" });
+    if (!req.file)
+      return res
+        .status(400)
+        .json(
+          apiError("missing_image", "Image field 'image' is required.", {
+            hint: "Ensure the multipart field is named 'image'.",
+          })
+        );
     if (!req.file.buffer?.length)
-      return res.status(400).json({
-        error: "empty_file_buffer",
-        hint: "Likely bad client FormData. Do NOT set Content-Type manually.",
-      });
+      return res.status(400).json(
+        apiError("empty_file_buffer", "Uploaded file contained no data.", {
+          hint: "Do not set Content-Type manually when sending FormData.",
+        })
+      );
 
     console.log("[/analyze] buffer:", preview(req.file.buffer));
     const scores = await scoreImageBytes(openai, req.file.buffer, req.file.mimetype);
     const parsed = ScoresSchema.parse(scores);
-    res.json(parsed);
+    await persistIdempotentResult(res, parsed);
+    return res.json(parsed);
   } catch (err: any) {
     if (err.message === "server_overloaded")
-      return res.status(503).json({ error: "too_many_requests", hint: "retry later" });
+      return res
+        .status(503)
+        .json(
+          apiError("too_many_requests", "Scoring queue is saturated. Please retry shortly.", {
+            hint: "retry later",
+            err,
+          })
+        );
     console.error("[/analyze] error:", err?.response?.data ?? err);
     if (err instanceof ZodError)
-      return res.status(422).json({ error: "invalid_scores_shape", issues: err.issues });
+      return res.status(422).json({
+        ...apiError(
+          "invalid_scores_shape",
+          "Scoring provider returned data that did not match the Scores schema.",
+          { err }
+        ),
+        issues: err.issues,
+      });
     if ((err as any).status === 415) {
-      return res.status(415).json({ error: "unsupported_image_codec", hint: (err as any).hint });
+      return res
+        .status(415)
+        .json(
+          apiError("unsupported_image_codec", "Image codec is not supported.", {
+            hint: (err as any).hint,
+            err,
+          })
+        );
     }
-    res.status(500).json(errorPayload(err));
-    
+    res
+      .status(500)
+      .json(apiError("analysis_failed", "Analysis failed. Please retry with a clearer photo.", { err }));
+    return;
   } finally {
     if (slot) release(slot);
     console.log("[/analyze] ms =", Date.now() - t0);
@@ -328,12 +406,12 @@ app.post("/analyze", idempotency(), upload.single("image"), async (req, res) => 
 /* --------------------------- /analyze/pair -------------------------------- */
 app.post(
   "/analyze/pair",
-  idempotency(),
   upload.fields([
 
     { name: "frontal", maxCount: 1 },
     { name: "side", maxCount: 1 },
   ]),
+  idempotency(),
   async (req, res) => {
     const t0 = Date.now();
     let slot: ConcurrencyToken | null = null;
@@ -343,7 +421,11 @@ app.post(
       const frontal = files?.frontal?.[0];
       const side = files?.side?.[0];
       if (!frontal || !side)
-        return res.status(400).json({ error: "files 'frontal' and 'side' required" });
+        return res.status(400).json(
+          apiError("missing_pair_images", "Fields 'frontal' and 'side' are required.", {
+            hint: "Send both frontal and side files in the multipart payload.",
+          })
+        );
 
       console.log("[/analyze/pair] buffers:", preview(frontal.buffer), preview(side.buffer));
       const scores = await scoreImagePairBytes(
@@ -354,14 +436,32 @@ app.post(
         side.mimetype
       );
       const parsed = ScoresSchema.parse(scores);
-      res.json(parsed);
+      await persistIdempotentResult(res, parsed);
+      return res.json(parsed);
     } catch (err: any) {
       if (err.message === "server_overloaded")
-        return res.status(503).json({ error: "too_many_requests", hint: "retry later" });
+        return res
+          .status(503)
+          .json(
+            apiError("too_many_requests", "Scoring queue is saturated. Please retry shortly.", {
+              hint: "retry later",
+              err,
+            })
+          );
       console.error("[/analyze/pair] error:", err?.response?.data ?? err);
       if (err instanceof ZodError)
-        return res.status(422).json({ error: "invalid_scores_shape", issues: err.issues });
-      res.status(500).json(errorPayload(err));
+        return res.status(422).json({
+          ...apiError(
+            "invalid_scores_shape",
+            "Scoring provider returned data that did not match the Scores schema.",
+            { err }
+          ),
+          issues: err.issues,
+        });
+      res
+        .status(500)
+        .json(apiError("analysis_failed", "Analysis failed. Please retry with a clearer photo.", { err }));
+      return;
     } finally {
       if (slot) release(slot);
       console.log("[/analyze/pair] ms =", Date.now() - t0);
@@ -370,15 +470,24 @@ app.post(
 );
 
 /* ---------------------- /analyze/explain & /pair --------------------------- */
-app.post("/analyze/explain", idempotency(), upload.single("image"), async (req, res) => {
-
+app.post("/analyze/explain", upload.single("image"), idempotency(), async (req, res) => {
     const t0 = Date.now();
     let slot: ConcurrencyToken | null = null;
     try {
       slot = await enqueue();
-      if (!req.file) return res.status(400).json({ error: "file 'image' required" });
+      if (!req.file)
+        return res.status(400).json(
+          apiError("missing_image", "Image field 'image' is required.", {
+            hint: "Ensure the multipart field is named 'image'.",
+          })
+        );
       const scoresRaw = req.body?.scores;
-      if (!scoresRaw) return res.status(400).json({ error: "field 'scores' required" });
+      if (!scoresRaw)
+        return res.status(400).json(
+          apiError("missing_scores", "Field 'scores' is required.", {
+            hint: "Include the JSON-encoded scores blob in the 'scores' form field.",
+          })
+        );
 
       const scores = ScoresSchema.parse(JSON.parse(scoresRaw));
       const { buffer, mime } = await toJpegBuffer(req.file);
@@ -393,14 +502,32 @@ app.post("/analyze/explain", idempotency(), upload.single("image"), async (req, 
         parsed = ExplanationsSchemaV2.parse(coerceV1toV2(v1));
       }
 
-      res.json(parsed);
+      await persistIdempotentResult(res, parsed);
+      return res.json(parsed);
     } catch (err: any) {
       if (err.message === "server_overloaded")
-        return res.status(503).json({ error: "too_many_requests", hint: "retry later" });
+        return res
+          .status(503)
+          .json(
+            apiError("too_many_requests", "Explanation queue is saturated. Please retry shortly.", {
+              hint: "retry later",
+              err,
+            })
+          );
       console.error("[/analyze/explain] error:", err?.response?.data ?? err);
       if (err instanceof ZodError)
-        return res.status(422).json({ error: "invalid_explanations_shape", issues: err.issues });
-      res.status(500).json(errorPayload(err));
+        return res.status(422).json({
+          ...apiError(
+            "invalid_explanations_shape",
+            "Explanation provider returned an unexpected shape.",
+            { err }
+          ),
+          issues: err.issues,
+        });
+      res
+        .status(500)
+        .json(apiError("explanation_failed", "Explanation failed. Please retry with a clearer photo.", { err }));
+      return;
     } finally {
       if (slot) release(slot);
       console.log("[/analyze/explain] ms =", Date.now() - t0);
@@ -409,12 +536,12 @@ app.post("/analyze/explain", idempotency(), upload.single("image"), async (req, 
 
 app.post(
   "/analyze/explain/pair",
-  idempotency(),
   upload.fields([
 
     { name: "frontal", maxCount: 1 },
     { name: "side", maxCount: 1 },
   ]),
+  idempotency(),
   async (req, res) => {
     const t0 = Date.now();
     let slot: ConcurrencyToken | null = null;
@@ -424,9 +551,20 @@ app.post(
       const frontal = files?.frontal?.[0];
       const side = files?.side?.[0];
       if (!frontal || !side)
-        return res.status(400).json({ error: "files 'frontal' and 'side' required" });
+        return res.status(400).json(
+          apiError("missing_pair_images", "Fields 'frontal' and 'side' are required.", {
+            hint: "Send both frontal and side files in the multipart payload.",
+          })
+        );
 
-      const scores = ScoresSchema.parse(JSON.parse(req.body?.scores));
+      const scoresRaw = req.body?.scores;
+      if (!scoresRaw)
+        return res.status(400).json(
+          apiError("missing_scores", "Field 'scores' is required.", {
+            hint: "Include the JSON-encoded scores blob in the 'scores' form field.",
+          })
+        );
+      const scores = ScoresSchema.parse(JSON.parse(scoresRaw));
       const fJ = await toJpegBuffer(frontal);
       const sJ = await toJpegBuffer(side);
       const notes = await explainImagePairBytes(
@@ -447,14 +585,32 @@ app.post(
         parsed = ExplanationsSchemaV2.parse(coerceV1toV2(v1));
       }
 
-      res.json(parsed);
+      await persistIdempotentResult(res, parsed);
+      return res.json(parsed);
     } catch (err: any) {
       if (err.message === "server_overloaded")
-        return res.status(503).json({ error: "too_many_requests", hint: "retry later" });
+        return res
+          .status(503)
+          .json(
+            apiError("too_many_requests", "Explanation queue is saturated. Please retry shortly.", {
+              hint: "retry later",
+              err,
+            })
+          );
       console.error("[/analyze/explain/pair] error:", err?.response?.data ?? err);
       if (err instanceof ZodError)
-        return res.status(422).json({ error: "invalid_explanations_shape", issues: err.issues });
-      res.status(500).json(errorPayload(err));
+        return res.status(422).json({
+          ...apiError(
+            "invalid_explanations_shape",
+            "Explanation provider returned an unexpected shape.",
+            { err }
+          ),
+          issues: err.issues,
+        });
+      res
+        .status(500)
+        .json(apiError("explanation_failed", "Explanation failed. Please retry with a clearer photo.", { err }));
+      return;
     } finally {
       if (slot) release(slot);
       console.log("[/analyze/explain/pair] ms =", Date.now() - t0);
@@ -482,10 +638,18 @@ app.post("/recommendations", upload.none(), idempotency(), async (req, res) => {
   try {
     slot = await enqueue();
     const data = await generateRecommendations(parsedReq.data);
-    res.json(data);
+    await persistIdempotentResult(res, data);
+    return res.json(data);
   } catch (err: any) {
     if (err.message === "server_overloaded")
-      return res.status(503).json({ error: "too_many_requests", hint: "retry later" });
+      return res
+        .status(503)
+        .json(
+          apiError("too_many_requests", "Recommendations queue is saturated. Please retry shortly.", {
+            hint: "retry later",
+            err,
+          })
+        );
     if (err instanceof RecommendationsParseError) {
       console.error("[/recommendations] invalid completion:", err.rawPreview);
       return res.status(502).json({ error: "recommendations_generation_failed", detail: err.message });
@@ -503,7 +667,15 @@ app.post("/recommendations", upload.none(), idempotency(), async (req, res) => {
       });
     }
     console.error("[/recommendations] error:", err?.response?.data ?? err);
-    res.status(500).json(errorPayload(err));
+    res
+      .status(500)
+      .json(
+        apiError(
+          "recommendations_failed",
+          "Recommendations generation failed. Please retry with the same scores.",
+          { err }
+        )
+      );
   } finally {
     if (slot) release(slot);
     console.log("[/recommendations] ms =", Date.now() - t0);

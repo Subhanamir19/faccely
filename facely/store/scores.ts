@@ -17,6 +17,49 @@ import { RequestTimeoutError, toUserFacingError } from "../lib/api/client";
 
 type InputFile = string | { uri: string; name?: string; mime?: string };
 
+type RequestKey =
+  | "analyzeSingle"
+  | "analyzePair"
+  | "explainSingle"
+  | "explainPair";
+
+type RequestSnapshot = {
+  id: number;
+  loading: boolean;
+  error: string | null;
+};
+
+type RequestStatusMap = Record<RequestKey, RequestSnapshot>;
+
+const createInitialRequests = (): RequestStatusMap => ({
+  analyzeSingle: { id: 0, loading: false, error: null },
+  analyzePair: { id: 0, loading: false, error: null },
+  explainSingle: { id: 0, loading: false, error: null },
+  explainPair: { id: 0, loading: false, error: null },
+});
+
+let requestCounter = 0;
+const nextRequestId = () => ++requestCounter;
+
+const computeAnalyzeLoading = (r: RequestStatusMap) =>
+  r.analyzeSingle.loading || r.analyzePair.loading;
+
+const computeAnalyzeError = (r: RequestStatusMap): string | null =>
+  r.analyzeSingle.error ?? r.analyzePair.error ?? null;
+
+const computeExplainLoading = (r: RequestStatusMap) =>
+  r.explainSingle.loading || r.explainPair.loading;
+
+const computeExplainError = (r: RequestStatusMap): string | null =>
+  r.explainSingle.error ?? r.explainPair.error ?? null;
+
+const deriveLegacyFlags = (requests: RequestStatusMap) => ({
+  loading: computeAnalyzeLoading(requests),
+  error: computeAnalyzeError(requests),
+  explLoading: computeExplainLoading(requests),
+  explError: computeExplainError(requests),
+});
+
 const BACKEND_CONFIGURATION_MESSAGE = (() => {
   const hint = API_BASE_CONFIGURATION_HINT?.trim();
   if (hint) return hint;
@@ -53,6 +96,8 @@ type State = {
   explanations: Explanations | null;
   explLoading: boolean;
   explError: string | null;
+
+  requests: RequestStatusMap;
 };
 
 type Actions = {
@@ -82,23 +127,39 @@ type Actions = {
 const getUri = (x: InputFile): string =>
   typeof x === "string" ? x : x?.uri ?? "";
 
+const initialRequests = createInitialRequests();
+const initialLegacyFlags = deriveLegacyFlags(initialRequests);
+
 export const useScores = create<State & Actions>((set, get) => ({
   imageUri: null,
   sideImageUri: null,
   scores: null,
-  loading: false,
-  error: null,
+  loading: initialLegacyFlags.loading,
+  error: initialLegacyFlags.error,
 
   explanations: null,
-  explLoading: false,
-  explError: null,
+  explLoading: initialLegacyFlags.explLoading,
+  explError: initialLegacyFlags.explError,
+
+  requests: initialRequests,
 
   setImage: (uri) => set({ imageUri: uri }),
   setSideImage: (uri) => set({ sideImageUri: uri }),
 
   analyze: async (input: InputFile) => {
     const originalUri = getUri(input);
-    set({ loading: true, error: null });
+    const requestId = nextRequestId();
+    set((state) => {
+      const requests = {
+        ...state.requests,
+        analyzeSingle: { id: requestId, loading: true, error: null },
+      };
+      return {
+        ...state,
+        requests,
+        ...deriveLegacyFlags(requests),
+      };
+    });
 
     try {
       await assertBackendReachable();
@@ -107,17 +168,42 @@ export const useScores = create<State & Actions>((set, get) => ({
       const s = await analyzeImage(input as any);
       const meta = consumeUploadMeta(s);
       const normalizedUri = meta?.single?.uri ?? originalUri;
-      set({ scores: s, loading: false, imageUri: normalizedUri ?? originalUri ?? null });
+      set((state) => {
+        if (state.requests.analyzeSingle.id !== requestId) return state;
+        const requests = {
+          ...state.requests,
+          analyzeSingle: { id: requestId, loading: false, error: null },
+        };
+        return {
+          ...state,
+          scores: s,
+          imageUri: normalizedUri ?? originalUri ?? null,
+          requests,
+          ...deriveLegacyFlags(requests),
+        };
+      });
       return s;
     } catch (err) {
       const friendly = toUserFacingError(
         err,
         `Failed to analyze (base: ${API_BASE}).`
       );
-      set({
-        error: friendly.message,
-        loading: false,
-        imageUri: originalUri,
+      set((state) => {
+        if (state.requests.analyzeSingle.id !== requestId) return state;
+        const requests = {
+          ...state.requests,
+          analyzeSingle: {
+            id: requestId,
+            loading: false,
+            error: friendly.message,
+          },
+        };
+        return {
+          ...state,
+          imageUri: originalUri,
+          requests,
+          ...deriveLegacyFlags(requests),
+        };
       });
       throw friendly;
     }
@@ -126,9 +212,17 @@ export const useScores = create<State & Actions>((set, get) => ({
   analyzePair: async (front: InputFile, side: InputFile) => {
     const frontUri = getUri(front);
     const sideUri = getUri(side);
-    set({
-      loading: true,
-      error: null,
+    const requestId = nextRequestId();
+    set((state) => {
+      const requests = {
+        ...state.requests,
+        analyzePair: { id: requestId, loading: true, error: null },
+      };
+      return {
+        ...state,
+        requests,
+        ...deriveLegacyFlags(requests),
+      };
     });
 
     try {
@@ -139,11 +233,20 @@ export const useScores = create<State & Actions>((set, get) => ({
       const meta = consumeUploadMeta(s);
       const normalizedFront = meta?.front?.uri ?? frontUri;
       const normalizedSide = meta?.side?.uri ?? sideUri;
-      set({
-        scores: s,
-        loading: false,
-        imageUri: normalizedFront ?? frontUri ?? null,
-        sideImageUri: normalizedSide ?? sideUri ?? null,
+      set((state) => {
+        if (state.requests.analyzePair.id !== requestId) return state;
+        const requests = {
+          ...state.requests,
+          analyzePair: { id: requestId, loading: false, error: null },
+        };
+        return {
+          ...state,
+          scores: s,
+          imageUri: normalizedFront ?? frontUri ?? null,
+          sideImageUri: normalizedSide ?? sideUri ?? null,
+          requests,
+          ...deriveLegacyFlags(requests),
+        };
       });
       return s;
     } catch (err) {
@@ -151,25 +254,59 @@ export const useScores = create<State & Actions>((set, get) => ({
         err,
         `Failed to analyze pair (base: ${API_BASE}).`
       );
-      set({
-        error: friendly.message,
-        loading: false,
-        imageUri: frontUri,
-        sideImageUri: sideUri,
+      set((state) => {
+        if (state.requests.analyzePair.id !== requestId) return state;
+        const requests = {
+          ...state.requests,
+          analyzePair: {
+            id: requestId,
+            loading: false,
+            error: friendly.message,
+          },
+        };
+        return {
+          ...state,
+          imageUri: frontUri,
+          sideImageUri: sideUri,
+          requests,
+          ...deriveLegacyFlags(requests),
+        };
       });
       throw friendly;
     }
   },
 
   explain: async (uri: string, scores: Scores): Promise<boolean> => {
-    if (get().explLoading) return false;
-
-    set({ explLoading: true, explError: null });
+    if (get().requests.explainSingle.loading) return false;
+    const requestId = nextRequestId();
+    set((state) => {
+      const requests = {
+        ...state.requests,
+        explainSingle: { id: requestId, loading: true, error: null },
+      };
+      return {
+        ...state,
+        requests,
+        ...deriveLegacyFlags(requests),
+      };
+    });
     try {
       await assertBackendReachable();
 
       const exps = await explainMetrics(uri, scores);
-      set({ explanations: exps, explLoading: false, explError: null });
+      set((state) => {
+        if (state.requests.explainSingle.id !== requestId) return state;
+        const requests = {
+          ...state.requests,
+          explainSingle: { id: requestId, loading: false, error: null },
+        };
+        return {
+          ...state,
+          explanations: exps,
+          requests,
+          ...deriveLegacyFlags(requests),
+        };
+      });
       return true;
     } catch (e: any) {
       const message =
@@ -178,9 +315,21 @@ export const useScores = create<State & Actions>((set, get) => ({
           : e?.name === "AbortError"
           ? "Request timed out"
           : e?.message || `Failed to explain (base: ${API_BASE}).`;
-      set({
-        explLoading: false,
-        explError: message,
+      set((state) => {
+        if (state.requests.explainSingle.id !== requestId) return state;
+        const requests = {
+          ...state.requests,
+          explainSingle: {
+            id: requestId,
+            loading: false,
+            error: message,
+          },
+        };
+        return {
+          ...state,
+          requests,
+          ...deriveLegacyFlags(requests),
+        };
       });
       return false;
     }
@@ -191,14 +340,36 @@ export const useScores = create<State & Actions>((set, get) => ({
     sideUri: string,
     scores: Scores
   ): Promise<boolean> => {
-    if (get().explLoading) return false;
-
-    set({ explLoading: true, explError: null });
+    if (get().requests.explainPair.loading) return false;
+    const requestId = nextRequestId();
+    set((state) => {
+      const requests = {
+        ...state.requests,
+        explainPair: { id: requestId, loading: true, error: null },
+      };
+      return {
+        ...state,
+        requests,
+        ...deriveLegacyFlags(requests),
+      };
+    });
     try {
       await assertBackendReachable();
 
       const exps = await explainMetricsPair(frontalUri, sideUri, scores);
-      set({ explanations: exps, explLoading: false, explError: null });
+      set((state) => {
+        if (state.requests.explainPair.id !== requestId) return state;
+        const requests = {
+          ...state.requests,
+          explainPair: { id: requestId, loading: false, error: null },
+        };
+        return {
+          ...state,
+          explanations: exps,
+          requests,
+          ...deriveLegacyFlags(requests),
+        };
+      });
       return true;
     } catch (e: any) {
       const message =
@@ -207,24 +378,37 @@ export const useScores = create<State & Actions>((set, get) => ({
           : e?.name === "AbortError"
           ? "Request timed out"
           : e?.message || `Failed to explain pair (base: ${API_BASE}).`;
-      set({
-        explLoading: false,
-        explError: message,
+      set((state) => {
+        if (state.requests.explainPair.id !== requestId) return state;
+        const requests = {
+          ...state.requests,
+          explainPair: {
+            id: requestId,
+            loading: false,
+            error: message,
+          },
+        };
+        return {
+          ...state,
+          requests,
+          ...deriveLegacyFlags(requests),
+        };
       });
       return false;
     }
   },
 
   reset: () =>
-    set({
-      imageUri: null,
-      sideImageUri: null,
-      scores: null,
-      loading: false,
-      error: null,
-      explanations: null,
-      explLoading: false,
-      explError: null,
+    set(() => {
+      const requests = createInitialRequests();
+      return {
+        imageUri: null,
+        sideImageUri: null,
+        scores: null,
+        explanations: null,
+        requests,
+        ...deriveLegacyFlags(requests),
+      };
     }),
 }));
 
