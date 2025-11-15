@@ -9,15 +9,13 @@ import type { ComposedPrompt } from "./sigmaPrompt.js";
  * ============================================================
  */
 
-/** Environment + defaults */
-const MODEL =
-  process.env.OPENAI_MODEL_SIGMA?.trim() ||
-  process.env.OPENAI_SCORES_MODEL?.trim() || // fall back to existing model if set
-  "gpt-4o-mini";
+import { PROVIDERS } from "../config/index.js";
 
-const TEMPERATURE = Number(process.env.SIGMA_TEMPERATURE ?? 0.3);
-const MAX_TOKENS = Number(process.env.SIGMA_MAX_TOKENS ?? 800);
-const MAX_RESPONSE_BYTES = Number(process.env.SIGMA_MAX_RESPONSE_BYTES ?? 200 * 1024);
+/** Environment + defaults */
+const MODEL = PROVIDERS.openai.sigmaModel;
+const TEMPERATURE = PROVIDERS.openai.sigmaTemperature;
+const MAX_TOKENS = PROVIDERS.openai.sigmaMaxTokens;
+const MAX_RESPONSE_BYTES = PROVIDERS.openai.sigmaMaxResponseBytes;
 
 /** Very small interface so we don't care which SDK wrapper you use elsewhere */
 export type ChatMessage = { role: "system" | "user" | "assistant"; content: string };

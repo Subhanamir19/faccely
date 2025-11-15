@@ -3,16 +3,17 @@ import OpenAI from "openai";
 import type { Scores, MetricKey } from "./validators.js";
 import { normalizeToPngDataUrl } from "./lib/image-normalize.js";
 import crypto from "crypto";
+import { PROVIDERS, CACHE_LIMITS } from "./config/index.js";
 
 /* ------------------------------ Config/Env -------------------------------- */
 
-const MODEL = process.env.OPENAI_SCORES_MODEL || "gpt-4o";
-const FALLBACK_MODEL_ENV = process.env.OPENAI_SCORES_MODEL_FALLBACK?.trim();
+const MODEL = PROVIDERS.openai.scoresModel;
+const FALLBACK_MODEL_ENV = PROVIDERS.openai.scoresFallbackModel;
 const FALLBACK_MODEL =
   FALLBACK_MODEL_ENV && FALLBACK_MODEL_ENV.length > 0 ? FALLBACK_MODEL_ENV : "gpt-4o-mini";
 
-const CACHE_TTL_MS = Number(process.env.SCORE_CACHE_TTL_MS ?? 1000 * 60 * 60 * 24 * 30); // 30d
-const CACHE_MAX_ITEMS = Number(process.env.SCORE_CACHE_MAX_ITEMS ?? 5000); // simple LRU-ish cap
+const CACHE_TTL_MS = CACHE_LIMITS.score.ttlMs; // 30d default
+const CACHE_MAX_ITEMS = CACHE_LIMITS.score.maxItems; // simple LRU-ish cap
 const PROMPT_VERSION = "v3.3"; // bump to invalidate cache if you change prompts/rules
 
 /* ------------------------------- Shared keys ------------------------------ */

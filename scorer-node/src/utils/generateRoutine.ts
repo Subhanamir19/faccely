@@ -4,6 +4,7 @@ import { z } from "zod";
 import { RoutineSchema, type Routine } from "../schemas/RoutineSchema.js";
 import type { Scores } from "../validators.js";
 import { PROTOCOL_LIBRARY } from "../data/protocolLibrary.js";
+import { ROUTINE } from "../config/index.js";
 
 const MODEL = "gpt-4o-mini";
 const MAX_RESPONSE_BYTES = 800 * 1024;
@@ -11,7 +12,7 @@ const DEFAULT_N_DAYS = 15;
 const TASKS_PER_DAY = 5;
 
 // --- LLM runtime cap (worker also has wall clock cap) ---
-const DEFAULT_LLM_TIMEOUT_MS = Number(process.env.ROUTINE_LLM_TIMEOUT_MS ?? 25_000);
+const DEFAULT_LLM_TIMEOUT_MS = ROUTINE.llmTimeoutMs;
 
 const responseFormat = { type: "json_object" as const };
 
@@ -47,8 +48,7 @@ function normalizeProtocol(value: string): string {
   return value.trim().replace(/\s+/g, " ");
 }
 
-const STRICT_SAUCE =
-  String(process.env.ROUTINE_STRICT_SAUCE ?? "").toLowerCase() === "true";
+const STRICT_SAUCE = ROUTINE.strictSauce;
 
 // Library sets and helpers
 type ProtocolCategory = keyof typeof PROTOCOL_LIBRARY;

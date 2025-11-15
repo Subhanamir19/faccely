@@ -14,6 +14,7 @@ import {
 } from "../schemas/SigmaSchema.js";
 import { composeSigmaPrompt, type SigmaPromptContext } from "../services/sigmaPrompt.js";
 import { generateSigmaAnswer } from "../services/sigmaOpenAI.js";
+import { PROVIDERS } from "../config/index.js";
 
 /* ============================================================
  * Sigma Routes
@@ -134,7 +135,7 @@ const prompt = composeSigmaPrompt(parsed, context);
 // ESM-safe dynamic import of OpenAI client
 const OpenAIMod = await import("openai");
 const OpenAI = OpenAIMod.default ?? OpenAIMod;
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const openai = new OpenAI({ apiKey: PROVIDERS.openai.apiKey });
 
 
     const result = await generateSigmaAnswer(openai, prompt);

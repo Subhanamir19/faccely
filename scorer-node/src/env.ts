@@ -1,17 +1,11 @@
-import dotenv from "dotenv";
-// force .env to override any existing env variables
-dotenv.config({ override: true });
+// Legacy shim: prefer importing from src/config/index.ts directly.
+import config, { SERVER, PROVIDERS } from "./config/index.js";
 
-
-const required=(k:string)=>{
-  const v=process.env[k];
-  if(!v) throw new Error(`Missing env ${k}`);
-  return v;
+export const ENV = {
+  PORT: SERVER.port,
+  OPENAI_API_KEY: PROVIDERS.openai.apiKey,
+  CORS_ORIGINS: SERVER.corsOrigins,
+  RATE_LIMIT_PER_MIN: SERVER.rateLimitPerMin,
 };
 
-export const ENV={
-  PORT: Number(process.env.PORT||8080),
-  OPENAI_API_KEY: process.env.OPENAI_API_KEY || "set-me-later",
-  CORS_ORIGINS: (process.env.CORS_ORIGINS||"*").split(",").map(s=>s.trim()),
-  RATE_LIMIT_PER_MIN: Number(process.env.RATE_LIMIT_PER_MIN||30)
-};
+export default config;

@@ -18,7 +18,7 @@ import { initMetrics } from "./observability/metrics.js";
 
 
 
-import config from "./config/index.js";
+import config, { PROVIDERS, ROUTINE, SERVER } from "./config/index.js";
 
 console.log("[BOOT]", {
   env: config.NODE_ENV,
@@ -28,7 +28,6 @@ console.log("[BOOT]", {
 import { ZodError, type ZodIssue } from "zod";
 
 import { generateRecommendations, RecommendationsParseError } from "./recommender.js";
-import { ENV } from "./env.js";
 import {
   ScoresSchema,
   ExplanationsSchemaV1,
@@ -61,8 +60,8 @@ app.set("trust proxy", 1); // we are behind Railway's proxy; needed for correct 
 initMetrics(app, { enabled: true, path: "/metrics" }); // <-- ADD THIS
 
 const openai = new OpenAI({
-  apiKey: ENV.OPENAI_API_KEY,
-  timeout: Number(process.env.ROUTINE_LLM_TIMEOUT_MS ?? 25000),
+  apiKey: PROVIDERS.openai.apiKey,
+  timeout: ROUTINE.llmTimeoutMs,
 });
 
 setRoutineOpenAIClient(openai);
@@ -101,7 +100,7 @@ function normalizeCorsOrigins(val: unknown): string | string[] | undefined {
   return str.split(",").map((s) => s.trim()).filter(Boolean);
 }
 
-const origins = normalizeCorsOrigins(ENV.CORS_ORIGINS) ?? "*";
+const origins = normalizeCorsOrigins(SERVER.corsOrigins) ?? "*";
 const corsOptions: CorsOptions = {
   origin: origins as any,
   methods: ["GET", "POST", "OPTIONS"],
@@ -117,7 +116,7 @@ app.use(express.json({ limit: "25mb" }));
 /* ------------------------------ Rate limiting ------------------------------ */
 app.use(rateLimit({
   windowMs: 60_000,
-  limit: ENV.RATE_LIMIT_PER_MIN,
+  limit: SERVER.rateLimitPerMin,
   standardHeaders: true,
   legacyHeaders: false,
   // Safety valve if trust proxy is ever misconfigured:
@@ -798,8 +797,8 @@ app.post("/recommendations", upload.none(), idempotency(), async (req, res) => {
 // Boot BullMQ workers if REDIS_URL is set; no-op otherwise
 void bootQueues();
 
-const server = app.listen(ENV.PORT, "0.0.0.0", () => {
-  console.log(`Scorer listening on 0.0.0.0:${ENV.PORT} (MAX_CONCURRENT=${MAX_CONCURRENT})`);
+const server = app.listen(SERVER.port, "0.0.0.0", () => {
+  console.log(`Scorer listening on 0.0.0.0:${SERVER.port} (MAX_CONCURRENT=${MAX_CONCURRENT})`);
 });
 
 

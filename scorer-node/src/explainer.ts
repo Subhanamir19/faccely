@@ -2,6 +2,7 @@
 import OpenAI from "openai";
 import crypto from "crypto";
 import { Scores, metricKeys, type MetricKey } from "./validators.js";
+import { PROVIDERS, CACHE_LIMITS } from "./config/index.js";
 
 /**
  * Explainer goals
@@ -11,11 +12,11 @@ import { Scores, metricKeys, type MetricKey } from "./validators.js";
  * - Strict JSON output only
  */
 
-const MODEL = process.env.OPENAI_EXPLAINER_MODEL || "gpt-4o-mini";
+const MODEL = PROVIDERS.openai.explainerModel;
 const PROMPT_VERSION_EXPLAIN = "exp.v3.2"; // bumped
 
-const CACHE_TTL_MS = Number(process.env.EXPLAINER_CACHE_TTL_MS ?? 1000 * 60 * 60 * 24 * 30); // 30d
-const CACHE_MAX_ITEMS = Number(process.env.EXPLAINER_CACHE_MAX_ITEMS ?? 5000);
+const CACHE_TTL_MS = CACHE_LIMITS.explain.ttlMs; // 30d default
+const CACHE_MAX_ITEMS = CACHE_LIMITS.explain.maxItems;
 
 /* --------------------------------- Cache ---------------------------------- */
 

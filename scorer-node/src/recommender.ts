@@ -1,6 +1,6 @@
 // C:\SS\scorer-node\src\recommender.ts
 import OpenAI from "openai";
-import { ENV } from "./env.js";
+import { PROVIDERS } from "./config/index.js";
 import {
   
   RecommendationsResponseSchema,
@@ -18,7 +18,7 @@ export class RecommendationsParseError extends Error {
   }
 }
 
-const openai = new OpenAI({ apiKey: ENV.OPENAI_API_KEY });
+const openai = new OpenAI({ apiKey: PROVIDERS.openai.apiKey });
 
 let recommenderResponseFormatLogged = false;
 

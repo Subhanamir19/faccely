@@ -4,8 +4,7 @@
 import { Worker, QueueEvents, type Processor, Queue } from "bullmq";
 import OpenAI from "openai";
 import { getRedis } from "../lib/redis.js";
-import { QUEUES, SERVICE } from "../config/index.js";
-import { ENV } from "../env.js";
+import { QUEUES, SERVICE, PROVIDERS, WORKERS, ROUTINE } from "../config/index.js";
 
 // Same setter your HTTP routes use
 import { setRoutineOpenAIClient } from "../routes/routine.js";
@@ -23,10 +22,10 @@ type RoutineJob = {
 };
 
 // Worker wall-clock cap (distinct from LLM's internal timeout)
-const WORKER_TIMEOUT_MS = Number(process.env.WORKER_TIMEOUT_MS ?? 60_000);
+const WORKER_TIMEOUT_MS = WORKERS.timeoutMs;
 
 // Concurrency knob (keep modest; global budgets live elsewhere)
-const WORKER_CONCURRENCY = Number(process.env.WORKER_CONCURRENCY ?? 3);
+const WORKER_CONCURRENCY = WORKERS.concurrency;
 
 export async function buildWorker(): Promise<WorkerBundle> {
   const connection = await getRedis();
@@ -34,9 +33,9 @@ export async function buildWorker(): Promise<WorkerBundle> {
 
   // Provision OpenAI for the worker runtime
   const openai = new OpenAI({
-    apiKey: ENV.OPENAI_API_KEY,
+    apiKey: PROVIDERS.openai.apiKey,
     // hard cap so the SDK itself doesn't hang forever
-    timeout: Number(process.env.ROUTINE_LLM_TIMEOUT_MS ?? 25000),
+    timeout: ROUTINE.llmTimeoutMs,
   });
   setRoutineOpenAIClient(openai);
 
