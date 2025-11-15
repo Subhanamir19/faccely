@@ -25,6 +25,7 @@ const EnvSchema = z.object({
   // Concurrency & queues
   MAX_CONCURRENT: z.coerce.number().int().positive().default(20),
   REQUEST_QUEUE_MAX_WAIT_MS: z.coerce.number().int().nonnegative().default(20_000),
+  REQUEST_QUEUE_MAX_PENDING: z.coerce.number().int().nonnegative().default(100),
 
   // Caching TTLs (seconds)
   CACHE_TTL_ANALYZE_S: z.coerce.number().int().nonnegative().default(3600),   // 1h
@@ -57,6 +58,7 @@ const rawEnv = {
 
   MAX_CONCURRENT: process.env.MAX_CONCURRENT,
   REQUEST_QUEUE_MAX_WAIT_MS: process.env.REQUEST_QUEUE_MAX_WAIT_MS,
+  REQUEST_QUEUE_MAX_PENDING: process.env.REQUEST_QUEUE_MAX_PENDING,
 
   CACHE_TTL_ANALYZE_S: process.env.CACHE_TTL_ANALYZE_S,
   CACHE_TTL_EXPLAIN_S: process.env.CACHE_TTL_EXPLAIN_S,
@@ -97,6 +99,7 @@ export const SERVER = {
   port: env.PORT,
   maxConcurrent: env.MAX_CONCURRENT,
   requestQueueMaxWaitMs: env.REQUEST_QUEUE_MAX_WAIT_MS,
+  requestQueueMaxPending: env.REQUEST_QUEUE_MAX_PENDING,
 };
 
 export const PROVIDERS = {

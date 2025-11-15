@@ -218,37 +218,75 @@ function coerceV1toV2(v1: ExplanationsV1): ExplanationsV2 {
 /*   Concurrency guard                                                        */
 /* -------------------------------------------------------------------------- */
 
-// Read from process.env to avoid typing changes in ENV.
-const MAX_CONCURRENT: number = (() => {
-  const raw = process.env.MAX_CONCURRENT;
-  const n = Number.parseInt(String(raw ?? ""), 10);
-  return Number.isFinite(n) && n > 0 ? n : 20;
-})();
+/**
+ * Process-local guard; coordinate horizontal scaling via the job queue/config instead.
+ * Limits are config-driven so behavior stays predictable under load.
+ */
+const MAX_CONCURRENT = config.SERVER.maxConcurrent;
+const MAX_QUEUE_PENDING = config.SERVER.requestQueueMaxPending;
+const QUEUE_MAX_WAIT_MS = config.SERVER.requestQueueMaxWaitMs;
 
 // MAX_CONCURRENT bounds the number of simultaneous heavy jobs (scoring/explain).
 let active = 0;
 // FIFO of waiters to hand slots to once capacity frees up.
-const queue: Array<() => void> = [];
+type Waiter = {
+  resolve: (token: ConcurrencyToken) => void;
+  reject: (err: Error) => void;
+  timeout: NodeJS.Timeout;
+  enqueuedAt: number;
+  cancelled: boolean;
+};
+const queue: Waiter[] = [];
 // Each acquisition gets a token so we only release slots that were actually granted.
 type ConcurrencyToken = { id: number; released: boolean };
 let nextTokenId = 0;
+
+function overloadedError(reason: "queue_full" | "timeout") {
+  const err: any = new Error("server_overloaded");
+  err.reason = reason;
+  return err;
+}
 
 function grantSlot(): ConcurrencyToken {
   active += 1;
   return { id: ++nextTokenId, released: false };
 }
 
+function pruneQueue() {
+  let i = 0;
+  while (i < queue.length) {
+    if (queue[i].cancelled) {
+      const expired = queue.splice(i, 1)[0];
+      clearTimeout(expired.timeout);
+      continue;
+    }
+    i += 1;
+  }
+}
+
 function enqueue(): Promise<ConcurrencyToken> {
+  pruneQueue();
   return new Promise((resolve, reject) => {
     if (active < MAX_CONCURRENT) {
       resolve(grantSlot());
       return;
     }
-    if (queue.length >= 100) {
-      reject(new Error("server_overloaded"));
+    if (queue.length >= MAX_QUEUE_PENDING) {
+      reject(overloadedError("queue_full"));
       return;
     }
-    queue.push(() => resolve(grantSlot()));
+    const waiter: Waiter = {
+      resolve,
+      reject,
+      enqueuedAt: Date.now(),
+      cancelled: false,
+      timeout: setTimeout(() => {
+        waiter.cancelled = true;
+        pruneQueue();
+        reject(overloadedError("timeout"));
+      }, QUEUE_MAX_WAIT_MS),
+    };
+    queue.push(waiter);
   });
 }
 
@@ -256,18 +294,33 @@ function release(token?: ConcurrencyToken | null) {
   if (!token || token.released) return;
   token.released = true;
   active = Math.max(0, active - 1);
-  const next = queue.shift();
-  if (next) {
-    next();
+  pruneQueue();
+  while (queue.length) {
+    const next = queue.shift()!;
+    clearTimeout(next.timeout);
+    if (next.cancelled) continue;
+    next.resolve(grantSlot());
+    break;
   }
   if (active / MAX_CONCURRENT > 0.8) {
     console.warn(`[load] active=${active}/${MAX_CONCURRENT} nearing capacity`);
   }
 }
 
+function isServerOverloaded(err: any): boolean {
+  return err?.message === "server_overloaded";
+}
+
+function respondServerOverloaded(res: express.Response) {
+  return res.status(503).json(apiError("server_overloaded", "Server is busy, try again later."));
+}
+
 /* -------------------------------------------------------------------------- */
 /*   Routes                                                                   */
 /* -------------------------------------------------------------------------- */
+
+// Idempotency is currently scoped to routine/recommendations flows only; scoring (/analyze*) and
+// job status endpoints intentionally bypass it in v1.
 app.use("/routine", idempotency(), routineRouter);
 app.use("/routine/async", routineAsyncRouter);
 
@@ -308,15 +361,7 @@ app.post("/analyze/pair-bytes", async (req, res) => {
     const parsed = ScoresSchema.parse(scores);
     res.json(parsed);
   } catch (err: any) {
-    if (err.message === "server_overloaded")
-      return res
-        .status(503)
-        .json(
-          apiError("too_many_requests", "Scoring queue is saturated. Please retry shortly.", {
-            hint: "retry later",
-            err,
-          })
-        );
+    if (isServerOverloaded(err)) return respondServerOverloaded(res);
     console.error("[/analyze/pair-bytes] error:", err?.response?.data ?? err);
     if (err instanceof ZodError)
       return res.status(422).json({
@@ -337,8 +382,7 @@ app.post("/analyze/pair-bytes", async (req, res) => {
 });
 
 /* --------------------------- /analyze (single) ---------------------------- */
-app.post("/analyze", upload.single("image"), idempotency(), async (req, res) => {
-
+app.post("/analyze", upload.single("image"), async (req, res) => {
   const t0 = Date.now();
   let slot: ConcurrencyToken | null = null;
   try {
@@ -361,18 +405,9 @@ app.post("/analyze", upload.single("image"), idempotency(), async (req, res) => 
     console.log("[/analyze] buffer:", preview(req.file.buffer));
     const scores = await scoreImageBytes(openai, req.file.buffer, req.file.mimetype);
     const parsed = ScoresSchema.parse(scores);
-    await persistIdempotentResult(res, parsed);
     return res.json(parsed);
   } catch (err: any) {
-    if (err.message === "server_overloaded")
-      return res
-        .status(503)
-        .json(
-          apiError("too_many_requests", "Scoring queue is saturated. Please retry shortly.", {
-            hint: "retry later",
-            err,
-          })
-        );
+    if (isServerOverloaded(err)) return respondServerOverloaded(res);
     console.error("[/analyze] error:", err?.response?.data ?? err);
     if (err instanceof ZodError)
       return res.status(422).json({
@@ -411,7 +446,6 @@ app.post(
     { name: "frontal", maxCount: 1 },
     { name: "side", maxCount: 1 },
   ]),
-  idempotency(),
   async (req, res) => {
     const t0 = Date.now();
     let slot: ConcurrencyToken | null = null;
@@ -436,18 +470,9 @@ app.post(
         side.mimetype
       );
       const parsed = ScoresSchema.parse(scores);
-      await persistIdempotentResult(res, parsed);
       return res.json(parsed);
     } catch (err: any) {
-      if (err.message === "server_overloaded")
-        return res
-          .status(503)
-          .json(
-            apiError("too_many_requests", "Scoring queue is saturated. Please retry shortly.", {
-              hint: "retry later",
-              err,
-            })
-          );
+      if (isServerOverloaded(err)) return respondServerOverloaded(res);
       console.error("[/analyze/pair] error:", err?.response?.data ?? err);
       if (err instanceof ZodError)
         return res.status(422).json({
@@ -470,7 +495,7 @@ app.post(
 );
 
 /* ---------------------- /analyze/explain & /pair --------------------------- */
-app.post("/analyze/explain", upload.single("image"), idempotency(), async (req, res) => {
+app.post("/analyze/explain", upload.single("image"), async (req, res) => {
     const t0 = Date.now();
     let slot: ConcurrencyToken | null = null;
     try {
@@ -502,18 +527,9 @@ app.post("/analyze/explain", upload.single("image"), idempotency(), async (req, 
         parsed = ExplanationsSchemaV2.parse(coerceV1toV2(v1));
       }
 
-      await persistIdempotentResult(res, parsed);
       return res.json(parsed);
     } catch (err: any) {
-      if (err.message === "server_overloaded")
-        return res
-          .status(503)
-          .json(
-            apiError("too_many_requests", "Explanation queue is saturated. Please retry shortly.", {
-              hint: "retry later",
-              err,
-            })
-          );
+      if (isServerOverloaded(err)) return respondServerOverloaded(res);
       console.error("[/analyze/explain] error:", err?.response?.data ?? err);
       if (err instanceof ZodError)
         return res.status(422).json({
@@ -541,7 +557,6 @@ app.post(
     { name: "frontal", maxCount: 1 },
     { name: "side", maxCount: 1 },
   ]),
-  idempotency(),
   async (req, res) => {
     const t0 = Date.now();
     let slot: ConcurrencyToken | null = null;
@@ -585,18 +600,9 @@ app.post(
         parsed = ExplanationsSchemaV2.parse(coerceV1toV2(v1));
       }
 
-      await persistIdempotentResult(res, parsed);
       return res.json(parsed);
     } catch (err: any) {
-      if (err.message === "server_overloaded")
-        return res
-          .status(503)
-          .json(
-            apiError("too_many_requests", "Explanation queue is saturated. Please retry shortly.", {
-              hint: "retry later",
-              err,
-            })
-          );
+      if (isServerOverloaded(err)) return respondServerOverloaded(res);
       console.error("[/analyze/explain/pair] error:", err?.response?.data ?? err);
       if (err instanceof ZodError)
         return res.status(422).json({
@@ -641,15 +647,7 @@ app.post("/recommendations", upload.none(), idempotency(), async (req, res) => {
     await persistIdempotentResult(res, data);
     return res.json(data);
   } catch (err: any) {
-    if (err.message === "server_overloaded")
-      return res
-        .status(503)
-        .json(
-          apiError("too_many_requests", "Recommendations queue is saturated. Please retry shortly.", {
-            hint: "retry later",
-            err,
-          })
-        );
+    if (isServerOverloaded(err)) return respondServerOverloaded(res);
     if (err instanceof RecommendationsParseError) {
       console.error("[/recommendations] invalid completion:", err.rawPreview);
       return res.status(502).json({ error: "recommendations_generation_failed", detail: err.message });

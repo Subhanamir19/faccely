@@ -9,15 +9,17 @@ import { getRedis, k as kNS } from "../lib/redis.js";
  * Idempotency guard with replay.
  *
  * Behavior:
- * - Key: prefer client "X-Idempotency-Key"; else derive from method|path|query|body.
+ * - Key: prefer client "X-Idempotency-Key"; else derive from method|path|query|body/files.
  * - On hit:
- *    • state=PENDING → 202 with original { job_id, status_url, queue }
- *    • state=COMPLETED → 200 with stored response body
+ *    - state=PENDING -> 202 with original { job_id, status_url, queue }
+ *    - state=COMPLETED -> 200 with stored response body
  * - On miss:
- *    • claim the key (NX) with TTL, attach helpers on res.locals to record PENDING/COMPLETED
- *    • proceed to route handler (which enqueues job and calls setPending)
+ *    - claim the key (NX) with TTL, attach helpers on res.locals to record PENDING/COMPLETED
+ *    - proceed to route handler (which enqueues job and calls setPending)
  *
  * Works without Redis via process-local fallback (best effort).
+ * Scope: mounted on routine/recommendations flows only; synchronous scoring (/analyze*) and job
+ * lookups intentionally bypass it in v1.
  */
 
 const HEADER = "x-idempotency-key";

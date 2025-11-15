@@ -68,13 +68,6 @@ router.get("/:id", async (req, res) => {
 
     if (state === "completed") {
       result = trimIfBig(job.returnvalue);
-
-      // Write-through to idempotency layer if present
-      try {
-        await res.locals.idempotency?.setCompleted?.(result);
-      } catch (e) {
-        console.warn("[idempotency:setCompleted] failed", (e as Error)?.message);
-      }
     }
 
     if (state === "failed") {
