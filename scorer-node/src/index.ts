@@ -34,7 +34,10 @@ import {
   ExplanationsSchemaV1,
   ExplanationsSchemaV2,
   RecommendationsRequestSchema, // ← you were missing this
-
+ 
+  metricKeys,
+  type MetricKey,
+  type Scores,
   type ExplanationsV1,
   type ExplanationsV2,
 } from "./validators.js";
@@ -147,7 +150,12 @@ const upload = multer({
 /* -------------------------------------------------------------------------- */
 
 async function toJpegBuffer(file: Express.Multer.File) {
-  if (!file?.buffer?.length) throw new Error("empty_upload_buffer");
+  if (!file?.buffer?.length) {
+    const err: any = new Error("empty_upload_buffer");
+    err.status = 415;
+    err.hint = "Use a JPEG or PNG image, not HEIC/HEIF or empty input.";
+    throw err;
+  }
   try {
     const out = await sharp(file.buffer).rotate().jpeg({ quality: 92, mozjpeg: true }).toBuffer();
     return { buffer: out, mime: "image/jpeg" as const };
@@ -212,6 +220,140 @@ function coerceV1toV2(v1: ExplanationsV1): ExplanationsV2 {
     out[k] = [...arr, "", "", ""].slice(0, 4);
   }
   return out as ExplanationsV2;
+}
+
+class ScoresValidationError extends Error {
+  body: { errorCode: string; message?: string; fields?: Array<{ path: string; message: string }> };
+  constructor(body: ScoresValidationError["body"]) {
+    super(body?.message ?? body.errorCode);
+    this.body = body;
+  }
+}
+
+class ExplanationProviderMalformedError extends Error {}
+
+function parseScoresPayload(raw: string): Scores {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new ScoresValidationError({
+      errorCode: "invalid_scores_json",
+      message: "scores must be valid JSON.",
+    });
+  }
+  const result = ScoresSchema.safeParse(parsed);
+  if (!result.success) {
+    throw new ScoresValidationError({
+      errorCode: "invalid_scores_payload",
+      message: "scores payload failed validation.",
+      fields: formatZodIssues(result.error.issues),
+    });
+  }
+  return result.data;
+}
+
+function formatZodIssues(issues: ZodIssue[]): Array<{ path: string; message: string }> {
+  return issues.map((issue) => ({
+    path: issue.path.join(".") || issue.code,
+    message: issue.message,
+  }));
+}
+
+function parseExplanationPayload(notes: Record<MetricKey, string[]>): ExplanationsV2 {
+  try {
+    const parsed = ExplanationsSchemaV2.parse(notes);
+    ensureExplanationCompleteness(parsed);
+    return parsed;
+  } catch (err) {
+    if (err instanceof ZodError) {
+      const fallback = ExplanationsSchemaV1.safeParse(notes);
+      if (fallback.success) {
+        const coerced = ExplanationsSchemaV2.parse(coerceV1toV2(fallback.data));
+        ensureExplanationCompleteness(coerced);
+        return coerced;
+      }
+    }
+    throw err;
+  }
+}
+
+function ensureExplanationCompleteness(payload: ExplanationsV2) {
+  for (const key of metricKeys) {
+    const values = payload[key];
+    const nonEmpty = values.filter((line) => typeof line === "string" && line.trim().length > 0);
+    if (nonEmpty.length < 2) {
+      throw new ExplanationProviderMalformedError(`metric ${key} missing content`);
+    }
+  }
+}
+
+type UploadField = { name: string; maxCount?: number };
+
+function runSingleUpload(field: string, req: express.Request, res: express.Response) {
+  return new Promise<void>((resolve, reject) => {
+    upload.single(field)(req, res, (err: any) => (err ? reject(err) : resolve()));
+  });
+}
+
+function runFieldUpload(fields: UploadField[], req: express.Request, res: express.Response) {
+  return new Promise<void>((resolve, reject) => {
+    upload.fields(fields)(req, res, (err: any) => (err ? reject(err) : resolve()));
+  });
+}
+
+function isPayloadTooLargeError(err: any) {
+  return err instanceof multer.MulterError && err.code === "LIMIT_FILE_SIZE";
+}
+
+function isMulterError(err: any) {
+  return err instanceof multer.MulterError;
+}
+
+function handleExplainKnownErrors(err: any, res: express.Response, label: string): boolean {
+  if (err instanceof ScoresValidationError) {
+    res.status(400).json(err.body);
+    return true;
+  }
+  if (isPayloadTooLargeError(err)) {
+    res.status(413).json({
+      errorCode: "payload_too_large",
+      message: "Image exceeds the maximum allowed size.",
+    });
+    return true;
+  }
+  if (err?.status === 415) {
+    res.status(415).json({
+      errorCode: "unsupported_media_type",
+      message: "Use a JPEG or PNG image, not HEIC/HEIF or empty input.",
+    });
+    return true;
+  }
+  if (err instanceof ExplanationProviderMalformedError) {
+    console.error(`[${label}] provider returned incomplete lines`);
+    res.status(502).json({
+      errorCode: "explanation_provider_malformed",
+      message: "The explanation provider returned an invalid response shape.",
+    });
+    return true;
+  }
+  if (err instanceof ZodError) {
+    console.error(`[${label}] provider payload failed schema`, err.issues);
+    res.status(502).json({
+      errorCode: "explanation_provider_malformed",
+      message: "The explanation provider returned an invalid response shape.",
+      issues: formatZodIssues(err.issues),
+    });
+    return true;
+  }
+  if (isMulterError(err)) {
+    res.status(400).json({
+      errorCode: "invalid_multipart_payload",
+      message: "Invalid multipart payload.",
+    });
+    return true;
+  }
+  return false;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -495,134 +637,103 @@ app.post(
 );
 
 /* ---------------------- /analyze/explain & /pair --------------------------- */
-app.post("/analyze/explain", upload.single("image"), async (req, res) => {
-    const t0 = Date.now();
-    let slot: ConcurrencyToken | null = null;
-    try {
-      slot = await enqueue();
-      if (!req.file)
-        return res.status(400).json(
-          apiError("missing_image", "Image field 'image' is required.", {
-            hint: "Ensure the multipart field is named 'image'.",
-          })
-        );
-      const scoresRaw = req.body?.scores;
-      if (!scoresRaw)
-        return res.status(400).json(
-          apiError("missing_scores", "Field 'scores' is required.", {
-            hint: "Include the JSON-encoded scores blob in the 'scores' form field.",
-          })
-        );
+app.post("/analyze/explain", async (req, res) => {
+  const t0 = Date.now();
+  let slot: ConcurrencyToken | null = null;
+  try {
+    await runSingleUpload("image", req, res);
+    const file = req.file;
+    if (!file)
+      return res.status(400).json(
+        apiError("missing_image", "Image field 'image' is required.", {
+          hint: "Ensure the multipart field is named 'image'.",
+        })
+      );
+    const scoresRaw = req.body?.scores;
+    if (typeof scoresRaw !== "string" || !scoresRaw.trim())
+      return res.status(400).json(
+        apiError("missing_scores", "Field 'scores' is required.", {
+          hint: "Include the JSON-encoded scores blob in the 'scores' form field.",
+        })
+      );
+    const scores = parseScoresPayload(scoresRaw);
+    slot = await enqueue();
+    const { buffer, mime } = await toJpegBuffer(file);
+    const notes = await explainImageBytes(openai, buffer, mime, scores);
+    const parsed = parseExplanationPayload(notes);
+    return res.json(parsed);
+  } catch (err: any) {
+    if (isServerOverloaded(err)) return respondServerOverloaded(res);
+    if (handleExplainKnownErrors(err, res, "/analyze/explain")) return;
+    console.error("[/analyze/explain] error:", err?.response?.data ?? err);
+    res.status(500).json({
+      errorCode: "explanation_failed",
+      message: "Failed to generate explanations.",
+    });
+    return;
+  } finally {
+    if (slot) release(slot);
+    console.log("[/analyze/explain] ms =", Date.now() - t0);
+  }
+});
 
-      const scores = ScoresSchema.parse(JSON.parse(scoresRaw));
-      const { buffer, mime } = await toJpegBuffer(req.file);
-      const notes = await explainImageBytes(openai, buffer, mime, scores);
-
-      // Prefer V2 (4 lines). If it fails, accept V1 and coerce to 4.
-      let parsed: ExplanationsV2;
-      try {
-        parsed = ExplanationsSchemaV2.parse(notes);
-      } catch {
-        const v1 = ExplanationsSchemaV1.parse(notes);
-        parsed = ExplanationsSchemaV2.parse(coerceV1toV2(v1));
-      }
-
-      return res.json(parsed);
-    } catch (err: any) {
-      if (isServerOverloaded(err)) return respondServerOverloaded(res);
-      console.error("[/analyze/explain] error:", err?.response?.data ?? err);
-      if (err instanceof ZodError)
-        return res.status(422).json({
-          ...apiError(
-            "invalid_explanations_shape",
-            "Explanation provider returned an unexpected shape.",
-            { err }
-          ),
-          issues: err.issues,
-        });
+app.post("/analyze/explain/pair", async (req, res) => {
+  const t0 = Date.now();
+  let slot: ConcurrencyToken | null = null;
+  try {
+    await runFieldUpload(
+      [
+        { name: "frontal", maxCount: 1 },
+        { name: "side", maxCount: 1 },
+      ],
+      req,
       res
-        .status(500)
-        .json(apiError("explanation_failed", "Explanation failed. Please retry with a clearer photo.", { err }));
-      return;
-    } finally {
-      if (slot) release(slot);
-      console.log("[/analyze/explain] ms =", Date.now() - t0);
-    }
-  });
-
-app.post(
-  "/analyze/explain/pair",
-  upload.fields([
-
-    { name: "frontal", maxCount: 1 },
-    { name: "side", maxCount: 1 },
-  ]),
-  async (req, res) => {
-    const t0 = Date.now();
-    let slot: ConcurrencyToken | null = null;
-    try {
-      slot = await enqueue();
-      const files = req.files as Record<string, Express.Multer.File[]>;
-      const frontal = files?.frontal?.[0];
-      const side = files?.side?.[0];
-      if (!frontal || !side)
-        return res.status(400).json(
-          apiError("missing_pair_images", "Fields 'frontal' and 'side' are required.", {
-            hint: "Send both frontal and side files in the multipart payload.",
-          })
-        );
-
-      const scoresRaw = req.body?.scores;
-      if (!scoresRaw)
-        return res.status(400).json(
-          apiError("missing_scores", "Field 'scores' is required.", {
-            hint: "Include the JSON-encoded scores blob in the 'scores' form field.",
-          })
-        );
-      const scores = ScoresSchema.parse(JSON.parse(scoresRaw));
-      const fJ = await toJpegBuffer(frontal);
-      const sJ = await toJpegBuffer(side);
-      const notes = await explainImagePairBytes(
-        openai,
-        fJ.buffer,
-        fJ.mime,
-        sJ.buffer,
-        sJ.mime,
-        scores
+    );
+    const files = req.files as Record<string, Express.Multer.File[]>;
+    const frontal = files?.frontal?.[0];
+    const side = files?.side?.[0];
+    if (!frontal || !side)
+      return res.status(400).json(
+        apiError("missing_pair_images", "Fields 'frontal' and 'side' are required.", {
+          hint: "Send both frontal and side files in the multipart payload.",
+        })
       );
 
-      // Prefer V2; fallback to V1 and coerce.
-      let parsed: ExplanationsV2;
-      try {
-        parsed = ExplanationsSchemaV2.parse(notes);
-      } catch {
-        const v1 = ExplanationsSchemaV1.parse(notes);
-        parsed = ExplanationsSchemaV2.parse(coerceV1toV2(v1));
-      }
-
-      return res.json(parsed);
-    } catch (err: any) {
-      if (isServerOverloaded(err)) return respondServerOverloaded(res);
-      console.error("[/analyze/explain/pair] error:", err?.response?.data ?? err);
-      if (err instanceof ZodError)
-        return res.status(422).json({
-          ...apiError(
-            "invalid_explanations_shape",
-            "Explanation provider returned an unexpected shape.",
-            { err }
-          ),
-          issues: err.issues,
-        });
-      res
-        .status(500)
-        .json(apiError("explanation_failed", "Explanation failed. Please retry with a clearer photo.", { err }));
-      return;
-    } finally {
-      if (slot) release(slot);
-      console.log("[/analyze/explain/pair] ms =", Date.now() - t0);
-    }
+    const scoresRaw = req.body?.scores;
+    if (typeof scoresRaw !== "string" || !scoresRaw.trim())
+      return res.status(400).json(
+        apiError("missing_scores", "Field 'scores' is required.", {
+          hint: "Include the JSON-encoded scores blob in the 'scores' form field.",
+        })
+      );
+    const scores = parseScoresPayload(scoresRaw);
+    slot = await enqueue();
+    const fJ = await toJpegBuffer(frontal);
+    const sJ = await toJpegBuffer(side);
+    const notes = await explainImagePairBytes(
+      openai,
+      fJ.buffer,
+      fJ.mime,
+      sJ.buffer,
+      sJ.mime,
+      scores
+    );
+    const parsed = parseExplanationPayload(notes);
+    return res.json(parsed);
+  } catch (err: any) {
+    if (isServerOverloaded(err)) return respondServerOverloaded(res);
+    if (handleExplainKnownErrors(err, res, "/analyze/explain/pair")) return;
+    console.error("[/analyze/explain/pair] error:", err?.response?.data ?? err);
+    res.status(500).json({
+      errorCode: "explanation_failed",
+      message: "Failed to generate explanations.",
+    });
+    return;
+  } finally {
+    if (slot) release(slot);
+    console.log("[/analyze/explain/pair] ms =", Date.now() - t0);
   }
-);
+});
 
 /* ---------------------------- /recommendations ---------------------------- */
 app.post("/recommendations", upload.none(), idempotency(), async (req, res) => {
