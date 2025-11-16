@@ -1,5 +1,11 @@
 import { FirebaseApp, FirebaseOptions, getApp, getApps, initializeApp } from 'firebase/app';
-import { Auth, getAuth } from 'firebase/auth';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Auth, getAuth, getReactNativePersistence, initializeAuth, type Persistence } from 'firebase/auth';
+
+declare module 'firebase/auth' {
+  // Firebase publishes getReactNativePersistence for RN apps but omits it from types.
+  export function getReactNativePersistence(storage: unknown): Persistence;
+}
 
 const ENV_TO_OPTION_MAP = {
   apiKey: 'EXPO_PUBLIC_FIREBASE_API_KEY',
@@ -35,7 +41,14 @@ export const getFirebaseAuth = (): Auth => {
     return firebaseAuth;
   }
 
-  firebaseAuth = getAuth(getFirebaseApp());
+  try {
+    firebaseAuth = initializeAuth(getFirebaseApp(), {
+      persistence: getReactNativePersistence(AsyncStorage),
+    });
+  } catch {
+    firebaseAuth = getAuth(getFirebaseApp());
+  }
+
   return firebaseAuth;
 };
 

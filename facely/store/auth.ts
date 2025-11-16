@@ -68,15 +68,53 @@ export const useAuthStore = create<AuthState>()(
           set({ deviceId: generateDeviceId() });
         }
 
-        const auth = getFirebaseAuth();
+        try {
+          const auth = getFirebaseAuth();
 
-        if (!initializationPromise) {
-          initializationPromise = new Promise<void>((resolve) => {
-            let resolved = false;
+          if (!initializationPromise) {
+            initializationPromise = new Promise<void>((resolve) => {
+              let resolved = false;
 
-            onAuthStateChanged(auth, (firebaseUser) => {
-              const applyState = async () => {
-                if (!firebaseUser) {
+              onAuthStateChanged(
+                auth,
+                (firebaseUser) => {
+                  const applyState = async () => {
+                    if (!firebaseUser) {
+                      set({
+                        user: null,
+                        uid: null,
+                        idToken: null,
+                        sessionId: null,
+                        status: "signedOut",
+                        initialized: true,
+                      });
+                    } else {
+                      let token: string | null = null;
+                      try {
+                        token = await firebaseUser.getIdToken();
+                      } catch {
+                        token = null;
+                      }
+
+                      set({
+                        user: firebaseUser,
+                        uid: firebaseUser.uid,
+                        idToken: token,
+                        status: "authenticated",
+                        initialized: true,
+                      });
+                    }
+
+                    if (!resolved) {
+                      resolved = true;
+                      resolve();
+                    }
+                  };
+
+                  void applyState();
+                },
+                (error) => {
+                  console.error("[auth] onAuthStateChanged error", error);
                   set({
                     user: null,
                     uid: null,
@@ -85,40 +123,31 @@ export const useAuthStore = create<AuthState>()(
                     status: "signedOut",
                     initialized: true,
                   });
-                } else {
-                  let token: string | null = null;
-                  try {
-                    token = await firebaseUser.getIdToken();
-                  } catch {
-                    token = null;
+                  if (!resolved) {
+                    resolved = true;
+                    resolve();
                   }
-
-                  set({
-                    user: firebaseUser,
-                    uid: firebaseUser.uid,
-                    idToken: token,
-                    status: "authenticated",
-                    initialized: true,
-                  });
                 }
-
-                if (!resolved) {
-                  resolved = true;
-                  resolve();
-                }
-              };
-
-              void applyState();
+              );
             });
-          });
-        }
+          }
 
-        try {
           await initializationPromise;
+        } catch (error) {
+          console.error("[auth] initialize error", error);
+          set({
+            user: null,
+            uid: null,
+            idToken: null,
+            sessionId: null,
+            status: "signedOut",
+            initialized: true,
+          });
         } finally {
           initializationPromise = null;
         }
       },
+
       loginWithEmail: async (email, password) => {
         const normalizedEmail = email.trim();
         if (normalizedEmail.length === 0) {
