@@ -13,7 +13,7 @@ import {
   explainMetricsPair,
   type Explanations,
 } from "../lib/api/analysis";
-import { RequestTimeoutError, toUserFacingError } from "../lib/api/client";
+import { mapBackendErrorToUserMessage } from "../lib/api/client";
 
 type InputFile = string | { uri: string; name?: string; mime?: string };
 
@@ -184,10 +184,7 @@ export const useScores = create<State & Actions>((set, get) => ({
       });
       return s;
     } catch (err) {
-      const friendly = toUserFacingError(
-        err,
-        `Failed to analyze (base: ${API_BASE}).`
-      );
+      const friendlyMessage = mapBackendErrorToUserMessage(err, "analyze");
       set((state) => {
         if (state.requests.analyzeSingle.id !== requestId) return state;
         const requests = {
@@ -195,7 +192,7 @@ export const useScores = create<State & Actions>((set, get) => ({
           analyzeSingle: {
             id: requestId,
             loading: false,
-            error: friendly.message,
+            error: friendlyMessage,
           },
         };
         return {
@@ -205,7 +202,7 @@ export const useScores = create<State & Actions>((set, get) => ({
           ...deriveLegacyFlags(requests),
         };
       });
-      throw friendly;
+      throw new Error(friendlyMessage);
     }
   },
 
@@ -250,10 +247,7 @@ export const useScores = create<State & Actions>((set, get) => ({
       });
       return s;
     } catch (err) {
-      const friendly = toUserFacingError(
-        err,
-        `Failed to analyze pair (base: ${API_BASE}).`
-      );
+      const friendlyMessage = mapBackendErrorToUserMessage(err, "analyze");
       set((state) => {
         if (state.requests.analyzePair.id !== requestId) return state;
         const requests = {
@@ -261,7 +255,7 @@ export const useScores = create<State & Actions>((set, get) => ({
           analyzePair: {
             id: requestId,
             loading: false,
-            error: friendly.message,
+            error: friendlyMessage,
           },
         };
         return {
@@ -272,7 +266,7 @@ export const useScores = create<State & Actions>((set, get) => ({
           ...deriveLegacyFlags(requests),
         };
       });
-      throw friendly;
+      throw new Error(friendlyMessage);
     }
   },
 
@@ -309,12 +303,7 @@ export const useScores = create<State & Actions>((set, get) => ({
       });
       return true;
     } catch (e: any) {
-      const message =
-        e instanceof RequestTimeoutError
-          ? "Request timed out"
-          : e?.name === "AbortError"
-          ? "Request timed out"
-          : e?.message || `Failed to explain (base: ${API_BASE}).`;
+      const message = mapBackendErrorToUserMessage(e, "explain");
       set((state) => {
         if (state.requests.explainSingle.id !== requestId) return state;
         const requests = {
@@ -372,12 +361,7 @@ export const useScores = create<State & Actions>((set, get) => ({
       });
       return true;
     } catch (e: any) {
-      const message =
-        e instanceof RequestTimeoutError
-          ? "Request timed out"
-          : e?.name === "AbortError"
-          ? "Request timed out"
-          : e?.message || `Failed to explain pair (base: ${API_BASE}).`;
+      const message = mapBackendErrorToUserMessage(e, "explain");
       set((state) => {
         if (state.requests.explainPair.id !== requestId) return state;
         const requests = {

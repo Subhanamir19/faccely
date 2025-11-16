@@ -9,6 +9,7 @@ import {
   Easing,
   Pressable,
   ActivityIndicator,
+  Alert,
 } from "react-native";
 
 // ✅ default Text (Poppins)
@@ -732,8 +733,8 @@ function applyApiScores(api: any): MetricItem[] {
 }
 
 export default function ScoreScreen() {
-  const { width } = useWindowDimensions();
-  const { imageUri, scores, explLoading, explError } = useScores();
+const { width } = useWindowDimensions();
+const { imageUri, sideImageUri, scores, explLoading, explError } = useScores();
 
   const itemWidth = Math.min(760, Math.max(320, width * 0.82));
   const spacer = Math.max(12, width * 0.02);
@@ -790,9 +791,14 @@ export default function ScoreScreen() {
   const goNext = useCallback(() => scrollTo(index + 1), [index, scrollTo]);
 
   const handleAdvanced = async () => {
-    if (!imageUri || !scores) return;
+    if (!scores || !imageUri || !sideImageUri) {
+      Alert.alert(
+        "Advanced analysis unavailable",
+        "Advanced analysis needs a recent scan. Please run a new face scan first."
+      );
+      return;
+    }
     router.push({ pathname: "/loading", params: { mode: "advanced", phase: "analysis" } });
-
   };
   
   

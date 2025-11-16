@@ -210,6 +210,87 @@ export function toUserFacingError(err: unknown, fallback: string): Error {
   return new Error(fallback);
 }
 
+type ErrorContext = "analyze" | "explain";
+
+const BACKEND_ERROR_MAP: Record<
+  ErrorContext,
+  Partial<Record<string, string>>
+> = {
+  analyze: {
+    invalid_scores_json:
+      "There was an internal issue with your last scan. Please retake your photos and try again.",
+    invalid_scores_payload:
+      "There was an internal issue with your last scan. Please retake your photos and try again.",
+    unsupported_media_type:
+      "Use a clear JPEG or PNG photo instead of HEIC or unsupported formats.",
+    payload_too_large:
+      "Your image is too large. Try a smaller or cropped photo.",
+    explanation_failed:
+      "Face scoring failed unexpectedly. Please retry with a clear frontal and side photo.",
+    server_overloaded:
+      "Servers are busy at the moment. Please try again in a few minutes.",
+  },
+  explain: {
+    invalid_scores_json:
+      "There was an internal issue with your last scan. Please retake your photos and try again.",
+    invalid_scores_payload:
+      "There was an internal issue with your last scan. Please retake your photos and try again.",
+    unsupported_media_type:
+      "Use a clear JPEG or PNG photo instead of HEIC or unsupported formats.",
+    payload_too_large:
+      "Your image is too large. Try a smaller or cropped photo.",
+    explanation_provider_malformed:
+      "We couldn't generate detailed insights right now. Your scores are safe; please try again later.",
+    explanation_failed:
+      "We couldn't generate detailed insights right now. Your scores are safe; please try again later.",
+    server_overloaded:
+      "Servers are busy at the moment. Please try again in a few minutes.",
+  },
+};
+
+function extractBackendErrorCode(err: unknown): string | undefined {
+  if (err instanceof ApiResponseError && typeof err.body === "object" && err.body) {
+    const body = err.body as Record<string, unknown>;
+    const code = body.errorCode ?? body.error ?? body.code;
+    if (typeof code === "string") return code;
+  }
+  const message = (err as any)?.message;
+  if (typeof message === "string") {
+    const match = message.match(/\b([a-z_]+)\b/);
+    return match?.[1];
+  }
+  return undefined;
+}
+
+export function mapBackendErrorToUserMessage(
+  err: unknown,
+  context: ErrorContext
+): string {
+  const defaultMessages: Record<ErrorContext, string> = {
+    analyze: "Face scoring failed unexpectedly. Please retry with a clear frontal and side photo.",
+    explain: "Advanced analysis failed unexpectedly. Please try again.",
+  };
+
+  const message = (err as any)?.message;
+  const normalizedMessage = typeof message === "string" ? message : "";
+
+  if (err instanceof RequestTimeoutError || normalizedMessage.toLowerCase().includes("timed out")) {
+    return "The server took too long to respond. Please try again in a moment.";
+  }
+
+  const code = extractBackendErrorCode(err);
+  if (code) {
+    const mapped = BACKEND_ERROR_MAP[context][code];
+    if (mapped) return mapped;
+  }
+
+  if (normalizedMessage.includes("NETWORK_LAYER_FAIL") || normalizedMessage.includes("Backend unreachable")) {
+    return "We couldn't reach the Sigma Max servers. Check your internet connection and try again.";
+  }
+
+  return defaultMessages[context];
+}
+
 /* -------------------------------------------------------------------------- */
 /*   Typed JSON requester with shared retry/error handling                    */
 /* -------------------------------------------------------------------------- */

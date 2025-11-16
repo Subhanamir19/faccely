@@ -115,6 +115,15 @@ export default function AnalysisScreen() {
 const [rtLoading, setRtLoading] = useState(false);
 
 
+  const hasScores = !!scores;
+  const hasAnyExplanation = React.useMemo(() => {
+    if (!explanations) return false;
+    return Object.values(explanations).some((lines) =>
+      Array.isArray(lines) ? lines.some((line) => typeof line === "string" && line.trim().length > 0) : false
+    );
+  }, [explanations]);
+  const showEmptyState = !hasScores || !hasAnyExplanation;
+
   const isFirst = idx === 0;
   const isLast = idx === ORDER.length - 1;
 
@@ -168,6 +177,11 @@ const [rtLoading, setRtLoading] = useState(false);
         ) : null}
         {explError ? (
           <Text style={{ color: "#FF6B6B", textAlign: "center", marginTop: 8 }}>{String(explError)}</Text>
+        ) : null}
+        {showEmptyState ? (
+          <Text style={styles.emptyState}>
+            Advanced insights are not available for this session. Please run a new scan and advanced analysis.
+          </Text>
         ) : null}
 
         {/* Swipeable cards */}
@@ -265,6 +279,19 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+  },
+  emptyState: {
+    color: "#FFEEAA",
+    textAlign: "center",
+    marginTop: 12,
+    marginHorizontal: 24,
+    fontSize: 14,
+    lineHeight: 20,
+    fontFamily: Platform.select({
+      ios: "Poppins-Medium",
+      android: "Poppins-Medium",
+      default: "Poppins-Medium",
+    }),
   },
 
   // Pager page container: fully center the card
