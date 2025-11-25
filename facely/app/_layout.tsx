@@ -4,6 +4,8 @@ import { View } from "react-native";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { useFonts } from "expo-font";
+import { ClerkProvider } from "@clerk/clerk-expo";
+import { tokenCache } from "@clerk/clerk-expo/token-cache";
 import LoadingOverlay from "../components/ui/LoadingOverlay";
 import "react-native-reanimated";
 import { useRoutineStore } from "../store/routineStore";
@@ -18,6 +20,7 @@ export default function RootLayout() {
     "Poppins-SemiBold": require("../assets/fonts/Poppins-SemiBold.ttf"),
   });
   const authInitialized = useAuthStore((state) => state.initialized);
+  const clerkPublishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY!;
 
   useEffect(() => {
     if ((fontsLoaded || fontError) && authInitialized) {
@@ -34,19 +37,22 @@ export default function RootLayout() {
   }, []);
 
   return (
-    <AuthProvider>
-      {fontsLoaded || fontError ? (
-        <View style={{ flex: 1 }}>
-          <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="index" />
-            <Stack.Screen name="(onboarding)" />
-            <Stack.Screen name="(tabs)" />
-            <Stack.Screen name="loading" />
-            <Stack.Screen name="reset-onboarding" />
-          </Stack>
-          <LoadingOverlay />
-        </View>
-      ) : null}
-    </AuthProvider>
+    <ClerkProvider publishableKey={clerkPublishableKey} tokenCache={tokenCache}>
+      <AuthProvider>
+        {fontsLoaded || fontError ? (
+          <View style={{ flex: 1 }}>
+            <Stack screenOptions={{ headerShown: false }}>
+              <Stack.Screen name="index" />
+              <Stack.Screen name="(auth)" />
+              <Stack.Screen name="(onboarding)" />
+              <Stack.Screen name="(tabs)" />
+              <Stack.Screen name="loading" />
+              <Stack.Screen name="reset-onboarding" />
+            </Stack>
+            <LoadingOverlay />
+          </View>
+        ) : null}
+      </AuthProvider>
+    </ClerkProvider>
   );
 }

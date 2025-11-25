@@ -30,18 +30,25 @@
     "plugins": [
       "expo-router"
     ],
+
     "scheme": "sigmamax",
+
     "assetBundlePatterns": [
       "assets/fonts/*",
       "assets/**/*"
     ],
+
     "extra": {
       "EXPO_PUBLIC_API_BASE_URL": "https://faccely-production.up.railway.app",
+
+      "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_test_c291Z2h0LWJsdWVqYXktNTYuY2xlcmsuYWNjb3VudHMuZGV2JA",
+
       "router": {},
       "eas": {
         "projectId": "897d04ae-b434-4398-8032-cb9cb1b1a918"
       }
     },
+
     "owner": "subhan_amir"
   }
 }

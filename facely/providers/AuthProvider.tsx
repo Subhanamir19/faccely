@@ -1,4 +1,5 @@
 import React, { useEffect } from "react";
+import { useAuth, useSession, useUser } from "@clerk/clerk-expo";
 import { useAuthStore } from "@/store/auth";
 
 type Props = {
@@ -6,12 +7,38 @@ type Props = {
 };
 
 export function AuthProvider({ children }: Props) {
-  const initialize = useAuthStore((state) => state.initialize);
+  const { isLoaded: authLoaded } = useAuth();
+  const { session } = useSession();
+  const { user, isLoaded: userLoaded } = useUser();
+  const setAuthFromSession = useAuthStore((state) => state.setAuthFromSession);
+  const clearAuthState = useAuthStore((state) => state.clearAuthState);
+  const setInitializedFlag = useAuthStore((state) => state.setInitializedFlag);
   const initialized = useAuthStore((state) => state.initialized);
 
   useEffect(() => {
-    void initialize();
-  }, [initialize]);
+    const sync = async () => {
+      if (!authLoaded || !userLoaded) {
+        return;
+      }
+
+      if (session) {
+        const token = await session.getToken();
+        setAuthFromSession({
+          uid: user?.id ?? session.id,
+          email: user?.primaryEmailAddress?.emailAddress ?? null,
+          idToken: token ?? null,
+          status: "authenticated",
+          sessionId: session.id ?? null,
+        });
+      } else {
+        clearAuthState();
+      }
+
+      setInitializedFlag(true);
+    };
+
+    void sync();
+  }, [authLoaded, userLoaded, session, user, setAuthFromSession, clearAuthState, setInitializedFlag]);
 
   if (!initialized) {
     // Root layout keeps the splash visible until initialization completes.

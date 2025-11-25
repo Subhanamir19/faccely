@@ -1,5 +1,5 @@
 // facely/app/(auth)/login.tsx
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -9,156 +9,110 @@ import {
   TextInput,
   View,
 } from "react-native";
-import * as AuthSession from "expo-auth-session";
 import { router } from "expo-router";
+import * as AuthSession from "expo-auth-session";
+import { useSignIn, useSignUp, useSSO } from "@clerk/clerk-expo";
 import { useAuthStore } from "@/store/auth";
 
-const GOOGLE_AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth";
-const GOOGLE_SCOPES: string[] = ["openid", "profile", "email"];
-
-const generateRandomString = () =>
-  Array.from({ length: 32 }, () => Math.floor(Math.random() * 36).toString(36)).join("");
-
 export default function LoginScreen() {
-  const loginWithEmail = useAuthStore((state) => state.loginWithEmail);
-  const loginWithGoogleIdToken = useAuthStore((state) => state.loginWithGoogleIdToken);
   const status = useAuthStore((state) => state.status);
-  const initialized = useAuthStore((state) => state.initialized);
-  const onboardingCompleted = useAuthStore((state) => state.onboardingCompleted);
+  const userEmail = useAuthStore((state) => state.user?.email ?? null);
+  const { signIn, isLoaded: signInLoaded, setActive: setActiveSignIn } = useSignIn();
+  const { signUp, isLoaded: signUpLoaded, setActive: setActiveSignUp } = useSignUp();
+  const { startSSOFlow } = useSSO();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [mode, setMode] = useState<"signIn" | "signUp">("signIn");
   const [emailSubmitting, setEmailSubmitting] = useState(false);
   const [googleSubmitting, setGoogleSubmitting] = useState(false);
 
-  const googleClientId = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID;
-  const googleEnabled = Boolean(googleClientId);
-  const redirectUri = useMemo(() => AuthSession.makeRedirectUri(), []);
-  const nonce = useMemo(() => generateRandomString(), []);
-  const stateParam = useMemo(() => generateRandomString(), []);
+  const googleEnabled = true;
 
-  const [request, response, promptAsync] = AuthSession.useAuthRequest(
-    {
-      clientId: googleClientId ?? "",
-      responseType: "id_token",
-      scopes: GOOGLE_SCOPES,
-      redirectUri,
-      state: stateParam,
-      extraParams: {
-        nonce,
-      },
-    },
-    {
-      authorizationEndpoint: GOOGLE_AUTH_ENDPOINT,
-    }
-  );
-
-  const handleEmailLogin = useCallback(async () => {
+  const handlePrimaryEmailAction = useCallback(async () => {
     const trimmedEmail = email.trim();
-
-    if (!trimmedEmail || !password.trim()) {
-      Alert.alert("Missing info", "Enter both email and password to continue.");
-      return;
-    }
 
     setEmailSubmitting(true);
     try {
-      await loginWithEmail(trimmedEmail, password);
+      if (mode === "signIn") {
+        if (!signInLoaded || !signIn) {
+          throw new Error("Sign-in is not ready. Please try again.");
+        }
+
+        const attempt = await signIn.create({
+          identifier: trimmedEmail,
+          password,
+        });
+
+        if (attempt.status === "complete") {
+          await setActiveSignIn?.({ session: attempt.createdSessionId });
+          router.replace("/(onboarding)/welcome");
+        } else {
+          throw new Error("Unable to complete sign-in. Please try again.");
+        }
+      } else {
+        if (!signUpLoaded || !signUp) {
+          throw new Error("Sign-up is not ready. Please try again.");
+        }
+
+        const created = await signUp.create({
+          emailAddress: trimmedEmail,
+          password,
+        });
+
+        if (created.status === "complete") {
+          await setActiveSignUp?.({ session: created.createdSessionId });
+          router.replace("/(onboarding)/welcome");
+        } else {
+          throw new Error("Unable to complete sign-up. Please try again.");
+        }
+      }
     } catch (error) {
       const reason = error instanceof Error ? error.message : "Unknown error";
-      Alert.alert("Sign in failed", reason);
+      const title = mode === "signIn" ? "Sign in failed" : "Sign up failed";
+      Alert.alert(title, reason);
     } finally {
       setEmailSubmitting(false);
     }
-  }, [email, password, loginWithEmail]);
+  }, [email, password, mode, signIn, signInLoaded, signUp, signUpLoaded, setActiveSignIn, setActiveSignUp]);
+ 
 
   const handleGoogleLogin = useCallback(async () => {
-    if (!googleClientId) {
-      Alert.alert(
-        "Unavailable",
-        "Google sign-in is not configured. Please use email/password for now."
-      );
-      return;
-    }
-
     try {
       setGoogleSubmitting(true);
-      if (!request) {
-        Alert.alert("Please wait", "Google sign-in is still initializing.");
-        setGoogleSubmitting(false);
+      const result = await startSSOFlow({
+        strategy: "oauth_google",
+        redirectUrl: AuthSession.makeRedirectUri(),
+      });
+      if (result?.createdSessionId) {
+        await result.setActive?.({ session: result.createdSessionId });
+        router.replace("/(onboarding)/welcome");
         return;
       }
-
-      await promptAsync();
+      throw new Error("Google sign-in did not complete.");
     } catch (error) {
       const reason = error instanceof Error ? error.message : "Unknown error";
       Alert.alert("Google sign-in failed", reason);
+    } finally {
       setGoogleSubmitting(false);
     }
-  }, [googleClientId, promptAsync, request]);
+  }, [startSSOFlow]);
 
-  useEffect(() => {
-    if (!initialized || status === "checking") {
-      return;
-    }
+  const googleButtonLabel = useMemo(
+    () => (googleSubmitting ? "Connecting to Google..." : "Sign in with Google"),
+    [googleSubmitting]
+  );
 
-    if (status === "authenticated") {
-      router.replace("/");
-    }
-  }, [initialized, status, onboardingCompleted]);
-
-  useEffect(() => {
-    if (!response) {
-      return;
-    }
-
-    if (response.type === "success") {
-      const idToken = response.params?.id_token as string | undefined;
-      if (!idToken) {
-        Alert.alert("Google sign-in failed", "Missing ID token in the Google response.");
-        setGoogleSubmitting(false);
-        return;
-      }
-
-      const applyLogin = async () => {
-        try {
-          await loginWithGoogleIdToken(idToken);
-        } catch (error) {
-          const reason = error instanceof Error ? error.message : "Unknown error";
-          Alert.alert("Google sign-in failed", reason);
-        } finally {
-          setGoogleSubmitting(false);
-        }
-      };
-
-      void applyLogin();
-      return;
-    }
-
-    if (response.type === "cancel" || response.type === "dismiss") {
-      setGoogleSubmitting(false);
-      return;
-    }
-
-    if (response.type === "error") {
-      const errorMessage =
-        response.error?.message ||
-        (response.params?.error_description as string | undefined) ||
-        "Unable to complete Google sign-in.";
-      Alert.alert("Google sign-in failed", errorMessage);
-      setGoogleSubmitting(false);
-      return;
-    }
-
-    setGoogleSubmitting(false);
-  }, [response, loginWithGoogleIdToken]);
-
-  const googleButtonLabel = useMemo(() => {
-    if (!googleEnabled) {
-      return "Google sign-in unavailable";
-    }
-    return googleSubmitting ? "Connecting to Google..." : "Sign in with Google";
-  }, [googleEnabled, googleSubmitting]);
+  const primaryButtonLabel = mode === "signIn" ? "Continue" : "Create account";
+  const headerTitle = mode === "signIn" ? "Sign in to continue" : "Create your account";
+  const headerSubtitle =
+    mode === "signIn"
+      ? "Use your account to save progress and sync across devices."
+      : "Quickly set up your profile so you can start saving progress.";
+  const footerPrompt =
+    mode === "signIn" ? "Don't have an account?" : "Already have an account?";
+  const footerActionLabel = mode === "signIn" ? "Sign up" : "Sign in";
+  const footerActionMode = mode === "signIn" ? "signUp" : "signIn";
 
   return (
     <View style={styles.container}>
@@ -168,10 +122,8 @@ export default function LoginScreen() {
       </View>
 
       <View style={styles.header}>
-        <Text style={styles.title}>Sign in to continue</Text>
-        <Text style={styles.subtitle}>
-          Use your account to save progress and sync across devices.
-        </Text>
+        <Text style={styles.title}>{headerTitle}</Text>
+        <Text style={styles.subtitle}>{headerSubtitle}</Text>
       </View>
 
       <View style={styles.card}>
@@ -204,7 +156,7 @@ export default function LoginScreen() {
         </View>
 
         <Pressable
-          onPress={handleEmailLogin}
+          onPress={handlePrimaryEmailAction}
           style={({ pressed }) => [
             styles.primaryButton,
             pressed && !emailSubmitting ? styles.primaryButtonPressed : null,
@@ -214,7 +166,7 @@ export default function LoginScreen() {
           {emailSubmitting ? (
             <ActivityIndicator color="#050505" />
           ) : (
-            <Text style={styles.primaryButtonText}>Continue</Text>
+            <Text style={styles.primaryButtonText}>{primaryButtonLabel}</Text>
           )}
         </Pressable>
 
@@ -245,14 +197,15 @@ export default function LoginScreen() {
         )}
       </View>
 
+      <Text style={styles.statusLabel}>
+        Status: {status}
+        {status === "authenticated" && userEmail ? ` (${userEmail})` : ""}
+      </Text>
+
       <View style={styles.footer}>
-        <Text style={styles.footerText}>Don&apos;t have an account?</Text>
-        <Pressable
-          onPress={() =>
-            Alert.alert("Sign up", "Sign up flow is not implemented yet, only login for now.")
-          }
-        >
-          <Text style={styles.footerLink}>Sign up</Text>
+        <Text style={styles.footerText}>{footerPrompt}</Text>
+        <Pressable onPress={() => setMode(footerActionMode)}>
+          <Text style={styles.footerLink}>{footerActionLabel}</Text>
         </Pressable>
       </View>
     </View>
@@ -383,6 +336,12 @@ const styles = StyleSheet.create({
     marginTop: 10,
     color: "#888888",
     fontSize: 13,
+    textAlign: "center",
+  },
+  statusLabel: {
+    marginTop: 12,
+    color: "#7D7D7D",
+    fontSize: 12,
     textAlign: "center",
   },
   footer: {

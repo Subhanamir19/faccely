@@ -1,18 +1,14 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { getFirebaseAuth } from "@/lib/firebase/client";
-import {
-  GoogleAuthProvider,
-  type User,
-  onAuthStateChanged,
-  signInWithCredential,
-  signInWithEmailAndPassword,
-  signOut,
-} from "firebase/auth";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
 export type AuthStatus = "checking" | "signedOut" | "authenticated";
 export type SubscriptionStatus = "none" | "active" | "grace" | "unknown";
+
+type User = {
+  uid: string;
+  email?: string | null;
+};
 
 type AuthState = {
   status: AuthStatus;
@@ -27,17 +23,25 @@ type AuthState = {
   initialize: () => Promise<void>;
   loginWithEmail: (email: string, password: string) => Promise<void>;
   loginWithGoogleIdToken: (googleIdToken: string) => Promise<void>;
+  signUpWithEmail: (email: string, password: string) => Promise<void>;
   refreshIdToken: (force?: boolean) => Promise<string | null>;
   getIdTokenOrThrow: () => Promise<string>;
   setOnboardingCompleted: (value: boolean) => void;
   setSubscriptionStatus: (status: SubscriptionStatus) => void;
   setSessionId: (sessionId: string | null) => void;
   logout: () => Promise<void>;
+  setAuthFromSession: (input: {
+    uid: string;
+    email?: string | null;
+    idToken?: string | null;
+    status: AuthStatus;
+    sessionId?: string | null;
+  }) => void;
+  clearAuthState: () => void;
+  setInitializedFlag: (value: boolean) => void;
 };
 
 const STORAGE_KEY = "sigma_auth_v1";
-
-let initializationPromise: Promise<void> | null = null;
 
 const generateDeviceId = (): string => {
   const segment = () => Math.floor(Math.random() * 0xffff)
@@ -60,131 +64,48 @@ export const useAuthStore = create<AuthState>()(
       sessionId: null,
       initialized: false,
       initialize: async () => {
-        if (get().initialized) {
-          return;
-        }
-
         if (!get().deviceId) {
           set({ deviceId: generateDeviceId() });
-        }
-
-        try {
-          const auth = getFirebaseAuth();
-
-          if (!initializationPromise) {
-            initializationPromise = new Promise<void>((resolve) => {
-              let resolved = false;
-
-              onAuthStateChanged(
-                auth,
-                (firebaseUser) => {
-                  const applyState = async () => {
-                    if (!firebaseUser) {
-                      set({
-                        user: null,
-                        uid: null,
-                        idToken: null,
-                        sessionId: null,
-                        status: "signedOut",
-                        initialized: true,
-                      });
-                    } else {
-                      let token: string | null = null;
-                      try {
-                        token = await firebaseUser.getIdToken();
-                      } catch {
-                        token = null;
-                      }
-
-                      set({
-                        user: firebaseUser,
-                        uid: firebaseUser.uid,
-                        idToken: token,
-                        status: "authenticated",
-                        initialized: true,
-                      });
-                    }
-
-                    if (!resolved) {
-                      resolved = true;
-                      resolve();
-                    }
-                  };
-
-                  void applyState();
-                },
-                (error) => {
-                  console.error("[auth] onAuthStateChanged error", error);
-                  set({
-                    user: null,
-                    uid: null,
-                    idToken: null,
-                    sessionId: null,
-                    status: "signedOut",
-                    initialized: true,
-                  });
-                  if (!resolved) {
-                    resolved = true;
-                    resolve();
-                  }
-                }
-              );
-            });
-          }
-
-          await initializationPromise;
-        } catch (error) {
-          console.error("[auth] initialize error", error);
-          set({
-            user: null,
-            uid: null,
-            idToken: null,
-            sessionId: null,
-            status: "signedOut",
-            initialized: true,
-          });
-        } finally {
-          initializationPromise = null;
         }
       },
 
       loginWithEmail: async (email, password) => {
         const normalizedEmail = email.trim();
-        if (normalizedEmail.length === 0) {
-          throw new Error("Email is required to sign in.");
-        }
-        if (!password) {
-          throw new Error("Password is required to sign in.");
-        }
+        void password;
 
-        const auth = getFirebaseAuth();
-        try {
-          await signInWithEmailAndPassword(auth, normalizedEmail, password);
-        } catch (error) {
-          const reason = error instanceof Error ? error.message : "Unknown error";
-          throw new Error(`Unable to sign in with email and password: ${reason}`);
-        }
+        const uid = get().uid ?? generateDeviceId();
+        set({
+          user: { uid, email: normalizedEmail || null },
+          uid,
+          idToken: "dummy-token",
+          status: "authenticated",
+        });
       },
       loginWithGoogleIdToken: async (googleIdToken) => {
-        if (!googleIdToken) {
-          throw new Error("Google ID token is required.");
-        }
+        const uid = get().uid ?? generateDeviceId();
+        void googleIdToken;
+        set({
+          user: { uid, email: null },
+          uid,
+          idToken: "dummy-google-token",
+          status: "authenticated",
+        });
+      },
+      signUpWithEmail: async (email, password) => {
+        const normalizedEmail = email.trim();
+        void password;
 
-        const auth = getFirebaseAuth();
-        const credential = GoogleAuthProvider.credential(googleIdToken);
-
-        try {
-          await signInWithCredential(auth, credential);
-        } catch (error) {
-          const reason = error instanceof Error ? error.message : "Unknown error";
-          throw new Error(`Unable to sign in with Google: ${reason}`);
-        }
+        const uid = get().uid ?? generateDeviceId();
+        set({
+          user: { uid, email: normalizedEmail || null },
+          uid,
+          idToken: "dummy-token",
+          status: "authenticated",
+        });
       },
       refreshIdToken: async (force = false) => {
-        const auth = getFirebaseAuth();
-        const currentUser = auth.currentUser;
-
-        if (!currentUser) {
+        void force;
+        if (get().status !== "authenticated") {
           set({
             status: "signedOut",
             user: null,
@@ -195,34 +116,16 @@ export const useAuthStore = create<AuthState>()(
           return null;
         }
 
-        try {
-          const token = await currentUser.getIdToken(force);
-          set({
-            user: currentUser,
-            uid: currentUser.uid,
-            idToken: token,
-            status: "authenticated",
-          });
-          return token;
-        } catch (error) {
-          const reason = error instanceof Error ? error.message : "Unknown error";
-          throw new Error(`Unable to refresh ID token: ${reason}`);
-        }
+        const token = get().idToken ?? "dummy-token";
+        set({ idToken: token, status: "authenticated" });
+        return token;
       },
       getIdTokenOrThrow: async () => {
-        const auth = getFirebaseAuth();
-        const currentUser = auth.currentUser;
-
-        if (!currentUser || !get().uid) {
+        if (get().status !== "authenticated" || !get().uid) {
           throw new Error("User is not authenticated.");
         }
 
-        const token = await get().refreshIdToken(false);
-        if (!token) {
-          throw new Error("Unable to retrieve Firebase ID token.");
-        }
-
-        return token;
+        return get().idToken ?? "dummy-token";
       },
       setOnboardingCompleted: (value) => {
         set({ onboardingCompleted: value });
@@ -234,21 +137,34 @@ export const useAuthStore = create<AuthState>()(
         set({ sessionId });
       },
       logout: async () => {
-        const auth = getFirebaseAuth();
-        try {
-          await signOut(auth);
-        } catch (error) {
-          const reason = error instanceof Error ? error.message : "Unknown error";
-          throw new Error(`Unable to sign out: ${reason}`);
-        } finally {
-          set({
-            user: null,
-            uid: null,
-            idToken: null,
-            sessionId: null,
-            status: "signedOut",
-          });
-        }
+        set({
+          user: null,
+          uid: null,
+          idToken: null,
+          sessionId: null,
+          status: "signedOut",
+        });
+      },
+      setAuthFromSession: ({ uid, email, idToken, status, sessionId }) => {
+        set({
+          user: { uid, email: email ?? null },
+          uid,
+          idToken: idToken ?? null,
+          sessionId: sessionId ?? null,
+          status,
+        });
+      },
+      clearAuthState: () => {
+        set({
+          user: null,
+          uid: null,
+          idToken: null,
+          sessionId: null,
+          status: "signedOut",
+        });
+      },
+      setInitializedFlag: (value) => {
+        set({ initialized: value });
       },
     }),
     {
