@@ -59,10 +59,12 @@ function cacheKeyPair(frontal: string, side: string): string {
 }
 
 /* ------------------------------ In-memory cache --------------------------- */
+type ScoreResult = { scores: Scores; modelVersion: string };
+
 /** Very small LRU-ish cache with TTL and size cap. Pluggable later with Redis. */
-type CacheEntry = { value: Scores; ts: number };
+type CacheEntry = { value: ScoreResult; ts: number };
 const memCache = new Map<string, CacheEntry>();
-const inFlight = new Map<string, Promise<Scores>>(); // in-flight de-duplication
+const inFlight = new Map<string, Promise<ScoreResult>>(); // in-flight de-duplication
 
 let scoresResponseFormatLogged = false;
 
@@ -74,7 +76,7 @@ const MODEL_SEQUENCE: string[] = Array.from(
   )
 );
 
-function cacheGet(key: string): Scores | null {
+function cacheGet(key: string): ScoreResult | null {
   const now = Date.now();
   const hit = memCache.get(key);
   if (!hit) return null;
@@ -88,7 +90,7 @@ function cacheGet(key: string): Scores | null {
   return hit.value;
 }
 
-function cacheSet(key: string, value: Scores) {
+function cacheSet(key: string, value: ScoreResult) {
   // size cap
   if (memCache.size >= CACHE_MAX_ITEMS) {
     // delete oldest entry (first inserted)
@@ -255,7 +257,7 @@ export async function scoreImageBytes(
   client: OpenAI,
   bytes: Buffer,
   _mime: string
-): Promise<Scores> {
+): Promise<ScoreResult> {
   if (!bytes || bytes.length < 64) throw new Error("empty_or_invalid_image_buffer");
 
   console.log("[scoreImageBytes] input:", preview(bytes));
@@ -333,8 +335,9 @@ export async function scoreImageBytes(
         }
 
         console.log("[single] FINAL ADJUSTED SCORES =>", adjusted);
-        cacheSet(key, adjusted);
-        return adjusted;
+        const result: ScoreResult = { scores: adjusted, modelVersion: modelName };
+        cacheSet(key, result);
+        return result;
       } catch (err: any) {
         logModelFailure("single", modelName, err, attempt);
         lastErr = err;
@@ -360,7 +363,7 @@ export async function scoreImagePairBytes(
   _frontalMime: string,
   sideBytes: Buffer,
   _sideMime: string
-): Promise<Scores> {
+): Promise<ScoreResult> {
   if (!frontalBytes?.length || !sideBytes?.length) throw new Error("missing_image_bytes");
 
   console.log(
@@ -446,8 +449,9 @@ export async function scoreImagePairBytes(
         }
 
         console.log("[pair] FINAL ADJUSTED SCORES =>", adjusted);
-        cacheSet(key, adjusted);
-        return adjusted;
+        const result: ScoreResult = { scores: adjusted, modelVersion: modelName };
+        cacheSet(key, result);
+        return result;
       } catch (err: any) {
         logModelFailure("pair", modelName, err, attempt);
         lastErr = err;

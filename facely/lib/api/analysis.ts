@@ -9,6 +9,7 @@ import {
 } from "./client";
 import type { Scores } from "./scores";
 import { prepareUploadPart, type UploadInput } from "./media";
+import { getAuthState } from "@/store/auth";
 
 export type Explanations = Record<string, string[]>;
 
@@ -38,6 +39,20 @@ const ExplanationsPayloadSchema = z.object({
 type ExplanationsPayload = z.infer<typeof ExplanationsPayloadSchema>;
 
 /* ---------- helpers ---------- */
+
+function buildIdentityHeaders(): Record<string, string> {
+  const state = getAuthState();
+  const headers: Record<string, string> = {};
+  const userId = state.uid ?? state.user?.uid ?? undefined;
+  const email = state.user?.email ?? undefined;
+  const deviceId = state.deviceId ?? undefined;
+
+  if (userId) headers["x-user-id"] = userId;
+  if (email) headers["x-email"] = email;
+  if (deviceId) headers["x-device-id"] = deviceId;
+
+  return headers;
+}
 
 const MAX_SUBMETRIC_CHAR = 140;
 
@@ -96,7 +111,7 @@ export async function explainMetrics(
     `${API_BASE}/analyze/explain`,
     {
       method: "POST",
-      headers: { Accept: "application/json" },
+      headers: { Accept: "application/json", ...buildIdentityHeaders() },
       body: fd,
       signal,
       timeoutMs: LONG_REQUEST_TIMEOUT_MS,
@@ -133,7 +148,7 @@ export async function explainMetricsPair(
       `${API_BASE}${path}`,
       {
         method: "POST",
-        headers: { Accept: "application/json" },
+        headers: { Accept: "application/json", ...buildIdentityHeaders() },
         body: await buildFormData(),
         signal,
         timeoutMs: LONG_REQUEST_TIMEOUT_MS,

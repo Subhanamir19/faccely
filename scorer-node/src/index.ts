@@ -46,6 +46,8 @@ import {
   router as routineRouter,
   setRoutineOpenAIClient,
 } from "./routes/routine.js";
+import { createScan } from "./supabase/scans.js";
+import { uploadScanImage } from "./supabase/storage.js";
 
 
 
@@ -355,6 +357,17 @@ function handleExplainKnownErrors(err: any, res: express.Response, label: string
   return false;
 }
 
+function attachIdentityContext(
+  req: express.Request,
+  res: express.Response,
+  next: express.NextFunction
+) {
+  res.locals.userId = req.header("x-user-id") ?? res.locals.userId;
+  res.locals.email = req.header("x-email") ?? res.locals.email;
+  res.locals.deviceId = req.header("x-device-id") ?? res.locals.deviceId;
+  next();
+}
+
 /* -------------------------------------------------------------------------- */
 /*   Concurrency guard                                                        */
 /* -------------------------------------------------------------------------- */
@@ -477,6 +490,9 @@ app.get("/queues/health", async (_req, res) => {
   res.json(probe);
 });
 
+/* --------------------------- Identity context ---------------------------- */
+app.use(["/analyze", "/analyze/*", "/explain", "/explain/*"], attachIdentityContext);
+
 
 /* ---------------------- /analyze/pair-bytes (fallback) -------------------- */
 app.post("/analyze/pair-bytes", async (req, res) => {
@@ -498,8 +514,46 @@ app.post("/analyze/pair-bytes", async (req, res) => {
     const fBuf = Buffer.from(fB64, "base64");
     const sBuf = Buffer.from(sB64, "base64");
 
-    const scores = await scoreImagePairBytes(openai, fBuf, "image/jpeg", sBuf, "image/jpeg");
+    const { scores, modelVersion } = await scoreImagePairBytes(
+      openai,
+      fBuf,
+      "image/jpeg",
+      sBuf,
+      "image/jpeg"
+    );
     const parsed = ScoresSchema.parse(scores);
+
+    let scanId: string | undefined;
+    if (res.locals.userId) {
+      try {
+        const frontKey = await uploadScanImage({
+          userId: res.locals.userId,
+          variant: "front",
+          buffer: fBuf,
+          contentType: "image/jpeg",
+          requestId: res.locals.requestId,
+        });
+        const sideKey = await uploadScanImage({
+          userId: res.locals.userId,
+          variant: "side",
+          buffer: sBuf,
+          contentType: "image/jpeg",
+          requestId: res.locals.requestId,
+        });
+        const scan = await createScan({
+          userId: res.locals.userId,
+          modelVersion,
+          frontImagePath: frontKey,
+          sideImagePath: sideKey,
+          scores: parsed,
+        });
+        scanId = scan?.id;
+      } catch {
+        /* swallow supabase errors */
+      }
+    }
+
+    if (scanId) return res.json({ ...parsed, scanId });
     res.json(parsed);
   } catch (err: any) {
     if (isServerOverloaded(err)) return respondServerOverloaded(res);
@@ -544,8 +598,33 @@ app.post("/analyze", upload.single("image"), async (req, res) => {
       );
 
     console.log("[/analyze] buffer:", preview(req.file.buffer));
-    const scores = await scoreImageBytes(openai, req.file.buffer, req.file.mimetype);
+    const { scores, modelVersion } = await scoreImageBytes(openai, req.file.buffer, req.file.mimetype);
     const parsed = ScoresSchema.parse(scores);
+
+    let scanId: string | undefined;
+    if (res.locals.userId) {
+      try {
+        const frontKey = await uploadScanImage({
+          userId: res.locals.userId,
+          variant: "front",
+          buffer: req.file.buffer,
+          contentType: req.file.mimetype,
+          requestId: res.locals.requestId,
+        });
+        const scan = await createScan({
+          userId: res.locals.userId,
+          modelVersion,
+          frontImagePath: frontKey,
+          sideImagePath: undefined,
+          scores: parsed,
+        });
+        scanId = scan?.id;
+      } catch {
+        /* swallow supabase errors */
+      }
+    }
+
+    if (scanId) return res.json({ ...parsed, scanId });
     return res.json(parsed);
   } catch (err: any) {
     if (isServerOverloaded(err)) return respondServerOverloaded(res);
@@ -603,7 +682,7 @@ app.post(
         );
 
       console.log("[/analyze/pair] buffers:", preview(frontal.buffer), preview(side.buffer));
-      const scores = await scoreImagePairBytes(
+      const { scores, modelVersion } = await scoreImagePairBytes(
         openai,
         frontal.buffer,
         frontal.mimetype,
@@ -611,6 +690,38 @@ app.post(
         side.mimetype
       );
       const parsed = ScoresSchema.parse(scores);
+
+      let scanId: string | undefined;
+      if (res.locals.userId) {
+        try {
+          const frontKey = await uploadScanImage({
+            userId: res.locals.userId,
+            variant: "front",
+            buffer: frontal.buffer,
+            contentType: frontal.mimetype,
+            requestId: res.locals.requestId,
+          });
+          const sideKey = await uploadScanImage({
+            userId: res.locals.userId,
+            variant: "side",
+            buffer: side.buffer,
+            contentType: side.mimetype,
+            requestId: res.locals.requestId,
+          });
+          const scan = await createScan({
+            userId: res.locals.userId,
+            modelVersion,
+            frontImagePath: frontKey,
+            sideImagePath: sideKey,
+            scores: parsed,
+          });
+          scanId = scan?.id;
+        } catch {
+          /* swallow supabase errors */
+        }
+      }
+
+      if (scanId) return res.json({ ...parsed, scanId });
       return res.json(parsed);
     } catch (err: any) {
       if (isServerOverloaded(err)) return respondServerOverloaded(res);
