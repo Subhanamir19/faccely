@@ -11,6 +11,8 @@ import sharp from "sharp";
 import * as fs from "fs";
 import sigmaRouter from "./routes/sigma.js";
 import jobsRouter from "./routes/jobs.js";           // ← add this
+import { historyRouter } from "./routes/history.js";
+import { usersRouter } from "./routes/users.js";
 import { idempotency } from "./middleware/idempotency.js";
 import { bootQueues, queuesProbe } from "./queue/index.js";
 import routineAsyncRouter from "./routes/routineAsync.js";
@@ -493,6 +495,8 @@ app.get("/queues/health", async (_req, res) => {
 
 /* --------------------------- Identity context ---------------------------- */
 app.use(["/analyze", "/analyze/*", "/explain", "/explain/*"], attachIdentityContext);
+app.use("/history", attachIdentityContext, historyRouter);
+app.use("/users", attachIdentityContext, usersRouter);
 
 
 /* ---------------------- /analyze/pair-bytes (fallback) -------------------- */
