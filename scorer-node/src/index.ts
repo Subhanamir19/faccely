@@ -48,6 +48,7 @@ import {
 } from "./routes/routine.js";
 import { createScan } from "./supabase/scans.js";
 import { uploadScanImage } from "./supabase/storage.js";
+import { createAnalysis } from "./supabase/analyses.js";
 
 
 
@@ -771,6 +772,14 @@ app.post("/analyze/explain", async (req, res) => {
     const { buffer, mime } = await toJpegBuffer(file);
     const notes = await explainImageBytes(openai, buffer, mime, scores);
     const parsed = parseExplanationPayload(notes);
+    const scanId = typeof req.body?.scanId === "string" ? req.body.scanId.trim() : "";
+    if (scanId) {
+      try {
+        await createAnalysis({ scanId, explanations: parsed });
+      } catch {
+        /* swallow supabase errors */
+      }
+    }
     return res.json(parsed);
   } catch (err: any) {
     if (isServerOverloaded(err)) return respondServerOverloaded(res);
@@ -829,6 +838,14 @@ app.post("/analyze/explain/pair", async (req, res) => {
       scores
     );
     const parsed = parseExplanationPayload(notes);
+    const scanId = typeof req.body?.scanId === "string" ? req.body.scanId.trim() : "";
+    if (scanId) {
+      try {
+        await createAnalysis({ scanId, explanations: parsed });
+      } catch {
+        /* swallow supabase errors */
+      }
+    }
     return res.json(parsed);
   } catch (err: any) {
     if (isServerOverloaded(err)) return respondServerOverloaded(res);

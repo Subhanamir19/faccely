@@ -37,6 +37,7 @@ export type UploadMeta = {
   single?: PreparedUploadPart;
   front?: PreparedUploadPart;
   side?: PreparedUploadPart;
+  scanId?: string;
 };
 
 const UPLOAD_META_SYMBOL = Symbol("facely.scores.uploadMeta");
@@ -197,11 +198,13 @@ async function analyzePairMultipart(front: InputFile, side: InputFile): Promise<
     throw new Error(`HTTP ${res.status} ${body}`);
   }
 
-  const json = await res.json().catch(() => null);
-  console.log("[scores] /analyze/pair raw:", json);
-  if (!json) throw new Error("Invalid JSON from server");
+  const raw = await res.json().catch(() => null);
+  console.log("[scores] /analyze/pair raw:", raw);
+  if (!raw) throw new Error("Invalid JSON from server");
   console.log("[scores] /analyze/pair ok");
-  return attachUploadMeta(normalizeScores(json), { front: frontPart, side: sidePart });
+  const scores = normalizeScores(raw);
+  const scanId = (raw as any)?.scanId;
+  return attachUploadMeta(scores, { front: frontPart, side: sidePart, scanId });
 }
 
 /* -------------------------------------------------------------------------- */
@@ -252,15 +255,17 @@ async function analyzePairBytes(front: InputFile, side: InputFile): Promise<Scor
     throw new Error(`HTTP ${res.status} ${body}`);
   }
 
-  const json = await res.json().catch(() => null);
-  console.log("[scores] /analyze/pair-bytes raw:", json);
-  if (!json) throw new Error("Invalid JSON from server");
+  const raw = await res.json().catch(() => null);
+  console.log("[scores] /analyze/pair-bytes raw:", raw);
+  if (!raw) throw new Error("Invalid JSON from server");
   console.log(`[scores] /analyze/pair-bytes ok (${duration} ms)`);
   const meta = {
     front: { uri: frontPath, name: "front.jpg", type: "image/jpeg" },
     side: { uri: sidePath, name: "side.jpg", type: "image/jpeg" },
   };
-  return attachUploadMeta(normalizeScores(json), meta);
+  const scores = normalizeScores(raw);
+  const scanId = (raw as any)?.scanId;
+  return attachUploadMeta(scores, { ...meta, scanId });
 }
 
 /* -------------------------------------------------------------------------- */
@@ -325,9 +330,11 @@ export async function analyzeImage(input: InputFile): Promise<Scores> {
     throw new Error(`HTTP ${res.status} ${body}`);
   }
 
-  const json = await res.json().catch(() => null);
-  console.log("[scores] /analyze raw:", json);
-  if (!json) throw new Error("Invalid JSON from server");
+  const raw = await res.json().catch(() => null);
+  console.log("[scores] /analyze raw:", raw);
+  if (!raw) throw new Error("Invalid JSON from server");
   console.log("[scores] /analyze ok");
-  return attachUploadMeta(normalizeScores(json), { single: part });
+  const scores = normalizeScores(raw);
+  const scanId = (raw as any)?.scanId;
+  return attachUploadMeta(scores, { single: part, scanId });
 }

@@ -90,6 +90,7 @@ type State = {
   imageUri: string | null;
   sideImageUri: string | null;
   scores: Scores | null;
+  scanId: string | null;
   loading: boolean;
   error: string | null;
 
@@ -142,6 +143,7 @@ export const useScores = create<State & Actions>((set, get) => ({
   explError: initialLegacyFlags.explError,
 
   requests: initialRequests,
+  scanId: null,
 
   setImage: (uri) => set({ imageUri: uri }),
   setSideImage: (uri) => set({ sideImageUri: uri }),
@@ -178,6 +180,7 @@ export const useScores = create<State & Actions>((set, get) => ({
           ...state,
           scores: s,
           imageUri: normalizedUri ?? originalUri ?? null,
+          scanId: meta?.scanId ?? null,
           requests,
           ...deriveLegacyFlags(requests),
         };
@@ -241,6 +244,7 @@ export const useScores = create<State & Actions>((set, get) => ({
           scores: s,
           imageUri: normalizedFront ?? frontUri ?? null,
           sideImageUri: normalizedSide ?? sideUri ?? null,
+          scanId: meta?.scanId ?? null,
           requests,
           ...deriveLegacyFlags(requests),
         };
@@ -272,6 +276,7 @@ export const useScores = create<State & Actions>((set, get) => ({
 
   explain: async (uri: string, scores: Scores): Promise<boolean> => {
     if (get().requests.explainSingle.loading) return false;
+    const scanId = get().scanId;
     const requestId = nextRequestId();
     set((state) => {
       const requests = {
@@ -287,7 +292,7 @@ export const useScores = create<State & Actions>((set, get) => ({
     try {
       await assertBackendReachable();
 
-      const exps = await explainMetrics(uri, scores);
+      const exps = await explainMetrics(uri, scores, scanId || undefined);
       set((state) => {
         if (state.requests.explainSingle.id !== requestId) return state;
         const requests = {
@@ -330,6 +335,7 @@ export const useScores = create<State & Actions>((set, get) => ({
     scores: Scores
   ): Promise<boolean> => {
     if (get().requests.explainPair.loading) return false;
+    const scanId = get().scanId;
     const requestId = nextRequestId();
     set((state) => {
       const requests = {
@@ -345,7 +351,7 @@ export const useScores = create<State & Actions>((set, get) => ({
     try {
       await assertBackendReachable();
 
-      const exps = await explainMetricsPair(frontalUri, sideUri, scores);
+      const exps = await explainMetricsPair(frontalUri, sideUri, scores, scanId || undefined);
       set((state) => {
         if (state.requests.explainPair.id !== requestId) return state;
         const requests = {

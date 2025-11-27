@@ -101,12 +101,14 @@ async function parseExplanations(
 export async function explainMetrics(
   image: UploadInput,
   scores: Scores,
+  scanId?: string | null,
   signal?: AbortSignal
 ): Promise<Explanations> {
   const fd = new FormData();
   const imagePart = await prepareUploadPart(image, "image.jpg");
   fd.append("image", imagePart as any);
   fd.append("scores", JSON.stringify(scores));
+  if (scanId) fd.append("scanId", scanId);
   const res = await fetchWithRetry(
     `${API_BASE}/analyze/explain`,
     {
@@ -129,6 +131,7 @@ export async function explainMetricsPair(
   frontal: UploadInput,
   side: UploadInput,
   scores: Scores,
+  scanId?: string | null,
   signal?: AbortSignal
 ): Promise<Explanations> {
   const buildFormData = async () => {
@@ -140,6 +143,7 @@ export async function explainMetricsPair(
     fd.append("frontal", frontalPart as any);
     fd.append("side", sidePart as any);
     fd.append("scores", JSON.stringify(scores));
+    if (scanId) fd.append("scanId", scanId);
     return fd;
   };
 
