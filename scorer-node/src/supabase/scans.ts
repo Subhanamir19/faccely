@@ -60,3 +60,21 @@ export async function getScansForUser(
 
   return (data ?? []) as ScanRecord[];
 }
+
+export async function getScanById(
+  userId: string,
+  scanId: string
+): Promise<ScanRecord | null> {
+  const { data, error } = await supabase
+    .from("scans")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("id", scanId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Failed to fetch scan ${scanId} for user ${userId}: ${error.message}`);
+  }
+
+  return (data as ScanRecord | null) ?? null;
+}
