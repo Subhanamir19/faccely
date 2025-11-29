@@ -2,7 +2,7 @@
 import React from "react";
 import { Tabs } from "expo-router";
 import { Platform } from "react-native";
-import { Camera, ListChecks, MessageSquare } from "lucide-react-native";
+import { Camera, ListChecks, MessageSquare, User } from "lucide-react-native";
 import { COLORS } from "@/lib/tokens";
 
 const ACTIVE = COLORS.accent;
@@ -65,7 +65,16 @@ export default function TabsLayout() {
       {/* Keep routes but hide them from the tab bar */}
       <Tabs.Screen name="score" options={{ href: null }} />
       <Tabs.Screen name="analysis" options={{ href: null }} />
-      <Tabs.Screen name="profile" options={{ href: null }} />
+
+      {/* Visible tab: Profile */}
+      <Tabs.Screen
+        name="profile"
+        options={{
+          title: "Profile",
+          tabBarLabel: "Profile",
+          tabBarIcon: ({ color, size }) => <User color={color} size={size ?? 22} />,
+        }}
+      />
     </Tabs>
   );
 }
