@@ -43,3 +43,34 @@ export async function signScanImage(
 
   return data.signedUrl;
 }
+
+export async function deleteAllFaceScansForUser(userId: string): Promise<void> {
+  const prefix = `${userId}/`;
+  let page = 0;
+  const pageSize = 100;
+  while (true) {
+    const { data, error } = await supabase.storage
+      .from(SCAN_BUCKET)
+      .list(prefix, { limit: pageSize, offset: page * pageSize });
+
+    if (error) {
+      throw new Error(`Failed to list scan images for user: ${error.message}`);
+    }
+
+    const files = data ?? [];
+    if (files.length === 0) {
+      return;
+    }
+
+    const keys = files.map((f) => `${prefix}${f.name}`);
+    const { error: removeError } = await supabase.storage.from(SCAN_BUCKET).remove(keys);
+    if (removeError) {
+      throw new Error(`Failed to delete scan images for user: ${removeError.message}`);
+    }
+
+    if (files.length < pageSize) {
+      return;
+    }
+    page += 1;
+  }
+}

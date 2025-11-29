@@ -1,5 +1,6 @@
 import { Router } from "express";
-import { upsertUserProfile } from "../supabase/users.js";
+import { upsertUserProfile, deleteUserWithCascade } from "../supabase/users.js";
+import { deleteAllFaceScansForUser } from "../supabase/storage.js";
 
 export const usersRouter = Router();
 
@@ -25,5 +26,21 @@ usersRouter.post("/sync", async (req, res) => {
   } catch (err) {
     console.error("[users] sync failed", err);
     return res.status(500).json({ error: "user_sync_failed" });
+  }
+});
+
+usersRouter.delete("/me", async (req, res) => {
+  const userId = res.locals.userId;
+  if (!userId) {
+    return res.status(401).json({ error: "unauthorized" });
+  }
+
+  try {
+    await deleteUserWithCascade(userId);
+    await deleteAllFaceScansForUser(userId);
+    return res.status(204).send();
+  } catch (err) {
+    console.error("delete /users/me failed", { userId, err });
+    return res.status(500).json({ error: "delete_failed" });
   }
 });

@@ -37,3 +37,23 @@ export async function upsertUserProfile(input: UserUpsertInput): Promise<void> {
     throw new Error(`Failed to upsert user profile: ${error.message}`);
   }
 }
+
+export async function deleteUserWithCascade(
+  userId: string
+): Promise<"deleted" | "not_found"> {
+  const { data, error } = await supabase
+    .from("users")
+    .delete()
+    .eq("id", userId)
+    .select("id");
+
+  if (error) {
+    throw new Error(`Failed to delete user: ${error.message}`);
+  }
+
+  if (Array.isArray(data) && data.length > 0) {
+    return "deleted";
+  }
+
+  return "not_found";
+}
