@@ -184,9 +184,23 @@ async function generateProtocols(
     const maybeProtocols: Record<string, string> = {};
     let foundAny = false;
     for (const key of ProtocolsBuckets) {
-      const value = (parsed as any)[key];
-      if (typeof value === "string" && value.trim().length > 0) {
-        maybeProtocols[key] = value;
+      const rawVal = (parsed as any)[key];
+      let line: string | undefined;
+      if (typeof rawVal === "string" && rawVal.trim().length > 0) {
+        line = rawVal;
+      } else if (rawVal && typeof rawVal === "object") {
+        const candidate =
+          (typeof rawVal.protocol === "string" && rawVal.protocol.trim().length > 0 && rawVal.protocol) ||
+          (typeof rawVal.value === "string" && rawVal.value.trim().length > 0 && rawVal.value) ||
+          (typeof rawVal.text === "string" && rawVal.text.trim().length > 0 && rawVal.text) ||
+          undefined;
+        if (candidate) {
+          line = candidate;
+        }
+      }
+
+      if (line) {
+        maybeProtocols[key] = line;
         foundAny = true;
       }
     }
