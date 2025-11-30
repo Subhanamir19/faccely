@@ -48,6 +48,7 @@ import {
   router as routineRouter,
   setRoutineOpenAIClient,
 } from "./routes/routine.js";
+import protocolsRouter, { setProtocolsOpenAIClient } from "./routes/protocols.js";
 import { createScan } from "./supabase/scans.js";
 import { uploadScanImage } from "./supabase/storage.js";
 import { createAnalysis } from "./supabase/analyses.js";
@@ -70,6 +71,7 @@ const openai = new OpenAI({
 });
 
 setRoutineOpenAIClient(openai);
+setProtocolsOpenAIClient(openai);
 
 
 // --- one-time schema sanity check (shows up in Railway logs) ---
@@ -476,9 +478,10 @@ function respondServerOverloaded(res: express.Response) {
 /*   Routes                                                                   */
 /* -------------------------------------------------------------------------- */
 
-// Idempotency is currently scoped to routine/recommendations flows only; scoring (/analyze*) and
+// Idempotency is currently scoped to routine/protocols/recommendations flows only; scoring (/analyze*) and
 // job status endpoints intentionally bypass it in v1.
 app.use("/routine", idempotency(), routineRouter);
+app.use("/protocols", attachIdentityContext, idempotency(), protocolsRouter);
 app.use("/routine/async", routineAsyncRouter);
 
 app.use("/sigma", sigmaRouter);

@@ -18,6 +18,7 @@ import { useAuthStore } from "@/store/auth";
 import { useOnboarding } from "@/store/onboarding";
 import { useProfile } from "@/store/profile";
 import { useScores } from "@/store/scores";
+import { useProtocolsStore } from "@/store/protocolsStore";
 import { useRoutineStore } from "@/store/routineStore";
 import { useSigmaStore } from "@/store/sigma";
 import { useRecommendations } from "@/store/recommendations";
@@ -35,6 +36,9 @@ async function resetLocalUserData() {
   } catch {}
   try {
     useScores.getState().reset();
+  } catch {}
+  try {
+    useProtocolsStore.getState().clear();
   } catch {}
   try {
     useRoutineStore.getState().resetRoutine();
