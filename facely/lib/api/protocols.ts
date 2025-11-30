@@ -30,10 +30,26 @@ const ProtocolsBuckets = [
 
 const ProtocolsResponseSchema = z
   .object({
-    scanId: z.string().min(1).nullable(),
-    source: z.enum(["history", "payload"]),
-    modelVersion: z.string().nullable(),
-    createdAt: z.string().datetime(),
+    scanId: z
+      .string()
+      .min(1)
+      .nullable()
+      .optional()
+      .default(null),
+    source: z
+      .enum(["history", "payload"])
+      .optional()
+      .default("payload"),
+    modelVersion: z
+      .string()
+      .nullable()
+      .optional()
+      .default(null),
+    createdAt: z
+      .string()
+      .datetime()
+      .optional()
+      .default(() => new Date().toISOString()),
     protocols: z.object(
       ProtocolsBuckets.reduce(
         (shape, key) => {
@@ -44,7 +60,7 @@ const ProtocolsResponseSchema = z
       )
     ),
   })
-  .strict();
+  .passthrough();
 
 function buildAuthHeaders(): Record<string, string> {
   const state = getAuthState();

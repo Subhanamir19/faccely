@@ -180,6 +180,21 @@ async function generateProtocols(
     throw new Error("protocols_response_not_json");
   }
 
+  if (parsed && typeof parsed === "object" && !(parsed as any).protocols) {
+    const maybeProtocols: Record<string, string> = {};
+    let foundAny = false;
+    for (const key of ProtocolsBuckets) {
+      const value = (parsed as any)[key];
+      if (typeof value === "string" && value.trim().length > 0) {
+        maybeProtocols[key] = value;
+        foundAny = true;
+      }
+    }
+    if (foundAny) {
+      parsed = { protocols: maybeProtocols };
+    }
+  }
+
   return ProtocolsResponseSchema.parse(parsed);
 }
 

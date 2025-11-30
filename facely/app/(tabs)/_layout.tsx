@@ -3,6 +3,7 @@ import React from "react";
 import { Tabs } from "expo-router";
 import { Platform } from "react-native";
 import { Camera, ListChecks, MessageSquare, User } from "lucide-react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { COLORS } from "@/lib/tokens";
 
 const ACTIVE = COLORS.accent;
@@ -59,6 +60,17 @@ export default function TabsLayout() {
         options={{
           title: "Sigma",
           tabBarIcon: ({ color, size }) => <MessageSquare color={color} size={size ?? 22} />,
+        }}
+      />
+
+      {/* Visible tab #4: Protocols */}
+      <Tabs.Screen
+        name="protocols"
+        options={{
+          title: "Protocols",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="list-outline" size={size ?? 22} color={color} />
+          ),
         }}
       />
 

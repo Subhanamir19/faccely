@@ -15,6 +15,7 @@ import PagerView from "react-native-pager-view";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AnalysisCard, { type SubmetricView } from "@/components/analysis/AnalysisCard";
 import { useRoutineStore } from "@/store/routineStore";
+import { useProtocolsStore } from "@/store/protocolsStore";
 
 
 // Poppins wrapper
@@ -24,7 +25,7 @@ import Text from "@/components/ui/T";
 import { useScores, getSubmetricVerdicts } from "../../store/scores";
 // UI
 import GlassBtn from "@/components/ui/GlassBtn";
-import { router } from "expo-router";
+import { router, useRouter } from "expo-router";
 import { fetchRoutine } from "@/lib/api/routine";
 
 
@@ -107,12 +108,14 @@ function band(score: number | undefined) {
 // ---------------------------------------------------------------------------
 export default function AnalysisScreen() {
   const { scores, explanations, explLoading, explError } = useScores();
+  const { protocols, isLoading: pLoading, regenerateFromLastAnalysis } = useProtocolsStore();
 
   const insets = useSafeAreaInsets();
 
   const pagerRef = useRef<PagerView>(null);
   const [idx, setIdx] = useState(0);
-const [rtLoading, setRtLoading] = useState(false);
+  const [rtLoading, setRtLoading] = useState(false);
+  const nav = useRouter();
 
 
   const hasScores = !!scores;
@@ -155,6 +158,29 @@ const [rtLoading, setRtLoading] = useState(false);
       Alert.alert("Routine error", String(e?.message ?? e));
     } finally {
       setRtLoading(false);
+    }
+  }
+
+  async function handleProtocols() {
+    try {
+      if (protocols) {
+        nav.push("/(tabs)/protocols");
+        return;
+      }
+
+      await regenerateFromLastAnalysis();
+
+      const { protocols: latest, error } = useProtocolsStore.getState();
+      if (latest) {
+        nav.push("/(tabs)/protocols");
+        return;
+      }
+
+      if (error) {
+        Alert.alert("Error", error);
+      }
+    } catch (e: any) {
+      Alert.alert("Error", String(e?.message ?? e));
     }
   }
   
@@ -256,12 +282,20 @@ const [rtLoading, setRtLoading] = useState(false);
           {!isLast ? (
             <GlassBtn label="Next" icon="chevron-forward" onPress={() => goTo(idx + 1)} />
           ) : (
-            <GlassBtn
-  label={rtLoading ? "Generating…" : "Routine"}
-  icon="sparkles"
-  onPress={handleRoutine}
-  disabled={rtLoading}
-/>
+            <View style={{ flex: 1, gap: PILL_ROW_GAP }}>
+              <GlassBtn
+                label={rtLoading ? "Generating…" : "Routine"}
+                icon="sparkles"
+                onPress={handleRoutine}
+                disabled={rtLoading}
+              />
+              <GlassBtn
+                label={pLoading ? "Loading" : "Protocols"}
+                icon="sparkles"
+                onPress={handleProtocols}
+                disabled={pLoading}
+              />
+            </View>
 
           )}
         </View>

@@ -17,12 +17,10 @@ import {
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as ImagePicker from "expo-image-picker";
 import * as FileSystem from "expo-file-system";
-import { useAuth } from "@clerk/clerk-expo";
 import { router } from "expo-router";
 import Svg, { Line, Circle, Rect, Path } from "react-native-svg";
 import { LinearGradient } from "expo-linear-gradient";
 import { useScores } from "../../store/scores";
-import { useAuthStore } from "@/store/auth";
 
 // NEW: shared pre-upload compressor (JPEG, max 1080px)
 import { ensureJpegCompressed } from "../../lib/api/media";
@@ -203,8 +201,6 @@ function SideGuides({ w, h }: { w: number; h: number }) {
 /* ============================== SCREEN ============================== */
 export default function TakePicture() {
   const scoresStore = useScores() as any;
-  const { signOut } = useAuth();
-  const clearAuthState = useAuthStore((s) => s.clearAuthState);
 
   const [perm, requestPerm] = useCameraPermissions();
   const permissionDenied = perm?.granted === false;
@@ -307,13 +303,8 @@ export default function TakePicture() {
     router.push("/(tabs)/analysis");
   };
 
-  const handleLogout = async () => {
-    try {
-      await signOut();
-    } finally {
-      clearAuthState();
-      router.replace("/(auth)/login");
-    }
+  const goToHistory = () => {
+    router.push("/(tabs)/history");
   };
 
   const useBoth = async () => {
@@ -476,10 +467,10 @@ export default function TakePicture() {
             </Pressable>
           </View>
 
-          <Pressable onPress={handleLogout} hitSlop={12} style={{ alignSelf: "flex-end", marginRight: 24, marginTop: 8 }}>
+          <Pressable onPress={goToHistory} hitSlop={12} style={{ alignSelf: "flex-end", marginRight: 24, marginTop: 8 }}>
             <Text
               style={{
-                color: TEXT_DIM,
+                color: TEXT,
                 fontFamily: Platform.select({
                   ios: "Poppins-Regular",
                   android: "Poppins-Regular",
@@ -488,7 +479,7 @@ export default function TakePicture() {
                 fontSize: 14,
               }}
             >
-              Log out
+              History
             </Text>
           </Pressable>
 
