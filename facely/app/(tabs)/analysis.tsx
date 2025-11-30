@@ -14,7 +14,6 @@ import {
 import PagerView from "react-native-pager-view";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AnalysisCard, { type SubmetricView } from "@/components/analysis/AnalysisCard";
-import { useRoutineStore } from "@/store/routineStore";
 import { useProtocolsStore } from "@/store/protocolsStore";
 
 
@@ -25,8 +24,7 @@ import Text from "@/components/ui/T";
 import { useScores, getSubmetricVerdicts } from "../../store/scores";
 // UI
 import GlassBtn from "@/components/ui/GlassBtn";
-import { router, useRouter } from "expo-router";
-import { fetchRoutine } from "@/lib/api/routine";
+import { useRouter } from "expo-router";
 
 
 const BG = require("../../assets/bg/score-bg.jpg");
@@ -114,7 +112,6 @@ export default function AnalysisScreen() {
 
   const pagerRef = useRef<PagerView>(null);
   const [idx, setIdx] = useState(0);
-  const [rtLoading, setRtLoading] = useState(false);
   const nav = useRouter();
 
 
@@ -132,33 +129,6 @@ export default function AnalysisScreen() {
 
   function goTo(page: number) {
     pagerRef.current?.setPage(page);
-  }
-
-  async function handleRoutine() {
-    try {
-      setRtLoading(true);
-      const { scores } = useScores.getState(); // get latest from store
-      const { routine, hydrateFromAPI, resetRoutine } = useRoutineStore.getState();
-  
-      if (!scores) throw new Error("Scores missing. Run analysis first.");
-  
-      // If user already has a routine and doesn’t want a new one, hydrate existing
-      if (routine && routine.days?.length > 0) {
-        console.log("[ROUTINE] using existing routine from store");
-        router.push("/(tabs)/routine");
-        return;
-      }
-  
-      console.log("[ROUTINE] fetching new routine from API...");
-      const data = await fetchRoutine(scores, "Use The Sauce protocols only.");
-      resetRoutine(); // clear previous metadata if any
-      hydrateFromAPI(data); // store handles startDate, fetchedAt
-      router.push("/(tabs)/routine");
-    } catch (e: any) {
-      Alert.alert("Routine error", String(e?.message ?? e));
-    } finally {
-      setRtLoading(false);
-    }
   }
 
   async function handleProtocols() {
@@ -283,12 +253,6 @@ export default function AnalysisScreen() {
             <GlassBtn label="Next" icon="chevron-forward" onPress={() => goTo(idx + 1)} />
           ) : (
             <View style={{ flex: 1, gap: PILL_ROW_GAP }}>
-              <GlassBtn
-                label={rtLoading ? "Generating…" : "Routine"}
-                icon="sparkles"
-                onPress={handleRoutine}
-                disabled={rtLoading}
-              />
               <GlassBtn
                 label={pLoading ? "Loading" : "Protocols"}
                 icon="sparkles"

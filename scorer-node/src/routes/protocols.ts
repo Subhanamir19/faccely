@@ -6,17 +6,7 @@ import OpenAI from "openai";
 import { ScoresSchema, ExplanationsSchemaV2 } from "../validators.js";
 import { getScanById } from "../supabase/scans.js";
 import { getAnalysisForScan } from "../supabase/analyses.js";
-
-const ProtocolsBuckets = [
-  "glass_skin",
-  "debloating",
-  "facial_symmetry",
-  "maxilla",
-  "hunter_eyes",
-  "cheekbones",
-  "nose",
-  "jawline",
-] as const;
+import { ProtocolsBuckets, normalizeProtocolsPayload } from "../utils/normalizeProtocolsPayload.js";
 
 const ProtocolsResponseSchema = z.object({
   protocols: z.object(
@@ -173,42 +163,7 @@ async function generateProtocols(
   });
 
   const raw = completion.choices?.[0]?.message?.content ?? "";
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    throw new Error("protocols_response_not_json");
-  }
-
-  if (parsed && typeof parsed === "object" && !(parsed as any).protocols) {
-    const maybeProtocols: Record<string, string> = {};
-    let foundAny = false;
-    for (const key of ProtocolsBuckets) {
-      const rawVal = (parsed as any)[key];
-      let line: string | undefined;
-      if (typeof rawVal === "string" && rawVal.trim().length > 0) {
-        line = rawVal;
-      } else if (rawVal && typeof rawVal === "object") {
-        const candidate =
-          (typeof rawVal.protocol === "string" && rawVal.protocol.trim().length > 0 && rawVal.protocol) ||
-          (typeof rawVal.value === "string" && rawVal.value.trim().length > 0 && rawVal.value) ||
-          (typeof rawVal.text === "string" && rawVal.text.trim().length > 0 && rawVal.text) ||
-          undefined;
-        if (candidate) {
-          line = candidate;
-        }
-      }
-
-      if (line) {
-        maybeProtocols[key] = line;
-        foundAny = true;
-      }
-    }
-    if (foundAny) {
-      parsed = { protocols: maybeProtocols };
-    }
-  }
-
+  const parsed = normalizeProtocolsPayload(raw);
   return ProtocolsResponseSchema.parse(parsed);
 }
 

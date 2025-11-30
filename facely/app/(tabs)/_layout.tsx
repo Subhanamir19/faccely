@@ -45,15 +45,6 @@ export default function TabsLayout() {
         }}
       />
 
-      {/* Visible tab #2: Routine */}
-      <Tabs.Screen
-        name="routine"
-        options={{
-          title: "Routine",
-          tabBarIcon: ({ color, size }) => <ListChecks color={color} size={size ?? 22} />,
-        }}
-      />
-
       {/* Visible tab #3: Sigma (chatbot) */}
       <Tabs.Screen
         name="sigma"
@@ -75,6 +66,8 @@ export default function TabsLayout() {
       />
 
       {/* Keep routes but hide them from the tab bar */}
+      <Tabs.Screen name="history" options={{ href: null }} />
+      <Tabs.Screen name="routine" options={{ href: null }} />
       <Tabs.Screen name="score" options={{ href: null }} />
       <Tabs.Screen name="analysis" options={{ href: null }} />
 

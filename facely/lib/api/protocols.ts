@@ -1,7 +1,7 @@
 // lib/api/protocols.ts
 import { z } from "zod";
 import { API_BASE } from "./config";
-import { requestJSON, DEFAULT_REQUEST_TIMEOUT_MS } from "./client";
+import { requestJSON, DEFAULT_REQUEST_TIMEOUT_MS, ApiResponseError } from "./client";
 import type { Scores } from "./scores";
 import { getAuthState } from "@/store/auth";
 
@@ -62,6 +62,25 @@ const ProtocolsResponseSchema = z
   })
   .passthrough();
 
+function mapProtocolsError(code: string): string {
+  switch (code) {
+    case "no_analysis_available":
+      return "Run an analysis first to unlock protocols.";
+    case "scan_not_found":
+      return "We couldn't find your last analysis.";
+    case "unauthorized":
+      return "Please sign in again.";
+    case "invalid_request":
+      return "Something went wrong with the request.";
+    case "protocols_payload_unrecoverable":
+      return "Protocols couldn't be generated. Try again later.";
+    case "openai_unavailable":
+      return "Our AI engine is currently busy.";
+    default:
+      return "Couldn't generate protocols right now.";
+  }
+}
+
 function buildAuthHeaders(): Record<string, string> {
   const state = getAuthState();
   const headers: Record<string, string> = {};
@@ -93,7 +112,15 @@ async function postProtocols(body: Record<string, unknown>): Promise<ProtocolsRe
 }
 
 export async function generateProtocolsFromScan(scanId: string): Promise<ProtocolsResponse> {
-  return postProtocols({ scanId });
+  try {
+    return await postProtocols({ scanId });
+  } catch (err) {
+    if (err instanceof ApiResponseError) {
+      const code = (err.body as any)?.error;
+      throw new Error(mapProtocolsError(typeof code === "string" ? code : ""));
+    }
+    throw err;
+  }
 }
 
 export async function generateProtocolsFromPayload(
@@ -104,5 +131,13 @@ export async function generateProtocolsFromPayload(
   if (explanations !== undefined) {
     payload.explanations = explanations;
   }
-  return postProtocols(payload);
+  try {
+    return await postProtocols(payload);
+  } catch (err) {
+    if (err instanceof ApiResponseError) {
+      const code = (err.body as any)?.error;
+      throw new Error(mapProtocolsError(typeof code === "string" ? code : ""));
+    }
+    throw err;
+  }
 }
