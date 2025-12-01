@@ -53,6 +53,7 @@ import protocolsRouter, { setProtocolsOpenAIClient } from "./routes/protocols.js
 import { createScan } from "./supabase/scans.js";
 import { uploadScanImage } from "./supabase/storage.js";
 import { createAnalysis } from "./supabase/analyses.js";
+import { requestTimeout } from "./middleware/timeout.js";
 
 
 
@@ -133,6 +134,18 @@ app.use(rateLimit({
 /* ----------------------------- Request ID middleware ----------------------------- */
 import { requestId } from "./middleware/requestId.js";
 app.use(requestId());
+app.use((req, res, next) => {
+  res.on("finish", () => {
+    console.log("[request]", {
+      method: req.method,
+      path: req.path,
+      status: res.statusCode,
+      requestId: res.locals.requestId,
+      userId: res.locals.userId ?? null,
+    });
+  });
+  next();
+});
 
 /* -------------------------- Multer memory storage -------------------------- */
 const upload = multer({
@@ -470,11 +483,11 @@ function respondServerOverloaded(res: express.Response) {
 
 // Idempotency is currently scoped to routine/protocols/recommendations flows only; scoring (/analyze*) and
 // job status endpoints intentionally bypass it in v1.
-app.use("/routine", verifyAuth, idempotency(), routineRouter);
-app.use("/protocols", verifyAuth, idempotency(), protocolsRouter);
+app.use("/routine", requestTimeout(30_000), verifyAuth, idempotency(), routineRouter);
+app.use("/protocols", requestTimeout(30_000), verifyAuth, idempotency(), protocolsRouter);
 app.use("/routine/async", verifyAuth, routineAsyncRouter);
 
-app.use("/sigma", verifyAuth, sigmaRouter);
+app.use("/sigma", requestTimeout(30_000), verifyAuth, sigmaRouter);
 app.use("/jobs", verifyAuth, jobsRouter);                    // ← add this line
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
@@ -487,7 +500,7 @@ app.get("/queues/health", async (_req, res) => {
 });
 
 /* --------------------------- Identity context ---------------------------- */
-app.use(["/analyze", "/analyze/*", "/explain", "/explain/*"], verifyAuth);
+app.use(["/analyze", "/analyze/*", "/explain", "/explain/*"], requestTimeout(30_000), verifyAuth);
 app.use("/history", verifyAuth, historyRouter);
 app.use("/users", verifyAuth, usersRouter);
 
@@ -495,6 +508,14 @@ app.use("/users", verifyAuth, usersRouter);
 /* ---------------------- /analyze/pair-bytes (fallback) -------------------- */
 app.post("/analyze/pair-bytes", async (req, res) => {
   const t0 = Date.now();
+  const userId = res.locals.userId;
+  if (!userId) {
+    console.error("analyze/explain missing userId", {
+      route: "/analyze/pair-bytes",
+      requestId: res.locals.requestId,
+    });
+    return res.status(401).json({ error: "missing_user_id" });
+  }
   let slot: ConcurrencyToken | null = null;
   try {
     slot = await enqueue();
@@ -522,32 +543,38 @@ app.post("/analyze/pair-bytes", async (req, res) => {
     const parsed = ScoresSchema.parse(scores);
 
     let scanId: string | undefined;
-    if (res.locals.userId) {
+    if (userId) {
       try {
         const frontKey = await uploadScanImage({
-          userId: res.locals.userId,
+          userId,
           variant: "front",
           buffer: fBuf,
           contentType: "image/jpeg",
           requestId: res.locals.requestId,
         });
         const sideKey = await uploadScanImage({
-          userId: res.locals.userId,
+          userId,
           variant: "side",
           buffer: sBuf,
           contentType: "image/jpeg",
           requestId: res.locals.requestId,
         });
         const scan = await createScan({
-          userId: res.locals.userId,
+          userId,
           modelVersion,
           frontImagePath: frontKey,
           sideImagePath: sideKey,
           scores: parsed,
         });
         scanId = scan?.id;
-      } catch {
-        /* swallow supabase errors */
+      } catch (err) {
+        console.error("analyze persist failed", {
+          route: "/analyze/pair-bytes",
+          userId,
+          requestId: res.locals.requestId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        return res.status(502).json({ error: "scan_persist_failed" });
       }
     }
 
@@ -577,6 +604,14 @@ app.post("/analyze/pair-bytes", async (req, res) => {
 /* --------------------------- /analyze (single) ---------------------------- */
 app.post("/analyze", upload.single("image"), async (req, res) => {
   const t0 = Date.now();
+  const userId = res.locals.userId;
+  if (!userId) {
+    console.error("analyze/explain missing userId", {
+      route: "/analyze",
+      requestId: res.locals.requestId,
+    });
+    return res.status(401).json({ error: "missing_user_id" });
+  }
   let slot: ConcurrencyToken | null = null;
   try {
     slot = await enqueue();
@@ -600,25 +635,31 @@ app.post("/analyze", upload.single("image"), async (req, res) => {
     const parsed = ScoresSchema.parse(scores);
 
     let scanId: string | undefined;
-    if (res.locals.userId) {
+    if (userId) {
       try {
         const frontKey = await uploadScanImage({
-          userId: res.locals.userId,
+          userId,
           variant: "front",
           buffer: req.file.buffer,
           contentType: req.file.mimetype,
           requestId: res.locals.requestId,
         });
         const scan = await createScan({
-          userId: res.locals.userId,
+          userId,
           modelVersion,
           frontImagePath: frontKey,
           sideImagePath: undefined,
           scores: parsed,
         });
         scanId = scan?.id;
-      } catch {
-        /* swallow supabase errors */
+      } catch (err) {
+        console.error("analyze persist failed", {
+          route: "/analyze",
+          userId,
+          requestId: res.locals.requestId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        return res.status(502).json({ error: "scan_persist_failed" });
       }
     }
 
@@ -666,6 +707,14 @@ app.post(
   ]),
   async (req, res) => {
     const t0 = Date.now();
+    const userId = res.locals.userId;
+    if (!userId) {
+      console.error("analyze/explain missing userId", {
+        route: "/analyze/pair",
+        requestId: res.locals.requestId,
+      });
+      return res.status(401).json({ error: "missing_user_id" });
+    }
     let slot: ConcurrencyToken | null = null;
     try {
       slot = await enqueue();
@@ -693,29 +742,35 @@ app.post(
       if (res.locals.userId) {
         try {
           const frontKey = await uploadScanImage({
-            userId: res.locals.userId,
+            userId,
             variant: "front",
             buffer: frontal.buffer,
             contentType: frontal.mimetype,
             requestId: res.locals.requestId,
           });
           const sideKey = await uploadScanImage({
-            userId: res.locals.userId,
+            userId,
             variant: "side",
             buffer: side.buffer,
             contentType: side.mimetype,
             requestId: res.locals.requestId,
           });
           const scan = await createScan({
-            userId: res.locals.userId,
+            userId,
             modelVersion,
             frontImagePath: frontKey,
             sideImagePath: sideKey,
             scores: parsed,
           });
           scanId = scan?.id;
-        } catch {
-          /* swallow supabase errors */
+        } catch (err) {
+          console.error("analyze persist failed", {
+            route: "/analyze/pair",
+            userId,
+            requestId: res.locals.requestId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+          return res.status(502).json({ error: "scan_persist_failed" });
         }
       }
 
@@ -747,6 +802,14 @@ app.post(
 /* ---------------------- /analyze/explain & /pair --------------------------- */
 app.post("/analyze/explain", async (req, res) => {
   const t0 = Date.now();
+  const userId = res.locals.userId;
+  if (!userId) {
+    console.error("analyze/explain missing userId", {
+      route: "/analyze/explain",
+      requestId: res.locals.requestId,
+    });
+    return res.status(401).json({ error: "missing_user_id" });
+  }
   let slot: ConcurrencyToken | null = null;
   try {
     await runSingleUpload("image", req, res);
@@ -773,8 +836,14 @@ app.post("/analyze/explain", async (req, res) => {
     if (scanId) {
       try {
         await createAnalysis({ scanId, explanations: parsed });
-      } catch {
-        /* swallow supabase errors */
+      } catch (err) {
+        console.error("analysis persist failed", {
+          route: "/analyze/explain",
+          userId,
+          requestId: res.locals.requestId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        return res.status(502).json({ error: "analysis_persist_failed" });
       }
     }
     return res.json(parsed);
@@ -795,6 +864,14 @@ app.post("/analyze/explain", async (req, res) => {
 
 app.post("/analyze/explain/pair", async (req, res) => {
   const t0 = Date.now();
+  const userId = res.locals.userId;
+  if (!userId) {
+    console.error("analyze/explain missing userId", {
+      route: "/analyze/explain/pair",
+      requestId: res.locals.requestId,
+    });
+    return res.status(401).json({ error: "missing_user_id" });
+  }
   let slot: ConcurrencyToken | null = null;
   try {
     await runFieldUpload(
@@ -839,8 +916,14 @@ app.post("/analyze/explain/pair", async (req, res) => {
     if (scanId) {
       try {
         await createAnalysis({ scanId, explanations: parsed });
-      } catch {
-        /* swallow supabase errors */
+      } catch (err) {
+        console.error("analysis persist failed", {
+          route: "/analyze/explain/pair",
+          userId,
+          requestId: res.locals.requestId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        return res.status(502).json({ error: "analysis_persist_failed" });
       }
     }
     return res.json(parsed);

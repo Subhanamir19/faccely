@@ -13,6 +13,7 @@ export function AuthProvider({ children }: Props) {
   const { user, isLoaded: userLoaded } = useUser();
   const setAuthFromSession = useAuthStore((state) => state.setAuthFromSession);
   const clearAuthState = useAuthStore((state) => state.clearAuthState);
+  const setIdToken = useAuthStore((state) => state.setIdToken);
   const setInitializedFlag = useAuthStore((state) => state.setInitializedFlag);
   const initialized = useAuthStore((state) => state.initialized);
   const lastSyncedSessionId = useRef<string | null>(null);
@@ -55,6 +56,27 @@ export function AuthProvider({ children }: Props) {
     setInitializedFlag,
     syncUserProfile,
   ]);
+
+  useEffect(() => {
+    if (!session) return;
+    const intervalMs = 45_000;
+    const refresh = async () => {
+      try {
+        const token = await session.getToken();
+        if (token && token.trim()) {
+          setIdToken(token);
+        } else {
+          console.warn("[auth] token refresh returned empty token");
+        }
+      } catch (err: any) {
+        console.warn("[auth] token refresh failed", err?.message || err);
+      }
+    };
+    const interval = setInterval(() => {
+      void refresh();
+    }, intervalMs);
+    return () => clearInterval(interval);
+  }, [session, setIdToken]);
 
   if (!initialized) {
     // Root layout keeps the splash visible until initialization completes.

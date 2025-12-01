@@ -52,10 +52,6 @@ type ResolvedInput = {
   modelVersion: string | null;
 };
 
-function pickUserId(req: any, res: any): string | undefined {
-  return res?.locals?.userId ?? req?.header?.("x-user-id");
-}
-
 function sanitizeExplanations(
   raw: unknown
 ): z.infer<typeof ExplanationsSchemaV2> | null {
@@ -181,9 +177,9 @@ router.post("/", async (req, res) => {
 
   try {
     if ("scanId" in payload && payload.scanId) {
-      const userId = pickUserId(req, res);
+      const userId = res.locals.userId;
       if (!userId) {
-        return res.status(401).json({ error: "unauthorized" });
+        return res.status(401).json({ error: "missing_user_id" });
       }
 
       const scan = await getScanById(userId, payload.scanId);

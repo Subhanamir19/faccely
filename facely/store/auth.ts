@@ -30,6 +30,7 @@ type AuthState = {
   setSubscriptionStatus: (status: SubscriptionStatus) => void;
   setSessionId: (sessionId: string | null) => void;
   logout: () => Promise<void>;
+  setIdToken: (idToken: string | null) => void;
   setAuthFromSession: (input: {
     uid: string;
     email?: string | null;
@@ -139,6 +140,17 @@ export const useAuthStore = create<AuthState>()(
       setSessionId: (sessionId) => {
         set({ sessionId });
       },
+      setIdToken: (idToken) => {
+        const trimmed = typeof idToken === "string" ? idToken.trim() : "";
+        if (trimmed) {
+          set({ idToken: trimmed });
+          return;
+        }
+        set((state) => ({
+          idToken: null,
+          status: state.status === "signedOut" ? state.status : "signedOut",
+        }));
+      },
       logout: async () => {
         set({
           user: null,
@@ -184,4 +196,3 @@ export const useAuthStore = create<AuthState>()(
 );
 
 export const getAuthState = () => useAuthStore.getState();
-
