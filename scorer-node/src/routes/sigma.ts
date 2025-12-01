@@ -14,7 +14,7 @@ import {
 } from "../schemas/SigmaSchema.js";
 import { composeSigmaPrompt, type SigmaPromptContext } from "../services/sigmaPrompt.js";
 import { generateSigmaAnswer } from "../services/sigmaOpenAI.js";
-import { PROVIDERS } from "../config/index.js";
+import { FEATURES, PROVIDERS } from "../config/index.js";
 
 /* ============================================================
  * Sigma Routes
@@ -31,6 +31,13 @@ export const sigmaRouter = Router();
 
 // In-memory "DB" for fast prototyping; replace with real persistence later.
 const threads = new Map<string, SigmaThread>();
+
+function sigmaDisabled(res: Response): Response | undefined {
+  if (!FEATURES.sigmaEnabled) {
+    return res.status(503).json({ error: "sigma_disabled" });
+  }
+  return undefined;
+}
 
 function nowISO() {
   return new Date().toISOString();
@@ -60,6 +67,7 @@ function makeAssistantMessage(partial: {
 
 /* ----------------------- POST /sigma/thread ----------------------- */
 sigmaRouter.post("/thread", async (req: Request, res: Response) => {
+  if (sigmaDisabled(res)) return;
   try {
     // For forward-compat: allow empty body or future options
     const _parsed = CreateThreadRequestSchema.parse(req.body ?? {});
@@ -89,6 +97,7 @@ sigmaRouter.post("/thread", async (req: Request, res: Response) => {
 
 /* ---------------------- GET /sigma/thread/:id --------------------- */
 sigmaRouter.get("/thread/:id", async (req: Request, res: Response) => {
+  if (sigmaDisabled(res)) return;
   try {
     const id = req.params.id;
     if (!id || !threads.has(id)) {
@@ -107,6 +116,7 @@ sigmaRouter.get("/thread/:id", async (req: Request, res: Response) => {
 
 /* ------------------------- POST /sigma/message -------------------- */
 sigmaRouter.post("/message", async (req: Request, res: Response) => {
+  if (sigmaDisabled(res)) return;
   try {
     const parsed = SendMessageRequestSchema.parse(req.body);
 

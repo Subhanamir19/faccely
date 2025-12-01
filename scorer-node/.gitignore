@@ -1,3 +1,9 @@
 node_modules
 dist
+
+# Ignore environment files with secrets
 .env
+.env.*
+.env.development
+.env.production
+*.env.local

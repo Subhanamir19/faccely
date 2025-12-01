@@ -12,6 +12,7 @@ import {
 } from "../types/sigma";
 import { API_BASE } from "./config";
 import { ApiResponseError, requestJSON } from "./client";
+import { buildAuthHeaders } from "./authHeaders";
 
 const SIGMA_BASE = `${API_BASE}/sigma`;
 
@@ -99,12 +100,20 @@ const requestSigma = async <T>(
 
 /** Create a new chat thread */
 export async function createSigmaThread(): Promise<CreateThreadResponse> {
-  return requestSigma(`${SIGMA_BASE}/thread`, { method: "POST" }, CreateThreadResponseSchema);
+  return requestSigma(
+    `${SIGMA_BASE}/thread`,
+    { method: "POST", headers: buildAuthHeaders({ includeLegacy: true }) },
+    CreateThreadResponseSchema
+  );
 }
 
 /** Fetch an existing thread by ID */
 export async function getSigmaThread(id: string): Promise<SigmaThread> {
-  return requestSigma(`${SIGMA_BASE}/thread/${id}`, { method: "GET" }, SigmaThreadSchema);
+  return requestSigma(
+    `${SIGMA_BASE}/thread/${id}`,
+    { method: "GET", headers: buildAuthHeaders({ includeLegacy: true }) },
+    SigmaThreadSchema
+  );
 }
 
 /** Send a message to Sigma and receive assistant reply */
@@ -118,7 +127,10 @@ export async function sendSigmaMessage(args: {
     `${SIGMA_BASE}/message`,
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...buildAuthHeaders({ includeLegacy: true }),
+      },
       body: JSON.stringify(args),
     },
     SendMessageResponseSchema

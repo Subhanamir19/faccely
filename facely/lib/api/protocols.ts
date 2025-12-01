@@ -4,6 +4,7 @@ import { API_BASE } from "./config";
 import { requestJSON, DEFAULT_REQUEST_TIMEOUT_MS, ApiResponseError } from "./client";
 import type { Scores } from "./scores";
 import { getAuthState } from "@/store/auth";
+import { buildAuthHeaders } from "./authHeaders";
 
 export type ProtocolBucketKey =
   | "glass_skin"
@@ -81,28 +82,12 @@ function mapProtocolsError(code: string): string {
   }
 }
 
-function buildAuthHeaders(): Record<string, string> {
-  const state = getAuthState();
-  const headers: Record<string, string> = {};
-  const userId = state.uid ?? state.user?.uid ?? undefined;
-  const email = state.user?.email ?? undefined;
-  const deviceId = state.deviceId ?? undefined;
-  const idToken = state.idToken ?? undefined;
-
-  if (userId) headers["x-user-id"] = userId;
-  if (email) headers["x-email"] = email;
-  if (deviceId) headers["x-device-id"] = deviceId;
-  if (idToken) headers.Authorization = `Bearer ${idToken}`;
-
-  return headers;
-}
-
 async function postProtocols(body: Record<string, unknown>): Promise<ProtocolsResponse> {
   return requestJSON<ProtocolsResponse>(`${API_BASE}/protocols`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      ...buildAuthHeaders(),
+      ...buildAuthHeaders({ includeLegacy: true }),
     },
     body: JSON.stringify(body),
     timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS,

@@ -2,6 +2,7 @@
 import { z } from "zod";
 import { API_BASE } from "./config";
 import { requestJSON } from "./client";
+import { buildAuthHeaders } from "./authHeaders";
 
 /** Metric keys (kept consistent with backend) */
 const METRIC_KEYS = [
@@ -89,7 +90,10 @@ export async function fetchRecommendations(
 ): Promise<RecommendationsRes> {
   return requestJSON<RecommendationsRes>(`${API_BASE}/recommendations`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...buildAuthHeaders({ includeLegacy: true }),
+    },
     body: JSON.stringify(body),
     signal,
     context: "Recommendations request failed",

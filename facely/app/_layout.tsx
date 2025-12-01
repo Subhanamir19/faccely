@@ -20,6 +20,7 @@ export default function RootLayout() {
     "Poppins-SemiBold": require("../assets/fonts/Poppins-SemiBold.ttf"),
   });
   const authInitialized = useAuthStore((state) => state.initialized);
+  const idToken = useAuthStore((state) => state.idToken);
   const clerkPublishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY!;
 
   useEffect(() => {
@@ -35,6 +36,12 @@ export default function RootLayout() {
     const stop = scheduleDaily(refresh);
     return stop;
   }, []);
+
+  useEffect(() => {
+    if (!__DEV__) return;
+    if (!authInitialized || !idToken) return;
+    console.log("ID TOKEN:", useAuthStore.getState().idToken);
+  }, [authInitialized, idToken]);
 
   return (
     <ClerkProvider publishableKey={clerkPublishableKey} tokenCache={tokenCache}>

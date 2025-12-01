@@ -125,10 +125,7 @@ function guessDevBase(): string | null {
 
 const devFallback = guessDevBase();
 
-// The only live domain now is Render (kept name for continuity).
-const PROD_DEFAULT = "https://faccely-production.up.railway.app";
-
-type BaseSource = "env" | "dev-fallback" | "prod-default";
+type BaseSource = "env" | "dev-fallback";
 
 type ResolveResult = {
   base: string;
@@ -154,16 +151,9 @@ function resolveApiBase(): ResolveResult {
     };
   }
 
-  const normalizedDefault = normalizeBase(PROD_DEFAULT);
-  if (normalizedDefault) {
-    return {
-      base: normalizedDefault,
-      source: "prod-default",
-      reason: "prod-default(Render)",
-    };
-  }
-
-  throw new Error("API base could not be resolved. Set EXPO_PUBLIC_API_BASE_URL.");
+  throw new Error(
+    "EXPO_PUBLIC_API_BASE_URL is required for API calls; it is missing or empty."
+  );
 }
 
 const resolved = resolveApiBase();
@@ -181,9 +171,7 @@ if (rewritten) {
 const configurationHint =
   resolved.source === "env"
     ? "API base provided via EXPO_PUBLIC_API_BASE_URL (or legacy EXPO_PUBLIC_API_URL)."
-    : resolved.source === "dev-fallback"
-    ? `Using inferred development base (${baseCandidate}).`
-    : `Using production API (${baseCandidate}). Set EXPO_PUBLIC_API_BASE_URL to override.`;
+    : `Using inferred development base (${baseCandidate}).`;
 
 export const API_BASE = baseCandidate;
 export const API_BASE_CONFIGURED = Boolean(API_BASE);
@@ -196,7 +184,7 @@ export const API_BASE_MISCONFIGURED_MESSAGE = configurationHint;
 
 if (isDevLike) {
   const note =
-    resolved.source === "env" ? "(env)" : resolved.source === "dev-fallback" ? "(dev-fallback)" : "(default)";
+    resolved.source === "env" ? "(env)" : resolved.source === "dev-fallback" ? "(dev-fallback)" : "";
   // eslint-disable-next-line no-console
   console.log("[API] BASE =", API_BASE, note, "| reason:", API_BASE_REASON);
 }

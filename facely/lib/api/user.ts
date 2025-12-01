@@ -1,6 +1,7 @@
 import { API_BASE } from "@/lib/api/config";
 import { fetchWithRetry } from "@/lib/api/client";
 import { getAuthState } from "@/store/auth";
+import { buildAuthHeaders } from "./authHeaders";
 
 export async function syncUserProfile(onboardingCompleted?: boolean): Promise<void> {
   const { uid, deviceId } = getAuthState();
@@ -9,9 +10,8 @@ export async function syncUserProfile(onboardingCompleted?: boolean): Promise<vo
   const headers: Record<string, string> = {
     Accept: "application/json",
     "Content-Type": "application/json",
-    "x-user-id": uid,
+    ...buildAuthHeaders({ includeLegacy: true }),
   };
-  if (deviceId) headers["x-device-id"] = deviceId;
 
   const body: Record<string, unknown> = {};
   if (typeof onboardingCompleted === "boolean") {

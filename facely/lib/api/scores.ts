@@ -13,7 +13,7 @@ import {
   resolveExistingPath,
   type UploadInput,
 } from "./media";
-import { getAuthState } from "@/store/auth";
+import { buildAuthHeaders } from "./authHeaders";
 
 /* -------------------------------------------------------------------------- */
 /*   Types                                                                    */
@@ -57,20 +57,6 @@ export function consumeUploadMeta(scores: Scores): UploadMeta | undefined {
     delete (scores as any)[UPLOAD_META_SYMBOL];
   }
   return meta;
-}
-
-function buildIdentityHeaders(): Record<string, string> {
-  const state = getAuthState();
-  const headers: Record<string, string> = {};
-  const userId = state.uid ?? state.user?.uid ?? undefined;
-  const email = state.user?.email ?? undefined;
-  const deviceId = state.deviceId ?? undefined;
-
-  if (userId) headers["x-user-id"] = userId;
-  if (email) headers["x-email"] = email;
-  if (deviceId) headers["x-device-id"] = deviceId;
-
-  return headers;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -178,7 +164,7 @@ async function analyzePairMultipart(front: InputFile, side: InputFile): Promise<
       {
         method: "POST",
         body: form,
-        headers: { Accept: "application/json", ...buildIdentityHeaders() },
+        headers: { Accept: "application/json", ...buildAuthHeaders({ includeLegacy: true }) },
         timeoutMs: DEFAULT_UPLOAD_TIMEOUT_MS,
       },
       3,
@@ -239,7 +225,7 @@ async function analyzePairBytes(front: InputFile, side: InputFile): Promise<Scor
     headers: {
       "Content-Type": "application/json",
       Accept: "application/json",
-      ...buildIdentityHeaders(),
+      ...buildAuthHeaders({ includeLegacy: true }),
     },
     body: JSON.stringify({
       front: `data:image/jpeg;base64,${f}`,
@@ -310,7 +296,7 @@ export async function analyzeImage(input: InputFile): Promise<Scores> {
       {
         method: "POST",
         body: form,
-        headers: { Accept: "application/json", ...buildIdentityHeaders() },
+        headers: { Accept: "application/json", ...buildAuthHeaders({ includeLegacy: true }) },
         timeoutMs: DEFAULT_UPLOAD_TIMEOUT_MS,
       },
       3,

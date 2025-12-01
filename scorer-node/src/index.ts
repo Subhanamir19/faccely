@@ -14,6 +14,7 @@ import jobsRouter from "./routes/jobs.js";           // ← add this
 import { historyRouter } from "./routes/history.js";
 import { usersRouter } from "./routes/users.js";
 import { idempotency } from "./middleware/idempotency.js";
+import { verifyAuth } from "./middleware/auth.js";
 import { bootQueues, queuesProbe } from "./queue/index.js";
 import routineAsyncRouter from "./routes/routineAsync.js";
 import { initMetrics } from "./observability/metrics.js";
@@ -362,17 +363,6 @@ function handleExplainKnownErrors(err: any, res: express.Response, label: string
   return false;
 }
 
-function attachIdentityContext(
-  req: express.Request,
-  res: express.Response,
-  next: express.NextFunction
-) {
-  res.locals.userId = req.header("x-user-id") ?? res.locals.userId;
-  res.locals.email = req.header("x-email") ?? res.locals.email;
-  res.locals.deviceId = req.header("x-device-id") ?? res.locals.deviceId;
-  next();
-}
-
 /* -------------------------------------------------------------------------- */
 /*   Concurrency guard                                                        */
 /* -------------------------------------------------------------------------- */
@@ -480,12 +470,12 @@ function respondServerOverloaded(res: express.Response) {
 
 // Idempotency is currently scoped to routine/protocols/recommendations flows only; scoring (/analyze*) and
 // job status endpoints intentionally bypass it in v1.
-app.use("/routine", idempotency(), routineRouter);
-app.use("/protocols", attachIdentityContext, idempotency(), protocolsRouter);
-app.use("/routine/async", routineAsyncRouter);
+app.use("/routine", verifyAuth, idempotency(), routineRouter);
+app.use("/protocols", verifyAuth, idempotency(), protocolsRouter);
+app.use("/routine/async", verifyAuth, routineAsyncRouter);
 
-app.use("/sigma", sigmaRouter);
-app.use("/jobs", jobsRouter);                    // ← add this line
+app.use("/sigma", verifyAuth, sigmaRouter);
+app.use("/jobs", verifyAuth, jobsRouter);                    // ← add this line
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
 
@@ -497,9 +487,9 @@ app.get("/queues/health", async (_req, res) => {
 });
 
 /* --------------------------- Identity context ---------------------------- */
-app.use(["/analyze", "/analyze/*", "/explain", "/explain/*"], attachIdentityContext);
-app.use("/history", attachIdentityContext, historyRouter);
-app.use("/users", attachIdentityContext, usersRouter);
+app.use(["/analyze", "/analyze/*", "/explain", "/explain/*"], verifyAuth);
+app.use("/history", verifyAuth, historyRouter);
+app.use("/users", verifyAuth, usersRouter);
 
 
 /* ---------------------- /analyze/pair-bytes (fallback) -------------------- */

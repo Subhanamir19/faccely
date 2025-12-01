@@ -122,10 +122,13 @@ export const useAuthStore = create<AuthState>()(
       },
       getIdTokenOrThrow: async () => {
         if (get().status !== "authenticated" || !get().uid) {
-          throw new Error("User is not authenticated.");
+          throw new Error("No idToken available in auth store; user is not authenticated.");
         }
-
-        return get().idToken ?? "dummy-token";
+        const token = get().idToken;
+        if (typeof token === "string" && token.trim().length > 0) {
+          return token;
+        }
+        throw new Error("No idToken available in auth store; user is not authenticated.");
       },
       setOnboardingCompleted: (value) => {
         set({ onboardingCompleted: value });
@@ -181,5 +184,4 @@ export const useAuthStore = create<AuthState>()(
 );
 
 export const getAuthState = () => useAuthStore.getState();
-
 

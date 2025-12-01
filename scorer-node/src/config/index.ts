@@ -62,6 +62,13 @@ const EnvSchema = z.object({
   // Feature flags (use "1"/"true" to enable)
   FF_ASYNC_ANALYZE: z.string().optional(),
   FF_ASYNC_ROUTINE: z.string().optional(),
+  FEATURE_SIGMA_ENABLED: z.string().optional(),
+  FF_ALLOW_HEADER_IDENTITY: z.string().optional(),
+
+  // Auth
+  CLERK_JWKS_URL: z.string().url().optional(),
+  CLERK_ISSUER: z.string().optional(),
+  CLERK_AUDIENCE: z.string().optional(),
 
   // Service meta
   SERVICE_NAME: z.string().default("scorer-node"),
@@ -111,6 +118,11 @@ const rawEnv = {
 
   FF_ASYNC_ANALYZE: process.env.FF_ASYNC_ANALYZE,
   FF_ASYNC_ROUTINE: process.env.FF_ASYNC_ROUTINE,
+  FEATURE_SIGMA_ENABLED: process.env.FEATURE_SIGMA_ENABLED,
+  FF_ALLOW_HEADER_IDENTITY: process.env.FF_ALLOW_HEADER_IDENTITY,
+  CLERK_JWKS_URL: process.env.CLERK_JWKS_URL,
+  CLERK_ISSUER: process.env.CLERK_ISSUER,
+  CLERK_AUDIENCE: process.env.CLERK_AUDIENCE,
 
   SERVICE_NAME: process.env.SERVICE_NAME,
   SERVICE_VERSION: process.env.SERVICE_VERSION,
@@ -214,6 +226,11 @@ export const WORKERS = {
 export const FEATURES = {
   asyncAnalyze: isTruthyFlag(env.FF_ASYNC_ANALYZE),
   asyncRoutine: isTruthyFlag(env.FF_ASYNC_ROUTINE),
+  sigmaEnabled: isTruthyFlag(env.FEATURE_SIGMA_ENABLED),
+  allowHeaderIdentity:
+    env.FF_ALLOW_HEADER_IDENTITY != null
+      ? isTruthyFlag(env.FF_ALLOW_HEADER_IDENTITY)
+      : env.NODE_ENV !== "production",
 };
 
 /**
@@ -233,6 +250,12 @@ export const SLO = {
   p95LightMs: 900,
   p95HeavyMs: 3000,
   availabilityTarget: 0.999,
+};
+
+export const AUTH = {
+  clerkJwksUrl: env.CLERK_JWKS_URL ?? null,
+  clerkIssuer: env.CLERK_ISSUER ?? null,
+  clerkAudience: env.CLERK_AUDIENCE ?? null,
 };
 
 // Minimal sanity helper for required provider keys when a route boots them.
@@ -256,4 +279,5 @@ export default {
   FEATURES,
   QUEUES,
   SLO,
+  AUTH,
 };
