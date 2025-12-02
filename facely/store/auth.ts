@@ -79,7 +79,7 @@ export const useAuthStore = create<AuthState>()(
         set({
           user: { uid, email: normalizedEmail || null },
           uid,
-          idToken: "dummy-token",
+          idToken: "dummy.token.value",
           status: "authenticated",
         });
       },
@@ -89,7 +89,7 @@ export const useAuthStore = create<AuthState>()(
         set({
           user: { uid, email: null },
           uid,
-          idToken: "dummy-google-token",
+          idToken: "dummy.google.token",
           status: "authenticated",
         });
       },
@@ -101,7 +101,7 @@ export const useAuthStore = create<AuthState>()(
         set({
           user: { uid, email: normalizedEmail || null },
           uid,
-          idToken: "dummy-token",
+          idToken: "dummy.token.value",
           status: "authenticated",
         });
       },
@@ -118,9 +118,20 @@ export const useAuthStore = create<AuthState>()(
           return null;
         }
 
-        const token = get().idToken ?? "dummy-token";
-        set({ idToken: token, status: "authenticated" });
-        return token;
+        const token = get().idToken;
+        const trimmed = typeof token === "string" ? token.trim() : "";
+        if (!trimmed || trimmed.split(".").length !== 3) {
+          set({
+            status: "signedOut",
+            user: null,
+            uid: null,
+            idToken: null,
+            sessionId: null,
+          });
+          return null;
+        }
+        set({ idToken: trimmed, status: "authenticated" });
+        return trimmed;
       },
       getIdTokenOrThrow: async () => {
         if (get().status !== "authenticated" || !get().uid) {
@@ -147,12 +158,12 @@ export const useAuthStore = create<AuthState>()(
       setIdToken: (idToken) => {
         const trimmed = typeof idToken === "string" ? idToken.trim() : "";
         if (trimmed) {
-          set({ idToken: trimmed });
+          set({ idToken: trimmed, status: "authenticated" });
           return;
         }
         set((state) => ({
           idToken: null,
-          status: state.status === "signedOut" ? state.status : "signedOut",
+          status: "signedOut",
         }));
       },
       logout: async () => {
@@ -165,12 +176,16 @@ export const useAuthStore = create<AuthState>()(
         });
       },
       setAuthFromSession: ({ uid, email, idToken, status, sessionId }) => {
+        const trimmed = typeof idToken === "string" ? idToken.trim() : "";
+        const nextStatus: AuthStatus =
+          trimmed && trimmed.split(".").length === 3 ? "authenticated" : "signedOut";
+
         set({
-          user: { uid, email: email ?? null },
-          uid,
-          idToken: idToken ?? null,
-          sessionId: sessionId ?? null,
-          status,
+          user: nextStatus === "authenticated" ? { uid, email: email ?? null } : null,
+          uid: nextStatus === "authenticated" ? uid : null,
+          idToken: nextStatus === "authenticated" ? trimmed : null,
+          sessionId: nextStatus === "authenticated" ? sessionId ?? null : null,
+          status: nextStatus,
         });
       },
       clearAuthState: () => {
