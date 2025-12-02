@@ -8,6 +8,7 @@ import CinematicLoader from "@/components/ui/CinematicLoader";
 import { useOnboarding } from "@/store/onboarding";
 import { useScores } from "../store/scores";
 import { ensureJpegCompressed } from "../lib/api/media";
+import { useAuthStore } from "@/store/auth";
 
 type ParamValue = string | string[] | undefined;
 
@@ -107,7 +108,7 @@ async function ensureLocalPairExists(frontUri: string, sideUri: string) {
 }
 
 export default function LoadingScreen() {
-  const { completed } = useOnboarding();
+  const { completed, hydrate } = useOnboarding();
   const params = useLocalSearchParams<Params>();
   const analyzePair = useScores((state) => state.analyzePair);
   const explainPair = useScores((state) => state.explainPair);
@@ -124,9 +125,31 @@ export default function LoadingScreen() {
   const normalized = normalizeNormalized(takeFirst(params.normalized));
 
   const [isLoading, setIsLoading] = useState(true);
+  const [onboardingHydrated, setOnboardingHydrated] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
+    const run = async () => {
+      try {
+        await hydrate();
+        const done = useOnboarding.getState().completed;
+        useAuthStore.getState().setOnboardingCompletedFromOnboarding(done);
+      } finally {
+        if (!cancelled) setOnboardingHydrated(true);
+      }
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [hydrate]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!onboardingHydrated) return () => {
+      cancelled = true;
+    };
 
     const handleError = (err: unknown, title: string) => {
       if (cancelled) return;
@@ -289,6 +312,7 @@ export default function LoadingScreen() {
     explain,
     explainPair,
     completed,
+    onboardingHydrated,
     mode,
     phase,
     front,

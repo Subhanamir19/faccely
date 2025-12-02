@@ -22,6 +22,8 @@ import Animated, {
 } from "react-native-reanimated";
 import { router } from "expo-router";
 import { useOnboarding } from "@/store/onboarding";
+import { useAuthStore } from "@/store/auth";
+import { syncUserProfile } from "@/lib/api/user";
 
 const COLORS = {
   bgTop: "#000000",
@@ -244,6 +246,9 @@ const PlanCard: React.FC<{
 const PaywallScreen: React.FC = () => {
   const [selected, setSelected] = useState<PlanKey>("monthly");
   const finishOnboarding = useOnboarding((state) => state.finish);
+  const setOnboardingCompletedFromOnboarding = useAuthStore(
+    (state) => state.setOnboardingCompletedFromOnboarding
+  );
 
   const screenFade = useSharedValue(0);
 
@@ -333,6 +338,14 @@ const PaywallScreen: React.FC = () => {
   const onContinue = useCallback(async () => {
     try {
       await finishOnboarding();
+      setOnboardingCompletedFromOnboarding(true);
+      try {
+        await syncUserProfile(true);
+      } catch (syncError) {
+        if (__DEV__) {
+          console.warn("[Paywall] Failed to sync onboarding completion", syncError);
+        }
+      }
     } catch (error) {
       if (__DEV__) {
         console.warn("[Paywall] Failed to persist onboarding completion", error);
@@ -340,7 +353,7 @@ const PaywallScreen: React.FC = () => {
     } finally {
       router.replace("/(tabs)/take-picture");
     }
-  }, [finishOnboarding]);
+  }, [finishOnboarding, setOnboardingCompletedFromOnboarding]);
 
   const primaryScale = useSharedValue(1);
   const primaryGlow = useSharedValue(0);

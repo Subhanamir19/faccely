@@ -40,6 +40,7 @@ type AuthState = {
   }) => void;
   clearAuthState: () => void;
   setInitializedFlag: (value: boolean) => void;
+  setOnboardingCompletedFromOnboarding: (completed: boolean) => void;
 };
 
 const STORAGE_KEY = "sigma_auth_v1";
@@ -133,6 +134,9 @@ export const useAuthStore = create<AuthState>()(
       },
       setOnboardingCompleted: (value) => {
         set({ onboardingCompleted: value });
+      },
+      setOnboardingCompletedFromOnboarding: (completed) => {
+        set({ onboardingCompleted: completed });
       },
       setSubscriptionStatus: (status) => {
         set({ subscriptionStatus: status });
