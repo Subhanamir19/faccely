@@ -1,6 +1,6 @@
 // facely/components/analysis/AnalysisCard.tsx
 import React from "react";
-import { View, Image, StyleSheet, TextStyle } from "react-native";
+import { View, Image, StyleSheet, TextStyle, useWindowDimensions } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import Text from "@/components/ui/T";
 import GlassCard from "@/components/ui/GlassCard";
@@ -29,7 +29,7 @@ export type SubmetricView = { title: string; verdict?: string };
 
 const ACCENT = "#8FA31E";
 const PAD = 16;
-const MEDIA_H = 230; // visually matches score.tsx graph height
+const MEDIA_H = 230; // visually matches score.tsx graph height (unused)
 
 export default function AnalysisCard({
   metric,
@@ -40,6 +40,8 @@ export default function AnalysisCard({
   copy: AnalysisCopy;
   submetrics?: SubmetricView[];
 }) {
+  const { width } = useWindowDimensions();
+  const mediaHeight = Math.max(190, Math.min(230, width * 0.55));
   const showGrid = Array.isArray(submetrics) && submetrics.length > 0;
 
   return (
@@ -55,7 +57,7 @@ export default function AnalysisCard({
         </View>
 
         {/* Face visualization with subtle dark overlay to match palette */}
-        <View style={styles.faceWrap}>
+        <View style={[styles.faceWrap, { height: mediaHeight }]}>
           <Image source={metricImage[metric]} resizeMode="contain" style={styles.face} />
           <LinearGradient
             colors={["rgba(0,0,0,0.18)", "rgba(0,0,0,0.02)"]}
@@ -112,7 +114,7 @@ const styles = StyleSheet.create({
   cardInner: {
     paddingHorizontal: PAD,
     paddingTop: PAD,
-    paddingBottom: PAD,
+    paddingBottom: PAD - 4,
     gap: 10,
   },
 
@@ -133,9 +135,8 @@ const styles = StyleSheet.create({
   },
 
   faceWrap: {
-    height: MEDIA_H,
     marginTop: 4,
-    marginBottom: 8,
+    marginBottom: 6,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: 16,
@@ -161,11 +162,12 @@ const styles = StyleSheet.create({
   grid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 12,
     paddingTop: 4,
+    justifyContent: "space-between",
+    rowGap: 12,
   },
   subCard: {
-    flexBasis: "48%", // two per row
+    width: "48%", // two per row
     backgroundColor: "rgba(0,0,0,0.35)",
     borderRadius: 16,
     padding: 14,
@@ -175,11 +177,14 @@ const styles = StyleSheet.create({
   subTitle: {
     color: "#D7FF9E",
     fontWeight: "700",
-    marginBottom: 6,
+    fontSize: 15,
+    marginBottom: 4,
   },
   subVerdict: {
     color: "rgba(255,255,255,0.92)",
-    minHeight: 18,
+    fontSize: 14,
+    lineHeight: 20,
+    minHeight: 20,
   },
   subUnderline: {
     height: 2,

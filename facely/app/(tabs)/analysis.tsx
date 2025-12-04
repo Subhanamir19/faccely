@@ -98,8 +98,9 @@ export default function AnalysisScreen() {
   const [idx, setIdx] = useState(0);
   const nav = useRouter();
   const { width } = useWindowDimensions();
-  const gutter = SP[4];
-  const cardWidth = Math.min(760, Math.max(320, width - gutter * 2));
+  const horizontalGutter = SP[4];
+  const innerWidth = Math.max(0, width - horizontalGutter * 2);
+  const cardWidth = Math.min(760, Math.max(320, innerWidth * 0.98));
   const pageTop = SP[3];
 
 
@@ -227,7 +228,7 @@ export default function AnalysisScreen() {
           }));
 
           return (
-            <View key={metric} style={[styles.page, { paddingHorizontal: gutter, paddingTop: pageTop }]}>
+            <View key={metric} style={[styles.page, { paddingTop: pageTop }]}>
               <View style={[styles.cardWrap, { width: cardWidth }]}>
                 <AnalysisCard
                   metric={metric}
@@ -257,7 +258,6 @@ const styles = StyleSheet.create({
   screenContent: {
     flex: 1,
     paddingTop: SP[4],
-    paddingHorizontal: SP[4],
     paddingBottom: SP[3],
   },
   pager: {
@@ -272,6 +272,10 @@ const styles = StyleSheet.create({
   loadingText: {
     color: "rgba(255,255,255,0.7)",
     marginLeft: SP[2],
+  },
+  scrim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.25)",
   },
   emptyState: {
     color: "#FFEEAA",
@@ -292,6 +296,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
+    width: "100%",
   },
 
   // Outer card container
@@ -386,7 +391,9 @@ const styles = StyleSheet.create({
     gap: SP[3],
     justifyContent: "center",
     width: "100%",
-    paddingHorizontal: SP[4],
+    paddingHorizontal: SP[3],
+    maxWidth: 520,
+    alignSelf: "center",
   },
   protocolBtnWrap: {
     flex: 1,
