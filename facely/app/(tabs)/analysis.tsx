@@ -1,20 +1,19 @@
 // app/(tabs)/analysis.tsx
 import React, { useRef, useState } from "react";
 import {
-  SafeAreaView,
   View,
   ImageBackground,
   StyleSheet,
   Platform,
-  StatusBar,
   ActivityIndicator,
-  Dimensions,
   Alert,
+  useWindowDimensions,
 } from "react-native";
 import PagerView from "react-native-pager-view";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AnalysisCard, { type SubmetricView } from "@/components/analysis/AnalysisCard";
 import { useProtocolsStore } from "@/store/protocolsStore";
+import Screen from "@/components/layout/Screen";
+import { COLORS, SP } from "@/lib/tokens";
 
 
 // Poppins wrapper
@@ -28,21 +27,8 @@ import { useRouter } from "expo-router";
 
 
 const BG = require("../../assets/bg/score-bg.jpg");
-const { width } = Dimensions.get("window");
-
-// ---------------------------------------------------------------------------
-// Tokens - mirror score.tsx spacing rhythm
-// ---------------------------------------------------------------------------
-const GUTTER = 16; // left/right screen padding (matches score)
-const CARD_W = width - GUTTER * 2; // card width exactly like score.tsx
-const PAGE_TOP = 10; // top padding inside each pager page
-
 const DOT_SIZE = 6;
 const DOT_ACTIVE_W = 24;
-
-const PILL_ROW_BOTTOM = 14; // bottom offset of pill row (matches score)
-const PILL_ROW_GAP = 12; // space between pills
-const DOTS_ABOVE_PILLS = 82; // vertical distance of dots above bottom
 
 // ---------------------------------------------------------------------------
 // Types & constants
@@ -108,11 +94,13 @@ export default function AnalysisScreen() {
   const { scores, explanations, explLoading, explError } = useScores();
   const { protocols, isLoading: pLoading, regenerateFromLastAnalysis } = useProtocolsStore();
 
-  const insets = useSafeAreaInsets();
-
   const pagerRef = useRef<PagerView>(null);
   const [idx, setIdx] = useState(0);
   const nav = useRouter();
+  const { width } = useWindowDimensions();
+  const gutter = SP[4];
+  const cardWidth = Math.min(760, Math.max(320, width - gutter * 2));
+  const pageTop = SP[3];
 
 
   const hasScores = !!scores;
@@ -157,114 +145,108 @@ export default function AnalysisScreen() {
   
 
   return (
-    <ImageBackground source={BG} style={{ flex: 1 }} resizeMode="cover">
-      <SafeAreaView
-        style={{
-          flex: 1,
-          paddingTop: Platform.OS === "android" ? StatusBar.currentHeight || 0 : 0,
-        }}
-      >
-        {/* loader/errors row */}
-        {explLoading ? (
-          <View style={styles.rowCenter}>
-            <ActivityIndicator />
-            <Text style={{ color: "rgba(255,255,255,0.7)", marginLeft: 8 }}>Analyzing...</Text>
+    <Screen
+      scroll={false}
+      contentContainerStyle={styles.screenContent}
+      footer={
+        <View style={styles.footer}>
+          <View style={styles.dots}>
+            {ORDER.map((_, i) => (
+              <View key={i} style={[styles.dot, i === idx && styles.dotActive]} />
+            ))}
           </View>
-        ) : null}
-        {explError ? (
-          <Text style={{ color: "#FF6B6B", textAlign: "center", marginTop: 8 }}>{String(explError)}</Text>
-        ) : null}
-        {showEmptyState ? (
-          <Text style={styles.emptyState}>
-            Advanced insights are not available for this session. Please run a new scan and advanced analysis.
-          </Text>
-        ) : null}
 
-        {/* Swipeable cards */}
-        <PagerView
-          ref={pagerRef}
-          style={{ flex: 1 }}
-          initialPage={0}
-          onPageSelected={(e) => setIdx(e.nativeEvent.position)}
-        >
-          {ORDER.map((metric) => {
-            const score = scores?.[metric] as number | undefined;
-            const current = band(score) ? `Current: ${band(score)}` : undefined;
-
-            const verdicts = getSubmetricVerdicts(explanations, metric);
-            const cleanedVerdicts = verdicts.map((line) => {
-              const trimmed = line?.trim();
-              return trimmed && trimmed.length > 0 ? trimmed : undefined;
-            });
-            const hasVerdictCopy = cleanedVerdicts.some(Boolean);
-
-            const titles = SUBMETRICS[metric];
-            const submetrics: SubmetricView[] = titles.map((t, i) => ({
-              title: t,
-              verdict: hasVerdictCopy ? cleanedVerdicts[i] : undefined,
-            }));
-
-            return (
-              <View key={metric} style={styles.page}>
-                <View style={styles.cardWrap}>
-                <AnalysisCard
-                    metric={metric}
-                    copy={{ title: LABELS[metric], currentLabel: current }}
-                    submetrics={submetrics}
-                  />
-                  {!hasVerdictCopy && !explLoading && (explanations || explError) ? (
-                    <Text style={styles.placeholderNote}>
-                      Detailed insights aren't available for this metric right now. Please try the
-                      analysis again in a bit.
-                    </Text>
-                  ) : null}
-
-                </View>
+          <View style={styles.bottomBar}>
+            <GlassBtn
+              label="Previous"
+              icon="chevron-back"
+              onPress={() => {
+                if (!isFirst) {
+                  goTo(idx - 1);
+                }
+              }}
+              disabled={isFirst}
+            />
+            {!isLast ? (
+              <GlassBtn label="Next" icon="chevron-forward" onPress={() => goTo(idx + 1)} />
+            ) : (
+              <View style={styles.protocolBtnWrap}>
+                <GlassBtn
+                  label={pLoading ? "Loading" : "Protocols"}
+                  icon="sparkles"
+                  onPress={handleProtocols}
+                  disabled={pLoading}
+                />
               </View>
-            );
-          })}
-        </PagerView>
 
-        {/* Dots: anchored just above the buttons */}
-        <View style={[styles.dots, { bottom: insets.bottom + DOTS_ABOVE_PILLS }]}>
-          {ORDER.map((_, i) => (
-            <View key={i} style={[styles.dot, i === idx && styles.dotActive]} />
-          ))}
+            )}
+          </View>
         </View>
+      }
+    >
+      <ImageBackground source={BG} style={StyleSheet.absoluteFill} resizeMode="cover">
+        <View style={styles.scrim} />
+      </ImageBackground>
 
-        {/* Bottom glass button row - exact placement like score.tsx */}
-        <View
-          style={[
-            styles.bottomBar,
-            { left: GUTTER, right: GUTTER, bottom: PILL_ROW_BOTTOM + insets.bottom },
-          ]}
-        >
-          <GlassBtn
-            label="Previous"
-            icon="chevron-back"
-            onPress={() => {
-              if (!isFirst) {
-                goTo(idx - 1);
-              }
-            }}
-            disabled={isFirst}
-          />
-          {!isLast ? (
-            <GlassBtn label="Next" icon="chevron-forward" onPress={() => goTo(idx + 1)} />
-          ) : (
-            <View style={{ flex: 1, gap: PILL_ROW_GAP }}>
-              <GlassBtn
-                label={pLoading ? "Loading" : "Protocols"}
-                icon="sparkles"
-                onPress={handleProtocols}
-                disabled={pLoading}
-              />
+      {/* loader/errors row */}
+      {explLoading ? (
+        <View style={styles.rowCenter}>
+          <ActivityIndicator />
+          <Text style={styles.loadingText}>Analyzing...</Text>
+        </View>
+      ) : null}
+      {explError ? <Text style={styles.errorText}>{String(explError)}</Text> : null}
+      {showEmptyState ? (
+        <Text style={styles.emptyState}>
+          Advanced insights are not available for this session. Please run a new scan and advanced analysis.
+        </Text>
+      ) : null}
+
+      {/* Swipeable cards */}
+      <PagerView
+        ref={pagerRef}
+        style={styles.pager}
+        initialPage={0}
+        onPageSelected={(e) => setIdx(e.nativeEvent.position)}
+      >
+        {ORDER.map((metric) => {
+          const score = scores?.[metric] as number | undefined;
+          const current = band(score) ? `Current: ${band(score)}` : undefined;
+
+          const verdicts = getSubmetricVerdicts(explanations, metric);
+          const cleanedVerdicts = verdicts.map((line) => {
+            const trimmed = line?.trim();
+            return trimmed && trimmed.length > 0 ? trimmed : undefined;
+          });
+          const hasVerdictCopy = cleanedVerdicts.some(Boolean);
+
+          const titles = SUBMETRICS[metric];
+          const submetrics: SubmetricView[] = titles.map((t, i) => ({
+            title: t,
+            verdict: hasVerdictCopy ? cleanedVerdicts[i] : undefined,
+          }));
+
+          return (
+            <View key={metric} style={[styles.page, { paddingHorizontal: gutter, paddingTop: pageTop }]}>
+              <View style={[styles.cardWrap, { width: cardWidth }]}>
+                <AnalysisCard
+                  metric={metric}
+                  copy={{ title: LABELS[metric], currentLabel: current }}
+                  submetrics={submetrics}
+                />
+                {!hasVerdictCopy && !explLoading && (explanations || explError) ? (
+                  <Text style={styles.placeholderNote}>
+                    Detailed insights aren't available for this metric right now. Please try the
+                    analysis again in a bit.
+                  </Text>
+                ) : null}
+
+              </View>
             </View>
-
-          )}
-        </View>
-      </SafeAreaView>
-    </ImageBackground>
+          );
+        })}
+      </PagerView>
+    </Screen>
   );
 }
 
@@ -272,17 +254,30 @@ export default function AnalysisScreen() {
 // Styles
 // ---------------------------------------------------------------------------
 const styles = StyleSheet.create({
+  screenContent: {
+    flex: 1,
+    paddingTop: SP[4],
+    paddingHorizontal: SP[4],
+    paddingBottom: SP[3],
+  },
+  pager: {
+    flex: 1,
+  },
   rowCenter: {
-    marginTop: 8,
+    marginTop: SP[2],
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
   },
+  loadingText: {
+    color: "rgba(255,255,255,0.7)",
+    marginLeft: SP[2],
+  },
   emptyState: {
     color: "#FFEEAA",
     textAlign: "center",
-    marginTop: 12,
-    marginHorizontal: 24,
+    marginTop: SP[3],
+    marginHorizontal: SP[6],
     fontSize: 14,
     lineHeight: 20,
     fontFamily: Platform.select({
@@ -297,18 +292,15 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    paddingHorizontal: GUTTER,
-    paddingTop: PAGE_TOP,
   },
 
   // Outer card container
   cardWrap: {
-    width: CARD_W,
     alignSelf: "center",
   },
 
   placeholderNote: {
-    marginTop: 12,
+    marginTop: SP[3],
     color: "rgba(255,255,255,0.7)",
     fontSize: 13,
     lineHeight: 18,
@@ -371,12 +363,9 @@ const styles = StyleSheet.create({
 
   // Dots
   dots: {
-    position: "absolute",
-    left: 0,
-    right: 0,
     flexDirection: "row",
     justifyContent: "center",
-    gap: 8,
+    gap: SP[2],
   },
   dot: {
     width: DOT_SIZE,
@@ -385,17 +374,34 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.28)",
   },
   dotActive: {
-    backgroundColor: "#B8FF59",
+    backgroundColor: COLORS.accent,
     width: DOT_ACTIVE_W,
     height: DOT_SIZE,
     borderRadius: DOT_SIZE / 2,
   },
 
-  // Bottom bar exactly like score.tsx: absolute, two equal glass pills
   bottomBar: {
-    position: "absolute",
     flexDirection: "row",
     alignItems: "center",
-    gap: PILL_ROW_GAP,
+    gap: SP[3],
+    justifyContent: "center",
+    width: "100%",
+    paddingHorizontal: SP[4],
+  },
+  protocolBtnWrap: {
+    flex: 1,
+    gap: SP[3],
+  },
+  footer: {
+    width: "100%",
+    alignItems: "center",
+    gap: SP[3],
+    paddingHorizontal: SP[4],
+    paddingBottom: SP[3],
+  },
+  errorText: {
+    color: "#FF6B6B",
+    textAlign: "center",
+    marginTop: SP[2],
   },
 });

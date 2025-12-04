@@ -7,18 +7,21 @@
     "allowImportingTsExtensions": true,
 
     "paths": {
-      "@/*": ["*"],
-      "@components/*": ["components/*"],
-      "@lib/*": ["lib/*"],
-      "@store/*": ["store/*"],
-      "@stores/*": ["store/*"],
-      "@/components/*": ["components/*"],
-      "@/lib/*": ["lib/*"],
-      "@/store/*": ["store/*"],
-      "@/stores/*": ["store/*"]
+      "@/*": ["./*"],
+      "@components/*": ["./components/*"],
+      "@lib/*": ["./lib/*"],
+      "@store/*": ["./store/*"],
+      "@stores/*": ["./store/*"],
+      "@/components/*": ["./components/*"],
+      "@/lib/*": ["./lib/*"],
+      "@/store/*": ["./store/*"],
+      "@/stores/*": ["./store/*"]
     }
   },
   "include": [
+    "app/**/*",
+    "components/**/*",
+    "lib/**/*",
     "**/*.ts",
     "**/*.tsx",
     "**/*.js",

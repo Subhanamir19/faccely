@@ -11,6 +11,8 @@ import {
   ActivityIndicator,
   Alert,
 } from "react-native";
+import Screen from "@/components/layout/Screen";
+import { SP } from "@/lib/tokens";
 
 // ✅ default Text (Poppins)
 import Text from "@/components/ui/T";
@@ -480,7 +482,7 @@ function MetricCard({ item, width, active }: { item: MetricItem; width: number; 
 
   const graphH = 280;
   const leftPad = 36;
-  const rightPad = 16;
+  const rightPad = 32;
   const topPad = 24;
   const bottomPad = 56;
 
@@ -677,15 +679,16 @@ function MetricCard({ item, width, active }: { item: MetricItem; width: number; 
 
         {/* Labels under the graph */}
         {anchorsFor(title).map((label, i) => {
-
           const x = leftPad + (i / 3) * innerW;
-          const y = yBase + 14;
+          const rowOffset = i % 2 === 0 ? 14 : 30; // two rows
+          const y = yBase + rowOffset;
+
           return (
             <SvgText
               key={label}
               x={x}
               y={y}
-              fontSize={11}
+              fontSize={10}
               fill="rgba(255,255,255,0.65)"
               textAnchor={i === 0 ? "start" : i === 3 ? "end" : "middle"}
               fontFamily={POP}
@@ -734,10 +737,12 @@ function applyApiScores(api: any): MetricItem[] {
 
 export default function ScoreScreen() {
 const { width } = useWindowDimensions();
+  const horizontalGutter = SP[4];
+  const innerWidth = Math.max(0, width - horizontalGutter * 2);
 const { imageUri, sideImageUri, scores, explLoading, explError } = useScores();
 
-  const itemWidth = Math.min(760, Math.max(320, width * 0.82));
-  const spacer = Math.max(12, width * 0.02);
+  const itemWidth = Math.min(760, Math.max(320, innerWidth * 0.98));
+  const spacer = Math.max(12, innerWidth * 0.02);
   const snap = itemWidth + spacer;
 
   const [index, setIndex] = useState(0);
@@ -771,7 +776,7 @@ const { imageUri, sideImageUri, scores, explLoading, explError } = useScores();
 
   const renderItem = useCallback(
     ({ item, index: i }: { item: MetricItem; index: number }) => (
-      <View style={{ width: snap }}>
+      <View style={[styles.cardItemWrapper, { width: snap }]}>
         <MetricCard item={item} width={itemWidth} active={i === index} />
       </View>
     ),
@@ -804,130 +809,150 @@ const { imageUri, sideImageUri, scores, explLoading, explError } = useScores();
   
 
   return (
-    <ImageBackground
-      source={require("../../assets/bg/score-bg.jpg")} // make sure file path is correct
-      style={styles.page}
-      resizeMode="cover"
-    >
-      {/* dark overlay so card pops */}
-      <View style={styles.scrim} />
-
-      <FlatList
-        ref={listRef}
-        horizontal
-        data={metrics}
-        keyExtractor={(m) => m.key}
-        renderItem={renderItem}
-        showsHorizontalScrollIndicator={false}
-        decelerationRate="fast"
-        pagingEnabled={false}
-        snapToInterval={snap}
-        snapToAlignment="center"
-        contentContainerStyle={{
-          paddingHorizontal: (width - itemWidth) / 2,
-          paddingBottom: 8,
-          alignItems: "center",
-        }}
-        onMomentumScrollEnd={(e) =>
-          setIndex(Math.round(e.nativeEvent.contentOffset.x / snap))
-        }
-        getItemLayout={getItemLayout}
-        removeClippedSubviews={false}
-      />
-
-      {/* Pager dots */}
-      <View style={styles.dotsRow}>
-        {metrics.map((_, i) => (
-          <View
-            key={i}
-            style={[styles.dot, i === index && { backgroundColor: activePalette.accent }]}
-          />
-        ))}
-      </View>
-
-      {/* Gumroad-style controls */}
-      <View style={styles.controlsRow}>
-        <GumButton
-          label="Previous"
-          onPress={goPrev}
-          disabled={index === 0}
-          variant="prev"
-        />
-
-        {index === metrics.length - 1 ? (
-          <View style={[styles.gumShadowWrap, explLoading && { opacity: 0.7 }]}>
-            <Pressable
-              accessibilityRole="button"
-              onPress={explLoading ? undefined : handleAdvanced}
-              style={({ pressed }) => [
-                styles.gumButton,
-                { backgroundColor: activePalette.accent },
-
-                pressed && { transform: [{ translateY: 1 }] },
-              ]}
-            >
-              {explLoading ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={[styles.gumLabel, { color: "#fff" }]}>
-                  Advanced analysis
-                </Text>
-              )}
-            </Pressable>
+    <Screen
+      contentContainerStyle={styles.screenContent}
+      footer={
+        <View style={styles.footer}>
+          <View style={styles.dotsRow}>
+            {metrics.map((_, i) => (
+              <View
+                key={i}
+                style={[styles.dot, i === index && { backgroundColor: activePalette.accent }]}
+              />
+            ))}
           </View>
-        ) : (
-          <GumButton
-            label="Next"
-            onPress={goNext}
-            disabled={index === metrics.length - 1}
-            variant="next"
-          />
-        )}
-      </View>
 
-      {!!explError && (
-        <Text
-          style={{
-            color: "#C0392B",
-            marginTop: 8,
-            textAlign: "center",
-            fontFamily: POP,
+          <View style={styles.controlsRow}>
+            <GumButton
+              label="Previous"
+              onPress={goPrev}
+              disabled={index === 0}
+              variant="prev"
+            />
+
+            {index === metrics.length - 1 ? (
+              <GumButton
+                label="Advanced analysis"
+                onPress={handleAdvanced}
+                disabled={explLoading}
+                variant="next"
+                tone="accent"
+                loading={explLoading}
+                accentColor={activePalette.accent}
+              />
+            ) : (
+              <GumButton
+                label="Next"
+                onPress={goNext}
+                disabled={index === metrics.length - 1}
+                variant="next"
+              />
+            )}
+          </View>
+
+          {!!explError && (
+            <Text style={styles.errorText}>
+              {String(explError)}
+            </Text>
+          )}
+        </View>
+      }
+    >
+      <ImageBackground
+        source={require("../../assets/bg/score-bg.jpg")} // make sure file path is correct
+        style={StyleSheet.absoluteFill}
+        resizeMode="cover"
+      >
+        <View style={styles.scrim} />
+      </ImageBackground>
+
+      <View style={styles.listWrap}>
+        <FlatList
+          ref={listRef}
+          horizontal
+          data={metrics}
+          keyExtractor={(m) => m.key}
+          renderItem={renderItem}
+          showsHorizontalScrollIndicator={false}
+          decelerationRate="fast"
+          pagingEnabled={false}
+          snapToInterval={snap}
+          snapToAlignment="center"
+          contentContainerStyle={{
+            paddingHorizontal: Math.max(0, (innerWidth - itemWidth) / 2),
+            paddingBottom: 8,
+            alignItems: "center",
           }}
-        >
-          {String(explError)}
-        </Text>
-      )}
-    </ImageBackground>
+          onMomentumScrollEnd={(e) =>
+            setIndex(Math.round(e.nativeEvent.contentOffset.x / snap))
+          }
+          getItemLayout={getItemLayout}
+          removeClippedSubviews={false}
+        />
+      </View>
+    </Screen>
   );
 }
 
 // ---------------------------------------------------------------------------
 // Gumroad-style pill button with active glow
 // ---------------------------------------------------------------------------
-function GumButton({ label, onPress, disabled, variant }: { label: string; onPress: () => void; disabled?: boolean; variant?: 'prev' | 'next' }) {
+function GumButton({
+  label,
+  onPress,
+  disabled,
+  variant,
+  tone = "ghost",
+  loading = false,
+  accentColor,
+}: {
+  label: string;
+  onPress: () => void;
+  disabled?: boolean;
+  variant?: "prev" | "next";
+  tone?: "ghost" | "accent";
+  loading?: boolean;
+  accentColor?: string;
+}) {
   const [pressed, setPressed] = useState(false);
 
-  // subtle glow loop on badge when enabled
+  const isAccent = tone === "accent";
+  const bg = isAccent ? accentColor ?? "#B4F34D" : "rgba(0,0,0,0.22)";
+  const borderColor = isAccent ? "transparent" : "rgba(255,255,255,0.14)";
 
   return (
     <View style={[styles.gumShadowWrap, disabled && { opacity: 0.55 }]}>
       <Pressable
         accessibilityRole="button"
         onPress={disabled ? undefined : onPress}
-        style={({ pressed }) => [styles.gumButton, pressed && styles.gumButtonPressed]}
+        style={({ pressed }) => [
+          styles.gumButton,
+          { backgroundColor: bg, borderColor },
+          pressed && styles.gumButtonPressed,
+        ]}
       >
-        {variant === 'prev' && (
+        {variant === "prev" && (
           <Svg width={18} height={18} viewBox="0 0 24 24" style={{ marginRight: 8 }}>
-            <Path d="M14 5l-7 7 7 7" fill="none" stroke="#FFFFFF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            <Path d="M14 5l-7 7 7 7" fill="none" stroke="#FFFFFF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
           </Svg>
         )}
 
-        <Text style={styles.gumLabel}>{label}</Text>
+        {loading ? (
+          <ActivityIndicator color="#fff" />
+        ) : (
+          <Text
+            style={[styles.gumLabel, isAccent && { color: "#fff", textAlign: "center" }]}
+            numberOfLines={1}
+            ellipsizeMode="tail"
+          >
+            {label}
+          </Text>
+        )}
 
-        {variant === 'next' && (
+        {variant === "next" && (
           <Svg width={20} height={20} viewBox="0 0 24 24" style={{ marginLeft: 8 }}>
-            <Path d="M1.5 12s3.5-6.5 10.5-6.5S22.5 12 22.5 12 19 18.5 12 18.5 1.5 12 1.5 12Z" fill="none" stroke="#FFFFFF" strokeWidth="1.8"/>
-            <Circle cx="12" cy="12" r="3.2" fill="none" stroke="#FFFFFF" strokeWidth="1.8"/>
+            <Path d="M1.5 12s3.5-6.5 10.5-6.5S22.5 12 22.5 12 19 18.5 12 18.5 1.5 12 1.5 12Z" fill="none" stroke="#FFFFFF" strokeWidth="1.8" />
+            <Circle cx="12" cy="12" r="3.2" fill="none" stroke="#FFFFFF" strokeWidth="1.8" />
           </Svg>
         )}
       </Pressable>
@@ -939,11 +964,16 @@ function GumButton({ label, onPress, disabled, variant }: { label: string; onPre
 // Styles
 // ---------------------------------------------------------------------------
 const styles = StyleSheet.create({
-  page: {
+  screenContent: {
     flex: 1,
-    backgroundColor: COLORS.pageBg,
     justifyContent: "center",
-    alignItems: "center",
+    paddingTop: SP[4],
+  },
+
+  listWrap: {
+    flex: 1,
+    justifyContent: "center",
+    width: "100%",
   },
 
   scrim: {
@@ -964,6 +994,9 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     borderRadius: 24,
     backgroundColor: "rgba(255,255,255,0.04)", // subtle frosted layer
+  },
+  cardItemWrapper: {
+    alignItems: "center",
   },
 
   headerRow: {
@@ -1061,40 +1094,39 @@ const styles = StyleSheet.create({
 
   // Pager dots
   dotsRow: {
-    position: 'absolute',
-    bottom: 70,             // dots below buttons; tweak as needed
-    left: 0, right: 0,
-    flexDirection: 'row',
-    justifyContent: 'center',
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: SP[2],
   },
   dot: {
     width: 6,
     height: 6,
     borderRadius: 3,
-    marginHorizontal: 4,
     backgroundColor: "rgba(255,255,255,0.3)",
   },
 
   // Controls row
   controlsRow: {
-    position: "absolute",
-    bottom: 96,           // was 110; closer to the card
-    left: 0,
-    right: 0,
     flexDirection: "row",
-    gap: 12,
-    justifyContent: "center",
-    paddingHorizontal: 12,
     alignItems: "center",
+    justifyContent: "center",
+    gap: SP[4],
+    paddingHorizontal: SP[3],
+    marginTop: SP[3],
+    width: "100%",
+    maxWidth: 480,
+    alignSelf: "center",
   },
 
   gumShadowWrap: {
+    flex: 1,
     borderRadius: 999,
     shadowColor: "#000",
     shadowOpacity: 0.35,
     shadowRadius: 14,
     shadowOffset: { width: 0, height: 8 },
     elevation: 8,
+    marginHorizontal: 2,
   },
 
   gumButton: {
@@ -1102,7 +1134,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingVertical: 12,
     paddingHorizontal: 18,
-    minWidth: 160,
+    minWidth: 0,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -1130,5 +1162,19 @@ const styles = StyleSheet.create({
     height: 14,
     borderRadius: 7,
     backgroundColor: '#0F0F0F',
+  },
+
+  footer: {
+    width: "100%",
+    alignItems: "center",
+    gap: SP[3],
+    paddingHorizontal: SP[4],
+    paddingBottom: SP[3],
+  },
+  errorText: {
+    color: "#C0392B",
+    textAlign: "center",
+    fontFamily: POP,
+    marginTop: SP[2],
   },
 });

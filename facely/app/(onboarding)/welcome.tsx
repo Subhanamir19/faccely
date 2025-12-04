@@ -11,7 +11,6 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -24,14 +23,13 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 
+import Screen from "@/components/layout/Screen";
+import { COLORS, SP } from "@/lib/tokens";
 import T from "@/components/ui/T";
 
-const ACCENT = "#B4F34D";
-const BG_TOP = "#000000";
-const BG_BOTTOM = "#0B0B0B";
-const WHITE = "#FFFFFF";
+const ACCENT = COLORS.accent;
 const TAGLINE = "rgba(255,255,255,0.92)";
-const SUBTEXT = "rgba(160,160,160,0.80)";
+const SUBTEXT = COLORS.sub;
 const CTA_OFFSET = 12;
 
 const FACE = require("@/assets/loading/face-loader.jpg");
@@ -49,7 +47,6 @@ const globalTrack =
     : (_event: string) => {};
 
 export default function WelcomeIntroScreen() {
-  const insets = useSafeAreaInsets();
   const reducedMotion = useReducedMotion();
 
   const ringRotation = useSharedValue(0);
@@ -186,25 +183,39 @@ export default function WelcomeIntroScreen() {
     ],
   }));
 
-  const paddingTop = Math.max(insets.top, 44);
-  const paddingBottom = Math.max(insets.bottom, 34);
-
   return (
-    <View style={[styles.screen, { paddingTop, paddingBottom }]}> 
-      <LinearGradient
-        colors={[BG_TOP, BG_BOTTOM]}
-        start={{ x: 0.5, y: 0 }}
-        end={{ x: 0.5, y: 1 }}
-        style={StyleSheet.absoluteFill}
-      />
-
+    <Screen
+      scroll
+      contentContainerStyle={styles.contentContainer}
+      footer={
+        <Animated.View style={[styles.ctaContainer, ctaStyle]}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Begin onboarding"
+            accessibilityHint="Navigates to age selection"
+            hitSlop={8}
+            onPress={handleBegin}
+            onPressIn={handlePressIn}
+            onPressOut={handlePressOut}
+            style={styles.ctaButton}
+          >
+            <T style={styles.ctaLabel}>Begin</T>
+          </Pressable>
+        </Animated.View>
+      }
+    >
       <View pointerEvents="none" style={styles.radialGlow} />
 
       <View style={styles.content}>
         <Animated.View style={[styles.emblemWrap, emblemStyle]}>
           <Animated.View style={[styles.ring, ringStyle]}>
             <LinearGradient
-              colors={["rgba(180,243,77,0.18)", "#B4F34D", "rgba(201,250,105,0.75)", "#B4F34D"]}
+              colors={[
+                "rgba(180,243,77,0.18)",
+                "#B4F34D",
+                "rgba(201,250,105,0.75)",
+                "#B4F34D",
+              ]}
               locations={[0, 0.5, 0.75, 1]}
               start={{ x: 0, y: 0.5 }}
               end={{ x: 1, y: 0.5 }}
@@ -225,8 +236,6 @@ export default function WelcomeIntroScreen() {
               style={styles.face}
               resizeMode="cover"
               accessible={false}
-              accessibilityIgnoresInvertColors
-              importantForAccessibility="no-hide-descendants"
             />
           </View>
         </Animated.View>
@@ -240,38 +249,22 @@ export default function WelcomeIntroScreen() {
             <T style={styles.tagline}>Your face, defined by precision.</T>
           </Animated.View>
 
-
           <Animated.View style={subStyle}>
-            <Text style={styles.subtext} accessibilityRole="text">
+            <Text style={styles.subtext}>
               Advanced AI aesthetics analysis begins here.
             </Text>
           </Animated.View>
         </View>
       </View>
-
-      <Animated.View style={[styles.ctaContainer, ctaStyle]}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Begin onboarding"
-          accessibilityHint="Navigates to age selection"
-          hitSlop={8}
-          onPress={handleBegin}
-          onPressIn={handlePressIn}
-          onPressOut={handlePressOut}
-          style={styles.ctaButton}
-        >
-          <T style={styles.ctaLabel}>Begin</T>
-        </Pressable>
-      </Animated.View>
-    </View>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    paddingHorizontal: 24,
-    backgroundColor: "#000",
+  contentContainer: {
+    paddingHorizontal: SP[6],
+    paddingTop: SP[6] + SP[4],
+    position: "relative",
   },
   content: {
     flex: 1,
@@ -354,7 +347,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 28,
     lineHeight: 34,
-    color: WHITE,
+    color: COLORS.text,
     letterSpacing: -0.5,
     textAlign: "center",
   },
@@ -378,7 +371,8 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   ctaContainer: {
-    marginTop: 48,
+    marginTop: SP[6] * 2,
+    marginBottom: SP[4],
     width: "100%",
   },
   ctaButton: {
@@ -397,7 +391,7 @@ const styles = StyleSheet.create({
   ctaLabel: {
     fontSize: 18,
     lineHeight: 22,
-    color: "#0B0B0B",
+    color: COLORS.bgBottom,
     textAlign: "center",
   },
 });

@@ -4,6 +4,8 @@ import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from "rea
 import { router } from "expo-router";
 import * as AuthSession from "expo-auth-session";
 import { useSSO } from "@clerk/clerk-expo";
+import Screen from "@/components/layout/Screen";
+import { COLORS, SP } from "@/lib/tokens";
 import { useAuthStore } from "@/store/auth";
 
 export default function LoginScreen() {
@@ -49,7 +51,7 @@ export default function LoginScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <Screen scroll keyboardAware contentContainerStyle={styles.content}>
       {/* Progress bar */}
       <View style={styles.progressTrack}>
         <View style={styles.progressFill} />
@@ -73,7 +75,7 @@ export default function LoginScreen() {
           disabled={!googleEnabled || googleSubmitting}
         >
           {googleSubmitting ? (
-            <ActivityIndicator color="#FFFFFF" />
+            <ActivityIndicator color={COLORS.text} />
           ) : (
             <Text style={styles.googleButtonText}>{googleButtonLabel}</Text>
           )}
@@ -88,53 +90,44 @@ export default function LoginScreen() {
         Status: {status}
         {userEmail ? ` (${userEmail})` : ""}
       </Text>
-
-      <View style={styles.footer} />
-    </View>
+    </Screen>
   );
 }
 
-const LIME = "#B4F34D";
-const BG = "#050505";
-const CARD_BG = "#0B0B0B";
-
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: BG,
-    paddingTop: 64,
-    paddingHorizontal: 24,
+  content: {
+    paddingTop: SP[6],
   },
   progressTrack: {
     height: 4,
     borderRadius: 999,
-    backgroundColor: "#1A1A1A",
+    backgroundColor: COLORS.track,
     overflow: "hidden",
   },
   progressFill: {
     height: 4,
     width: "25%",
     borderRadius: 999,
-    backgroundColor: LIME,
+    backgroundColor: COLORS.accent,
   },
   header: {
     marginTop: 32,
-    marginBottom: 24,
+    marginBottom: SP[6],
   },
   title: {
     fontSize: 26,
     fontWeight: "600",
-    color: "#FFFFFF",
-    marginBottom: 8,
+    color: COLORS.text,
+    marginBottom: SP[2],
   },
   subtitle: {
     fontSize: 14,
-    color: "#9A9A9A",
+    color: COLORS.sub,
   },
   card: {
-    padding: 20,
+    padding: SP[5],
     borderRadius: 20,
-    backgroundColor: CARD_BG,
+    backgroundColor: COLORS.bgBottom,
     borderWidth: 1,
     borderColor: "#141414",
     shadowColor: "#000",
@@ -146,7 +139,7 @@ const styles = StyleSheet.create({
   googleButton: {
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: "#FFFFFF",
+    borderColor: COLORS.text,
     paddingVertical: 14,
     alignItems: "center",
     justifyContent: "center",
@@ -160,7 +153,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#101010",
   },
   googleButtonText: {
-    color: "#FFFFFF",
+    color: COLORS.text,
     fontSize: 16,
   },
   helperText: {
@@ -170,15 +163,9 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   statusLabel: {
-    marginTop: 12,
-    color: "#7D7D7D",
+    marginTop: SP[3],
+    color: COLORS.sub,
     fontSize: 12,
     textAlign: "center",
-  },
-  footer: {
-    marginTop: 24,
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
   },
 });
