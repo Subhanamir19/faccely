@@ -122,7 +122,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingBottom: 6,
+    paddingBottom: 8,
   },
 
   infoPill: {
@@ -136,7 +136,7 @@ const styles = StyleSheet.create({
 
   faceWrap: {
     marginTop: 4,
-    marginBottom: 6,
+    marginBottom: 10,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: 16,
@@ -165,6 +165,7 @@ const styles = StyleSheet.create({
     paddingTop: 4,
     justifyContent: "space-between",
     rowGap: 12,
+    paddingBottom: 4,
   },
   subCard: {
     width: "48%", // two per row

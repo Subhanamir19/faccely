@@ -258,7 +258,7 @@ const styles = StyleSheet.create({
   screenContent: {
     flex: 1,
     paddingTop: SP[4],
-    paddingBottom: SP[3],
+    paddingBottom: SP[4],
   },
   pager: {
     flex: 1,
@@ -394,6 +394,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: SP[3],
     maxWidth: 520,
     alignSelf: "center",
+    marginTop: SP[2],
   },
   protocolBtnWrap: {
     flex: 1,
@@ -404,7 +405,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: SP[3],
     paddingHorizontal: SP[4],
-    paddingBottom: SP[3],
+    paddingBottom: SP[4],
   },
   errorText: {
     color: "#FF6B6B",
