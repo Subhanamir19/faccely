@@ -92,7 +92,7 @@ function band(score: number | undefined) {
 // ---------------------------------------------------------------------------
 export default function AnalysisScreen() {
   const { scores, explanations, explLoading, explError } = useScores();
-  const { protocols, isLoading: pLoading, regenerateFromLastAnalysis } = useProtocolsStore();
+  const { isLoading: pLoading, regenerateFromLastAnalysis } = useProtocolsStore();
 
   const pagerRef = useRef<PagerView>(null);
   const [idx, setIdx] = useState(0);
@@ -122,24 +122,17 @@ export default function AnalysisScreen() {
 
   async function handleProtocols() {
     try {
-      if (protocols) {
-        nav.push("/(tabs)/protocols");
-        return;
-      }
-
       await regenerateFromLastAnalysis();
-
       const { protocols: latest, error } = useProtocolsStore.getState();
       if (latest) {
         nav.push("/(tabs)/protocols");
-        return;
-      }
-
-      if (error) {
+      } else if (error) {
         Alert.alert("Error", error);
+      } else {
+        Alert.alert("Error", "Couldn't generate protocols.");
       }
-    } catch (e: any) {
-      Alert.alert("Error", String(e?.message ?? e));
+    } catch (_err) {
+      Alert.alert("Error", "Couldn't generate protocols.");
     }
   }
   

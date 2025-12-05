@@ -96,8 +96,22 @@ export const useProtocolsStore = create<ProtocolsState>()(
         set({ isLoading: true, error: null });
 
         try {
+          const { protocols, sourceScanId } = get();
           const history = await fetchScanHistory(1);
           const latest = Array.isArray(history) ? history[0] : null;
+
+          let currentScanId: string | null = null;
+
+          if (latest?.id) {
+            currentScanId = latest.id;
+          } else {
+            const { scanId } = useScores.getState();
+            currentScanId = scanId ?? null;
+          }
+
+          if (protocols && sourceScanId === currentScanId) {
+            return;
+          }
 
           if (latest?.id) {
             const res = await generateProtocolsFromScan(latest.id);
