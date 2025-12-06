@@ -21,6 +21,7 @@ import { router } from "expo-router";
 import Svg, { Line, Circle, Rect, Path } from "react-native-svg";
 import { LinearGradient } from "expo-linear-gradient";
 import { useScores } from "../../store/scores";
+import useMetricSizing from "@/components/layout/useMetricSizing";
 
 // NEW: shared pre-upload compressor (JPEG, max 1080px)
 import { ensureJpegCompressed } from "../../lib/api/media";
@@ -216,15 +217,26 @@ export default function TakePicture() {
   const cameraRef = useRef<CameraView>(null);
 
   const window = useWindowDimensions();
+  const sizing = useMetricSizing();
 
-  const cardWidth = Math.max(window.width - 48, 320);
+  const isShortScreen = window.height < 760;
+
+  const cardWidth = sizing.cardWidth;
   const CARD_BASE_WIDTH = 1032;
   const cardScale = cardWidth / CARD_BASE_WIDTH;
-  const cardHeight = cardWidth * (1320 / CARD_BASE_WIDTH);
-  const ctaWidth = Math.min(cardWidth, cardWidth * (760 / CARD_BASE_WIDTH));
-  const ctaHeight = Math.max(64, 112 * cardScale);
-  const ctaRadius = Math.max(36, 56 * cardScale);
+
+  // taller card on short screens so text + button can coexist
+  const cardHeight =
+    cardWidth * (isShortScreen ? 1.36 : 1.24);
+
+  // slightly narrower CTA, scaled height/radius
+  const ctaWidth = Math.min(cardWidth * 0.74, 420);
+  const ctaHeight = Math.max(50, 88 * cardScale);
+  const ctaRadius = Math.max(24, 44 * cardScale);
+
   const gridCell = Math.max(60, 80 * cardScale);
+
+  const headingFontSize = window.width >= 420 ? 34 : window.width >= 360 ? 30 : 28;
 
   // capture selection
   const handleChosen = async (uri: string | null) => {
@@ -441,9 +453,9 @@ export default function TakePicture() {
                   android: "Poppins-SemiBold",
                   default: "Poppins-SemiBold",
                 }),
-                fontSize: 34,
-                lineHeight: 40,
-                letterSpacing: -0.34,
+                fontSize: headingFontSize,
+                lineHeight: headingFontSize + 6,
+                letterSpacing: -0.3,
               }}
             >
               Face scan
@@ -452,19 +464,19 @@ export default function TakePicture() {
               <Text
                 style={{
                   color: "#FFFFFF",
-                  fontFamily: Platform.select({
-                    ios: "Poppins-SemiBold",
-                    android: "Poppins-SemiBold",
-                    default: "Poppins-SemiBold",
-                  }),
-                  fontSize: 34,
-                  lineHeight: 40,
-                  letterSpacing: -0.34,
-                }}
-              >
-                Analysis
-              </Text>
-            </Pressable>
+                fontFamily: Platform.select({
+                  ios: "Poppins-SemiBold",
+                  android: "Poppins-SemiBold",
+                  default: "Poppins-SemiBold",
+                }),
+                fontSize: headingFontSize,
+                lineHeight: headingFontSize + 6,
+                letterSpacing: -0.3,
+              }}
+            >
+              Analysis
+            </Text>
+          </Pressable>
           </View>
 
           <Pressable onPress={goToHistory} hitSlop={12} style={{ alignSelf: "flex-end", marginRight: 24, marginTop: 8 }}>
@@ -486,14 +498,14 @@ export default function TakePicture() {
           <View style={{ flex: 1, alignItems: "center" }}>
             <View
               style={{
-                marginTop: 24,
+                marginTop: 18,
                 width: cardWidth,
                 height: cardHeight,
                 borderRadius: 36,
                 backgroundColor: "#121212",
                 overflow: "hidden",
-                paddingHorizontal: 28,
-                paddingVertical: 32 * cardScale,
+                paddingHorizontal: 24,
+                paddingVertical: 22 * cardScale,
               }}
             >
               <LinearGradient
@@ -504,7 +516,7 @@ export default function TakePicture() {
               />
               {renderGridOverlay()}
 
-              <View style={{ gap: 12, marginTop: 12 }}>
+              <View style={{ gap: 10, marginTop: 10 }}>
                 <Text
                   style={{
                     color: "#FFFFFF",
@@ -530,7 +542,7 @@ export default function TakePicture() {
                       default: "Poppins-Regular",
                     }),
                     fontSize: 14,
-                    lineHeight: 20,
+                    lineHeight: 19,
                   }}
                 >
                   We’ll walk you through two quick photos—first frontal, then your side profile.
@@ -539,16 +551,16 @@ export default function TakePicture() {
 
               <View
                 style={{
-                  marginTop: 28,
+                  marginTop: 24,
                   flexDirection: "row",
-                  gap: 14,
+                  gap: 12,
                 }}
               >
                 <View
                   style={{
                     flex: 1,
                     borderRadius: 20,
-                    paddingVertical: 18,
+                    paddingVertical: 12,
                     paddingHorizontal: 18,
                     backgroundColor: "rgba(19,19,19,0.72)",
                     borderWidth: 1,
@@ -588,23 +600,23 @@ export default function TakePicture() {
                     style={{
                       color: TEXT_DIM,
                       marginTop: 8,
-                      fontSize: 13,
-                      lineHeight: 18,
-                      fontFamily: Platform.select({
-                        ios: "Poppins-Regular",
-                        android: "Poppins-Regular",
-                        default: "Poppins-Regular",
-                      }),
-                    }}
-                  >
-                    Center your face within the guide for the sharpest read.
-                  </Text>
-                </View>
+                    fontSize: 13,
+                    lineHeight: 17,
+                    fontFamily: Platform.select({
+                      ios: "Poppins-Regular",
+                      android: "Poppins-Regular",
+                      default: "Poppins-Regular",
+                    }),
+                  }}
+                >
+                  Center your face within the guide for the sharpest read.
+                </Text>
+              </View>
                 <View
                   style={{
                     flex: 1,
                     borderRadius: 20,
-                    paddingVertical: 18,
+                    paddingVertical: 12,
                     paddingHorizontal: 18,
                     backgroundColor: "rgba(19,19,19,0.48)",
                     borderWidth: 1,
@@ -644,13 +656,13 @@ export default function TakePicture() {
                     style={{
                       color: TEXT_DIM,
                       marginTop: 8,
-                      fontSize: 13,
-                      lineHeight: 18,
-                      fontFamily: Platform.select({
-                        ios: "Poppins-Regular",
-                        android: "Poppins-Regular",
-                        default: "Poppins-Regular",
-                      }),
+                    fontSize: 13,
+                    lineHeight: 17,
+                    fontFamily: Platform.select({
+                      ios: "Poppins-Regular",
+                      android: "Poppins-Regular",
+                      default: "Poppins-Regular",
+                    }),
                     }}
                   >
                     Turn your head slightly right so we can analyze your profile.
@@ -665,7 +677,7 @@ export default function TakePicture() {
                   position: "absolute",
                   left: (cardWidth - ctaWidth) / 2,
                   right: (cardWidth - ctaWidth) / 2,
-                  bottom: 40 * cardScale,
+                  bottom: 48 * cardScale,
                   height: ctaHeight,
                   borderRadius: ctaRadius,
                   backgroundColor: "#B4F34D",
@@ -687,8 +699,8 @@ export default function TakePicture() {
                       android: "Poppins-SemiBold",
                       default: "Poppins-SemiBold",
                     }),
-                    fontSize: Math.max(18, 24 * cardScale),
-                    lineHeight: Math.max(24, 30 * cardScale),
+                    fontSize: Math.max(17, 22 * cardScale),
+                    lineHeight: Math.max(22, 28 * cardScale),
                   }}
                 >
                   Begin scan

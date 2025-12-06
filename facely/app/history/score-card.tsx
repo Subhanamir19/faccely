@@ -3,14 +3,18 @@ import {
   ActivityIndicator,
   Image,
   Pressable,
-  SafeAreaView,
-  ScrollView,
   StyleSheet,
   Text,
   View,
+  ScrollView,
 } from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
 import { fetchScanDetail, type ScanDetail } from "@/lib/api/history";
+import { SP } from "@/lib/tokens";
+import Screen from "@/components/layout/Screen";
+import MetricCardShell from "@/components/layout/MetricCardShell";
+import PillNavButton from "@/components/ui/PillNavButton";
+import useMetricSizing from "@/components/layout/useMetricSizing";
 
 const BG = "#02040A";
 const CARD = "rgba(255,255,255,0.04)";
@@ -49,6 +53,7 @@ function formatDate(value: string | undefined) {
 export default function HistoryScoreCard() {
   const params = useLocalSearchParams<{ scanId?: string }>();
   const scanId = params?.scanId;
+  const sizing = useMetricSizing();
 
   const [detail, setDetail] = useState<ScanDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -103,17 +108,17 @@ export default function HistoryScoreCard() {
     );
   };
 
-  const renderImageCard = (label: string, path?: string, url?: string) => {
+  const renderImageCard = (label: string, path?: string, url?: string, width?: number) => {
     if (!url) {
       return (
-        <View style={styles.imageCard}>
+        <View style={[styles.imageCard, width ? { width } : null]}>
           <Text style={styles.imageLabel}>{label}</Text>
           <Text style={styles.imagePlaceholder}>No image</Text>
         </View>
       );
     }
     return (
-      <View style={styles.imageCard}>
+      <View style={[styles.imageCard, width ? { width } : null]}>
         <Text style={styles.imageLabel}>{label}</Text>
         <Image source={{ uri: url }} style={styles.image} resizeMode="cover" />
         <Text style={styles.imagePath} numberOfLines={1}>
@@ -124,45 +129,65 @@ export default function HistoryScoreCard() {
   };
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <Pressable onPress={() => router.back()} style={styles.backBtn}>
-            <Text style={styles.backText}>Back</Text>
-          </Pressable>
-          <Text style={styles.title}>Score history</Text>
-          <Text style={styles.sub}>{formatDate(detail?.createdAt)}</Text>
+    <Screen
+      scroll={false}
+      contentContainerStyle={styles.screenContent}
+      footer={
+        <View style={styles.footerRow}>
+          <PillNavButton
+            kind="solid"
+            label="Back"
+            icon="chevron-back"
+            onPress={() => router.back()}
+          />
         </View>
+      }
+    >
+      <View style={styles.header}>
+        <Pressable onPress={() => router.back()} style={styles.backBtn}>
+          <Text style={styles.backText}>Back</Text>
+        </Pressable>
+        <Text style={styles.title}>Score history</Text>
+        <Text style={styles.sub}>{formatDate(detail?.createdAt)}</Text>
+      </View>
 
-        {!scanId ? (
-          <View style={styles.center}>
-            <Text style={styles.text}>Error: Missing scanId</Text>
-          </View>
-        ) : loading ? (
-          <View style={styles.center}>
-            <ActivityIndicator color="#fff" />
-            <Text style={styles.text}>Loading...</Text>
-          </View>
-        ) : error ? (
-          <View style={styles.center}>
-            <Text style={styles.text}>Error: {error}</Text>
-          </View>
-        ) : !detail ? (
-          <View style={styles.center}>
-            <Text style={styles.text}>No data.</Text>
-          </View>
-        ) : (
-          <>
-            <View style={styles.imagesRow}>
-              {renderImageCard("Front", detail.images?.front?.path, detail.images?.front?.url)}
-              {detail.hasSideImage
-                ? renderImageCard("Side", detail.images?.side?.path, detail.images?.side?.url)
-                : null}
-            </View>
+      {!scanId ? (
+        <View style={styles.center}>
+          <Text style={styles.text}>Error: Missing scanId</Text>
+        </View>
+      ) : loading ? (
+        <View style={styles.center}>
+          <ActivityIndicator color="#fff" />
+          <Text style={styles.text}>Loading...</Text>
+        </View>
+      ) : error ? (
+        <View style={styles.center}>
+          <Text style={styles.text}>Error: {error}</Text>
+        </View>
+      ) : !detail ? (
+        <View style={styles.center}>
+          <Text style={styles.text}>No data.</Text>
+        </View>
+      ) : (
+        <>
+          <MetricCardShell sizing={sizing}>
+            {(usableWidth) => {
+              const imageWidth = detail.hasSideImage ? (usableWidth - SP[3]) / 2 : usableWidth;
+              return (
+                <View style={[styles.imagesRow, { gap: SP[3] }]}>
+                  {renderImageCard("Front", detail.images?.front?.path, detail.images?.front?.url, imageWidth)}
+                  {detail.hasSideImage
+                    ? renderImageCard("Side", detail.images?.side?.path, detail.images?.side?.url, imageWidth)
+                    : null}
+                </View>
+              );
+            }}
+          </MetricCardShell>
 
+          <MetricCardShell sizing={sizing}>
             <ScrollView
               style={styles.scroll}
-              contentContainerStyle={{ paddingBottom: 120, gap: 12 }}
+              contentContainerStyle={{ paddingBottom: SP[4], gap: SP[3] }}
               showsVerticalScrollIndicator={false}
             >
               {metrics.length ? (
@@ -173,23 +198,16 @@ export default function HistoryScoreCard() {
                 </View>
               )}
             </ScrollView>
-          </>
-        )}
-
-        <View style={styles.bottomBar}>
-          <Pressable onPress={() => router.back()} style={styles.cta}>
-            <Text style={styles.ctaText}>Back</Text>
-          </Pressable>
-        </View>
-      </View>
-    </SafeAreaView>
+          </MetricCardShell>
+        </>
+      )}
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: BG },
-  container: { flex: 1, backgroundColor: BG, paddingHorizontal: 20, paddingTop: 12 },
-  header: { marginBottom: 16 },
+  screenContent: { flex: 1, gap: SP[4], paddingTop: SP[4], paddingBottom: SP[4] },
+  header: { marginBottom: 4 },
   title: { color: TEXT, fontSize: 22, fontWeight: "700", marginTop: 4 },
   sub: { color: SUBTLE, marginTop: 4 },
   center: { alignItems: "center", justifyContent: "center", flex: 1, gap: 12 },
@@ -210,7 +228,7 @@ const styles = StyleSheet.create({
   image: { width: "100%", aspectRatio: 3 / 4, borderRadius: 12, backgroundColor: "#0D1018" },
   imagePlaceholder: { color: SUBTLE },
   imagePath: { color: SUBTLE, fontSize: 12 },
-  scroll: { flex: 1 },
+  scroll: { flex: 1, maxHeight: 520 },
   metricCard: {
     backgroundColor: CARD,
     borderColor: CARD_BORDER,
@@ -233,17 +251,5 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: ACCENT,
   },
-  bottomBar: {
-    position: "absolute",
-    left: 20,
-    right: 20,
-    bottom: 24,
-  },
-  cta: {
-    backgroundColor: ACCENT,
-    borderRadius: 14,
-    paddingVertical: 14,
-    alignItems: "center",
-  },
-  ctaText: { color: "#081109", fontWeight: "700", fontSize: 16 },
+  footerRow: { width: "100%" },
 });

@@ -7,13 +7,15 @@ import {
   Platform,
   ActivityIndicator,
   Alert,
-  useWindowDimensions,
 } from "react-native";
 import PagerView from "react-native-pager-view";
 import AnalysisCard, { type SubmetricView } from "@/components/analysis/AnalysisCard";
 import { useProtocolsStore } from "@/store/protocolsStore";
 import Screen from "@/components/layout/Screen";
+import MetricCardShell from "@/components/layout/MetricCardShell";
+import MetricPagerFooter from "@/components/layout/MetricPagerFooter";
 import { COLORS, SP } from "@/lib/tokens";
+import useMetricSizing from "@/components/layout/useMetricSizing.ts";
 
 
 // Poppins wrapper
@@ -22,13 +24,10 @@ import Text from "@/components/ui/T";
 // Stores / nav
 import { useScores, getSubmetricVerdicts } from "../../store/scores";
 // UI
-import GlassBtn from "@/components/ui/GlassBtn";
 import { useRouter } from "expo-router";
 
 
 const BG = require("../../assets/bg/score-bg.jpg");
-const DOT_SIZE = 6;
-const DOT_ACTIVE_W = 24;
 
 // ---------------------------------------------------------------------------
 // Types & constants
@@ -93,15 +92,11 @@ function band(score: number | undefined) {
 export default function AnalysisScreen() {
   const { scores, explanations, explLoading, explError } = useScores();
   const { isLoading: pLoading, regenerateFromLastAnalysis } = useProtocolsStore();
+  const sizing = useMetricSizing();
 
   const pagerRef = useRef<PagerView>(null);
   const [idx, setIdx] = useState(0);
   const nav = useRouter();
-  const { width } = useWindowDimensions();
-  const horizontalGutter = SP[4];
-  const innerWidth = Math.max(0, width - horizontalGutter * 2);
-  const cardWidth = Math.min(760, Math.max(320, innerWidth * 0.98));
-  const pageTop = SP[3];
 
 
   const hasScores = !!scores;
@@ -143,39 +138,19 @@ export default function AnalysisScreen() {
       scroll={false}
       contentContainerStyle={styles.screenContent}
       footer={
-        <View style={styles.footer}>
-          <View style={styles.dots}>
-            {ORDER.map((_, i) => (
-              <View key={i} style={[styles.dot, i === idx && styles.dotActive]} />
-            ))}
-          </View>
-
-          <View style={styles.bottomBar}>
-            <GlassBtn
-              label="Previous"
-              icon="chevron-back"
-              onPress={() => {
-                if (!isFirst) {
-                  goTo(idx - 1);
-                }
-              }}
-              disabled={isFirst}
-            />
-            {!isLast ? (
-              <GlassBtn label="Next" icon="chevron-forward" onPress={() => goTo(idx + 1)} />
-            ) : (
-              <View style={styles.protocolBtnWrap}>
-                <GlassBtn
-                  label={pLoading ? "Loading" : "Protocols"}
-                  icon="sparkles"
-                  onPress={handleProtocols}
-                  disabled={pLoading}
-                />
-              </View>
-
-            )}
-          </View>
-        </View>
+        <MetricPagerFooter
+          index={idx}
+          total={ORDER.length}
+          onPrev={() => {
+            if (!isFirst) goTo(idx - 1);
+          }}
+          onNext={() => (isLast ? handleProtocols() : goTo(idx + 1))}
+          isFirst={isFirst}
+          isLast={isLast}
+          nextLabel={isLast ? "Protocols" : "Next"}
+          nextDisabled={pLoading}
+          padX={0}
+        />
       }
     >
       <ImageBackground source={BG} style={StyleSheet.absoluteFill} resizeMode="cover">
@@ -221,21 +196,24 @@ export default function AnalysisScreen() {
           }));
 
           return (
-            <View key={metric} style={[styles.page, { paddingTop: pageTop }]}>
-              <View style={[styles.cardWrap, { width: cardWidth }]}>
-                <AnalysisCard
-                  metric={metric}
-                  copy={{ title: LABELS[metric], currentLabel: current }}
-                  submetrics={submetrics}
-                />
-                {!hasVerdictCopy && !explLoading && (explanations || explError) ? (
-                  <Text style={styles.placeholderNote}>
-                    Detailed insights aren't available for this metric right now. Please try the
-                    analysis again in a bit.
-                  </Text>
-                ) : null}
-
-              </View>
+            <View key={metric} style={styles.page}>
+              <MetricCardShell renderSurface={false} sizing={sizing}>
+                {() => (
+                  <>
+                    <AnalysisCard
+                      metric={metric}
+                      copy={{ title: LABELS[metric], currentLabel: current }}
+                      submetrics={submetrics}
+                    />
+                    {!hasVerdictCopy && !explLoading && (explanations || explError) ? (
+                      <Text style={styles.placeholderNote}>
+                        Detailed insights aren't available for this metric right now. Please try the
+                        analysis again in a bit.
+                      </Text>
+                    ) : null}
+                  </>
+                )}
+              </MetricCardShell>
             </View>
           );
         })}
@@ -292,113 +270,12 @@ const styles = StyleSheet.create({
     width: "100%",
   },
 
-  // Outer card container
-  cardWrap: {
-    alignSelf: "center",
-  },
-
   placeholderNote: {
     marginTop: SP[3],
     color: "rgba(255,255,255,0.7)",
     fontSize: 13,
     lineHeight: 18,
     textAlign: "center",
-  },
-  // Card shell
-  card: {
-    borderRadius: 24,
-    overflow: "hidden",
-    backgroundColor: "rgba(8,9,10,0.6)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.06)",
-  },
-
-  cardTitle: {
-    fontSize: 28,
-    lineHeight: 34,
-    color: "white",
-    paddingHorizontal: 18,
-    paddingTop: 16,
-    paddingBottom: 8,
-    fontWeight: "600",
-  },
-
-  portraitWrap: {
-    height: 210,
-    marginHorizontal: 14,
-    marginBottom: 10,
-    borderRadius: 18,
-    overflow: "hidden",
-    backgroundColor: "rgba(255,255,255,0.03)",
-  },
-  portraitShade: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.35)",
-  },
-
-  badge: {
-    position: "absolute",
-    right: 12,
-    bottom: 12,
-    backgroundColor: "#B8FF59",
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 14,
-  },
-  badgeText: {
-    color: "#0B0C0D",
-    fontWeight: "600",
-  },
-
-  // 2x2 grid
-  grid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 12,
-    padding: 14,
-    paddingBottom: 18,
-  },
-
-  // Dots
-  dots: {
-    flexDirection: "row",
-    justifyContent: "center",
-    gap: SP[2],
-  },
-  dot: {
-    width: DOT_SIZE,
-    height: DOT_SIZE,
-    borderRadius: DOT_SIZE / 2,
-    backgroundColor: "rgba(255,255,255,0.28)",
-  },
-  dotActive: {
-    backgroundColor: COLORS.accent,
-    width: DOT_ACTIVE_W,
-    height: DOT_SIZE,
-    borderRadius: DOT_SIZE / 2,
-  },
-
-  bottomBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SP[3],
-    justifyContent: "center",
-    width: "100%",
-    paddingHorizontal: SP[3],
-    maxWidth: 520,
-    alignSelf: "center",
-    marginTop: SP[2],
-  },
-  protocolBtnWrap: {
-    flex: 1,
-    gap: SP[3],
-  },
-  footer: {
-    width: "100%",
-    alignItems: "center",
-    gap: SP[3],
-    paddingHorizontal: SP[4],
-    paddingBottom: SP[4],
   },
   errorText: {
     color: "#FF6B6B",

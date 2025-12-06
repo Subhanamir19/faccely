@@ -64,7 +64,6 @@ export default function HistoryScreen() {
   }, [load]);
 
   const renderItem = ({ item }: { item: ScanHistoryItem }) => {
-    const modelLabel = item.modelVersion ? `Model ${item.modelVersion}` : "Model —";
     return (
       <View style={styles.card}>
         <View style={styles.cardHeader}>
@@ -72,7 +71,6 @@ export default function HistoryScreen() {
           <Text style={styles.date}>{formatDate(item.createdAt)}</Text>
         </View>
         <View style={styles.metaRow}>
-          <Text style={styles.model}>{modelLabel}</Text>
           {item.hasSideImage ? (
             <View style={styles.badge}>
               <Text style={styles.badgeText}>Side</Text>
@@ -204,11 +202,7 @@ const styles = StyleSheet.create({
   metaRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-  },
-  model: {
-    fontSize: 14,
-    color: SUBTLE,
+    justifyContent: "flex-end",
   },
   badge: {
     backgroundColor: "rgba(180,243,77,0.14)",

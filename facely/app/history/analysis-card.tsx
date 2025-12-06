@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Animated,
@@ -7,23 +7,25 @@ import {
   Image,
   Platform,
   Pressable,
-  SafeAreaView,
   StyleSheet,
-  Text,
   View,
-  useWindowDimensions,
 } from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
-import { fetchScanDetail, type ScanDetail } from "@/lib/api/history";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Circle, Defs, LinearGradient, Stop } from "react-native-svg";
+import { Ionicons } from "@expo/vector-icons";
+import Screen from "@/components/layout/Screen";
+import Text from "@/components/ui/T";
+import MetricCardShell from "@/components/layout/MetricCardShell";
+import MetricPagerFooter from "@/components/layout/MetricPagerFooter";
+import { fetchScanDetail, type ScanDetail } from "@/lib/api/history";
+import { COLORS, SP } from "@/lib/tokens";
+import useMetricSizing from "@/components/layout/useMetricSizing";
 
-const BG = "#02040A";
-const CARD_BORDER = "rgba(255,255,255,0.06)";
-const TEXT = "#F5F7FA";
-const SUBTLE = "rgba(255,255,255,0.72)";
-const ACCENT = "#B4F34D";
-const DOT = "rgba(255,255,255,0.22)";
+const CARD_BORDER = COLORS.cardBorder;
+const CARD = COLORS.card;
+const TEXT = COLORS.text;
+const SUBTLE = COLORS.sub;
+const ACCENT = COLORS.accent;
 
 const METRIC_DEFS: Array<{ key: keyof ScanDetail["scores"]; label: string }> = [
   { key: "eyes_symmetry", label: "Eyes" },
@@ -63,6 +65,9 @@ const AnimatedCircle: any = Animated.createAnimatedComponent(Circle);
 
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
 const roundPct = (n: number) => Math.round(n);
+
+const RING_SIZE = 112;
+const LINE_GAP = SP[1] + 2; // 6px derived from tokens for uniform line spacing
 
 function hexToRgb(hex: string) {
   let normalized = hex.replace("#", "");
@@ -127,7 +132,7 @@ function formatDate(value?: string) {
 function ScoreRing({ value, active }: { value: number; active: boolean }) {
   const palette = useMemo(() => getScorePalette(value), [value]);
 
-  const size = 90;
+  const size = RING_SIZE;
   const stroke = 10;
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
@@ -195,8 +200,8 @@ function ScoreRing({ value, active }: { value: number; active: boolean }) {
 export default function HistoryAnalysisCard() {
   const params = useLocalSearchParams<{ scanId?: string }>();
   const scanId = params?.scanId;
-  const { width } = useWindowDimensions();
-  const insets = useSafeAreaInsets();
+  const sizing = useMetricSizing();
+  const { cardWidth, gutter, snap, pad } = sizing;
 
   const [detail, setDetail] = useState<ScanDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -246,209 +251,272 @@ export default function HistoryAnalysisCard() {
     }).filter(Boolean) as Array<{ key: string; label: string; score: number | null; lines: string[] }>;
   }, [detail]);
 
-  const renderPage = ({
-    item,
-    index,
-  }: {
-    item: { key: string; label: string; score: number | null; lines: string[] };
-    index: number;
-  }) => {
-    const hasScore = typeof item.score === "number" && Number.isFinite(item.score);
-    const safeScore = hasScore ? clamp(item.score ?? 0, 0, 100) : null;
-    const isActive = page === index;
+  useEffect(() => {
+    const clamped = Math.max(0, Math.min(page, items.length - 1));
+    if (clamped !== page) {
+      setPage(clamped);
+    }
+    listRef.current?.scrollToOffset({ offset: clamped * snap, animated: false });
+  }, [items.length, page, snap]);
 
-    return (
-      <View style={[styles.slide, { width: width - 48 }]}>
-        <View style={styles.scorePill}>
-          <Text style={styles.scoreLabel}>Score</Text>
-          {safeScore != null ? (
-            <View style={styles.ringWrapper}>
-              <ScoreRing value={safeScore} active={isActive} />
-            </View>
-          ) : (
-            <View style={styles.ringWrapper}>
-              <View style={[styles.ringWrap, styles.ringPlaceholder]}>
-                <Text style={styles.placeholderText}>--</Text>
+  const scrollToPage = useCallback(
+    (i: number) => {
+      const next = Math.max(0, Math.min(items.length - 1, i));
+      listRef.current?.scrollToOffset({ offset: next * snap, animated: true });
+      setPage(next);
+    },
+    [items.length, snap]
+  );
+
+  const goPrev = useCallback(() => scrollToPage(page - 1), [page, scrollToPage]);
+  const goNext = useCallback(() => scrollToPage(page + 1), [page, scrollToPage]);
+
+  const renderPage = useCallback(
+    ({
+      item,
+      index,
+    }: {
+      item: { key: string; label: string; score: number | null; lines: string[] };
+      index: number;
+    }) => {
+      const hasScore = typeof item.score === "number" && Number.isFinite(item.score);
+      const safeScore = hasScore ? clamp(item.score ?? 0, 0, 100) : null;
+      const isActive = page === index;
+
+      return (
+        <MetricCardShell withOuterPadding={false} renderSurface={false} sizing={sizing}>
+          {(usableWidth) => (
+            <View style={[styles.slideCard, { width: usableWidth }]}>
+              <View style={[styles.slide, { gap: gutter }]}>
+                <View style={styles.scorePill}>
+                  <Text style={styles.scoreLabel}>Score</Text>
+                  {safeScore != null ? (
+                    <View style={styles.ringWrapper}>
+                      <ScoreRing value={safeScore} active={isActive} />
+                    </View>
+                  ) : (
+                    <View style={styles.ringWrapper}>
+                      <View style={[styles.ringWrap, styles.ringPlaceholder]}>
+                        <Text style={styles.placeholderText}>--</Text>
+                      </View>
+                    </View>
+                  )}
+                </View>
+                <View style={styles.metricCard}>
+                  <View style={styles.cardHeader}>
+                    <Text style={styles.cardTitle}>{item.label}</Text>
+                  </View>
+                  <Text style={styles.remarksLabel}>Remarks</Text>
+                  <View style={styles.linesWrap}>
+                    {item.lines.map((line, idx) => (
+                      <Text key={`${item.key}-${idx}`} style={styles.cardLine} numberOfLines={2}>
+                        {`• ${line || "--"}`}
+                      </Text>
+                    ))}
+                  </View>
+                </View>
               </View>
             </View>
           )}
-        </View>
-        <View style={styles.metricCard}>
-          <View style={styles.cardHeader}>
-            <Text style={styles.cardTitle}>{item.label}</Text>
-          </View>
-          <Text style={styles.remarksLabel}>Remarks</Text>
-          <View style={styles.linesWrap}>
-            {item.lines.map((line, idx) => (
-              <Text key={`${item.key}-${idx}`} style={styles.cardLine}>
-                {line || "--"}
-              </Text>
-            ))}
-          </View>
-        </View>
-      </View>
-    );
-  };
+        </MetricCardShell>
+      );
+    },
+    [gutter, page]
+  );
 
   const hasExpl = items.length > 0;
+  const showSideImage = !!detail?.hasSideImage;
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <Pressable onPress={() => router.back()} style={styles.backBtn}>
-            <Text style={styles.backText}>Back</Text>
-          </Pressable>
+    <Screen
+      scroll={false}
+      contentContainerStyle={styles.screenContent}
+      footer={
+        hasExpl ? (
+          <MetricPagerFooter
+            index={page}
+            total={items.length}
+            onPrev={goPrev}
+            onNext={page === items.length - 1 ? () => router.back() : goNext}
+            isFirst={page === 0}
+            isLast={page === items.length - 1}
+            nextLabel={page === items.length - 1 ? "Back" : "Next"}
+            helperText={items.length > 1 ? "Swipe to view more metrics" : undefined}
+            padX={0}
+          />
+        ) : null
+      }
+    >
+      <View style={styles.header}>
+        <Pressable onPress={() => router.back()} style={styles.backRow}>
+          <Ionicons name="chevron-back" size={18} color={TEXT} />
+          <Text style={styles.backText}>Back</Text>
+        </Pressable>
+        <View style={styles.titleBlock}>
           <Text style={styles.title}>Analysis history</Text>
-          <Text style={styles.sub}>{formatDate(detail?.createdAt)}</Text>
-          {detail?.modelVersion ? <Text style={styles.subDim}>Model {detail.modelVersion}</Text> : null}
-        </View>
-
-        {!scanId ? (
-          <View style={styles.center}>
-            <Text style={styles.text}>Error: Missing scanId</Text>
+          <View style={styles.meta}>
+            <Text style={styles.sub}>{formatDate(detail?.createdAt)}</Text>
           </View>
-        ) : loading ? (
-          <View style={styles.center}>
-            <ActivityIndicator color="#fff" />
-            <Text style={styles.text}>Loading...</Text>
-          </View>
-        ) : error ? (
-          <View style={styles.center}>
-            <Text style={styles.text}>Error: {error}</Text>
-          </View>
-        ) : !detail ? (
-          <View style={styles.center}>
-            <Text style={styles.text}>No data.</Text>
-          </View>
-        ) : (
-          <>
-            <View style={styles.imagesRow}>
-              <View style={styles.imageCard}>
-                <Text style={styles.imageLabel}>Front</Text>
-                {detail.images?.front?.url ? (
-                  <Image source={{ uri: detail.images.front.url }} style={styles.image} resizeMode="cover" />
-                ) : (
-                  <Text style={styles.imagePlaceholder}>No image</Text>
-                )}
-              </View>
-              {detail.hasSideImage ? (
-                <View style={styles.imageCard}>
-                  <Text style={styles.imageLabel}>Side</Text>
-                  {detail.images?.side?.url ? (
-                    <Image source={{ uri: detail.images.side.url }} style={styles.image} resizeMode="cover" />
-                  ) : (
-                    <Text style={styles.imagePlaceholder}>No image</Text>
-                  )}
-                </View>
-              ) : null}
-            </View>
-
-            {!hasExpl ? (
-              <View style={[styles.center, { flex: 1 }]}>
-                <Text style={styles.text}>No analysis was generated for this scan.</Text>
-              </View>
-            ) : (
-              <>
-                <View style={styles.carouselArea}>
-                  <FlatList
-                    data={items}
-                    ref={listRef}
-                    renderItem={renderPage}
-                    keyExtractor={(item) => item.key}
-                    horizontal
-                    pagingEnabled
-                    showsHorizontalScrollIndicator={false}
-                    onMomentumScrollEnd={(e) => {
-                      const idx = Math.round(e.nativeEvent.contentOffset.x / (width - 48));
-                      setPage(idx);
-                    }}
-                    contentContainerStyle={styles.carouselContent}
-                    ItemSeparatorComponent={() => <View style={{ width: 14 }} />}
-                  />
-                </View>
-                <View style={styles.pagerArea}>
-                  <View style={styles.dots}>
-                    {items.map((_, i) => (
-                      <View key={i} style={[styles.dot, i === page && styles.dotActive]} />
-                    ))}
-                  </View>
-                  {items.length > 1 ? <Text style={styles.swipeHint}>Swipe to view more metrics</Text> : null}
-                </View>
-              </>
-            )}
-          </>
-        )}
-
-        <View style={[styles.backArea, { paddingBottom: Math.max(insets.bottom, 12) }]}>
-          <Pressable onPress={() => router.back()} style={styles.cta}>
-            <Text style={styles.ctaText}>Back</Text>
-          </Pressable>
         </View>
       </View>
-    </SafeAreaView>
+
+      {!scanId ? (
+        <View style={styles.center}>
+          <Text style={styles.text}>Error: Missing scanId</Text>
+        </View>
+      ) : loading ? (
+        <View style={styles.center}>
+          <ActivityIndicator color={TEXT} />
+          <Text style={styles.text}>Loading...</Text>
+        </View>
+      ) : error ? (
+        <View style={styles.center}>
+          <Text style={styles.text}>Error: {error}</Text>
+        </View>
+      ) : !detail ? (
+        <View style={styles.center}>
+          <Text style={styles.text}>No data.</Text>
+        </View>
+      ) : (
+        <View style={styles.content}>
+          <MetricCardShell sizing={sizing}>
+            {(usableWidth) => {
+              const computedImageWidth = showSideImage ? (usableWidth - gutter) / 2 : usableWidth;
+              return (
+                <View style={[styles.imagesRow, { gap: gutter }]}>
+                  <View style={[styles.imageCard, { width: computedImageWidth }]}>
+                    <Text style={styles.imageLabel}>Front</Text>
+                    {detail.images?.front?.url ? (
+                      <Image source={{ uri: detail.images.front.url }} style={styles.image} resizeMode="cover" />
+                    ) : (
+                      <Text style={styles.imagePlaceholder}>No image</Text>
+                    )}
+                  </View>
+                  {showSideImage ? (
+                    <View style={[styles.imageCard, { width: computedImageWidth }]}>
+                      <Text style={styles.imageLabel}>Side</Text>
+                      {detail.images?.side?.url ? (
+                        <Image source={{ uri: detail.images.side.url }} style={styles.image} resizeMode="cover" />
+                      ) : (
+                        <Text style={styles.imagePlaceholder}>No image</Text>
+                      )}
+                    </View>
+                  ) : null}
+                </View>
+              );
+            }}
+          </MetricCardShell>
+
+          {!hasExpl ? (
+            <View style={[styles.center, styles.grow]}>
+              <Text style={styles.text}>No analysis was generated for this scan.</Text>
+            </View>
+          ) : (
+            <View style={styles.carouselArea}>
+              <FlatList
+                data={items}
+                ref={listRef}
+                renderItem={renderPage}
+                keyExtractor={(item) => item.key}
+                horizontal
+                pagingEnabled={false}
+                snapToInterval={snap}
+                snapToAlignment="center"
+                decelerationRate="fast"
+                showsHorizontalScrollIndicator={false}
+                onMomentumScrollEnd={(e) => {
+                  const idx = Math.round(e.nativeEvent.contentOffset.x / snap);
+                  setPage(idx);
+                }}
+                contentContainerStyle={[styles.carouselContent, { paddingHorizontal: pad }]}
+                ItemSeparatorComponent={() => <View style={{ width: gutter }} />}
+                getItemLayout={(_, i) => ({ length: snap, offset: snap * i, index: i })}
+              />
+            </View>
+          )}
+        </View>
+      )}
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: BG },
-  container: { flex: 1, backgroundColor: BG, paddingHorizontal: 20, paddingTop: 12 },
-  header: { marginBottom: 18, paddingTop: 6, gap: 2 },
-  title: { color: TEXT, fontSize: 22, fontWeight: "700", marginTop: 6 },
-  sub: { color: "#9CA3AF", marginTop: 4, fontSize: 13 },
-  subDim: { color: "#6B7280", marginTop: 2, fontSize: 12 },
-  center: { alignItems: "center", justifyContent: "center", flex: 1, gap: 12 },
-  text: { color: TEXT },
-  backBtn: { alignSelf: "flex-start", paddingVertical: 6, paddingHorizontal: 10 },
-  backText: { color: TEXT, fontWeight: "600" },
-  imagesRow: { flexDirection: "row", gap: 12, marginBottom: 24 },
-  imageCard: {
+  screenContent: {
     flex: 1,
-    backgroundColor: "#050816",
-    borderColor: "rgba(255,255,255,0.06)",
-    borderWidth: 1,
-    borderRadius: 18,
-    padding: 10,
-    gap: 6,
+    paddingTop: SP[4],
+    paddingBottom: SP[4],
+    gap: SP[4],
   },
-  imageLabel: { color: TEXT, fontWeight: "600", fontSize: 12 },
-  image: { width: "100%", aspectRatio: 3 / 4, borderRadius: 12, backgroundColor: "#0D1018" },
-  imagePlaceholder: { color: SUBTLE },
-  carouselArea: { flex: 1, justifyContent: "center" },
-  carouselContent: { paddingHorizontal: 14, gap: 14 },
-  slide: {
+  header: { gap: SP[2] },
+  backRow: {
     flexDirection: "row",
-    alignItems: "flex-start",
-    minHeight: 260,
-    maxHeight: 320,
-    gap: 12,
+    alignItems: "center",
+    gap: SP[1],
+    paddingVertical: SP[1],
   },
-  scorePill: {
-    width: 120,
-    backgroundColor: "#050816",
-    borderColor: "rgba(255,255,255,0.06)",
+  backText: { color: TEXT, fontSize: 14 },
+  titleBlock: { gap: SP[1] },
+  title: { color: TEXT, fontSize: 22, lineHeight: 28 },
+  meta: { gap: 2 },
+  sub: { color: SUBTLE, fontSize: 13 },
+  subDim: { color: "rgba(255,255,255,0.64)", fontSize: 12 },
+  text: { color: TEXT, textAlign: "center" },
+  content: { flex: 1, gap: SP[4], justifyContent: "flex-start" },
+  center: { alignItems: "center", justifyContent: "center", gap: SP[2] },
+  grow: { flex: 1 },
+
+  imagesRow: { flexDirection: "row", alignSelf: "center" },
+  imageCard: {
+    backgroundColor: CARD,
+    borderColor: CARD_BORDER,
     borderWidth: 1,
     borderRadius: 20,
-    alignItems: "center",
-    justifyContent: "flex-start",
-    paddingHorizontal: 12,
-    paddingVertical: 14,
-    paddingTop: 4,
-    gap: 8,
-    marginRight: 16,
+    padding: SP[3],
+    gap: SP[1],
   },
-  scoreLabel: { color: "#D1D5DB", fontSize: 13, fontWeight: "600", marginBottom: 6 },
+  imageLabel: { color: TEXT, fontSize: 13, marginTop: 2 },
+  image: { width: "100%", aspectRatio: 3 / 4, borderRadius: 16, backgroundColor: "rgba(255,255,255,0.05)" },
+  imagePlaceholder: { color: SUBTLE, fontSize: 13 },
+
+  carouselArea: { flex: 1, justifyContent: "center" },
+  carouselContent: { alignItems: "center", paddingVertical: SP[2] },
+  slide: {
+    flexDirection: "row",
+    alignItems: "center",
+    minHeight: 240,
+  },
+  slideCard: {
+    backgroundColor: CARD,
+    borderColor: CARD_BORDER,
+    borderWidth: 1,
+    borderRadius: 20,
+    paddingHorizontal: SP[3],
+    paddingVertical: SP[3],
+    alignSelf: "center",
+  },
+  cardShell: {
+    paddingTop: 0,
+    paddingBottom: 0,
+  },
+  scorePill: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: SP[2],
+    paddingHorizontal: SP[2],
+    minWidth: RING_SIZE + SP[2] * 2,
+  },
+  scoreLabel: { color: SUBTLE, fontSize: 12 },
   ringWrapper: {
-    width: 90,
-    height: 90,
+    width: RING_SIZE,
+    height: RING_SIZE,
     justifyContent: "center",
     alignItems: "center",
   },
   ringWrap: {
     alignSelf: "center",
-    width: 90,
-    height: 90,
-    borderRadius: 45,
+    width: RING_SIZE,
+    height: RING_SIZE,
+    borderRadius: RING_SIZE / 2,
     alignItems: "center",
     justifyContent: "center",
     shadowColor: "#000",
@@ -463,36 +531,25 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.1)",
   },
-  placeholderText: { color: SUBTLE, fontSize: 20, fontWeight: "700", fontFamily: POP },
+  placeholderText: { color: SUBTLE, fontSize: 18, fontFamily: POP },
+
   metricCard: {
     flex: 1,
-    marginLeft: 0,
-    backgroundColor: "#050816",
-    borderColor: "rgba(255,255,255,0.06)",
-    borderWidth: 1,
-    borderRadius: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    backgroundColor: "transparent",
+    paddingHorizontal: SP[3],
+    paddingVertical: SP[2],
+    gap: SP[2],
   },
   cardHeader: { flexDirection: "row", justifyContent: "flex-start", alignItems: "center" },
-  cardTitle: { color: TEXT, fontSize: 16, fontWeight: "600" },
-  divider: { height: 1, backgroundColor: CARD_BORDER, marginTop: 6 },
-  remarksLabel: { color: "#9CA3AF", fontSize: 13, fontWeight: "600", marginTop: 8 },
-  linesWrap: { gap: 4, marginTop: 12 },
-  cardLine: { color: "#E5E7EB", fontSize: 14, lineHeight: 20, marginTop: 4 },
-  pagerArea: { alignItems: "center", marginTop: 8, marginBottom: 8 },
-  dots: { flexDirection: "row", justifyContent: "center", gap: 10 },
-  dot: { width: 10, height: 10, borderRadius: 5, backgroundColor: DOT },
-  dotActive: { backgroundColor: ACCENT, width: 10, height: 10 },
-  swipeHint: { color: "#6B7280", textAlign: "center", marginTop: 4, fontSize: 11 },
-  backArea: { marginTop: 4 },
-  cta: {
-    backgroundColor: ACCENT,
-    borderRadius: 999,
-    paddingVertical: 14,
-    alignItems: "center",
-    height: 52,
-    justifyContent: "center",
+  cardTitle: { color: TEXT, fontSize: 18, lineHeight: 24, fontFamily: "Poppins-SemiBold" },
+  remarksLabel: { color: ACCENT, fontSize: 13, letterSpacing: 0.2, marginTop: 2, fontFamily: "Poppins-SemiBold" },
+  linesWrap: { gap: LINE_GAP },
+  cardLine: {
+    color: "rgba(255,255,255,0.92)",
+    fontSize: 13,
+    lineHeight: 19,
+    fontFamily: "Poppins-Medium",
   },
-  ctaText: { color: "#081109", fontWeight: "600", fontSize: 16 },
+
+  swipeHint: { color: SUBTLE, textAlign: "center", fontSize: 12, opacity: 0.8 },
 });

@@ -3,7 +3,6 @@ import React, { useMemo, useRef, useState, useCallback, useEffect } from "react"
 import {
   View,
   StyleSheet,
-  useWindowDimensions,
   FlatList,
   Animated,
   Easing,
@@ -12,9 +11,12 @@ import {
   Alert,
 } from "react-native";
 import Screen from "@/components/layout/Screen";
+import MetricCardShell from "@/components/layout/MetricCardShell";
+import MetricPagerFooter from "@/components/layout/MetricPagerFooter";
 import { SP } from "@/lib/tokens";
+import useMetricSizing from "@/components/layout/useMetricSizing";
 
-// ✅ default Text (Poppins)
+// ƒo. default Text (Poppins)
 import Text from "@/components/ui/T";
 
 import { useScores } from "../../store/scores";
@@ -34,7 +36,7 @@ import Svg, {
 } from "react-native-svg";
 
 /* ============================================================================
-   score.tsx — Swipeable metric graphs with glassmorphism score ring,
+   score.tsx ƒ?" Swipeable metric graphs with glassmorphism score ring,
    percentile insight, tier milestone mini-bar, and Gumroad-style controls
    ========================================================================== */
 
@@ -168,10 +170,10 @@ const TIER_BOUNDS = [
 ] as const;
 
 const SCORE_COLOR_BANDS = [
-  { max: 39, color: "#EF4444" }, // 🔴 Poor / Critical
-  { max: 59, color: "#BE00E8" }, // 🟣 Improving / Mid-Tier
-  { max: 79, color: "#F59E0B" }, // 🟠 Needs Work
-  { max: 100, color: "#B4F34D" }, // 💚 Excellent
+  { max: 39, color: "#EF4444" }, // dY"' Poor / Critical
+  { max: 59, color: "#BE00E8" }, // dYYœ Improving / Mid-Tier
+  { max: 79, color: "#F59E0B" }, // dYYÿ Needs Work
+  { max: 100, color: "#B4F34D" }, // dY's Excellent
 ] as const;
 
 type ScorePalette = {
@@ -262,7 +264,7 @@ function computeMilestone(score: number) {
 }
 
 // ---------------------------------------------------------------------------
-// Geometry helpers — Catmull–Rom to Bezier
+// Geometry helpers ƒ?" Catmullƒ?"Rom to Bezier
 // ---------------------------------------------------------------------------
 // NEW: simple polyline, no overshoot
 function buildPolyline(points: { x: number; y: number }[]) {
@@ -439,12 +441,12 @@ function InsightBlock({
   const width = anim.interpolate({ inputRange: [0, 1], outputRange: ["0%", "100%"] });
 
   return (
-    // lifted up slightly so it doesn’t collide with the card bottom
+    // lifted up slightly so it doesnƒ?Tt collide with the card bottom
     <View style={styles.insightCol}>
       <Text style={styles.insightLead}>
         Your {metricLabel.toLowerCase()} is{" "}
         <Text style={styles.bold}>
-          {tierLabelFor(metricLabel, score)} · {roundPct(percentile)}%
+          {tierLabelFor(metricLabel, score)} Aú {roundPct(percentile)}%
         </Text>
       </Text>
 
@@ -548,7 +550,7 @@ function MetricCard({ item, width, active }: { item: MetricItem; width: number; 
   const AnimatedPath: any = Animated.createAnimatedComponent(Path);
   const pathRef = useRef<any>(null);
   const [pathLength, setPathLength] = useState(0);        // 0 so we gate animation until measured
-  const drawAnim = useRef(new Animated.Value(0)).current; // 0 → 1 draws the line
+  const drawAnim = useRef(new Animated.Value(0)).current; // 0 ƒ+' 1 draws the line
   const fillOpacity = useRef(new Animated.Value(0)).current;
   const hasAnimated = useRef(false);                      // never replay for this card
 
@@ -597,7 +599,7 @@ function MetricCard({ item, width, active }: { item: MetricItem; width: number; 
 
   const dashOffset = drawAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [pathLength || 0, 0], // start fully hidden at left → fully drawn
+    outputRange: [pathLength || 0, 0], // start fully hidden at left ƒ+' fully drawn
   });
 
   return (
@@ -717,7 +719,7 @@ function MetricCard({ item, width, active }: { item: MetricItem; width: number; 
 }
 
 // ---------------------------------------------------------------------------
-// Main screen with FlatList + prev/next gum buttons
+// Main screen with FlatList + nav buttons
 // ---------------------------------------------------------------------------
 function applyApiScores(api: any): MetricItem[] {
   const scores = api?.scores ?? api;
@@ -736,14 +738,9 @@ function applyApiScores(api: any): MetricItem[] {
 }
 
 export default function ScoreScreen() {
-const { width } = useWindowDimensions();
-  const horizontalGutter = SP[4];
-  const innerWidth = Math.max(0, width - horizontalGutter * 2);
-const { imageUri, sideImageUri, scores, explLoading, explError } = useScores();
-
-  const itemWidth = Math.min(760, Math.max(320, innerWidth * 0.98));
-  const spacer = Math.max(12, innerWidth * 0.02);
-  const snap = itemWidth + spacer;
+  const { imageUri, sideImageUri, scores, explLoading, explError } = useScores();
+  const sizing = useMetricSizing();
+  const { cardWidth, gutter, snap, pad } = sizing;
 
   const [index, setIndex] = useState(0);
   const [metrics, setMetrics] = useState<MetricItem[]>(DEFAULT_METRICS);
@@ -777,10 +774,19 @@ const { imageUri, sideImageUri, scores, explLoading, explError } = useScores();
   const renderItem = useCallback(
     ({ item, index: i }: { item: MetricItem; index: number }) => (
       <View style={[styles.cardItemWrapper, { width: snap }]}>
-        <MetricCard item={item} width={itemWidth} active={i === index} />
+        <MetricCardShell
+          withOuterPadding={false}
+          renderSurface={false}
+          style={styles.cardShell}
+          sizing={sizing}
+        >
+          {(usableWidth) => (
+            <MetricCard item={item} width={usableWidth} active={i === index} />
+          )}
+        </MetricCardShell>
       </View>
     ),
-    [index, itemWidth, snap]
+    [index, sizing, snap]
   );
 
   const scrollTo = useCallback(
@@ -795,7 +801,7 @@ const { imageUri, sideImageUri, scores, explLoading, explError } = useScores();
   const goPrev = useCallback(() => scrollTo(index - 1), [index, scrollTo]);
   const goNext = useCallback(() => scrollTo(index + 1), [index, scrollTo]);
 
-  const handleAdvanced = async () => {
+  const handleAdvanced = useCallback(async () => {
     if (!scores || !imageUri || !sideImageUri) {
       Alert.alert(
         "Advanced analysis unavailable",
@@ -804,52 +810,34 @@ const { imageUri, sideImageUri, scores, explLoading, explError } = useScores();
       return;
     }
     router.push({ pathname: "/loading", params: { mode: "advanced", phase: "analysis" } });
-  };
+  }, [scores, imageUri, sideImageUri]);
   
-  
+  const handleNextNav = useCallback(() => {
+    if (index === metrics.length - 1) {
+      handleAdvanced();
+      return;
+    }
+    goNext();
+  }, [handleAdvanced, goNext, index, metrics.length]);
 
   return (
     <Screen
       contentContainerStyle={styles.screenContent}
       footer={
-        <View style={styles.footer}>
-          <View style={styles.dotsRow}>
-            {metrics.map((_, i) => (
-              <View
-                key={i}
-                style={[styles.dot, i === index && { backgroundColor: activePalette.accent }]}
-              />
-            ))}
-          </View>
-
-          <View style={styles.controlsRow}>
-            <GumButton
-              label="Previous"
-              onPress={goPrev}
-              disabled={index === 0}
-              variant="prev"
-            />
-
-            {index === metrics.length - 1 ? (
-              <GumButton
-                label="Advanced analysis"
-                onPress={handleAdvanced}
-                disabled={explLoading}
-                variant="next"
-                tone="accent"
-                loading={explLoading}
-                accentColor={activePalette.accent}
-              />
-            ) : (
-              <GumButton
-                label="Next"
-                onPress={goNext}
-                disabled={index === metrics.length - 1}
-                variant="next"
-              />
-            )}
-          </View>
-
+        <View>
+          <MetricPagerFooter
+            index={index}
+            total={metrics.length}
+            onPrev={goPrev}
+            onNext={handleNextNav}
+            isFirst={index === 0}
+            isLast={index === metrics.length - 1}
+            nextLabel={index === metrics.length - 1 ? "Advanced analysis" : "Next"}
+            nextDisabled={explLoading}
+            nextLoading={explLoading}
+            helperText={metrics.length > 1 ? "Swipe to view more metrics" : undefined}
+            padX={0}
+          />
           {!!explError && (
             <Text style={styles.errorText}>
               {String(explError)}
@@ -879,7 +867,7 @@ const { imageUri, sideImageUri, scores, explLoading, explError } = useScores();
           snapToInterval={snap}
           snapToAlignment="center"
           contentContainerStyle={{
-            paddingHorizontal: Math.max(0, (innerWidth - itemWidth) / 2),
+            paddingHorizontal: pad,
             paddingBottom: 8,
             alignItems: "center",
           }}
@@ -891,72 +879,6 @@ const { imageUri, sideImageUri, scores, explLoading, explError } = useScores();
         />
       </View>
     </Screen>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Gumroad-style pill button with active glow
-// ---------------------------------------------------------------------------
-function GumButton({
-  label,
-  onPress,
-  disabled,
-  variant,
-  tone = "ghost",
-  loading = false,
-  accentColor,
-}: {
-  label: string;
-  onPress: () => void;
-  disabled?: boolean;
-  variant?: "prev" | "next";
-  tone?: "ghost" | "accent";
-  loading?: boolean;
-  accentColor?: string;
-}) {
-  const [pressed, setPressed] = useState(false);
-
-  const isAccent = tone === "accent";
-  const bg = isAccent ? accentColor ?? "#B4F34D" : "rgba(0,0,0,0.22)";
-  const borderColor = isAccent ? "transparent" : "rgba(255,255,255,0.14)";
-
-  return (
-    <View style={[styles.gumShadowWrap, disabled && { opacity: 0.55 }]}>
-      <Pressable
-        accessibilityRole="button"
-        onPress={disabled ? undefined : onPress}
-        style={({ pressed }) => [
-          styles.gumButton,
-          { backgroundColor: bg, borderColor },
-          pressed && styles.gumButtonPressed,
-        ]}
-      >
-        {variant === "prev" && (
-          <Svg width={18} height={18} viewBox="0 0 24 24" style={{ marginRight: 8 }}>
-            <Path d="M14 5l-7 7 7 7" fill="none" stroke="#FFFFFF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-          </Svg>
-        )}
-
-        {loading ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <Text
-            style={[styles.gumLabel, isAccent && { color: "#fff", textAlign: "center" }]}
-            numberOfLines={1}
-            ellipsizeMode="tail"
-          >
-            {label}
-          </Text>
-        )}
-
-        {variant === "next" && (
-          <Svg width={20} height={20} viewBox="0 0 24 24" style={{ marginLeft: 8 }}>
-            <Path d="M1.5 12s3.5-6.5 10.5-6.5S22.5 12 22.5 12 19 18.5 12 18.5 1.5 12 1.5 12Z" fill="none" stroke="#FFFFFF" strokeWidth="1.8" />
-            <Circle cx="12" cy="12" r="3.2" fill="none" stroke="#FFFFFF" strokeWidth="1.8" />
-          </Svg>
-        )}
-      </Pressable>
-    </View>
   );
 }
 
@@ -997,6 +919,10 @@ const styles = StyleSheet.create({
   },
   cardItemWrapper: {
     alignItems: "center",
+  },
+  cardShell: {
+    paddingTop: 0,
+    paddingBottom: 0,
   },
 
   headerRow: {
@@ -1042,7 +968,7 @@ const styles = StyleSheet.create({
     borderRadius: 64,
     alignItems: "center",
     justifyContent: "center",
-    // slightly deeper shadow so it sits “in” the glass
+    // slightly deeper shadow so it sits ƒ?oinƒ?? the glass
     shadowColor: "#000",
     shadowOpacity: 0.18,
     shadowOffset: { width: 0, height: 10 },
@@ -1092,85 +1018,6 @@ const styles = StyleSheet.create({
   },
   miniLabel: { marginTop: 6, color: COLORS.textSubtle, fontSize: 13, fontFamily: POP },
 
-  // Pager dots
-  dotsRow: {
-    flexDirection: "row",
-    justifyContent: "center",
-    gap: SP[2],
-  },
-  dot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: "rgba(255,255,255,0.3)",
-  },
-
-  // Controls row
-  controlsRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: SP[4],
-    paddingHorizontal: SP[3],
-    marginTop: SP[3],
-    width: "100%",
-    maxWidth: 480,
-    alignSelf: "center",
-  },
-
-  gumShadowWrap: {
-    flex: 1,
-    borderRadius: 999,
-    shadowColor: "#000",
-    shadowOpacity: 0.35,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 8,
-    marginHorizontal: 2,
-  },
-
-  gumButton: {
-    backgroundColor: "rgba(0,0,0,0.22)",
-    borderRadius: 999,
-    paddingVertical: 12,
-    paddingHorizontal: 18,
-    minWidth: 0,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.14)",
-  },
-
-  gumButtonPressed: { transform: [{ translateY: 1 }] },
-  gumLabel: { fontSize: 16, color: "#FFFFFF", fontFamily: POP },
-
-  gumBadge: {
-    marginLeft: 12,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#FFD8D0',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#00FFC2', // glow color modulated by Animated shadowOpacity/radius
-    shadowOffset: { width: 0, height: 0 },
-    elevation: 6,
-  },
-  gumBadgeCore: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    backgroundColor: '#0F0F0F',
-  },
-
-  footer: {
-    width: "100%",
-    alignItems: "center",
-    gap: SP[3],
-    paddingHorizontal: SP[4],
-    paddingBottom: SP[3],
-  },
   errorText: {
     color: "#C0392B",
     textAlign: "center",
