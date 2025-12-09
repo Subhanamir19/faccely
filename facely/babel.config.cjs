@@ -1,6 +1,7 @@
 // babel.config.js
 module.exports = function (api) {
   api.cache(true);
+
   return {
     presets: ["babel-preset-expo"],
     plugins: [
@@ -19,7 +20,7 @@ module.exports = function (api) {
         },
       ],
 
-      // 🔥 must be LAST in the list
+      // MUST stay last or Reanimated will break in production
       "react-native-reanimated/plugin",
     ],
   };
