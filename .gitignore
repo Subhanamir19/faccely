@@ -1,0 +1,2 @@
+# Ignore Expo local state in nested projects
+**/.expo/
