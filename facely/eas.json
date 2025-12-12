@@ -1,12 +1,9 @@
 {
-    "cli": { "version": ">= 11.0.0" },
-    "build": {
-      "internal": {
-        "android": {
-          "buildType": "app-bundle"
-        }
+  "build": {
+    "internal": {
+      "env": {
+        "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_live_Y2xlcmsuc2lnbWFtYXguYXBwJA"
       }
-    },
-    "submit": {}
+    }
   }
-  
+}
