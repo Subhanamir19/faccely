@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from "react";
+import { ActivityIndicator, View } from "react-native";
 import { useAuth, useSession, useUser } from "@clerk/clerk-expo";
 import { useAuthStore } from "@/store/auth";
 import { syncUserProfile } from "@/lib/api/user";
@@ -110,8 +111,18 @@ export function AuthProvider({ children }: Props) {
   }, [session, setIdToken]);
 
   if (!initialized) {
-    // Root layout keeps the splash visible until initialization completes.
-    return null;
+    return (
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: "#000",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <ActivityIndicator color="#fff" />
+      </View>
+    );
   }
 
   return <>{children}</>;

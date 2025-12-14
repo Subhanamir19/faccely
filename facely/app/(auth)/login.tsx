@@ -2,7 +2,6 @@
 import React, { useCallback, useMemo, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
-import * as AuthSession from "expo-auth-session";
 import { useSSO } from "@clerk/clerk-expo";
 import Screen from "@/components/layout/Screen";
 import { COLORS, SP } from "@/lib/tokens";
@@ -18,11 +17,13 @@ export default function LoginScreen() {
   const googleEnabled = true;
 
   const handleGoogleLogin = useCallback(async () => {
+    const redirectUrl = "sigmamax://oauth-callback";
+
     try {
       setGoogleSubmitting(true);
       const result = await startSSOFlow({
         strategy: "oauth_google",
-        redirectUrl: AuthSession.makeRedirectUri(),
+        redirectUrl,
       });
 
       if (result?.createdSessionId) {
