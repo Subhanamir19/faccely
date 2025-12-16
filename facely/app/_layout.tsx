@@ -61,7 +61,11 @@ export default function RootLayout() {
   }, [authInitialized, idToken]);
 
   return (
-    <ClerkProvider publishableKey={clerkPublishableKey} tokenCache={tokenCache}>
+    <ClerkProvider
+      publishableKey={clerkPublishableKey}
+      tokenCache={tokenCache}
+      allowedRedirectProtocols={["sigmamax"]}
+    >
       <AuthProvider>
         {fontsLoaded || fontError ? (
           <View style={{ flex: 1 }}>

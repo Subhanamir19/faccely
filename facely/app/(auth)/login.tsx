@@ -1,5 +1,6 @@
 // facely/app/(auth)/login.tsx
 import React, { useCallback, useMemo, useState } from "react";
+import * as AuthSession from "expo-auth-session";
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
 import { useSSO } from "@clerk/clerk-expo";
@@ -17,7 +18,8 @@ export default function LoginScreen() {
   const googleEnabled = true;
 
   const handleGoogleLogin = useCallback(async () => {
-    const redirectUrl = "sigmamax://oauth-callback";
+    const redirectUrl = AuthSession.makeRedirectUri({ scheme: "sigmamax", path: "sso-callback" });
+    console.log("SSO redirectUrl", redirectUrl);
 
     try {
       setGoogleSubmitting(true);
