@@ -4,7 +4,13 @@
       "Bash(npm ls:*)",
       "Bash(dir /s /b \"c:\\\\SS\\\\facely\\\\node_modules\\\\@clerk\")",
       "Bash(findstr:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(dir /b \"c:\\\\SS\\\\scorer-node\\\\src\\\\routes\"\" 2>nul || echo \"routes directory does not exist \")",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git rm:*)",
+      "Bash(git restore:*)",
+      "Bash(git reset:*)"
     ]
   }
 }
