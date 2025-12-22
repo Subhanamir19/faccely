@@ -50,6 +50,7 @@ import {
   setRoutineOpenAIClient,
 } from "./routes/routine.js";
 import protocolsRouter, { setProtocolsOpenAIClient } from "./routes/protocols.js";
+import { programsRouter } from "./routes/programs.js";
 import { createScan } from "./supabase/scans.js";
 import { uploadScanImage } from "./supabase/storage.js";
 import { createAnalysis } from "./supabase/analyses.js";
@@ -485,6 +486,7 @@ function respondServerOverloaded(res: express.Response) {
 // job status endpoints intentionally bypass it in v1.
 app.use("/routine", requestTimeout(30_000), verifyAuth, idempotency(), routineRouter);
 app.use("/protocols", requestTimeout(30_000), verifyAuth, idempotency(), protocolsRouter);
+app.use("/programs", requestTimeout(30_000), verifyAuth, idempotency(), programsRouter);
 app.use("/routine/async", verifyAuth, routineAsyncRouter);
 
 app.use("/sigma", requestTimeout(30_000), verifyAuth, sigmaRouter);

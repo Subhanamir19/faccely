@@ -12,7 +12,7 @@ import {
 } from "../types/sigma";
 import { API_BASE } from "./config";
 import { ApiResponseError, requestJSON } from "./client";
-import { buildAuthHeaders } from "./authHeaders";
+import { buildAuthHeadersAsync } from "./authHeaders";
 
 const SIGMA_BASE = `${API_BASE}/sigma`;
 
@@ -100,18 +100,20 @@ const requestSigma = async <T>(
 
 /** Create a new chat thread */
 export async function createSigmaThread(): Promise<CreateThreadResponse> {
+  const authHeaders = await buildAuthHeadersAsync({ includeLegacy: true });
   return requestSigma(
     `${SIGMA_BASE}/thread`,
-    { method: "POST", headers: buildAuthHeaders({ includeLegacy: true }) },
+    { method: "POST", headers: authHeaders },
     CreateThreadResponseSchema
   );
 }
 
 /** Fetch an existing thread by ID */
 export async function getSigmaThread(id: string): Promise<SigmaThread> {
+  const authHeaders = await buildAuthHeadersAsync({ includeLegacy: true });
   return requestSigma(
     `${SIGMA_BASE}/thread/${id}`,
-    { method: "GET", headers: buildAuthHeaders({ includeLegacy: true }) },
+    { method: "GET", headers: authHeaders },
     SigmaThreadSchema
   );
 }
@@ -123,13 +125,14 @@ export async function sendSigmaMessage(args: {
   share_scores?: boolean;
   share_routine?: boolean;
 }): Promise<SendMessageResponse> {
+  const authHeaders = await buildAuthHeadersAsync({ includeLegacy: true });
   return requestSigma(
     `${SIGMA_BASE}/message`,
     {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        ...buildAuthHeaders({ includeLegacy: true }),
+        ...authHeaders,
       },
       body: JSON.stringify(args),
     },

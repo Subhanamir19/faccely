@@ -13,7 +13,7 @@ import {
   resolveExistingPath,
   type UploadInput,
 } from "./media";
-import { buildAuthHeaders } from "./authHeaders";
+import { buildAuthHeadersAsync } from "./authHeaders";
 
 /* -------------------------------------------------------------------------- */
 /*   Types                                                                    */
@@ -159,12 +159,13 @@ async function analyzePairMultipart(front: InputFile, side: InputFile): Promise<
 
   let res: Response;
   try {
+    const authHeaders = await buildAuthHeadersAsync({ includeLegacy: true });
     res = await fetchWithRetry(
       url,
       {
         method: "POST",
         body: form,
-        headers: { Accept: "application/json", ...buildAuthHeaders({ includeLegacy: true }) },
+        headers: { Accept: "application/json", ...authHeaders },
         timeoutMs: DEFAULT_UPLOAD_TIMEOUT_MS,
       },
       3,
@@ -220,12 +221,13 @@ async function analyzePairBytes(front: InputFile, side: InputFile): Promise<Scor
   const url = `${API_BASE}/analyze/pair-bytes`;
   const start = Date.now();
 
+  const authHeaders = await buildAuthHeadersAsync({ includeLegacy: true });
   const res = await fetchWithRetry(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Accept: "application/json",
-      ...buildAuthHeaders({ includeLegacy: true }),
+      ...authHeaders,
     },
     body: JSON.stringify({
       front: `data:image/jpeg;base64,${f}`,
@@ -291,12 +293,13 @@ export async function analyzeImage(input: InputFile): Promise<Scores> {
 
   let res: Response;
   try {
+    const authHeaders = await buildAuthHeadersAsync({ includeLegacy: true });
     res = await fetchWithRetry(
       url,
       {
         method: "POST",
         body: form,
-        headers: { Accept: "application/json", ...buildAuthHeaders({ includeLegacy: true }) },
+        headers: { Accept: "application/json", ...authHeaders },
         timeoutMs: DEFAULT_UPLOAD_TIMEOUT_MS,
       },
       3,

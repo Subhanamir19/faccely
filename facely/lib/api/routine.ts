@@ -2,7 +2,7 @@
 import { z } from "zod";
 import { API_BASE } from "./config";
 import { requestJSON, DEFAULT_REQUEST_TIMEOUT_MS } from "./client";
-import { buildAuthHeaders } from "./authHeaders";
+import { buildAuthHeadersAsync } from "./authHeaders";
 
 export const ScoresSchema = z.object({
   jawline: z.number().min(0).max(100),
@@ -90,11 +90,12 @@ export async function fetchRoutine(
 
   try {
     const body = JSON.stringify({ scores, context_hint: contextHint ?? null });
+    const authHeaders = await buildAuthHeadersAsync({ includeLegacy: true });
     const parsed = await requestJSON<RoutineBase>(ROUTINE_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        ...buildAuthHeaders({ includeLegacy: true }),
+        ...authHeaders,
       },
       body,
       timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS,

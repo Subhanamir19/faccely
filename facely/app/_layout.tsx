@@ -4,7 +4,6 @@ import { View } from "react-native";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { useFonts } from "expo-font";
-import * as WebBrowser from "expo-web-browser";
 import { ClerkProvider } from "@clerk/clerk-expo";
 import { tokenCache } from "@clerk/clerk-expo/token-cache";
 import LoadingOverlay from "../components/ui/LoadingOverlay";
@@ -14,7 +13,6 @@ import { scheduleDaily } from "../lib/time/nextMidnight";
 import { AuthProvider } from "@/providers/AuthProvider";
 import { useAuthStore } from "@/store/auth";
 
-WebBrowser.maybeCompleteAuthSession();
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
 export default function RootLayout() {
@@ -46,6 +44,10 @@ export default function RootLayout() {
     }
   }, [fontsLoaded, fontError]);
 
+  useEffect(() => {
+    void useAuthStore.getState().initialize();
+  }, []);
+
   // Midnight rollover refresh
   useEffect(() => {
     const refresh = () => useRoutineStore.getState().refreshDayIndex();
@@ -64,7 +66,6 @@ export default function RootLayout() {
     <ClerkProvider
       publishableKey={clerkPublishableKey}
       tokenCache={tokenCache}
-      allowedRedirectProtocols={["sigmamax"]}
     >
       <AuthProvider>
         {fontsLoaded || fontError ? (

@@ -204,14 +204,14 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        <GlassCard style={styles.card}>
-          <View style={styles.cardHeader}>
-            <T style={styles.cardLabel}>Linked account</T>
-            <T style={styles.cardSubtext}>Connected via Google</T>
-          </View>
-          <View style={styles.accountRow}>
-            <View>
-              <T style={styles.primaryText}>{name}</T>
+          <GlassCard style={styles.card}>
+            <View style={styles.cardHeader}>
+              <T style={styles.cardLabel}>Linked account</T>
+              <T style={styles.cardSubtext}>Signed in with email</T>
+            </View>
+            <View style={styles.accountRow}>
+              <View>
+                <T style={styles.primaryText}>{name}</T>
               <T style={styles.subText}>{email}</T>
             </View>
           </View>

@@ -3,15 +3,17 @@ import { ActivityIndicator, View } from "react-native";
 import { useAuth, useSession, useUser } from "@clerk/clerk-expo";
 import { useAuthStore } from "@/store/auth";
 import { syncUserProfile } from "@/lib/api/user";
+import { registerTokenProvider } from "@/lib/api/tokenProvider";
 
 type Props = {
   children: React.ReactNode;
 };
 
+// Use custom JWT template if specified, otherwise use default Clerk token (undefined)
 const JWT_TEMPLATE =
   process.env.EXPO_PUBLIC_CLERK_JWT_TEMPLATE && process.env.EXPO_PUBLIC_CLERK_JWT_TEMPLATE.trim().length > 0
     ? process.env.EXPO_PUBLIC_CLERK_JWT_TEMPLATE.trim()
-    : "scorer-node";
+    : undefined;
 
 function isValidJwt(token: unknown): token is string {
   if (typeof token !== "string") return false;
@@ -38,7 +40,7 @@ export function AuthProvider({ children }: Props) {
 
       if (session) {
         try {
-          const token = await session.getToken({ template: JWT_TEMPLATE });
+          const token = await session.getToken(JWT_TEMPLATE ? { template: JWT_TEMPLATE } : {});
           if (isValidJwt(token)) {
             setAuthFromSession({
               uid: user?.id ?? session.id,
@@ -86,16 +88,34 @@ export function AuthProvider({ children }: Props) {
     syncUserProfile,
   ]);
 
+  // Register the token provider so API calls can get fresh tokens directly from Clerk
+  useEffect(() => {
+    if (session) {
+      // Register a function that fetches a fresh token from the current session
+      registerTokenProvider(async () => {
+        const token = await session.getToken(JWT_TEMPLATE ? { template: JWT_TEMPLATE } : {});
+        return token;
+      });
+    } else {
+      // Clear the token provider when session is gone
+      registerTokenProvider(null);
+    }
+
+    return () => {
+      registerTokenProvider(null);
+    };
+  }, [session]);
+
   useEffect(() => {
     if (!session) return;
     const intervalMs = 45_000;
     const refresh = async () => {
       try {
-        const token = await session.getToken({ template: JWT_TEMPLATE });
+        const token = await session.getToken(JWT_TEMPLATE ? { template: JWT_TEMPLATE } : {});
         if (isValidJwt(token)) {
           setIdToken(token);
         } else {
-          console.warn("[auth] token refresh returned empty/invalid token", { template: JWT_TEMPLATE });
+          console.warn("[auth] token refresh returned empty/invalid token", { template: JWT_TEMPLATE ?? "default" });
         }
       } catch (err: any) {
         console.warn("[auth] token refresh failed", {

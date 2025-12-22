@@ -14,7 +14,7 @@ import Screen from "@/components/layout/Screen";
 import MetricCardShell from "@/components/layout/MetricCardShell";
 import MetricPagerFooter from "@/components/layout/MetricPagerFooter";
 import { SP } from "@/lib/tokens";
-import useMetricSizing from "@/components/layout/useMetricSizing";
+import useMetricSizing from "@/components/layout/useMetricSizing.ts";
 
 // ƒo. default Text (Poppins)
 import Text from "@/components/ui/T";

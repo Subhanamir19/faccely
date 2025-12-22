@@ -54,6 +54,15 @@ export default function TabsLayout() {
         }}
       />
 
+      {/* Program tab */}
+      <Tabs.Screen
+        name="program"
+        options={{
+          title: "Program",
+          tabBarIcon: ({ color, size }) => <ListChecks color={color} size={size ?? 22} />,
+        }}
+      />
+
       {/* Visible tab #4: Protocols */}
       <Tabs.Screen
         name="protocols"

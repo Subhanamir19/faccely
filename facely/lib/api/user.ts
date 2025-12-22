@@ -1,16 +1,17 @@
 import { API_BASE } from "@/lib/api/config";
 import { fetchWithRetry } from "@/lib/api/client";
 import { getAuthState } from "@/store/auth";
-import { buildAuthHeaders } from "./authHeaders";
+import { buildAuthHeadersAsync } from "./authHeaders";
 
 export async function syncUserProfile(onboardingCompleted?: boolean): Promise<void> {
   const { uid, deviceId } = getAuthState();
   if (!uid) return;
 
+  const authHeaders = await buildAuthHeadersAsync({ includeLegacy: true });
   const headers: Record<string, string> = {
     Accept: "application/json",
     "Content-Type": "application/json",
-    ...buildAuthHeaders({ includeLegacy: true }),
+    ...authHeaders,
   };
 
   const body: Record<string, unknown> = {};

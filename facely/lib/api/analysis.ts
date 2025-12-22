@@ -9,7 +9,7 @@ import {
 } from "./client";
 import type { Scores } from "./scores";
 import { prepareUploadPart, type UploadInput } from "./media";
-import { buildAuthHeaders } from "./authHeaders";
+import { buildAuthHeadersAsync } from "./authHeaders";
 
 export type Explanations = Record<string, string[]>;
 
@@ -95,11 +95,12 @@ export async function explainMetrics(
   fd.append("image", imagePart as any);
   fd.append("scores", JSON.stringify(scores));
   if (scanId) fd.append("scanId", scanId);
+  const authHeaders = await buildAuthHeadersAsync({ includeLegacy: true });
   const res = await fetchWithRetry(
     `${API_BASE}/analyze/explain`,
     {
       method: "POST",
-      headers: { Accept: "application/json", ...buildAuthHeaders({ includeLegacy: true }) },
+      headers: { Accept: "application/json", ...authHeaders },
       body: fd,
       signal,
       timeoutMs: LONG_REQUEST_TIMEOUT_MS,
@@ -134,11 +135,12 @@ export async function explainMetricsPair(
   };
 
   const attempt = async (path: string) => {
+    const authHeaders = await buildAuthHeadersAsync({ includeLegacy: true });
     const res = await fetchWithRetry(
       `${API_BASE}${path}`,
       {
         method: "POST",
-        headers: { Accept: "application/json", ...buildAuthHeaders({ includeLegacy: true }) },
+        headers: { Accept: "application/json", ...authHeaders },
         body: await buildFormData(),
         signal,
         timeoutMs: LONG_REQUEST_TIMEOUT_MS,

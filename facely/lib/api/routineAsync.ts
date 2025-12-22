@@ -3,7 +3,7 @@
 // Uses EXPO_PUBLIC_API_BASE_URL (Expo public env) for both dev/prod.
 
 const API_BASE = process.env.EXPO_PUBLIC_API_BASE_URL ?? "http://localhost:8080";
-import { buildAuthHeaders } from "./authHeaders";
+import { buildAuthHeadersAsync } from "./authHeaders";
 
 // -------- Types (mirror server responses, minimal but safe) ----------
 export type JobStatus =
@@ -166,12 +166,13 @@ export async function startRoutineAsync(args: StartRoutineArgs): Promise<{
   if (args.context) payload.context = args.context;
   if (args.protocolVersion) payload.protocolVersion = args.protocolVersion;
 
+  const authHeaders = await buildAuthHeadersAsync({ includeLegacy: true });
   const res = await postJson<{ job_id: string; status_url: string }>(
     `${API_BASE}/routine/async`,
     payload,
     {
       "X-Idempotency-Key": idem,
-      ...buildAuthHeaders({ includeLegacy: true }),
+      ...authHeaders,
     }
   );
 

@@ -21,9 +21,6 @@ type AuthState = {
   sessionId: string | null;
   initialized: boolean;
   initialize: () => Promise<void>;
-  loginWithEmail: (email: string, password: string) => Promise<void>;
-  loginWithGoogleIdToken: (googleIdToken: string) => Promise<void>;
-  signUpWithEmail: (email: string, password: string) => Promise<void>;
   refreshIdToken: (force?: boolean) => Promise<string | null>;
   getIdTokenOrThrow: () => Promise<string>;
   setOnboardingCompleted: (value: boolean) => void;
@@ -69,41 +66,6 @@ export const useAuthStore = create<AuthState>()(
         if (!get().deviceId) {
           set({ deviceId: generateDeviceId() });
         }
-      },
-
-      loginWithEmail: async (email, password) => {
-        const normalizedEmail = email.trim();
-        void password;
-
-        const uid = get().uid ?? generateDeviceId();
-        set({
-          user: { uid, email: normalizedEmail || null },
-          uid,
-          idToken: "dummy.token.value",
-          status: "authenticated",
-        });
-      },
-      loginWithGoogleIdToken: async (googleIdToken) => {
-        const uid = get().uid ?? generateDeviceId();
-        void googleIdToken;
-        set({
-          user: { uid, email: null },
-          uid,
-          idToken: "dummy.google.token",
-          status: "authenticated",
-        });
-      },
-      signUpWithEmail: async (email, password) => {
-        const normalizedEmail = email.trim();
-        void password;
-
-        const uid = get().uid ?? generateDeviceId();
-        set({
-          user: { uid, email: normalizedEmail || null },
-          uid,
-          idToken: "dummy.token.value",
-          status: "authenticated",
-        });
       },
       refreshIdToken: async (force = false) => {
         void force;

@@ -1,7 +1,7 @@
 import { API_BASE } from "./config";
 import { fetchWithRetry } from "./client";
 import { getAuthState } from "@/store/auth";
-import { buildAuthHeaders } from "./authHeaders";
+import { buildAuthHeadersAsync } from "./authHeaders";
 import type { Scores } from "./scores";
 
 export interface ScanHistoryItem {
@@ -30,9 +30,10 @@ export async function fetchScanHistory(limit = 20): Promise<ScanHistoryItem[]> {
   if (!uid) throw new Error("Not authenticated");
 
   const safeLimit = Math.min(50, Math.max(1, Math.floor(limit)));
+  const authHeaders = await buildAuthHeadersAsync({ includeLegacy: true });
   const headers: Record<string, string> = {
     Accept: "application/json",
-    ...buildAuthHeaders({ includeLegacy: true }),
+    ...authHeaders,
   };
 
   const url = `${API_BASE}/history/scans?limit=${encodeURIComponent(String(safeLimit))}`;
@@ -57,9 +58,10 @@ export async function fetchScanDetail(scanId: string): Promise<ScanDetail> {
   const { uid, deviceId } = getAuthState();
   if (!uid) throw new Error("Not authenticated");
 
+  const authHeaders = await buildAuthHeadersAsync({ includeLegacy: true });
   const headers: Record<string, string> = {
     Accept: "application/json",
-    ...buildAuthHeaders({ includeLegacy: true }),
+    ...authHeaders,
   };
 
   const url = `${API_BASE}/history/scans/${encodeURIComponent(scanId)}`;
