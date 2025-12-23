@@ -14,6 +14,17 @@ import { getScansForUser } from "../supabase/scans.js";
 
 export const programsRouter = Router();
 
+function toIsoDateTime(value: unknown, fieldName: string): string {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    const d = new Date(trimmed);
+    if (!Number.isNaN(d.getTime())) return d.toISOString();
+  } else if (value instanceof Date) {
+    if (!Number.isNaN(value.getTime())) return value.toISOString();
+  }
+  throw new Error(`${fieldName} must be a valid datetime, got: ${String(value)}`);
+}
+
 const GenerateBodySchema = z
   .object({
     scores: ScoresSchema.optional(),
@@ -31,7 +42,7 @@ const CompletionBodySchema = z
 function mapRecordToProgram(record: any): Program {
   const payload: Program = {
     programId: record.id,
-    createdAt: record.created_at,
+    createdAt: toIsoDateTime(record.created_at, "createdAt"),
     version: record.version,
     scoresSnapshot: record.scores_snapshot as Scores,
     dayCount: Array.isArray(record.days) ? record.days.length : 70,
@@ -112,12 +123,20 @@ programsRouter.post("/", async (req, res) => {
     const normalized = {
       ...program,
       programId: saved.id,
-      createdAt: saved.created_at,
+      createdAt: toIsoDateTime(saved.created_at, "createdAt"),
     };
     const validated = ProgramSchema.parse(normalized);
     console.log("[/programs] returning success response");
     return res.status(201).json({ program: validated, completions: {} });
   } catch (err: any) {
+    if (err instanceof z.ZodError) {
+      console.error("[/programs] generated program failed schema validation", err.issues);
+      return res.status(500).json({
+        error: "program_schema_invalid",
+        detail: "Generated program failed schema validation",
+        issues: err.issues,
+      });
+    }
     console.error("[/programs] generate failed:", err?.message ?? err);
     console.error("[/programs] stack:", err?.stack);
     return res.status(502).json({ error: "program_generation_failed", detail: err?.message });
