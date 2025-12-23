@@ -227,6 +227,68 @@ function apiError(code: string, message: string, opts?: ApiErrorOptions) {
   return payload;
 }
 
+function getUpstreamStatus(err: any): number | null {
+  const status = err?.status ?? err?.response?.status;
+  return typeof status === "number" ? status : null;
+}
+
+function handleAnalyzeProviderErrors(res: express.Response, err: any): boolean {
+  const upstreamStatus = getUpstreamStatus(err);
+  const message = typeof err?.message === "string" ? err.message : "";
+
+  if (upstreamStatus === 401 || upstreamStatus === 403) {
+    res
+      .status(502)
+      .json(
+        apiError(
+          "provider_auth_failed",
+          "Scoring provider authentication failed. The service is misconfigured.",
+          { err }
+        )
+      );
+    return true;
+  }
+
+  if (upstreamStatus === 429) {
+    res
+      .status(503)
+      .json(apiError("provider_rate_limited", "Scoring provider is rate-limited. Please try again later.", { err }));
+    return true;
+  }
+
+  if (upstreamStatus !== null && upstreamStatus >= 500 && upstreamStatus <= 599) {
+    res
+      .status(503)
+      .json(apiError("provider_unavailable", "Scoring provider is temporarily unavailable. Please try again later.", { err }));
+    return true;
+  }
+
+  if (upstreamStatus === 415) {
+    res
+      .status(415)
+      .json(
+        apiError("unsupported_image_codec", "Image codec is not supported.", {
+          hint: (err as any)?.hint,
+          err,
+        })
+      );
+    return true;
+  }
+
+  if (/unsupported or corrupted image/i.test(message) || /transcode failure/i.test(message)) {
+    res
+      .status(422)
+      .json(
+        apiError("invalid_image", "Unsupported or corrupted image. Please retry with a clearer JPEG or PNG photo.", {
+          err,
+        })
+      );
+    return true;
+  }
+
+  return false;
+}
+
 function preview(buf?: Buffer) {
   if (!buf) return "nil";
   const head = buf.slice(0, 12).toString("hex");
@@ -594,8 +656,9 @@ app.post("/analyze/pair-bytes", async (req, res) => {
           "Scoring provider returned data that did not match the Scores schema.",
           { err }
         ),
-        issues: err.issues,
-      });
+          issues: err.issues,
+        });
+    if (handleAnalyzeProviderErrors(res, err)) return;
     res
       .status(500)
       .json(apiError("pair_bytes_failed", "Pair analysis failed. Please retry with a clearer photo.", { err }));
@@ -691,6 +754,7 @@ app.post("/analyze", upload.single("image"), async (req, res) => {
           })
         );
     }
+    if (handleAnalyzeProviderErrors(res, err)) return;
     res
       .status(500)
       .json(apiError("analysis_failed", "Analysis failed. Please retry with a clearer photo.", { err }));
@@ -792,6 +856,7 @@ app.post(
           ),
           issues: err.issues,
         });
+      if (handleAnalyzeProviderErrors(res, err)) return;
       res
         .status(500)
         .json(apiError("analysis_failed", "Analysis failed. Please retry with a clearer photo.", { err }));

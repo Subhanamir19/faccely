@@ -225,6 +225,14 @@ const BACKEND_ERROR_MAP: Record<
       "Use a clear JPEG or PNG photo instead of HEIC or unsupported formats.",
     payload_too_large:
       "Your image is too large. Try a smaller or cropped photo.",
+    provider_auth_failed:
+      "Face scoring is temporarily unavailable due to a server configuration issue. Please try again later.",
+    provider_rate_limited:
+      "Servers are busy at the moment. Please try again in a few minutes.",
+    provider_unavailable:
+      "Face scoring is temporarily unavailable. Please try again in a few minutes.",
+    invalid_image:
+      "We couldn't read your photo. Retake with good lighting and a clear, in-focus JPEG/PNG.",
     explanation_failed:
       "Face scoring failed unexpectedly. Please retry with a clear frontal and side photo.",
     server_overloaded:
@@ -239,6 +247,12 @@ const BACKEND_ERROR_MAP: Record<
       "Use a clear JPEG or PNG photo instead of HEIC or unsupported formats.",
     payload_too_large:
       "Your image is too large. Try a smaller or cropped photo.",
+    provider_auth_failed:
+      "Advanced analysis is temporarily unavailable due to a server configuration issue. Please try again later.",
+    provider_rate_limited:
+      "Servers are busy at the moment. Please try again in a few minutes.",
+    provider_unavailable:
+      "Advanced analysis is temporarily unavailable. Please try again in a few minutes.",
     explanation_provider_malformed:
       "We couldn't generate detailed insights right now. Your scores are safe; please try again later.",
     explanation_failed:
