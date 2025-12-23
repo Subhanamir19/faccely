@@ -157,24 +157,34 @@ function parseProgram(
  * Resolve the markdown file path robustly across environments
  */
 function resolveMarkdownPath(): string {
-  // Try multiple possible locations
-  const candidates = [
-    // From scorer-node directory (process.cwd is scorer-node)
-    join(process.cwd(), "..", "all-3-programs.md"),
-    // From repo root (process.cwd is SS)
-    join(process.cwd(), "all-3-programs.md"),
-    // Relative to this file
-    join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "all-3-programs.md"),
-  ];
+  const filename = "all-3-programs.md";
+  const override = process.env.PROGRAMS_MARKDOWN_PATH?.trim();
+  const moduleDir = dirname(fileURLToPath(import.meta.url));
 
-  for (const path of candidates) {
-    if (existsSync(path)) {
-      return path;
-    }
+  // Prefer a deterministic path relative to this module so we don't rely on process.cwd().
+  // `src/program/programData.ts` and `dist/program/programData.js` are both 2 levels under the service root.
+  const serviceRootFromModule = join(moduleDir, "..", "..");
+
+  // Try multiple possible locations (monorepo + deployed service)
+  const candidates = [
+    // Explicit override (e.g., mounted volume or custom deploy layout)
+    override && override.length > 0 ? override : null,
+    // Service root (recommended): scorer-node/all-3-programs.md
+    join(serviceRootFromModule, filename),
+    // If started from service root (process.cwd() is scorer-node)
+    join(process.cwd(), filename),
+    // If started from monorepo root (process.cwd() is repo root)
+    join(process.cwd(), "scorer-node", filename),
+    // Legacy: markdown at monorepo root when process.cwd() is scorer-node
+    join(process.cwd(), "..", filename),
+  ].filter((p): p is string => typeof p === "string");
+
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) return candidate;
   }
 
   throw new Error(
-    `all-3-programs.md not found. Tried:\n${candidates.map((p) => `  - ${p}`).join("\n")}`
+    `${filename} not found. Tried:\n${candidates.map((p) => `  - ${p}`).join("\n")}`
   );
 }
 

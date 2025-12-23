@@ -35,7 +35,7 @@ Build a 70-day facial exercise program feature that assigns users one of three p
 
 ### ❌ What Needs to Change
 
-**CRITICAL MISMATCH:** The current system generates programs **algorithmically** but the requirement is to use **3 fixed programs** from `all-3-programs.md`.
+**CRITICAL MISMATCH:** The current system generates programs **algorithmically** but the requirement is to use **3 fixed programs** from `scorer-node/all-3-programs.md`.
 
 Current logic in `generateProgram.ts`:
 - Uses dynamic algorithm to build days based on scores
@@ -43,13 +43,13 @@ Current logic in `generateProgram.ts`:
 - No fixed programs
 
 Required logic:
-- Parse 3 fixed programs from `all-3-programs.md`
+- Parse 3 fixed programs from `scorer-node/all-3-programs.md`
 - Select 1 program based on score gaps
 - Store selected program as-is (no generation)
 
 ---
 
-## Program Selection Logic (from all-3-programs.md)
+## Program Selection Logic (from scorer-node/all-3-programs.md)
 
 ### The 3 Programs
 1. **Program 1: Structural Foundation**
@@ -275,7 +275,7 @@ Can also vary by phase:
 #### Task 1.1: Create Program Data Parser
 **File:** `scorer-node/src/program/programData.ts` (NEW)
 
-**Purpose:** Parse `all-3-programs.md` into structured JSON
+**Purpose:** Parse `scorer-node/all-3-programs.md` into structured JSON
 
 **Output Structure:**
 ```typescript
@@ -292,7 +292,7 @@ type ParsedProgram = {
 ```
 
 **Implementation:**
-- Read `all-3-programs.md`
+- Read `scorer-node/all-3-programs.md`
 - Parse day sections (regex: `Day \d+`)
 - Extract exercise names per day
 - Map to exercise IDs from `exerciseCatalog.ts`
@@ -743,7 +743,7 @@ When all 5 exercises done → Day locks, tomorrow unlocks
 
 ## Exercise Name Mapping
 
-From `all-3-programs.md` to `exerciseCatalog.ts`:
+From `scorer-node/all-3-programs.md` to `exerciseCatalog.ts`:
 
 | Markdown Name               | Exercise ID           |
 |-----------------------------|-----------------------|
@@ -770,7 +770,7 @@ From `all-3-programs.md` to `exerciseCatalog.ts`:
 ## Files to Create
 
 1. **`scorer-node/src/program/programData.ts`**
-   - Parse `all-3-programs.md`
+   - Parse `scorer-node/all-3-programs.md`
    - Export `PROGRAM_1`, `PROGRAM_2`, `PROGRAM_3`
 
 ---
