@@ -72,21 +72,30 @@ programsRouter.post("/", async (req, res) => {
   const userId = res.locals.userId;
   if (!userId) return res.status(401).json({ error: "unauthorized" });
 
-  const parsed = GenerateBodySchema.safeParse(req.body ?? {});
-  if (!parsed.success) {
-    return res.status(400).json({ error: "invalid_request", details: parsed.error.format() });
-  }
-
-  let scores: Scores | null = parsed.data.scores ?? null;
-  if (!scores) {
-    const scans = await getScansForUser(userId, 1);
-    if (!scans.length || !scans[0]?.scores) {
-      return res.status(404).json({ error: "no_history_scores" });
-    }
-    scores = ScoresSchema.parse(scans[0].scores);
-  }
-
   try {
+    const parsed = GenerateBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ error: "invalid_request", details: parsed.error.format() });
+    }
+
+    let scores: Scores | null = parsed.data.scores ?? null;
+    if (!scores) {
+      const scans = await getScansForUser(userId, 1);
+      if (!scans.length) {
+        return res.status(404).json({ error: "no_history_scores" });
+      }
+      const rawScores = scans[0]?.scores;
+      if (!rawScores || typeof rawScores !== "object") {
+        return res.status(404).json({ error: "no_history_scores" });
+      }
+      const parseResult = ScoresSchema.safeParse(rawScores);
+      if (!parseResult.success) {
+        console.error("[/programs] invalid stored scores", parseResult.error.format());
+        return res.status(422).json({ error: "invalid_stored_scores", details: parseResult.error.format() });
+      }
+      scores = parseResult.data;
+    }
+
     const program = generateProgramFromScores(scores);
     const saved = await saveProgram(userId, program, { source: "history" });
     const normalized = {
@@ -97,7 +106,7 @@ programsRouter.post("/", async (req, res) => {
     const validated = ProgramSchema.parse(normalized);
     return res.status(201).json({ program: validated, completions: {} });
   } catch (err: any) {
-    console.error("[/programs] generate failed", err?.message ?? err);
+    console.error("[/programs] generate failed", err?.message ?? err, err?.stack);
     return res.status(502).json({ error: "program_generation_failed", detail: err?.message });
   }
 });

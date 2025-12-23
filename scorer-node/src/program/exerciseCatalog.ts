@@ -155,6 +155,15 @@ export const EXERCISES: ExerciseDef[] = [
     poseFrames: ["Nose touching with tongue-Pose1.jpeg", "Nose touching with tongue-Pose2.jpeg"],
   }),
   buildExercise({
+    id: "lion",
+    name: "Lion",
+    role: "universal",
+    intensity: "low",
+    targets: ["cheekbones", "jawline"],
+    protocol: "Open mouth wide, stick tongue out and down, hold 2s, release. 12 reps.",
+    poseFrames: ["Lion-Pose1.jpeg", "Lion-Pose2.jpeg"],
+  }),
+  buildExercise({
     id: "fish-face",
     name: "Fish face",
     role: "universal",

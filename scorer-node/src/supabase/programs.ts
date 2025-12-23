@@ -44,6 +44,9 @@ export async function saveProgram(
   if (error) {
     throw new Error(`Failed to save program: ${error.message}`);
   }
+  if (!data) {
+    throw new Error("Failed to save program: no data returned from insert");
+  }
   return data as ProgramRecord;
 }
 
@@ -115,6 +118,9 @@ export async function upsertCompletion(params: {
 
   if (error) {
     throw new Error(`Failed to update completion: ${error.message}`);
+  }
+  if (!data) {
+    throw new Error("Failed to update completion: no data returned from upsert");
   }
   return data as CompletionRecord;
 }

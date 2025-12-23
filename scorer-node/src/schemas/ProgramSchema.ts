@@ -30,7 +30,7 @@ export const ProgramSchema = z
   .object({
     programId: z.string().uuid(),
     createdAt: z.string().datetime(),
-    version: z.literal("v1"),
+    version: z.enum(["v1", "v2"]),
     scoresSnapshot: ScoresSchema,
     dayCount: z.number().int().min(70).max(70),
     exerciseCount: z.number().int().min(5).max(6),

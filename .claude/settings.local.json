@@ -10,7 +10,11 @@
       "Bash(git commit:*)",
       "Bash(git rm:*)",
       "Bash(git restore:*)",
-      "Bash(git reset:*)"
+      "Bash(git reset:*)",
+      "Bash(npm run build:*)",
+      "Bash(node --eval:*)",
+      "Bash(wc:*)",
+      "Bash(npx tsc:*)"
     ]
   }
 }

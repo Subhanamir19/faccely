@@ -32,7 +32,7 @@ const ProgramSchema = z
   .object({
     programId: z.string().uuid(),
     createdAt: z.string(),
-    version: z.literal("v1"),
+    version: z.enum(["v1", "v2"]),
     scoresSnapshot: z.record(z.string(), z.any()),
     dayCount: z.number().int().min(1),
     exerciseCount: z.number().int().min(1),

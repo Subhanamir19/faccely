@@ -23,6 +23,22 @@ function formatPhase(phase?: string) {
   return "";
 }
 
+function getContextLineForDay(programType: 1 | 2 | 3 | null, phase: string): string {
+  const focus = {
+    1: "jawline and structure",
+    2: "eye symmetry and midface",
+    3: "skin clarity and facial definition",
+  }[programType ?? 1];
+
+  const phaseAction = {
+    foundation: "building control",
+    development: "progressive loading",
+    peak: "refinement and stabilization",
+  }[phase] ?? "recovery";
+
+  return `Today's routine is optimized for your ${focus} ${phaseAction}`;
+}
+
 type PlayerProps = {
   exerciseId: string;
   name: string;
@@ -79,10 +95,11 @@ function ExercisePlayer({ exerciseId, name, protocol, frames, onDone }: PlayerPr
 export default function ProgramDayScreen() {
   const params = useLocalSearchParams<{ day?: string }>();
   const dayNumber = params?.day ? Number.parseInt(String(params.day), 10) : NaN;
-  const { program, completions, toggleCompletion } = useProgramStore();
+  const { program, programType, completions, toggleCompletion } = useProgramStore();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showPlayer, setShowPlayer] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [showConfirmation, setShowConfirmation] = useState(false);
 
   const day = useMemo(
     () => program?.days.find((d) => d.dayNumber === dayNumber),
@@ -114,9 +131,14 @@ export default function ProgramDayScreen() {
     setSubmitting(true);
     try {
       await toggleCompletion(safeDay.dayNumber, exerciseId);
-      setSelectedId(null);
+      setShowConfirmation(true);
+
+      // Auto-close after 1 second
+      setTimeout(() => {
+        setShowConfirmation(false);
+        setSelectedId(null);
+      }, 1000);
     } catch (err: any) {
-      // Show error inline and keep modal open; for brevity use alert-y text.
       console.warn("Completion toggle failed", err);
     } finally {
       setSubmitting(false);
@@ -135,6 +157,10 @@ export default function ProgramDayScreen() {
               Focus: {safeDay.focusAreas.join(", ")} {safeDay.isRecovery ? "• Recovery" : ""}
             </Text>
           </View>
+        </View>
+
+        <View style={styles.contextBanner}>
+          <Text style={styles.contextText}>{getContextLineForDay(programType, safeDay.phase)}</Text>
         </View>
 
         {safeDay.isRecovery ? (
@@ -185,22 +211,31 @@ export default function ProgramDayScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>{selected?.name}</Text>
-            <Text style={styles.modalText}>What would you like to do?</Text>
-            <View style={styles.modalActions}>
-              <PillNavButton
-                kind="ghost"
-                label={submitting ? "Saving..." : "Task completed?"}
-                onPress={() => selected && handleCompletion(selected.id)}
-                disabled={submitting}
-              />
-              <PillNavButton
-                kind="solid"
-                label="Start"
-                onPress={() => setShowPlayer(true)}
-                disabled={submitting}
-              />
-            </View>
-            <PillNavButton kind="ghost" label="Close" onPress={() => setSelectedId(null)} />
+
+            {showConfirmation ? (
+              <View style={styles.confirmationBox}>
+                <Text style={styles.confirmationText}>✓ Exercise marked complete!</Text>
+              </View>
+            ) : (
+              <>
+                <Text style={styles.modalText}>What would you like to do?</Text>
+                <View style={styles.modalActions}>
+                  <PillNavButton
+                    kind="ghost"
+                    label={submitting ? "Saving..." : "Task completed?"}
+                    onPress={() => selected && handleCompletion(selected.id)}
+                    disabled={submitting}
+                  />
+                  <PillNavButton
+                    kind="solid"
+                    label="Start"
+                    onPress={() => setShowPlayer(true)}
+                    disabled={submitting}
+                  />
+                </View>
+                <PillNavButton kind="ghost" label="Close" onPress={() => setSelectedId(null)} />
+              </>
+            )}
           </View>
         </View>
       </Modal>
@@ -245,6 +280,19 @@ const styles = StyleSheet.create({
     borderRadius: RADII.pill,
   },
   recoveryText: { color: COLORS.accent, fontWeight: "700" },
+  contextBanner: {
+    padding: SP[3],
+    backgroundColor: "rgba(180,243,77,0.08)",
+    borderColor: COLORS.accent,
+    borderWidth: 1,
+    borderRadius: RADII.md,
+  },
+  contextText: {
+    color: COLORS.accent,
+    fontSize: 14,
+    fontWeight: "600",
+    textAlign: "center",
+  },
   card: {
     backgroundColor: COLORS.card,
     borderColor: COLORS.cardBorder,
@@ -293,6 +341,19 @@ const styles = StyleSheet.create({
   modalTitle: { color: COLORS.text, fontSize: 18, fontWeight: "700" },
   modalText: { color: COLORS.sub },
   modalActions: { flexDirection: "row", gap: SP[2] },
+  confirmationBox: {
+    padding: SP[3],
+    backgroundColor: "rgba(34, 197, 94, 0.1)",
+    borderRadius: RADII.md,
+    borderColor: "#22c55e",
+    borderWidth: 1,
+  },
+  confirmationText: {
+    color: "#22c55e",
+    fontSize: 16,
+    fontWeight: "700",
+    textAlign: "center",
+  },
   playerCard: {
     width: "100%",
     backgroundColor: COLORS.card,

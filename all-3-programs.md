@@ -1589,3 +1589,25 @@ Program 1 (Structure): jawline + cheekbones + masculinity
 Program 2 (Eyes/Midface): eyes + nose + symmetry
 Program 3 (Refinement): skin (and optionally a small amount of symmetry)
 Whichever bucket has the biggest total gap wins, and that’s the program we assign. If there’s a tie, we pick the bucket with the biggest single weakness inside it so the choice stays consistent.
+
+---------------------
+
+which exercise is for what?
+
+here are the exercises: 
+
+1. cps. it's for cheekbones development
+2. Thumb pulling. it's for maxilla developement, helps in jawline, eyes and cheekbones and nose developmen
+3. chin tucks. it's for jawline 
+4. hunter eyes 1. it's for eyes.
+5. hyoid stretch
+6. lymphatic drainage exercise
+7. upward chewing 
+8. kneck lift
+9. Jaw resistance
+10. eyes and cheeks
+11. alternating cheek puffs
+12. Nose massage 
+13. lion - facial fat loosing exercise
+14. nose touching with tongue --- maxilliary- cheekbones and jawline dev
+15. fish face- face fat..cheekbones...skin..
