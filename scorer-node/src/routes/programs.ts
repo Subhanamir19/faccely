@@ -72,20 +72,27 @@ programsRouter.post("/", async (req, res) => {
   const userId = res.locals.userId;
   if (!userId) return res.status(401).json({ error: "unauthorized" });
 
+  console.log("[/programs] POST - starting program generation for user:", userId);
+
   try {
     const parsed = GenerateBodySchema.safeParse(req.body ?? {});
     if (!parsed.success) {
+      console.log("[/programs] invalid request body:", parsed.error.format());
       return res.status(400).json({ error: "invalid_request", details: parsed.error.format() });
     }
 
     let scores: Scores | null = parsed.data.scores ?? null;
     if (!scores) {
+      console.log("[/programs] no scores in request, fetching from history...");
       const scans = await getScansForUser(userId, 1);
       if (!scans.length) {
+        console.log("[/programs] no scans found for user");
         return res.status(404).json({ error: "no_history_scores" });
       }
       const rawScores = scans[0]?.scores;
+      console.log("[/programs] found scan scores:", JSON.stringify(rawScores));
       if (!rawScores || typeof rawScores !== "object") {
+        console.log("[/programs] scores missing or invalid type");
         return res.status(404).json({ error: "no_history_scores" });
       }
       const parseResult = ScoresSchema.safeParse(rawScores);
@@ -94,19 +101,25 @@ programsRouter.post("/", async (req, res) => {
         return res.status(422).json({ error: "invalid_stored_scores", details: parseResult.error.format() });
       }
       scores = parseResult.data;
+      console.log("[/programs] validated scores:", JSON.stringify(scores));
     }
 
+    console.log("[/programs] generating program from scores...");
     const program = generateProgramFromScores(scores);
+    console.log("[/programs] program generated, saving to database...");
     const saved = await saveProgram(userId, program, { source: "history" });
+    console.log("[/programs] program saved with id:", saved.id);
     const normalized = {
       ...program,
       programId: saved.id,
       createdAt: saved.created_at,
     };
     const validated = ProgramSchema.parse(normalized);
+    console.log("[/programs] returning success response");
     return res.status(201).json({ program: validated, completions: {} });
   } catch (err: any) {
-    console.error("[/programs] generate failed", err?.message ?? err, err?.stack);
+    console.error("[/programs] generate failed:", err?.message ?? err);
+    console.error("[/programs] stack:", err?.stack);
     return res.status(502).json({ error: "program_generation_failed", detail: err?.message });
   }
 });

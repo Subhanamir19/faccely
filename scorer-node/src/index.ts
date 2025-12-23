@@ -484,9 +484,11 @@ function respondServerOverloaded(res: express.Response) {
 
 // Idempotency is currently scoped to routine/protocols/recommendations flows only; scoring (/analyze*) and
 // job status endpoints intentionally bypass it in v1.
+// Programs endpoint does NOT use idempotency - program generation is naturally idempotent (same scores → same program)
+// and cached error responses were causing issues.
 app.use("/routine", requestTimeout(30_000), verifyAuth, idempotency(), routineRouter);
 app.use("/protocols", requestTimeout(30_000), verifyAuth, idempotency(), protocolsRouter);
-app.use("/programs", requestTimeout(30_000), verifyAuth, idempotency(), programsRouter);
+app.use("/programs", requestTimeout(30_000), verifyAuth, programsRouter);
 app.use("/routine/async", verifyAuth, routineAsyncRouter);
 
 app.use("/sigma", requestTimeout(30_000), verifyAuth, sigmaRouter);
