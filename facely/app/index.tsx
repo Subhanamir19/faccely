@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Redirect } from "expo-router";
 import { useAuthStore } from "@/store/auth";
 import { useOnboarding } from "@/store/onboarding";
+import VideoSplash from "@/components/ui/VideoSplash";
 
 export default function IndexGate() {
   const status = useAuthStore((state) => state.status);
@@ -26,17 +27,15 @@ export default function IndexGate() {
   }, [hydrate]);
 
   const onboardingCompleted = completed;
+  const isLoading = status !== "authenticated" || !onboardingHydrated;
 
-  if (status === "checking" || !onboardingHydrated) {
-    return null;
+  // Show VideoSplash while checking auth and hydrating onboarding
+  if (isLoading) {
+    return <VideoSplash visible={true} />;
   }
 
-  if (status === "authenticated") {
-    if (onboardingCompleted) {
-      return <Redirect href="/(tabs)/take-picture" />;
-    }
-    return <Redirect href="/(onboarding)/welcome" />;
+  if (onboardingCompleted) {
+    return <Redirect href="/(tabs)/take-picture" />;
   }
-
-  return <Redirect href="/(auth)/login" />;
+  return <Redirect href="/(onboarding)/welcome" />;
 }

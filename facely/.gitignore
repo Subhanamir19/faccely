@@ -39,6 +39,11 @@ yarn-error.*
 .env.production
 *.env.local
 
+# Local npm cache (agent/workstation)
+.npm-cache/
+
+# Temporary legacy files
+app/(auth)/_login.clerk.tsx
+
 # typescript
 *.tsbuildinfo
-

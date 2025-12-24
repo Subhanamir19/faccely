@@ -1,19 +1,13 @@
 import React, { useEffect, useRef } from "react";
 import { ActivityIndicator, View } from "react-native";
-import { useAuth, useSession, useUser } from "@clerk/clerk-expo";
-import { useAuthStore } from "@/store/auth";
+
+import { supabase } from "@/lib/supabase/client";
 import { syncUserProfile } from "@/lib/api/user";
-import { registerTokenProvider } from "@/lib/api/tokenProvider";
+import { useAuthStore } from "@/store/auth";
 
 type Props = {
   children: React.ReactNode;
 };
-
-// Use custom JWT template if specified, otherwise use default Clerk token (undefined)
-const JWT_TEMPLATE =
-  process.env.EXPO_PUBLIC_CLERK_JWT_TEMPLATE && process.env.EXPO_PUBLIC_CLERK_JWT_TEMPLATE.trim().length > 0
-    ? process.env.EXPO_PUBLIC_CLERK_JWT_TEMPLATE.trim()
-    : undefined;
 
 function isValidJwt(token: unknown): token is string {
   if (typeof token !== "string") return false;
@@ -21,114 +15,113 @@ function isValidJwt(token: unknown): token is string {
   return trimmed.length > 0 && trimmed.split(".").length === 3;
 }
 
+function getIsAnonymous(user: any): boolean {
+  if (!user) return false;
+  if (user.is_anonymous === true) return true;
+  const provider = user.app_metadata?.provider;
+  if (provider === "anonymous") return true;
+  const providers: unknown = user.app_metadata?.providers;
+  return Array.isArray(providers) && providers.includes("anonymous");
+}
+
 export function AuthProvider({ children }: Props) {
-  const { isLoaded: authLoaded } = useAuth();
-  const { session } = useSession();
-  const { user, isLoaded: userLoaded } = useUser();
   const setAuthFromSession = useAuthStore((state) => state.setAuthFromSession);
   const clearAuthState = useAuthStore((state) => state.clearAuthState);
-  const setIdToken = useAuthStore((state) => state.setIdToken);
   const setInitializedFlag = useAuthStore((state) => state.setInitializedFlag);
   const initialized = useAuthStore((state) => state.initialized);
-  const lastSyncedSessionId = useRef<string | null>(null);
+  const lastSyncedUserId = useRef<string | null>(null);
 
   useEffect(() => {
-    const sync = async () => {
-      if (!authLoaded || !userLoaded) {
+    let cancelled = false;
+
+    const applySession = async (session: any, reason: string) => {
+      const userId = session?.user?.id;
+      const token = session?.access_token;
+
+      if (typeof userId === "string" && isValidJwt(token)) {
+        setAuthFromSession({
+          uid: userId,
+          email: session?.user?.email ?? null,
+          idToken: token,
+          status: "authenticated",
+          sessionId: null,
+          isAnonymous: getIsAnonymous(session?.user),
+        });
+
+        // Ensure DB user row exists before any scan insert (FK depends on it)
+        if (lastSyncedUserId.current !== userId) {
+          lastSyncedUserId.current = userId;
+          syncUserProfile().catch(() => {});
+        } else if (reason === "user_updated") {
+          syncUserProfile().catch(() => {});
+        }
         return;
       }
 
-      if (session) {
-        try {
-          const token = await session.getToken(JWT_TEMPLATE ? { template: JWT_TEMPLATE } : {});
-          if (isValidJwt(token)) {
-            setAuthFromSession({
-              uid: user?.id ?? session.id,
-              email: user?.primaryEmailAddress?.emailAddress ?? null,
-              idToken: token,
-              status: "authenticated",
-              sessionId: session.id ?? null,
-            });
-            if (session.id && lastSyncedSessionId.current !== session.id) {
-              lastSyncedSessionId.current = session.id;
-              syncUserProfile().catch(() => {});
-            }
-          } else {
-            console.warn("[auth] Missing/invalid Clerk JWT", {
-              template: JWT_TEMPLATE,
-              sessionId: session.id,
-            });
-            clearAuthState();
-          }
-        } catch (error: any) {
-          console.warn("[auth] Failed to acquire Clerk JWT", {
-            template: JWT_TEMPLATE,
-            sessionId: session.id,
-            error: error?.message || error,
-          });
-          clearAuthState();
-        }
-      } else {
-        lastSyncedSessionId.current = null;
-        clearAuthState();
-      }
-
-      setInitializedFlag(true);
+      console.warn("[auth] supabase session missing user/token", { reason });
+      lastSyncedUserId.current = null;
+      clearAuthState();
     };
 
-    void sync();
-  }, [
-    authLoaded,
-    userLoaded,
-    session,
-    user,
-    setAuthFromSession,
-    clearAuthState,
-    setInitializedFlag,
-    syncUserProfile,
-  ]);
-
-  // Register the token provider so API calls can get fresh tokens directly from Clerk
-  useEffect(() => {
-    if (session) {
-      // Register a function that fetches a fresh token from the current session
-      registerTokenProvider(async () => {
-        const token = await session.getToken(JWT_TEMPLATE ? { template: JWT_TEMPLATE } : {});
-        return token;
-      });
-    } else {
-      // Clear the token provider when session is gone
-      registerTokenProvider(null);
-    }
-
-    return () => {
-      registerTokenProvider(null);
-    };
-  }, [session]);
-
-  useEffect(() => {
-    if (!session) return;
-    const intervalMs = 45_000;
-    const refresh = async () => {
+    const bootstrap = async () => {
       try {
-        const token = await session.getToken(JWT_TEMPLATE ? { template: JWT_TEMPLATE } : {});
-        if (isValidJwt(token)) {
-          setIdToken(token);
-        } else {
-          console.warn("[auth] token refresh returned empty/invalid token", { template: JWT_TEMPLATE ?? "default" });
+        const { data, error } = await supabase.auth.getSession();
+        if (error) throw error;
+
+        if (data.session) {
+          await applySession(data.session, "bootstrap_existing");
+          return;
+        }
+
+        const res = await supabase.auth.signInAnonymously();
+        if (res.error) throw res.error;
+        if (!cancelled) {
+          await applySession(res.data.session, "bootstrap_anonymous");
         }
       } catch (err: any) {
-        console.warn("[auth] token refresh failed", {
-          template: JWT_TEMPLATE,
-          error: err?.message || err,
-        });
+        console.warn("[auth] supabase bootstrap failed", err?.message || err);
+        lastSyncedUserId.current = null;
+        clearAuthState();
+      } finally {
+        if (!cancelled) setInitializedFlag(true);
       }
     };
-    const interval = setInterval(() => {
-      void refresh();
-    }, intervalMs);
-    return () => clearInterval(interval);
-  }, [session, setIdToken]);
+
+    void bootstrap();
+
+    const { data: subscription } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (cancelled) return;
+
+        if (event === "SIGNED_OUT") {
+          lastSyncedUserId.current = null;
+          clearAuthState();
+          const res = await supabase.auth.signInAnonymously();
+          if (res.error) {
+            console.warn("[auth] failed to re-enter anonymous session", res.error.message);
+            return;
+          }
+          await applySession(res.data.session, "signed_out_to_anonymous");
+          return;
+        }
+
+        if (session) {
+          const reason = event === "USER_UPDATED" ? "user_updated" : "state_change";
+          await applySession(session, reason);
+          return;
+        }
+
+        // No session but not explicitly SIGNED_OUT: treat as unauthenticated and rely on bootstrap.
+        lastSyncedUserId.current = null;
+        clearAuthState();
+      }
+    );
+
+    return () => {
+      cancelled = true;
+      subscription?.subscription?.unsubscribe();
+    };
+  }, [clearAuthState, setAuthFromSession, setInitializedFlag]);
 
   if (!initialized) {
     return (

@@ -6,11 +6,9 @@ import {
   StyleSheet,
   Platform,
   ActivityIndicator,
-  Alert,
 } from "react-native";
 import PagerView from "react-native-pager-view";
 import AnalysisCard, { type SubmetricView } from "@/components/analysis/AnalysisCard";
-import { useProtocolsStore } from "@/store/protocolsStore";
 import Screen from "@/components/layout/Screen";
 import MetricCardShell from "@/components/layout/MetricCardShell";
 import MetricPagerFooter from "@/components/layout/MetricPagerFooter";
@@ -91,7 +89,6 @@ function band(score: number | undefined) {
 // ---------------------------------------------------------------------------
 export default function AnalysisScreen() {
   const { scores, explanations, explLoading, explError } = useScores();
-  const { isLoading: pLoading, regenerateFromLastAnalysis } = useProtocolsStore();
   const sizing = useMetricSizing();
 
   const pagerRef = useRef<PagerView>(null);
@@ -115,44 +112,25 @@ export default function AnalysisScreen() {
     pagerRef.current?.setPage(page);
   }
 
-  async function handleProtocols() {
-    try {
-      await regenerateFromLastAnalysis();
-      const { protocols: latest, error } = useProtocolsStore.getState();
-      if (latest) {
-        nav.push("/(tabs)/protocols");
-      } else if (error) {
-        Alert.alert("Error", error);
-      } else {
-        Alert.alert("Error", "Couldn't generate protocols.");
-      }
-    } catch (_err) {
-      Alert.alert("Error", "Couldn't generate protocols.");
-    }
-  }
-  
-  
-
   return (
     <Screen
       scroll={false}
       contentContainerStyle={styles.screenContent}
       footer={
-        <MetricPagerFooter
-          index={idx}
-          total={ORDER.length}
-          onPrev={() => {
-            if (!isFirst) goTo(idx - 1);
-          }}
-          onNext={() => (isLast ? handleProtocols() : goTo(idx + 1))}
-          isFirst={isFirst}
-          isLast={isLast}
-          nextLabel={isLast ? "Protocols" : "Next"}
-          nextDisabled={pLoading}
-          padX={0}
-        />
-      }
-    >
+          <MetricPagerFooter
+            index={idx}
+            total={ORDER.length}
+            onPrev={() => {
+              if (!isFirst) goTo(idx - 1);
+            }}
+            onNext={() => (isLast ? nav.push("/(tabs)/program") : goTo(idx + 1))}
+            isFirst={isFirst}
+            isLast={isLast}
+            nextLabel={isLast ? "Tasks" : "Next"}
+            padX={0}
+          />
+        }
+      >
       <ImageBackground source={BG} style={StyleSheet.absoluteFill} resizeMode="cover">
         <View style={styles.scrim} />
       </ImageBackground>

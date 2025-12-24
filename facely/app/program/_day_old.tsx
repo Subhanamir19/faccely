@@ -1,3 +1,5 @@
+// @ts-nocheck
+// Archived old Program Day screen (kept for reference).
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -354,87 +356,9 @@ export default function ProgramDayScreen() {
     }
   }
 
-  const USE_PREFERRED_TASKS_UI = true;
-
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView contentContainerStyle={styles.container}>
-        {USE_PREFERRED_TASKS_UI ? (
-          <>
-            <View style={styles.preferredHeaderRow}>
-              <BackPill onPress={() => router.back()} />
-              <View style={styles.preferredHeaderCenter}>
-                <Text style={styles.preferredDayTitle}>Day {safeDay.dayNumber}</Text>
-              </View>
-              <View style={styles.preferredHeaderRight}>
-                <Text style={styles.preferredTotalLabel}>{totalLabel}</Text>
-              </View>
-            </View>
-            <Text style={styles.preferredPhaseText}>{formatPhase(safeDay.phase)}</Text>
-            <Text style={styles.preferredFocusText} numberOfLines={1}>
-              Focus: {safeDay.focusAreas.join(", ")}{safeDay.isRecovery ? " - Recovery" : ""}
-            </Text>
-
-            <Banner text={getContextLineForDay(programType, safeDay.phase)} />
-
-            {safeDay.isRecovery ? (
-              <View style={styles.recoveryPill}>
-                <Text style={styles.recoveryText}>Active recovery - lighter intensity</Text>
-              </View>
-            ) : null}
-
-            <View style={styles.preferredSectionHeader}>
-              <Text style={styles.preferredSectionTitle}>Exercises</Text>
-              <Text style={styles.preferredSectionHint}>
-                {dayCompleted ? "All done" : "Tap a card or Start"}
-              </Text>
-            </View>
-
-            <View style={styles.preferredExerciseList}>
-              {safeDay.exercises.map((ex) => {
-                const key = `${safeProgram.programId}:${safeDay.dayNumber}:${ex.id}`;
-                const done = !!completions[key];
-                const meta = `${ex.role} - ${ex.intensity}`;
-                const summary = summarizeTargets(ex.targets);
-
-                return (
-                  <Pressable
-                    key={ex.id}
-                    onPress={() => setSelectedId(ex.id)}
-                    style={({ pressed }) => [
-                      styles.preferredExerciseCard,
-                      pressed ? styles.preferredExerciseCardPressed : null,
-                    ]}
-                  >
-                    <View style={styles.preferredExerciseRow}>
-                      <View style={styles.preferredExerciseLeft}>
-                        <Text style={styles.preferredExerciseTitle} numberOfLines={1}>
-                          {ex.name}
-                        </Text>
-                        <View style={styles.preferredMetaPill}>
-                          <Text style={styles.preferredMetaText}>{meta}</Text>
-                        </View>
-                        <Text style={styles.preferredSummary} numberOfLines={1}>
-                          {summary}
-                        </Text>
-                      </View>
-                      <View style={styles.preferredExerciseRight}>
-                        <StartPill
-                          onPress={() => {
-                            setSelectedId(ex.id);
-                            setShowPlayer(true);
-                          }}
-                        />
-                        <CompletionDot done={done} />
-                      </View>
-                    </View>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </>
-        ) : (
-          <>
         <View style={styles.header}>
           <PillNavButton kind="ghost" label="Back" onPress={() => router.back()} />
           <View>
@@ -492,8 +416,6 @@ export default function ProgramDayScreen() {
             );
           })}
         </View>
-          </>
-        )}
       </ScrollView>
 
       <Modal visible={!!selected && !showPlayer} transparent animationType="fade">
@@ -552,123 +474,12 @@ export default function ProgramDayScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: COLORS.bgBottom },
-  container: { padding: SP[4], gap: SP[3], paddingBottom: SP[6] },
+  container: { padding: SP[4], gap: SP[3] },
   center: { flex: 1, alignItems: "center", justifyContent: "center", gap: SP[3] },
   empty: { color: COLORS.text, fontSize: 16 },
   header: { flexDirection: "row", alignItems: "center", gap: SP[3] },
   title: { color: COLORS.text, fontSize: 24, fontWeight: "700" },
   sub: { color: COLORS.sub },
-
-  backPill: {
-    height: 44,
-    paddingHorizontal: SP[3],
-    borderRadius: RADII.pill,
-    borderWidth: 1,
-    borderColor: COLORS.cardBorder,
-    backgroundColor: "rgba(255,255,255,0.06)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  backPillPressed: { transform: [{ translateY: 1 }] },
-  backPillText: { color: COLORS.text, fontSize: 14, fontWeight: "900" },
-
-  banner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SP[3],
-    padding: SP[3],
-    backgroundColor: "rgba(180,243,77,0.08)",
-    borderColor: "rgba(180,243,77,0.35)",
-    borderWidth: 1,
-    borderRadius: RADII.lg,
-  },
-  bannerIcon: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: "rgba(180,243,77,0.22)",
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "rgba(180,243,77,0.35)",
-  },
-  bannerIconText: { color: COLORS.accent, fontSize: 14, fontWeight: "900" },
-  bannerText: { flex: 1, color: COLORS.accent, fontSize: 13, fontWeight: "800", lineHeight: 18 },
-
-  completionDot: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  completionDotTodo: { borderWidth: 2, borderColor: "rgba(255,255,255,0.25)" },
-  completionDotDone: {
-    borderWidth: 2,
-    borderColor: "rgba(180,243,77,0.8)",
-    backgroundColor: "rgba(180,243,77,0.35)",
-  },
-  completionDotText: { color: "#0B0B0B", fontSize: 14, fontWeight: "900" },
-
-  startPill: {
-    minWidth: 88,
-    height: 36,
-    paddingHorizontal: SP[3],
-    borderRadius: RADII.pill,
-    backgroundColor: "rgba(180,243,77,0.85)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  startPillPressed: { transform: [{ translateY: 1 }] },
-  startPillText: { color: "#0B0B0B", fontSize: 15, fontWeight: "900" },
-
-  preferredHeaderRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    position: "relative",
-  },
-  preferredHeaderCenter: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    alignItems: "center",
-    pointerEvents: "none",
-  },
-  preferredHeaderRight: { minWidth: 100, alignItems: "flex-end" },
-  preferredDayTitle: { color: COLORS.text, fontSize: 28, fontWeight: "900" },
-  preferredTotalLabel: { color: COLORS.sub, fontSize: 12, fontWeight: "800" },
-  preferredPhaseText: { color: COLORS.sub, fontSize: 13, marginTop: 2, textAlign: "center" },
-  preferredFocusText: { color: COLORS.sub, fontSize: 13, textAlign: "center" },
-
-  preferredSectionHeader: { flexDirection: "row", alignItems: "center", marginTop: SP[2] },
-  preferredSectionTitle: { color: COLORS.text, fontSize: 18, fontWeight: "900", flex: 1 },
-  preferredSectionHint: { color: COLORS.sub, fontSize: 12, fontWeight: "800" },
-
-  preferredExerciseList: { gap: SP[3] },
-  preferredExerciseCard: {
-    backgroundColor: COLORS.card,
-    borderColor: COLORS.cardBorder,
-    borderWidth: 1,
-    borderRadius: RADII.lg,
-    padding: SP[3],
-  },
-  preferredExerciseCardPressed: { transform: [{ translateY: 1 }], opacity: 0.98 },
-  preferredExerciseRow: { flexDirection: "row", alignItems: "center", gap: SP[3] },
-  preferredExerciseLeft: { flex: 1, gap: 6 },
-  preferredExerciseTitle: { color: COLORS.text, fontSize: 16, fontWeight: "900" },
-  preferredMetaPill: {
-    alignSelf: "flex-start",
-    paddingHorizontal: SP[2],
-    paddingVertical: 4,
-    borderRadius: RADII.pill,
-    backgroundColor: "rgba(255,255,255,0.06)",
-    borderWidth: 1,
-    borderColor: COLORS.cardBorder,
-  },
-  preferredMetaText: { color: COLORS.sub, fontSize: 11, fontWeight: "900" },
-  preferredSummary: { color: COLORS.sub, fontSize: 12, lineHeight: 16 },
-  preferredExerciseRight: { flexDirection: "row", alignItems: "center", gap: SP[2] },
   recoveryPill: {
     alignSelf: "flex-start",
     paddingHorizontal: SP[3],

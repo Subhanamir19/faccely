@@ -15,6 +15,7 @@ type AuthState = {
   user: User | null;
   uid: string | null;
   idToken: string | null;
+  isAnonymous: boolean;
   onboardingCompleted: boolean;
   subscriptionStatus: SubscriptionStatus;
   deviceId: string | null;
@@ -34,6 +35,7 @@ type AuthState = {
     idToken?: string | null;
     status: AuthStatus;
     sessionId?: string | null;
+    isAnonymous?: boolean;
   }) => void;
   clearAuthState: () => void;
   setInitializedFlag: (value: boolean) => void;
@@ -57,6 +59,7 @@ export const useAuthStore = create<AuthState>()(
       user: null,
       uid: null,
       idToken: null,
+      isAnonymous: false,
       onboardingCompleted: false,
       subscriptionStatus: "unknown",
       deviceId: null,
@@ -75,6 +78,7 @@ export const useAuthStore = create<AuthState>()(
             user: null,
             uid: null,
             idToken: null,
+            isAnonymous: false,
             sessionId: null,
           });
           return null;
@@ -88,6 +92,7 @@ export const useAuthStore = create<AuthState>()(
             user: null,
             uid: null,
             idToken: null,
+            isAnonymous: false,
             sessionId: null,
           });
           return null;
@@ -125,6 +130,7 @@ export const useAuthStore = create<AuthState>()(
         }
         set((state) => ({
           idToken: null,
+          isAnonymous: false,
           status: "signedOut",
         }));
       },
@@ -133,11 +139,12 @@ export const useAuthStore = create<AuthState>()(
           user: null,
           uid: null,
           idToken: null,
+          isAnonymous: false,
           sessionId: null,
           status: "signedOut",
         });
       },
-      setAuthFromSession: ({ uid, email, idToken, status, sessionId }) => {
+      setAuthFromSession: ({ uid, email, idToken, status, sessionId, isAnonymous }) => {
         const trimmed = typeof idToken === "string" ? idToken.trim() : "";
         const nextStatus: AuthStatus =
           trimmed && trimmed.split(".").length === 3 ? "authenticated" : "signedOut";
@@ -146,6 +153,7 @@ export const useAuthStore = create<AuthState>()(
           user: nextStatus === "authenticated" ? { uid, email: email ?? null } : null,
           uid: nextStatus === "authenticated" ? uid : null,
           idToken: nextStatus === "authenticated" ? trimmed : null,
+          isAnonymous: nextStatus === "authenticated" ? !!isAnonymous : false,
           sessionId: nextStatus === "authenticated" ? sessionId ?? null : null,
           status: nextStatus,
         });
@@ -155,6 +163,7 @@ export const useAuthStore = create<AuthState>()(
           user: null,
           uid: null,
           idToken: null,
+          isAnonymous: false,
           sessionId: null,
           status: "signedOut",
         });

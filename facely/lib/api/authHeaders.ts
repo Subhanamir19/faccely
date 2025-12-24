@@ -6,7 +6,7 @@ type Options = {
 };
 
 /**
- * Build auth headers with a FRESH token from Clerk.
+ * Build auth headers with a FRESH Supabase access token.
  * This is async because it fetches a new token for each request,
  * ensuring we never send an expired JWT to the backend.
  */
@@ -19,12 +19,9 @@ export async function buildAuthHeadersAsync(options?: Options): Promise<Record<s
 
   if (options?.includeLegacy) {
     const state = getAuthState();
-    const userId = state.uid ?? state.user?.uid ?? undefined;
-    const email = state.user?.email ?? undefined;
     const deviceId = state.deviceId ?? undefined;
 
-    if (userId) headers["x-user-id"] = userId;
-    if (email) headers["x-email"] = email;
+    // Metadata only (never used as identity).
     if (deviceId) headers["x-device-id"] = deviceId;
   }
 
@@ -47,12 +44,9 @@ export function buildAuthHeaders(options?: Options): Record<string, string> {
   };
 
   if (options?.includeLegacy) {
-    const userId = state.uid ?? state.user?.uid ?? undefined;
-    const email = state.user?.email ?? undefined;
     const deviceId = state.deviceId ?? undefined;
 
-    if (userId) headers["x-user-id"] = userId;
-    if (email) headers["x-email"] = email;
+    // Metadata only (never used as identity).
     if (deviceId) headers["x-device-id"] = deviceId;
   }
 

@@ -66,9 +66,10 @@ const EnvSchema = z.object({
   FF_ALLOW_HEADER_IDENTITY: z.string().optional(),
 
   // Auth
-  CLERK_JWKS_URL: z.string().url().optional(),
-  CLERK_ISSUER: z.string().optional(),
-  CLERK_AUDIENCE: z.string().optional(),
+  // Supabase access tokens are HS256-signed with the project JWT secret (JWKS is empty).
+  SUPABASE_JWT_SECRET: z.string().min(16).optional(),
+  SUPABASE_ISSUER: z.string().url().optional(),
+  SUPABASE_AUDIENCE: z.string().min(1).optional(),
 
   // Service meta
   SERVICE_NAME: z.string().default("scorer-node"),
@@ -120,9 +121,9 @@ const rawEnv = {
   FF_ASYNC_ROUTINE: process.env.FF_ASYNC_ROUTINE,
   FEATURE_SIGMA_ENABLED: process.env.FEATURE_SIGMA_ENABLED,
   FF_ALLOW_HEADER_IDENTITY: process.env.FF_ALLOW_HEADER_IDENTITY,
-  CLERK_JWKS_URL: process.env.CLERK_JWKS_URL,
-  CLERK_ISSUER: process.env.CLERK_ISSUER,
-  CLERK_AUDIENCE: process.env.CLERK_AUDIENCE,
+  SUPABASE_JWT_SECRET: process.env.SUPABASE_JWT_SECRET,
+  SUPABASE_ISSUER: process.env.SUPABASE_ISSUER,
+  SUPABASE_AUDIENCE: process.env.SUPABASE_AUDIENCE,
 
   SERVICE_NAME: process.env.SERVICE_NAME,
   SERVICE_VERSION: process.env.SERVICE_VERSION,
@@ -142,6 +143,9 @@ if (env.NODE_ENV !== "test") {
   }
   if (!env.REDIS_URL) {
     throw new Error("Missing REDIS_URL (required outside test)");
+  }
+  if (!env.SUPABASE_JWT_SECRET) {
+    throw new Error("Missing SUPABASE_JWT_SECRET (required outside test)");
   }
 }
 
@@ -227,10 +231,7 @@ export const FEATURES = {
   asyncAnalyze: isTruthyFlag(env.FF_ASYNC_ANALYZE),
   asyncRoutine: isTruthyFlag(env.FF_ASYNC_ROUTINE),
   sigmaEnabled: isTruthyFlag(env.FEATURE_SIGMA_ENABLED),
-  allowHeaderIdentity:
-    env.FF_ALLOW_HEADER_IDENTITY != null
-      ? isTruthyFlag(env.FF_ALLOW_HEADER_IDENTITY)
-      : env.NODE_ENV !== "production",
+  allowHeaderIdentity: isTruthyFlag(env.FF_ALLOW_HEADER_IDENTITY),
 };
 
 /**
@@ -253,9 +254,9 @@ export const SLO = {
 };
 
 export const AUTH = {
-  clerkJwksUrl: env.CLERK_JWKS_URL ?? null,
-  clerkIssuer: env.CLERK_ISSUER ?? null,
-  clerkAudience: env.CLERK_AUDIENCE ?? null,
+  supabaseJwtSecret: env.SUPABASE_JWT_SECRET?.trim() || null,
+  supabaseIssuer: env.SUPABASE_ISSUER?.trim().replace(/\/+$/, "") || null,
+  supabaseAudience: env.SUPABASE_AUDIENCE?.trim() || "authenticated",
 };
 
 // Minimal sanity helper for required provider keys when a route boots them.

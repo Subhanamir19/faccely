@@ -1,2 +1,9 @@
 # Ignore Expo local state in nested projects
 **/.expo/
+
+# Agent/local caches
+**/.npm-cache/
+npm-cache-*/
+
+# Local agent settings
+.claude/settings.local.json

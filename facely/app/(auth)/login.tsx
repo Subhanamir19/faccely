@@ -1,27 +1,27 @@
 // facely/app/(auth)/login.tsx
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
-import { router } from "expo-router";
-import { useSignIn, useSignUp, getClerkInstance } from "@clerk/clerk-expo";
+import { router, useLocalSearchParams } from "expo-router";
 
 import Screen from "@/components/layout/Screen";
 import GlassBtn from "@/components/ui/GlassBtn";
 import { FieldInput, FieldLabel } from "@/components/ui/FieldGroup";
 import { COLORS, SP } from "@/lib/tokens";
+import { supabase } from "@/lib/supabase/client";
+import { syncUserProfile } from "@/lib/api/user";
 import { useAuthStore } from "@/store/auth";
 
 type Mode = "signIn" | "signUp";
-type Step = "credentials" | "signUpVerifyEmail" | "signInSecondFactor";
-type EmailCodeSecondFactor = { strategy: "email_code"; emailAddressId: string };
+
+type ParamValue = string | string[] | undefined;
+
+function takeFirst(value?: ParamValue): string | undefined {
+  if (!value) return undefined;
+  return Array.isArray(value) ? value[0] : value;
+}
 
 function normalizeEmail(value: string) {
   return value.trim().toLowerCase();
-}
-
-function isEmailCodeSecondFactor(value: unknown): value is EmailCodeSecondFactor {
-  if (!value || typeof value !== "object") return false;
-  const v = value as Record<string, unknown>;
-  return v.strategy === "email_code" && typeof v.emailAddressId === "string" && v.emailAddressId.length > 0;
 }
 
 function isValidEmail(value: string) {
@@ -51,13 +51,13 @@ function getErrorMessage(error: unknown): string {
 
 export default function LoginScreen() {
   const status = useAuthStore((state) => state.status);
+  const initialized = useAuthStore((state) => state.initialized);
+  const isAnonymous = useAuthStore((state) => state.isAnonymous);
   const userEmail = useAuthStore((state) => state.user?.email ?? null);
+  const params = useLocalSearchParams<{ redirectTo?: ParamValue }>();
+  const redirectTo = takeFirst(params.redirectTo);
 
-  const { isLoaded: signInLoaded, signIn, setActive: setActiveSignIn } = useSignIn();
-  const { isLoaded: signUpLoaded, signUp, setActive: setActiveSignUp } = useSignUp();
-
-  const [mode, setMode] = useState<Mode>("signIn");
-  const [step, setStep] = useState<Step>("credentials");
+  const [mode, setMode] = useState<Mode>(() => (isAnonymous ? "signUp" : "signIn"));
 
   const [email, setEmail] = useState(userEmail ?? "");
   const [password, setPassword] = useState("");
@@ -67,23 +67,29 @@ export default function LoginScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [errorText, setErrorText] = useState<string | null>(null);
 
-  const clerkReady = signInLoaded && signUpLoaded;
+  // Legacy UI bits kept minimal; the Supabase flow only uses credentials.
+  const clerkReady = initialized;
+  const step = "credentials" as const;
+
+  useEffect(() => {
+    if (!initialized) return;
+    if (!isAnonymous && mode === "signUp") setMode("signIn");
+    if (isAnonymous && mode === "signIn" && !userEmail) setMode("signUp");
+  }, [initialized, isAnonymous, mode, userEmail]);
 
   const canSubmitCredentials = useMemo(() => {
-    if (submitting || !clerkReady) return false;
+    if (submitting || !initialized) return false;
     if (!isValidEmail(email)) return false;
     if (password.length < 8) return false;
     if (mode === "signUp" && password !== passwordConfirm) return false;
     return true;
-  }, [clerkReady, email, mode, password, passwordConfirm, submitting]);
+  }, [email, initialized, mode, password, passwordConfirm, submitting]);
 
   const modeLabel = useMemo(() => (mode === "signIn" ? "Sign in" : "Create account"), [mode]);
 
   const resetFormState = useCallback(() => {
-    setStep("credentials");
     setPassword("");
     setPasswordConfirm("");
-    setVerificationCode("");
     setErrorText(null);
   }, []);
 
@@ -95,12 +101,6 @@ export default function LoginScreen() {
     },
     [resetFormState, submitting]
   );
-
-  const activateSession = useCallback(async (createdSessionId: string, origin: "signIn" | "signUp") => {
-    const setActive = origin === "signIn" ? setActiveSignIn : setActiveSignUp;
-    await setActive?.({ session: createdSessionId });
-    router.replace("/(onboarding)/welcome");
-  }, [setActiveSignIn, setActiveSignUp]);
 
   const submitCredentials = useCallback(async () => {
     if (submitting) return;
@@ -119,7 +119,7 @@ export default function LoginScreen() {
       setErrorText("Passwords do not match.");
       return;
     }
-    if (!clerkReady) {
+    if (!initialized) {
       setErrorText("Authentication is still loading. Try again in a moment.");
       return;
     }
@@ -127,168 +127,61 @@ export default function LoginScreen() {
     setSubmitting(true);
     try {
       if (mode === "signIn") {
-        if (!signIn) throw new Error("Sign-in is unavailable.");
-        const result = await signIn.create({ strategy: "password", identifier: normalizedEmail, password });
-
-        console.log("[DEBUG] signIn.create result:", {
-          status: result.status,
-          createdSessionId: result.createdSessionId,
-          supportedSecondFactors: result.supportedSecondFactors,
+        const { error } = await supabase.auth.signInWithPassword({
+          email: normalizedEmail,
+          password,
         });
-
-        if (result.status === "complete" && result.createdSessionId) {
-          await activateSession(result.createdSessionId, "signIn");
+        if (error) throw error;
+      } else {
+        if (!isAnonymous) {
+          setErrorText("You are already signed in. Use Sign in instead.");
           return;
         }
-
-        if (result.status === "needs_second_factor") {
-          const factors = (result.supportedSecondFactors ?? []) as unknown[];
-          const emailSecondFactor = factors.find(isEmailCodeSecondFactor);
-          if (emailSecondFactor) {
-            await result.prepareSecondFactor({
-              strategy: "email_code",
-              emailAddressId: emailSecondFactor.emailAddressId,
-            });
-            setStep("signInSecondFactor");
+        const { error } = await supabase.auth.updateUser({
+          email: normalizedEmail,
+          password,
+        });
+        if (error) {
+          const msg = String(error.message || "").toLowerCase();
+          if (msg.includes("already") && msg.includes("registered")) {
+            setMode("signIn");
+            setErrorText("That email already has an account. Please sign in instead.");
             return;
           }
-          throw new Error("Additional verification is required. Enable an email second factor in Clerk or disable Client Trust.");
-        }
-
-        throw new Error(`Sign-in did not complete. Status: ${result.status}`);
-      }
-
-      if (!signUp) throw new Error("Sign-up is unavailable.");
-
-      console.log("[DEBUG] Calling signUp.create with:", { emailAddress: normalizedEmail, password: "***" });
-
-      // Check Clerk environment - this reveals if Clerk connected to its backend
-      const clerk = getClerkInstance();
-      console.log("[DEBUG] Clerk loaded:", clerk.loaded);
-      console.log("[DEBUG] Clerk environment.displayConfig.id:", clerk.environment?.displayConfig?.id);
-      console.log("[DEBUG] Clerk environment.displayConfig.applicationName:", clerk.environment?.displayConfig?.applicationName);
-      console.log("[DEBUG] Clerk client.createdAt:", clerk.client?.createdAt);
-
-      // If environment is empty, Clerk hasn't connected to its API
-      if (!clerk.environment?.displayConfig?.id) {
-        console.log("[DEBUG] WARNING: Clerk environment not loaded! API connection issue.");
-
-        // Try to manually fetch from Clerk API to test connectivity
-        const clerkDomain = "clerk.sigmamax.app"; // from your publishable key
-        try {
-          console.log("[DEBUG] Testing Clerk API connectivity...");
-          const testResponse = await fetch(`https://${clerkDomain}/v1/environment`, {
-            headers: {
-              "Content-Type": "application/json",
-            },
-          });
-          console.log("[DEBUG] Clerk API test response status:", testResponse.status);
-          const testData = await testResponse.text();
-          console.log("[DEBUG] Clerk API test response:", testData.substring(0, 500));
-        } catch (fetchError) {
-          console.log("[DEBUG] Clerk API fetch error:", fetchError);
+          throw error;
         }
       }
 
-      // Try the sign-up anyway
-      const result = await signUp.create({ emailAddress: normalizedEmail, password });
-      console.log("[DEBUG] result.status:", result?.status);
-      console.log("[DEBUG] result.createdSessionId:", result?.createdSessionId);
+      await syncUserProfile();
 
-      const signUpAttempt = result || signUp;
-
-      // If sign-up is complete (no verification required), activate session immediately
-      if (signUpAttempt.status === "complete" && signUpAttempt.createdSessionId) {
-        await setActiveSignUp?.({ session: signUpAttempt.createdSessionId });
-        router.replace("/(onboarding)/welcome");
+      if (redirectTo && redirectTo.startsWith("/")) {
+        router.replace(redirectTo as any);
         return;
       }
 
-      // If email verification is required, prepare it and show verification screen
-      if (signUpAttempt.status === "missing_requirements" &&
-          signUpAttempt.unverifiedFields?.includes("email_address")) {
-        await signUp.prepareEmailAddressVerification({ strategy: "email_code" });
-        setStep("signUpVerifyEmail");
+      const canGoBack =
+        typeof router.canGoBack === "function" ? router.canGoBack() : false;
+      if (canGoBack) {
+        router.back();
         return;
       }
 
-      throw new Error(`Sign-up did not complete. Status: ${signUpAttempt.status}`);
+      router.replace("/(tabs)/take-picture");
     } catch (err) {
-      console.log("[DEBUG] Auth error caught:", err);
-      console.log("[DEBUG] Error details:", JSON.stringify(err, null, 2));
       setErrorText(getErrorMessage(err));
     } finally {
       setSubmitting(false);
     }
-  }, [activateSession, clerkReady, email, mode, password, passwordConfirm, setActiveSignUp, signIn, signUp, submitting]);
+  }, [email, initialized, isAnonymous, mode, password, passwordConfirm, redirectTo, submitting]);
 
   const submitVerificationCode = useCallback(async () => {
-    if (submitting) return;
-    setErrorText(null);
-    if (!clerkReady) {
-      setErrorText("Authentication is still loading. Try again in a moment.");
-      return;
-    }
-
-    const code = verificationCode.trim();
-    if (!code) {
-      setErrorText("Enter the code.");
-      return;
-    }
-
-    setSubmitting(true);
-    try {
-      if (step === "signUpVerifyEmail") {
-        if (!signUp) throw new Error("Sign-up is unavailable.");
-        const signUpAttempt = await signUp.attemptEmailAddressVerification({ code });
-
-        console.log("[DEBUG] attemptEmailAddressVerification result:", {
-          status: signUpAttempt.status,
-          createdSessionId: signUpAttempt.createdSessionId,
-        });
-
-        if (signUpAttempt.status === "complete") {
-          await setActiveSignUp?.({ session: signUpAttempt.createdSessionId });
-          router.replace("/(onboarding)/welcome");
-          return;
-        }
-        throw new Error(`Email verification did not complete. Status: ${signUpAttempt.status}`);
-      }
-
-      if (step === "signInSecondFactor") {
-        if (!signIn) throw new Error("Sign-in is unavailable.");
-        const signInAttempt = await signIn.attemptSecondFactor({ strategy: "email_code", code });
-
-        console.log("[DEBUG] attemptSecondFactor result:", {
-          status: signInAttempt.status,
-          createdSessionId: signInAttempt.createdSessionId,
-        });
-
-        if (signInAttempt.status === "complete") {
-          await setActiveSignIn?.({ session: signInAttempt.createdSessionId });
-          router.replace("/(onboarding)/welcome");
-          return;
-        }
-        throw new Error(`Verification did not complete. Status: ${signInAttempt.status}`);
-      }
-    } catch (err) {
-      setErrorText(getErrorMessage(err));
-    } finally {
-      setSubmitting(false);
-    }
-  }, [clerkReady, setActiveSignIn, setActiveSignUp, signIn, signUp, step, submitting, verificationCode]);
-
-  if (status === "authenticated") {
-    router.replace("/(onboarding)/welcome");
-    return null;
-  }
+    // Legacy no-op (Clerk-only). Supabase does not require email codes in this setup.
+  }, []);
 
   const headerSubtitle =
-    step === "credentials"
-      ? mode === "signIn"
-        ? "Sign in with your email and password."
-        : "Create an account with your email and password."
-      : "Enter the code we sent to your email.";
+    mode === "signIn"
+      ? "Sign in with your email and password."
+      : "Create an account with your email and password.";
 
   return (
     <Screen scroll keyboardAware contentContainerStyle={styles.content}>
@@ -313,11 +206,11 @@ export default function LoginScreen() {
         </Pressable>
         <Pressable
           onPress={() => switchMode("signUp")}
-          disabled={submitting}
+          disabled={submitting || !isAnonymous}
           style={[styles.segmentItem, mode === "signUp" ? styles.segmentItemActive : null]}
         >
           <Text style={[styles.segmentText, mode === "signUp" ? styles.segmentTextActive : null]}>
-            Sign up
+            Create
           </Text>
         </Pressable>
       </View>

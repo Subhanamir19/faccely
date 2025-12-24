@@ -1,8 +1,8 @@
 import type { NextFunction, Request, Response } from "express";
-import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
+import { jwtVerify, type JWTPayload } from "jose";
 import { AUTH, FEATURES } from "../config/index.js";
 
-const jwks = AUTH.clerkJwksUrl ? createRemoteJWKSet(new URL(AUTH.clerkJwksUrl)) : null;
+const jwtSecret = AUTH.supabaseJwtSecret ? new TextEncoder().encode(AUTH.supabaseJwtSecret) : null;
 
 function bearerFrom(req: Request): string | null {
   const header = req.header("authorization") ?? req.header("Authorization");
@@ -40,14 +40,15 @@ export async function verifyAuth(req: Request, res: Response, next: NextFunction
   console.log("[auth] verifyAuth start", { hasAuthHeader: !!req.headers.authorization });
   const token = bearerFrom(req);
   if (token) {
-    if (!jwks) {
-      console.log("[auth] invalid_token: no JWKS configured");
+    if (!jwtSecret) {
+      console.log("[auth] invalid_token: no SUPABASE_JWT_SECRET configured");
       return res.status(401).json({ error: "invalid_token" });
     }
     try {
-      const { payload } = await jwtVerify(token, jwks, {
-        issuer: AUTH.clerkIssuer ?? undefined,
-        audience: AUTH.clerkAudience ?? undefined,
+      const { payload } = await jwtVerify(token, jwtSecret, {
+        issuer: AUTH.supabaseIssuer ?? undefined,
+        audience: AUTH.supabaseAudience ?? undefined,
+        algorithms: ["HS256"],
       });
       console.log("[auth] jwtVerify success", {
         hasSub: typeof payload.sub === "string",

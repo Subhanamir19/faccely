@@ -8,12 +8,12 @@ import {
   Alert,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
-import { useAuth } from "@clerk/clerk-expo";
 import { router } from "expo-router";
 import T from "@/components/ui/T";
 import GlassBtn from "@/components/ui/GlassBtn";
 import GlassCard from "@/components/ui/GlassCard";
 import { COLORS } from "@/lib/tokens";
+import { supabase } from "@/lib/supabase/client";
 import { useAuthStore } from "@/store/auth";
 import { useOnboarding } from "@/store/onboarding";
 import { useProfile } from "@/store/profile";
@@ -52,8 +52,8 @@ async function resetLocalUserData() {
 }
 
 export default function ProfileScreen() {
-  const { signOut } = useAuth();
   const authUser = useAuthStore((state) => state.user);
+  const isAnonymous = useAuthStore((state) => state.isAnonymous);
   const onboardingData = useOnboarding((state) => state.data);
   const hydrateOnboarding = useOnboarding((state) => state.hydrate);
   const avatarUri = useProfile((state) => state.avatarUri);
@@ -84,12 +84,12 @@ export default function ProfileScreen() {
     (authUser as any)?.fullName ||
     (authUser as any)?.firstName ||
     (authUser as any)?.name ||
-    "Unknown user";
+    (isAnonymous ? "Guest" : "Unknown user");
   const email =
     (authUser as any)?.email ??
     (authUser as any)?.emailAddress ??
     (authUser as any)?.emailAddresses?.[0]?.emailAddress ??
-    "Email unavailable";
+    (isAnonymous ? "Not linked" : "Email unavailable");
 
   const avatarSource = avatarUri
     ? { uri: avatarUri }
@@ -129,9 +129,10 @@ export default function ProfileScreen() {
     if (loggingOut || deletingAccount) return;
     setLoggingOut(true);
     try {
-      await signOut();
-      useAuthStore.getState().clearAuthState();
-      router.replace("/(auth)/login");
+      await resetLocalUserData();
+      await supabase.auth.signOut();
+      // AuthProvider will re-enter anonymous automatically.
+      router.replace("/");
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Sign out failed. Please try again.";
@@ -163,13 +164,14 @@ export default function ProfileScreen() {
     try {
       await resetLocalUserData();
       try {
-        await signOut();
+        await supabase.auth.signOut();
       } catch (err) {
         const message =
           err instanceof Error ? err.message : "Signed out locally after deletion.";
         Alert.alert("Sign out", message);
       }
-      router.replace("/(auth)/login");
+      // AuthProvider will re-enter anonymous automatically.
+      router.replace("/");
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Failed to delete account locally. Please try again.";
@@ -207,7 +209,9 @@ export default function ProfileScreen() {
           <GlassCard style={styles.card}>
             <View style={styles.cardHeader}>
               <T style={styles.cardLabel}>Linked account</T>
-              <T style={styles.cardSubtext}>Signed in with email</T>
+              <T style={styles.cardSubtext}>
+                {isAnonymous ? "Guest session" : "Signed in with email"}
+              </T>
             </View>
             <View style={styles.accountRow}>
               <View>

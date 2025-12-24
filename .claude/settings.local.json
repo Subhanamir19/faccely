@@ -14,7 +14,10 @@
       "Bash(npm run build:*)",
       "Bash(node --eval:*)",
       "Bash(wc:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(npx expo install:*)",
+      "Bash(copy \"c:\\\\SS\\\\loading-video.mp4\" \"c:\\\\SS\\\\facely\\\\assets\\\\loading\\\\loading-video.mp4\")",
+      "Bash(cp:*)"
     ]
   }
 }
