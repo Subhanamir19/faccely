@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { router } from "expo-router";
 import Svg, { Circle, Line, Defs, LinearGradient, Stop } from "react-native-svg";
+import { Ionicons } from "@expo/vector-icons";
 import { ApiResponseError } from "@/lib/api/client";
 import Screen from "@/components/layout/Screen";
 import PillNavButton from "@/components/ui/PillNavButton";
@@ -68,6 +69,7 @@ type DayRowProps = {
   showTrophy?: boolean;
   isLevelComplete?: boolean;
   direction?: "ltr" | "rtl";
+  disabledOverride?: boolean;
   onDayPress: (dayNumber: number) => void;
   availableWidth: number;
 };
@@ -77,6 +79,7 @@ function DayRow({
   showTrophy,
   isLevelComplete,
   direction = "ltr",
+  disabledOverride,
   onDayPress,
   availableWidth,
 }: DayRowProps) {
@@ -207,8 +210,8 @@ function DayRow({
           return (
             <Pressable
               key={day.dayNumber}
-              onPress={() => !day.disabled && onDayPress(day.dayNumber)}
-              disabled={day.disabled}
+              onPress={() => !day.disabled && !disabledOverride && onDayPress(day.dayNumber)}
+              disabled={day.disabled || disabledOverride}
               style={[
                 styles.dayPressable,
                 {
@@ -264,11 +267,24 @@ type LevelSectionProps = {
   level: LevelData;
   onDayPress: (dayNumber: number) => void;
   availableWidth: number;
+  expanded?: boolean;
+  disableDays?: boolean;
+  lockedHint?: string | null;
+  showHeaderImage?: boolean;
 };
 
-function LevelSection({ level, onDayPress, availableWidth }: LevelSectionProps) {
+function LevelSection({
+  level,
+  onDayPress,
+  availableWidth,
+  expanded = true,
+  disableDays,
+  lockedHint,
+  showHeaderImage,
+}: LevelSectionProps) {
   const progress = level.totalDays > 0 ? level.completedDays / level.totalDays : 0;
   const isAllComplete = level.completedDays === level.totalDays && level.totalDays > 0;
+  const daysDisabled = Boolean(disableDays || level.isLocked);
 
   // Split days: Row 1 = days 1-4, Row 2 = days 5-7
   const row1Days = level.days.slice(0, 4);
@@ -278,19 +294,20 @@ function LevelSection({ level, onDayPress, availableWidth }: LevelSectionProps) 
     <View
       style={[
         styles.levelSection,
+        !expanded && styles.levelSectionCollapsed,
         level.isCurrentLevel && styles.levelSectionCurrent,
         level.isLocked && styles.levelSectionLocked,
         isAllComplete && styles.levelSectionComplete,
       ]}
     >
       {/* Header Image for Level 1 */}
-      {level.levelNumber === 1 && (
+      {showHeaderImage && level.levelNumber === 1 ? (
         <Image
           source={require("@/assets/program-header.png")}
           style={styles.levelHeaderImage}
           resizeMode="cover"
         />
-      )}
+      ) : null}
 
       {/* Level Header */}
       <View style={styles.levelHeader}>
@@ -298,7 +315,10 @@ function LevelSection({ level, onDayPress, availableWidth }: LevelSectionProps) 
           <Text style={[styles.levelTitle, level.isLocked && styles.levelTitleLocked]}>
             Level {level.levelNumber}
           </Text>
-          {isAllComplete && <Text style={styles.checkEmoji}>✓</Text>}
+          {level.isLocked && !isAllComplete ? (
+            <Ionicons name="lock-closed" size={16} color={COLORS.sub} />
+          ) : null}
+          {isAllComplete ? <Ionicons name="checkmark-circle" size={16} color="#22c55e" /> : null}
         </View>
         <Text style={styles.levelProgress}>{level.completedDays}/{level.totalDays}</Text>
       </View>
@@ -314,25 +334,66 @@ function LevelSection({ level, onDayPress, availableWidth }: LevelSectionProps) 
         />
       </View>
 
-      {/* Row 1: Days 1-4 */}
-      <DayRow
-        days={row1Days}
-        onDayPress={onDayPress}
-        availableWidth={availableWidth}
-      />
+      {!expanded ? (
+        <>
+          <Text style={styles.levelNameCollapsed}>{level.levelName}</Text>
+          {lockedHint ? <Text style={styles.levelLockedHint}>{lockedHint}</Text> : null}
+        </>
+      ) : (
+        <>
+          {lockedHint ? <Text style={styles.levelLockedHint}>{lockedHint}</Text> : null}
 
-      {/* Row 2: Days 5-7 + Trophy */}
-      <DayRow
-        days={row2Days}
-        showTrophy
-        isLevelComplete={isAllComplete}
-        direction="rtl"
-        onDayPress={onDayPress}
-        availableWidth={availableWidth}
-      />
+          {/* Row 1: Days 1-4 */}
+          <DayRow
+            days={row1Days}
+            onDayPress={onDayPress}
+            availableWidth={availableWidth}
+            disabledOverride={daysDisabled}
+          />
 
-      {/* Level name subtitle */}
-      <Text style={styles.levelSubtitle}>{level.levelName}</Text>
+          {/* Vertical connector between row 1 and row 2 */}
+          {(() => {
+            const slotCount = 4;
+            let circleSize = MAX_CIRCLE_SIZE;
+            let gap = Math.floor((availableWidth - slotCount * circleSize) / (slotCount + 1));
+            if (gap < MIN_GAP) {
+              circleSize = Math.floor((availableWidth - MIN_GAP * (slotCount + 1)) / slotCount);
+              circleSize = Math.max(MIN_CIRCLE_SIZE, Math.min(MAX_CIRCLE_SIZE, circleSize));
+              gap = Math.floor((availableWidth - slotCount * circleSize) / (slotCount + 1));
+            }
+            gap = Math.max(4, gap);
+            // Day 4 is at slot index 3 (rightmost in row 1)
+            const connectorX = gap + 3 * (circleSize + gap) + circleSize / 2;
+            return (
+              <Svg width={availableWidth} height={16} style={styles.verticalConnector}>
+                <Line
+                  x1={connectorX}
+                  y1={0}
+                  x2={connectorX}
+                  y2={16}
+                  stroke="rgba(255,255,255,0.2)"
+                  strokeWidth={2}
+                  strokeDasharray="4,3"
+                />
+              </Svg>
+            );
+          })()}
+
+          {/* Row 2: Days 5-7 + Trophy */}
+          <DayRow
+            days={row2Days}
+            showTrophy
+            isLevelComplete={isAllComplete}
+            direction="rtl"
+            onDayPress={onDayPress}
+            availableWidth={availableWidth}
+            disabledOverride={daysDisabled}
+          />
+
+          {/* Level name subtitle */}
+          <Text style={styles.levelSubtitle}>{level.levelName}</Text>
+        </>
+      )}
     </View>
   );
 }
@@ -351,6 +412,7 @@ export default function ProgramScreen() {
   const [booting, setBooting] = useState(true);
   const [screenError, setScreenError] = useState<string | null>(null);
   const [redirecting, setRedirecting] = useState(false);
+  const [showCompletedLevels, setShowCompletedLevels] = useState(false);
 
   // Available width for rows (screen - padding - card padding)
   const availableWidth = screenWidth - SP[4] * 2 - SP[3] * 2;
@@ -435,7 +497,7 @@ export default function ProgramScreen() {
   // Group days into 10 levels of 7 days each
   const levelData: LevelData[] = useMemo(() => {
     const levels: LevelData[] = [];
-    const currentDayNumber = todayIndex + 1;
+    let allPreviousLevelsComplete = true;
 
     for (let i = 0; i < TOTAL_LEVELS; i++) {
       const startDay = i * DAYS_PER_LEVEL + 1;
@@ -448,10 +510,11 @@ export default function ProgramScreen() {
           dayInLevel: d.dayNumber - startDay + 1,
         }));
 
-      const completedDays = levelDays.filter((d) => d.state === "past-complete").length;
-      const isCurrentLevel = currentDayNumber >= startDay && currentDayNumber <= endDay;
-      const isLocked = currentDayNumber < startDay;
-      const isPast = currentDayNumber > endDay;
+      const completedDays = levelDays.filter((d) => d.total > 0 && d.completedCount === d.total).length;
+      const isAllComplete = completedDays === DAYS_PER_LEVEL;
+      const isLocked = !allPreviousLevelsComplete;
+      const isCurrentLevel = allPreviousLevelsComplete && !isAllComplete;
+      const isPast = isAllComplete;
 
       levels.push({
         levelNumber: i + 1,
@@ -463,10 +526,14 @@ export default function ProgramScreen() {
         isLocked,
         isPast,
       });
+
+      if (!isAllComplete) {
+        allPreviousLevelsComplete = false;
+      }
     }
 
     return levels;
-  }, [dayData, todayIndex]);
+  }, [dayData]);
 
   function handleDayPress(dayNumber: number) {
     router.push({
@@ -527,21 +594,20 @@ export default function ProgramScreen() {
   // Calculate overall progress
   const totalCompletedDays = levelData.reduce((acc, l) => acc + l.completedDays, 0);
   const overallProgress = Math.round((totalCompletedDays / 70) * 100);
+  const currentLevel = levelData.find((l) => l.isCurrentLevel) ?? levelData[TOTAL_LEVELS - 1];
+  const currentLevelIndex = Math.max(
+    0,
+    levelData.findIndex((l) => l.levelNumber === currentLevel?.levelNumber)
+  );
+  const nextLevel = levelData[currentLevelIndex + 1] ?? null;
+  const completedLevels = levelData
+    .slice(0, currentLevelIndex)
+    .filter((l) => l.completedDays === l.totalDays && l.totalDays > 0);
+  const lockedLevels = levelData.slice(currentLevelIndex + (nextLevel ? 2 : 1));
 
   return (
     <Screen
       scroll={false}
-      footer={
-        __DEV__ ? (
-          <View style={styles.footerRow}>
-            <PillNavButton
-              kind="ghost"
-              label="Regenerate (Dev)"
-              onPress={() => bootstrap(true)}
-            />
-          </View>
-        ) : null
-      }
     >
       {!program ? (
         emptyState
@@ -579,12 +645,94 @@ export default function ProgramScreen() {
 
           {/* Level Sections */}
           <View style={styles.levelsContainer}>
-            {levelData.map((level) => (
+            {completedLevels.length > 0 ? (
+              <View style={styles.completedPanel}>
+                <Pressable
+                  onPress={() => setShowCompletedLevels((v) => !v)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Toggle completed levels"
+                  style={({ pressed }) => [
+                    styles.completedHeaderRow,
+                    pressed ? styles.completedHeaderRowPressed : null,
+                  ]}
+                >
+                  <View style={styles.completedHeaderLeft}>
+                    <Text style={styles.completedHeaderTitle}>Completed levels</Text>
+                    <Text style={styles.completedHeaderSub}>
+                      {completedLevels.length} finished
+                    </Text>
+                  </View>
+                  <Ionicons
+                    name={showCompletedLevels ? "chevron-up" : "chevron-down"}
+                    size={18}
+                    color={COLORS.sub}
+                  />
+                </Pressable>
+
+                {showCompletedLevels ? (
+                  <View style={styles.completedList}>
+                    {completedLevels.map((level) => {
+                      const startDay = (level.levelNumber - 1) * DAYS_PER_LEVEL + 1;
+                      return (
+                        <Pressable
+                          key={level.levelNumber}
+                          onPress={() => handleDayPress(startDay)}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Review level ${level.levelNumber}`}
+                          style={({ pressed }) => [
+                            styles.completedRow,
+                            pressed ? styles.completedRowPressed : null,
+                          ]}
+                        >
+                          <View style={styles.completedRowLeft}>
+                            <Text style={styles.completedRowTitle}>Level {level.levelNumber}</Text>
+                            <Text style={styles.completedRowSub}>{level.levelName}</Text>
+                          </View>
+                          <Ionicons name="chevron-forward" size={18} color={COLORS.sub} />
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                ) : null}
+              </View>
+            ) : null}
+
+            {currentLevel ? (
+              <LevelSection
+                key={currentLevel.levelNumber}
+                level={currentLevel}
+                onDayPress={handleDayPress}
+                availableWidth={availableWidth}
+                expanded
+                showHeaderImage
+              />
+            ) : null}
+
+            {nextLevel ? (
+              <LevelSection
+                key={nextLevel.levelNumber}
+                level={nextLevel}
+                onDayPress={handleDayPress}
+                availableWidth={availableWidth}
+                expanded
+                disableDays={nextLevel.isLocked}
+                lockedHint={
+                  nextLevel.isLocked
+                    ? `Complete Level ${currentLevel.levelNumber} to unlock this stage.`
+                    : null
+                }
+              />
+            ) : null}
+
+            {lockedLevels.map((level) => (
               <LevelSection
                 key={level.levelNumber}
                 level={level}
                 onDayPress={handleDayPress}
                 availableWidth={availableWidth}
+                expanded={false}
+                disableDays
+                lockedHint={`Complete Level ${Math.max(1, level.levelNumber - 1)} to unlock this stage.`}
               />
             ))}
           </View>
@@ -690,6 +838,59 @@ const styles = StyleSheet.create({
     gap: SP[3],
   },
 
+  // Completed Levels Panel
+  completedPanel: {
+    backgroundColor: COLORS.card,
+    borderRadius: RADII.lg,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+    overflow: "hidden",
+  },
+  completedHeaderRow: {
+    paddingHorizontal: SP[3],
+    paddingVertical: SP[3],
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  completedHeaderRowPressed: { opacity: 0.9 },
+  completedHeaderLeft: { gap: 2 },
+  completedHeaderTitle: {
+    color: COLORS.text,
+    fontSize: 15,
+    fontFamily: "Poppins-SemiBold",
+  },
+  completedHeaderSub: {
+    color: COLORS.sub,
+    fontSize: 12,
+    fontFamily: "Poppins-SemiBold",
+  },
+  completedList: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: COLORS.cardBorder,
+  },
+  completedRow: {
+    paddingHorizontal: SP[3],
+    paddingVertical: SP[3],
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: COLORS.cardBorder,
+  },
+  completedRowPressed: { opacity: 0.9 },
+  completedRowLeft: { gap: 2 },
+  completedRowTitle: {
+    color: COLORS.text,
+    fontSize: 14,
+    fontFamily: "Poppins-SemiBold",
+  },
+  completedRowSub: {
+    color: COLORS.sub,
+    fontSize: 12,
+    fontFamily: "Poppins-SemiBold",
+  },
+
   // Level Section
   levelSection: {
     backgroundColor: COLORS.card,
@@ -698,6 +899,10 @@ const styles = StyleSheet.create({
     borderColor: COLORS.cardBorder,
     padding: SP[3],
     gap: SP[2],
+  },
+  levelSectionCollapsed: {
+    gap: SP[2],
+    paddingVertical: SP[3],
   },
   levelSectionCurrent: {
     borderColor: "#9333ea",
@@ -756,6 +961,17 @@ const styles = StyleSheet.create({
     marginTop: SP[1],
     fontFamily: "Poppins-SemiBold",
   },
+  levelNameCollapsed: {
+    color: COLORS.sub,
+    fontSize: 12,
+    fontFamily: "Poppins-SemiBold",
+  },
+  levelLockedHint: {
+    color: COLORS.sub,
+    fontSize: 12,
+    lineHeight: 16,
+    fontFamily: "Poppins-SemiBold",
+  },
 
   // Level Progress Bar
   levelProgressBar: {
@@ -771,6 +987,12 @@ const styles = StyleSheet.create({
   },
   levelProgressFillComplete: {
     backgroundColor: "#22c55e",
+  },
+
+  // Vertical connector between rows
+  verticalConnector: {
+    marginTop: -SP[1],
+    marginBottom: -SP[1],
   },
 
   // Day Row

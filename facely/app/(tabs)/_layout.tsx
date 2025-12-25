@@ -65,6 +65,7 @@ export default function TabsLayout() {
       {/* Keep routes but hide them from the tab bar */}
       <Tabs.Screen name="history" options={{ href: null }} />
       <Tabs.Screen name="protocols" options={{ href: null }} />
+      <Tabs.Screen name="_protocols" options={{ href: null }} />
       <Tabs.Screen name="routine" options={{ href: null }} />
       <Tabs.Screen name="score" options={{ href: null }} />
       <Tabs.Screen name="analysis" options={{ href: null }} />

@@ -1,7 +1,5 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
   Image,
   Modal,
   Pressable,
@@ -9,14 +7,15 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  useWindowDimensions,
   View,
 } from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
 import { COLORS, RADII, SP } from "@/lib/tokens";
 import PillNavButton from "@/components/ui/PillNavButton";
+import DayCompleteModal from "@/components/ui/DayCompleteModal";
 import { useProgramStore } from "@/store/program";
 import { POSE_FRAMES, FALLBACK_FRAME } from "@/lib/programAssets";
+import { getExerciseGuide } from "@/lib/exerciseGuideData";
 
 function formatPhase(phase?: string) {
   if (phase === "foundation") return "Phase 1 - Foundation";
@@ -105,187 +104,19 @@ function StartPill({ onPress }: { onPress: () => void }) {
   );
 }
 
-type PlayerProps = {
-  exerciseId: string;
-  frames: any[];
-  onMarkComplete: () => Promise<boolean>;
-  onDone: () => void;
-};
-
-type PlayerMode = "preview" | "perform";
-
-const DEFAULT_DURATION_SECONDS = 30;
-
-function ExercisePlayer({ exerciseId, frames, onMarkComplete, onDone }: PlayerProps) {
-  const { height: windowHeight } = useWindowDimensions();
-  const safeFrames = frames.length > 0 ? frames : [FALLBACK_FRAME];
-  const lastPoseIdx = safeFrames.length - 1;
-  const imageHeight = Math.min(Math.round(windowHeight * 0.55), 420);
-
-  const [mode, setMode] = useState<PlayerMode>("preview");
-  const [poseIdx, setPoseIdx] = useState(0);
-  const [remaining, setRemaining] = useState(DEFAULT_DURATION_SECONDS);
-  const [runId, setRunId] = useState(0);
-  const promptShownRef = useRef(false);
-  const completingRef = useRef(false);
-
-  useEffect(() => {
-    setMode("preview");
-    setPoseIdx(0);
-    setRemaining(DEFAULT_DURATION_SECONDS);
-    setRunId(0);
-    promptShownRef.current = false;
-    completingRef.current = false;
-  }, [exerciseId, safeFrames.length]);
-
-  useEffect(() => {
-    if (mode !== "perform") return;
-
-    const timer = setInterval(() => {
-      setRemaining((prev) => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => {
-      clearInterval(timer);
-    };
-  }, [mode, runId]);
-
-  useEffect(() => {
-    if (mode !== "perform") return;
-    if (remaining !== 0) return;
-    if (promptShownRef.current) return;
-    if (completingRef.current) return;
-
-    promptShownRef.current = true;
-
-    Alert.alert(
-      "Time's up",
-      "Mark as complete or do again?",
-      [
-        {
-          text: "Do again",
-          style: "cancel",
-          onPress: () => {
-            promptShownRef.current = false;
-            setRemaining(DEFAULT_DURATION_SECONDS);
-            setRunId((v) => v + 1);
-          },
-        },
-        {
-          text: "Mark as complete",
-          onPress: () => {
-            if (completingRef.current) return;
-            completingRef.current = true;
-            void (async () => {
-              const ok = await onMarkComplete();
-              if (ok) {
-                onDone();
-                return;
-              }
-              completingRef.current = false;
-              promptShownRef.current = false;
-              Alert.alert("Error", "Couldn't mark complete. Please try again.");
-            })();
-          },
-        },
-      ],
-      { cancelable: false }
-    );
-  }, [mode, onDone, onMarkComplete, remaining]);
-
-  const frame = safeFrames[poseIdx] ?? FALLBACK_FRAME;
-  const canPrev = poseIdx > 0;
-  const canNext = poseIdx < lastPoseIdx;
-
-  return (
-    <View style={styles.playerCard}>
-      <View style={styles.playerTopRow}>
-        <Pressable
-          onPress={onDone}
-          style={({ pressed }) => [styles.playerCloseBtn, pressed ? styles.playerCloseBtnPressed : null]}
-          accessibilityRole="button"
-          accessibilityLabel="Close"
-        >
-          <Text style={styles.playerCloseText}>Close</Text>
-        </Pressable>
-      </View>
-      {mode === "preview" ? (
-        <>
-          <View style={[styles.imageWrap, { height: imageHeight }]}>
-            <Image source={frame} style={styles.image} resizeMode="contain" />
-          </View>
-
-          <View style={styles.poseNavRow}>
-            <Pressable
-              onPress={canPrev ? () => setPoseIdx((v) => Math.max(0, v - 1)) : undefined}
-              style={({ pressed }) => [
-                styles.poseNavBtn,
-                !canPrev && styles.poseNavBtnDisabled,
-                pressed && canPrev ? styles.poseNavBtnPressed : null,
-              ]}
-              accessibilityRole="button"
-              accessibilityLabel="Previous pose"
-            >
-              <Text style={styles.poseNavBtnText}>{"<"}</Text>
-            </Pressable>
-
-            <Text style={styles.poseCounter}>
-              {poseIdx + 1}/{safeFrames.length}
-            </Text>
-
-            <Pressable
-              onPress={canNext ? () => setPoseIdx((v) => Math.min(lastPoseIdx, v + 1)) : undefined}
-              style={({ pressed }) => [
-                styles.poseNavBtn,
-                !canNext && styles.poseNavBtnDisabled,
-                pressed && canNext ? styles.poseNavBtnPressed : null,
-              ]}
-              accessibilityRole="button"
-              accessibilityLabel="Next pose"
-            >
-              <Text style={styles.poseNavBtnText}>{">"}</Text>
-            </Pressable>
-          </View>
-
-          {poseIdx === lastPoseIdx ? (
-            <PillNavButton
-              kind="solid"
-              label="Perform"
-              onPress={() => {
-                promptShownRef.current = false;
-                completingRef.current = false;
-                setRemaining(DEFAULT_DURATION_SECONDS);
-                setMode("perform");
-                setRunId((v) => v + 1);
-              }}
-            />
-          ) : null}
-        </>
-      ) : (
-        <>
-          <View style={styles.timerOnlyWrap}>
-            <Text style={styles.timerOnlyValue}>{remaining}s</Text>
-          </View>
-        </>
-      )}
-    </View>
-  );
-}
+// Modal view states
+type ModalView = "action" | "guide" | "poses";
 
 export default function ProgramDayScreen() {
   const params = useLocalSearchParams<{ day?: string }>();
   const dayNumber = params?.day ? Number.parseInt(String(params.day), 10) : NaN;
   const { program, programType, completions, toggleCompletion } = useProgramStore();
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [showPlayer, setShowPlayer] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
+  const [showDayComplete, setShowDayComplete] = useState(false);
+  const [modalView, setModalView] = useState<ModalView>("action");
+  const [guidePoseIdx, setGuidePoseIdx] = useState(0);
 
   const day = useMemo(
     () => program?.days.find((d) => d.dayNumber === dayNumber),
@@ -293,7 +124,6 @@ export default function ProgramDayScreen() {
   );
 
   const selected = day?.exercises.find((ex) => ex.id === selectedId) ?? null;
-  const frames = selected ? POSE_FRAMES[selected.id] ?? [FALLBACK_FRAME] : [FALLBACK_FRAME];
 
   if (!program || !day || Number.isNaN(dayNumber)) {
     return (
@@ -313,13 +143,32 @@ export default function ProgramDayScreen() {
     (ex) => completions[`${safeProgram.programId}:${safeDay.dayNumber}:${ex.id}`]
   );
 
-  const totalSeconds = safeDay.exercises.reduce((acc, ex) => acc + (ex.durationSeconds ?? DEFAULT_DURATION_SECONDS), 0);
+  const totalSeconds = safeDay.exercises.reduce((acc, ex) => acc + (ex.durationSeconds ?? 30), 0);
   const totalLabel = minutesLabelFromSeconds(totalSeconds);
 
   async function handleCompletion(exerciseId: string) {
+    const key = `${safeProgram.programId}:${safeDay.dayNumber}:${exerciseId}`;
+    const wasDone = !!completions[key];
+    const willCompleteDay =
+      !wasDone &&
+      safeDay.exercises.every((ex) => {
+        if (ex.id === exerciseId) return true;
+        const otherKey = `${safeProgram.programId}:${safeDay.dayNumber}:${ex.id}`;
+        return !!completions[otherKey];
+      });
+
     setSubmitting(true);
     try {
       await toggleCompletion(safeDay.dayNumber, exerciseId);
+
+      if (willCompleteDay) {
+        setShowConfirmation(false);
+        setSelectedId(null);
+        setModalView("action");
+        setTimeout(() => setShowDayComplete(true), 150);
+        return;
+      }
+
       setShowConfirmation(true);
 
       // Auto-close after 1 second
@@ -329,26 +178,6 @@ export default function ProgramDayScreen() {
       }, 1000);
     } catch (err: any) {
       console.warn("Completion toggle failed", err);
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  async function markCompleteIfNeeded(exerciseId: string): Promise<boolean> {
-    if (submitting) return false;
-    const state = useProgramStore.getState();
-    const programId = state.program?.programId;
-    if (!programId) return false;
-    const key = `${programId}:${safeDay.dayNumber}:${exerciseId}`;
-    if (state.completions?.[key]) return true;
-
-    setSubmitting(true);
-    try {
-      await toggleCompletion(safeDay.dayNumber, exerciseId);
-      return true;
-    } catch (err) {
-      console.warn("Completion toggle failed", err);
-      return false;
     } finally {
       setSubmitting(false);
     }
@@ -400,7 +229,11 @@ export default function ProgramDayScreen() {
                 return (
                   <Pressable
                     key={ex.id}
-                    onPress={() => setSelectedId(ex.id)}
+                    onPress={() => {
+                      setSelectedId(ex.id);
+                      setModalView("action");
+                      setGuidePoseIdx(0);
+                    }}
                     style={({ pressed }) => [
                       styles.preferredExerciseCard,
                       pressed ? styles.preferredExerciseCardPressed : null,
@@ -422,7 +255,8 @@ export default function ProgramDayScreen() {
                         <StartPill
                           onPress={() => {
                             setSelectedId(ex.id);
-                            setShowPlayer(true);
+                            setModalView("action");
+                            setGuidePoseIdx(0);
                           }}
                         />
                         <CompletionDot done={done} />
@@ -496,56 +330,211 @@ export default function ProgramDayScreen() {
         )}
       </ScrollView>
 
-      <Modal visible={!!selected && !showPlayer} transparent animationType="fade">
+      <Modal visible={!!selected} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>{selected?.name}</Text>
-
             {showConfirmation ? (
               <View style={styles.confirmationBox}>
                 <Text style={styles.confirmationText}>✓ Exercise marked complete!</Text>
               </View>
-            ) : (
+            ) : modalView === "action" ? (
               <>
+                <View style={styles.modalHeaderRow}>
+                  <Text style={[styles.modalTitle, styles.modalTitleHeader]} numberOfLines={1}>
+                    {selected?.name}
+                  </Text>
+                  <Pressable
+                    onPress={() => {
+                      setSelectedId(null);
+                      setModalView("action");
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Close"
+                    style={({ pressed }) => [
+                      styles.modalCloseIcon,
+                      pressed ? styles.modalCloseIconPressed : null,
+                    ]}
+                  >
+                    <Text style={styles.modalCloseIconText}>✕</Text>
+                  </Pressable>
+                </View>
+
                 <Text style={styles.modalText}>What would you like to do?</Text>
                 <View style={styles.modalActions}>
                   <PillNavButton
                     kind="ghost"
-                    label={submitting ? "Saving..." : "Task completed?"}
+                    label={submitting ? "Saving..." : "Completed"}
                     onPress={() => selected && handleCompletion(selected.id)}
                     disabled={submitting}
                   />
                   <PillNavButton
                     kind="solid"
-                    label="Start"
-                    onPress={() => setShowPlayer(true)}
+                    label="Guide"
+                    onPress={() => setModalView("guide")}
                     disabled={submitting}
                   />
                 </View>
-                <PillNavButton kind="ghost" label="Close" onPress={() => setSelectedId(null)} />
               </>
-            )}
+            ) : modalView === "guide" ? (
+              <>
+                {(() => {
+                  const guide = selected ? getExerciseGuide(selected.id) : null;
+                  if (!guide) {
+                    return (
+                      <>
+                        <Text style={styles.modalTitle}>{selected?.name}</Text>
+                        <Text style={styles.modalText}>No guide available for this exercise.</Text>
+                        <PillNavButton
+                          kind="ghost"
+                          label="Back"
+                          onPress={() => setModalView("action")}
+                        />
+                      </>
+                    );
+                  }
+                  return (
+                    <ScrollView style={styles.guideScrollView} showsVerticalScrollIndicator={false}>
+                      <Text style={styles.modalTitle}>{guide.name}</Text>
+
+                      <View style={styles.guideMetaRow}>
+                        <View style={styles.guideMetaItem}>
+                          <Text style={styles.guideMetaLabel}>Hold</Text>
+                          <Text style={styles.guideMetaValue}>{guide.holdTime}</Text>
+                        </View>
+                        <View style={styles.guideMetaItem}>
+                          <Text style={styles.guideMetaLabel}>Reps</Text>
+                          <Text style={styles.guideMetaValue}>{guide.reps}</Text>
+                        </View>
+                      </View>
+
+                      <View style={styles.guideMetaItem}>
+                        <Text style={styles.guideMetaLabel}>Frequency</Text>
+                        <Text style={styles.guideMetaValue}>{guide.frequency}</Text>
+                      </View>
+
+                      <Text style={styles.guideSectionTitle}>How to Perform</Text>
+                      {guide.howTo.map((step, idx) => (
+                        <View key={idx} style={styles.guideStepRow}>
+                          <Text style={styles.guideStepNumber}>{idx + 1}.</Text>
+                          <Text style={styles.guideStepText}>{step}</Text>
+                        </View>
+                      ))}
+
+                      <Text style={styles.guideSectionTitle}>Tips</Text>
+                      {guide.tips.map((tip, idx) => (
+                        <View key={idx} style={styles.guideStepRow}>
+                          <Text style={styles.guideTipBullet}>•</Text>
+                          <Text style={styles.guideStepText}>{tip}</Text>
+                        </View>
+                      ))}
+
+                      <View style={styles.guideButtonsRow}>
+                        <PillNavButton
+                          kind="ghost"
+                          label="Back"
+                          onPress={() => setModalView("action")}
+                        />
+                        <PillNavButton
+                          kind="solid"
+                          label="Poses"
+                          onPress={() => {
+                            setGuidePoseIdx(0);
+                            setModalView("poses");
+                          }}
+                        />
+                      </View>
+                    </ScrollView>
+                  );
+                })()}
+              </>
+            ) : modalView === "poses" ? (
+              <>
+                {(() => {
+                  const guideFrames = selected ? POSE_FRAMES[selected.id] ?? [FALLBACK_FRAME] : [FALLBACK_FRAME];
+                  const lastIdx = guideFrames.length - 1;
+                  const canPrev = guidePoseIdx > 0;
+                  const canNext = guidePoseIdx < lastIdx;
+                  const currentFrame = guideFrames[guidePoseIdx] ?? FALLBACK_FRAME;
+
+                  return (
+                    <>
+                      <View style={styles.playerTopRow}>
+                        <Pressable
+                          onPress={() => setModalView("guide")}
+                          style={({ pressed }) => [
+                            styles.playerCloseBtn,
+                            pressed ? styles.playerCloseBtnPressed : null,
+                          ]}
+                          accessibilityRole="button"
+                          accessibilityLabel="Back to guide"
+                        >
+                          <Text style={styles.playerCloseText}>← Back</Text>
+                        </Pressable>
+                      </View>
+
+                      <View style={styles.guidePoseImageWrap}>
+                        <Image source={currentFrame} style={styles.image} resizeMode="contain" />
+                      </View>
+
+                      <View style={styles.poseNavRow}>
+                        <Pressable
+                          onPress={canPrev ? () => setGuidePoseIdx((v) => Math.max(0, v - 1)) : undefined}
+                          style={({ pressed }) => [
+                            styles.poseNavBtn,
+                            !canPrev && styles.poseNavBtnDisabled,
+                            pressed && canPrev ? styles.poseNavBtnPressed : null,
+                          ]}
+                          accessibilityRole="button"
+                          accessibilityLabel="Previous pose"
+                        >
+                          <Text style={styles.poseNavBtnText}>{"<"}</Text>
+                        </Pressable>
+
+                        <Text style={styles.poseCounter}>
+                          Pose {guidePoseIdx + 1}/{guideFrames.length}
+                        </Text>
+
+                        <Pressable
+                          onPress={canNext ? () => setGuidePoseIdx((v) => Math.min(lastIdx, v + 1)) : undefined}
+                          style={({ pressed }) => [
+                            styles.poseNavBtn,
+                            !canNext && styles.poseNavBtnDisabled,
+                            pressed && canNext ? styles.poseNavBtnPressed : null,
+                          ]}
+                          accessibilityRole="button"
+                          accessibilityLabel="Next pose"
+                        >
+                          <Text style={styles.poseNavBtnText}>{">"}</Text>
+                        </Pressable>
+                      </View>
+
+                      <PillNavButton
+                        kind="solid"
+                        label="Done"
+                        onPress={() => {
+                          if (selected) {
+                            handleCompletion(selected.id);
+                          }
+                        }}
+                        disabled={submitting}
+                      />
+                    </>
+                  );
+                })()}
+              </>
+            ) : null}
           </View>
         </View>
       </Modal>
 
-      <Modal visible={!!selected && showPlayer} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          {selected ? (
-            <ExercisePlayer
-              exerciseId={selected.id}
-              frames={frames}
-              onMarkComplete={() => markCompleteIfNeeded(selected.id)}
-              onDone={() => {
-                setShowPlayer(false);
-                setSelectedId(null);
-              }}
-            />
-          ) : (
-            <ActivityIndicator color={COLORS.accent} />
-          )}
-        </View>
-      </Modal>
+      <DayCompleteModal
+        visible={showDayComplete}
+        dayNumber={safeDay.dayNumber}
+        autoDismissMs={0}
+        dismissOnBackdropPress={false}
+        particles
+        onClose={() => setShowDayComplete(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -554,10 +543,10 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: COLORS.bgBottom },
   container: { padding: SP[4], gap: SP[3], paddingBottom: SP[6] },
   center: { flex: 1, alignItems: "center", justifyContent: "center", gap: SP[3] },
-  empty: { color: COLORS.text, fontSize: 16 },
+  empty: { color: COLORS.text, fontSize: 16, fontFamily: "Poppins-SemiBold" },
   header: { flexDirection: "row", alignItems: "center", gap: SP[3] },
-  title: { color: COLORS.text, fontSize: 24, fontWeight: "700" },
-  sub: { color: COLORS.sub },
+  title: { color: COLORS.text, fontSize: 24, fontFamily: "Poppins-SemiBold" },
+  sub: { color: COLORS.sub, fontFamily: "Poppins-SemiBold" },
 
   backPill: {
     height: 44,
@@ -570,7 +559,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   backPillPressed: { transform: [{ translateY: 1 }] },
-  backPillText: { color: COLORS.text, fontSize: 14, fontWeight: "900" },
+  backPillText: { color: COLORS.text, fontSize: 14, fontFamily: "Poppins-SemiBold" },
 
   banner: {
     flexDirection: "row",
@@ -592,8 +581,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(180,243,77,0.35)",
   },
-  bannerIconText: { color: COLORS.accent, fontSize: 14, fontWeight: "900" },
-  bannerText: { flex: 1, color: COLORS.accent, fontSize: 13, fontWeight: "800", lineHeight: 18 },
+  bannerIconText: { color: COLORS.accent, fontSize: 14, fontFamily: "Poppins-SemiBold" },
+  bannerText: { flex: 1, color: COLORS.accent, fontSize: 13, fontFamily: "Poppins-SemiBold", lineHeight: 18 },
 
   completionDot: {
     width: 24,
@@ -608,7 +597,7 @@ const styles = StyleSheet.create({
     borderColor: "rgba(180,243,77,0.8)",
     backgroundColor: "rgba(180,243,77,0.35)",
   },
-  completionDotText: { color: "#0B0B0B", fontSize: 14, fontWeight: "900" },
+  completionDotText: { color: "#0B0B0B", fontSize: 14, fontFamily: "Poppins-SemiBold" },
 
   startPill: {
     minWidth: 88,
@@ -620,7 +609,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   startPillPressed: { transform: [{ translateY: 1 }] },
-  startPillText: { color: "#0B0B0B", fontSize: 15, fontWeight: "900" },
+  startPillText: { color: "#0B0B0B", fontSize: 15, fontFamily: "Poppins-SemiBold" },
 
   preferredHeaderRow: {
     flexDirection: "row",
@@ -636,14 +625,14 @@ const styles = StyleSheet.create({
     pointerEvents: "none",
   },
   preferredHeaderRight: { minWidth: 100, alignItems: "flex-end" },
-  preferredDayTitle: { color: COLORS.text, fontSize: 28, fontWeight: "900" },
-  preferredTotalLabel: { color: COLORS.sub, fontSize: 12, fontWeight: "800" },
-  preferredPhaseText: { color: COLORS.sub, fontSize: 13, marginTop: 2, textAlign: "center" },
-  preferredFocusText: { color: COLORS.sub, fontSize: 13, textAlign: "center" },
+  preferredDayTitle: { color: COLORS.text, fontSize: 28, fontFamily: "Poppins-SemiBold" },
+  preferredTotalLabel: { color: COLORS.sub, fontSize: 12, fontFamily: "Poppins-SemiBold" },
+  preferredPhaseText: { color: COLORS.sub, fontSize: 13, marginTop: 2, textAlign: "center", fontFamily: "Poppins-SemiBold" },
+  preferredFocusText: { color: COLORS.sub, fontSize: 13, textAlign: "center", fontFamily: "Poppins-SemiBold" },
 
   preferredSectionHeader: { flexDirection: "row", alignItems: "center", marginTop: SP[2] },
-  preferredSectionTitle: { color: COLORS.text, fontSize: 18, fontWeight: "900", flex: 1 },
-  preferredSectionHint: { color: COLORS.sub, fontSize: 12, fontWeight: "800" },
+  preferredSectionTitle: { color: COLORS.text, fontSize: 18, fontFamily: "Poppins-SemiBold", flex: 1 },
+  preferredSectionHint: { color: COLORS.sub, fontSize: 12, fontFamily: "Poppins-SemiBold" },
 
   preferredExerciseList: { gap: SP[3] },
   preferredExerciseCard: {
@@ -656,7 +645,7 @@ const styles = StyleSheet.create({
   preferredExerciseCardPressed: { transform: [{ translateY: 1 }], opacity: 0.98 },
   preferredExerciseRow: { flexDirection: "row", alignItems: "center", gap: SP[3] },
   preferredExerciseLeft: { flex: 1, gap: 6 },
-  preferredExerciseTitle: { color: COLORS.text, fontSize: 16, fontWeight: "900" },
+  preferredExerciseTitle: { color: COLORS.text, fontSize: 16, fontFamily: "Poppins-SemiBold" },
   preferredMetaPill: {
     alignSelf: "flex-start",
     paddingHorizontal: SP[2],
@@ -666,8 +655,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.cardBorder,
   },
-  preferredMetaText: { color: COLORS.sub, fontSize: 11, fontWeight: "900" },
-  preferredSummary: { color: COLORS.sub, fontSize: 12, lineHeight: 16 },
+  preferredMetaText: { color: COLORS.sub, fontSize: 11, fontFamily: "Poppins-SemiBold" },
+  preferredSummary: { color: COLORS.sub, fontSize: 12, lineHeight: 16, fontFamily: "Poppins-SemiBold" },
   preferredExerciseRight: { flexDirection: "row", alignItems: "center", gap: SP[2] },
   recoveryPill: {
     alignSelf: "flex-start",
@@ -678,7 +667,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: RADII.pill,
   },
-  recoveryText: { color: COLORS.accent, fontWeight: "700" },
+  recoveryText: { color: COLORS.accent, fontWeight: "700", fontFamily: "Poppins-SemiBold" },
   contextBanner: {
     padding: SP[3],
     backgroundColor: "rgba(180,243,77,0.08)",
@@ -691,6 +680,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
     textAlign: "center",
+    fontFamily: "Poppins-SemiBold",
   },
   card: {
     backgroundColor: COLORS.card,
@@ -701,8 +691,8 @@ const styles = StyleSheet.create({
     gap: SP[2],
   },
   cardHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  cardTitle: { color: COLORS.text, fontSize: 18, fontWeight: "700" },
-  cardMeta: { color: COLORS.sub, fontSize: 12 },
+  cardTitle: { color: COLORS.text, fontSize: 18, fontWeight: "700", fontFamily: "Poppins-SemiBold" },
+  cardMeta: { color: COLORS.sub, fontSize: 12, fontFamily: "Poppins-SemiBold" },
   exerciseRow: {
     padding: SP[2],
     borderRadius: RADII.md,
@@ -716,11 +706,11 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(180,243,77,0.12)",
   },
   exerciseMeta: { gap: 4 },
-  exerciseName: { color: COLORS.text, fontWeight: "700" },
-  exerciseSub: { color: COLORS.sub, fontSize: 12 },
-  protocol: { color: COLORS.sub, fontSize: 12, lineHeight: 16 },
-  doneBadge: { color: COLORS.accent, fontWeight: "700" },
-  todoBadge: { color: COLORS.sub, fontWeight: "700" },
+  exerciseName: { color: COLORS.text, fontWeight: "700", fontFamily: "Poppins-SemiBold" },
+  exerciseSub: { color: COLORS.sub, fontSize: 12, fontFamily: "Poppins-SemiBold" },
+  protocol: { color: COLORS.sub, fontSize: 12, lineHeight: 16, fontFamily: "Poppins-SemiBold" },
+  doneBadge: { color: COLORS.accent, fontWeight: "700", fontFamily: "Poppins-SemiBold" },
+  todoBadge: { color: COLORS.sub, fontWeight: "700", fontFamily: "Poppins-SemiBold" },
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.65)",
@@ -730,16 +720,36 @@ const styles = StyleSheet.create({
   },
   modalCard: {
     width: "100%",
+    maxWidth: 420,
     backgroundColor: COLORS.card,
     borderRadius: RADII.lg,
     borderColor: COLORS.cardBorder,
     borderWidth: 1,
     padding: SP[4],
+    gap: SP[3],
+  },
+  modalHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     gap: SP[2],
   },
-  modalTitle: { color: COLORS.text, fontSize: 18, fontWeight: "700" },
-  modalText: { color: COLORS.sub },
-  modalActions: { flexDirection: "row", gap: SP[2] },
+  modalCloseIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  modalCloseIconPressed: { transform: [{ scale: 0.96 }], opacity: 0.9 },
+  modalCloseIconText: { color: COLORS.text, fontSize: 16, fontFamily: "Poppins-SemiBold" },
+  modalTitle: { color: COLORS.text, fontSize: 18, fontWeight: "700", fontFamily: "Poppins-SemiBold" },
+  modalTitleHeader: { flex: 1 },
+  modalText: { color: COLORS.sub, fontSize: 13, lineHeight: 18, fontFamily: "Poppins-SemiBold" },
+  modalActions: { width: "100%", flexDirection: "row", gap: SP[2] },
   confirmationBox: {
     padding: SP[3],
     backgroundColor: "rgba(34, 197, 94, 0.1)",
@@ -752,23 +762,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "700",
     textAlign: "center",
-  },
-  playerCard: {
-    width: "100%",
-    backgroundColor: COLORS.card,
-    borderRadius: RADII.lg,
-    borderColor: COLORS.cardBorder,
-    borderWidth: 1,
-    padding: SP[4],
-    gap: SP[3],
-  },
-  playerTitle: { color: COLORS.text, fontSize: 20, fontWeight: "700" },
-  imageWrap: {
-    width: "100%",
-    backgroundColor: "rgba(255,255,255,0.04)",
-    borderRadius: RADII.md,
-    alignItems: "center",
-    justifyContent: "center",
+    fontFamily: "Poppins-SemiBold",
   },
   image: { width: "100%", height: "100%", borderRadius: RADII.md },
   playerTopRow: {
@@ -791,6 +785,7 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     fontSize: 13,
     fontWeight: "700",
+    fontFamily: "Poppins-SemiBold",
   },
   poseNavRow: {
     flexDirection: "row",
@@ -818,25 +813,92 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     fontSize: 18,
     fontWeight: "800",
+    fontFamily: "Poppins-SemiBold",
   },
   poseCounter: {
     color: COLORS.sub,
     fontSize: 13,
     fontWeight: "700",
+    fontFamily: "Poppins-SemiBold",
   },
-  timerOnlyWrap: {
+
+  // Guide view styles
+  guideScrollView: {
+    maxHeight: 450,
+  },
+  guideMetaRow: {
+    flexDirection: "row",
+    gap: SP[3],
+    marginTop: SP[2],
+    marginBottom: SP[2],
+  },
+  guideMetaItem: {
+    flex: 1,
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderRadius: RADII.md,
+    padding: SP[2],
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+  },
+  guideMetaLabel: {
+    color: COLORS.sub,
+    fontSize: 11,
+    fontFamily: "Poppins-SemiBold",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    marginBottom: 2,
+  },
+  guideMetaValue: {
+    color: COLORS.text,
+    fontSize: 13,
+    fontFamily: "Poppins-SemiBold",
+    lineHeight: 18,
+  },
+  guideSectionTitle: {
+    color: COLORS.text,
+    fontSize: 15,
+    fontWeight: "700",
+    fontFamily: "Poppins-SemiBold",
+    marginTop: SP[3],
+    marginBottom: SP[2],
+  },
+  guideStepRow: {
+    flexDirection: "row",
+    gap: SP[2],
+    marginBottom: SP[2],
+  },
+  guideStepNumber: {
+    color: COLORS.accent,
+    fontSize: 13,
+    fontWeight: "700",
+    fontFamily: "Poppins-SemiBold",
+    width: 18,
+  },
+  guideStepText: {
+    flex: 1,
+    color: COLORS.sub,
+    fontSize: 13,
+    lineHeight: 18,
+    fontFamily: "Poppins-SemiBold",
+  },
+  guideTipBullet: {
+    color: COLORS.accent,
+    fontSize: 13,
+    fontWeight: "700",
+    fontFamily: "Poppins-SemiBold",
+    width: 18,
+  },
+  guideButtonsRow: {
+    flexDirection: "row",
+    gap: SP[2],
+    marginTop: SP[3],
+  },
+  guidePoseImageWrap: {
     width: "100%",
+    height: 280,
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderRadius: RADII.md,
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: SP[5],
-    borderRadius: RADII.md,
-    backgroundColor: "rgba(255,255,255,0.04)",
-    borderColor: COLORS.cardBorder,
-    borderWidth: 1,
-  },
-  timerOnlyValue: {
-    color: COLORS.text,
-    fontSize: 44,
-    fontWeight: "900",
   },
 });
