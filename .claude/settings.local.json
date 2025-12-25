@@ -17,7 +17,8 @@
       "Bash(npx tsc:*)",
       "Bash(npx expo install:*)",
       "Bash(copy \"c:\\\\SS\\\\loading-video.mp4\" \"c:\\\\SS\\\\facely\\\\assets\\\\loading\\\\loading-video.mp4\")",
-      "Bash(cp:*)"
+      "Bash(cp:*)",
+      "Bash(cmd /c \"copy /Y C:\\\\SS\\\\image.png C:\\\\SS\\\\facely\\\\assets\\\\program-header.png && dir C:\\\\SS\\\\facely\\\\assets\\\\program-header.png\")"
     ]
   }
 }

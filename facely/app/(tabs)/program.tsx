@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -102,9 +103,8 @@ function DayRow({
   const lastCompletedIndex = days.findIndex(d => d.state !== "past-complete");
   const completedCount = lastCompletedIndex === -1 ? days.length : lastCompletedIndex;
 
-  const svgHeight = circleSize + 24; // Extra space for fire emoji
-  const circleY = circleSize / 2 + 16; // Offset for fire emoji space
-  const fireTop = -Math.round(circleSize * 0.55);
+  const svgHeight = circleSize;
+  const circleY = circleSize / 2;
   const endSlot = showTrophy ? trophySlot : slotForDayIndex(days.length - 1);
 
   return (
@@ -213,30 +213,26 @@ function DayRow({
                 styles.dayPressable,
                 {
                   left,
-                  top: 16, // Offset for fire emoji space
+                  top: 0,
                   width: circleSize,
                   height: circleSize,
                 },
               ]}
             >
-              {/* Fire emoji for today */}
-              {isToday && (
-                <View style={[styles.fireContainer, { top: fireTop }]}>
-                  <Text style={styles.fireEmoji}>🔥</Text>
-                </View>
+              {/* Day label or fire emoji inside circle */}
+              {isToday ? (
+                <Text style={styles.fireEmoji}>🔥</Text>
+              ) : (
+                <Text
+                  style={[
+                    styles.dayNumber,
+                    isComplete && styles.dayNumberComplete,
+                    isLocked && styles.dayNumberLocked,
+                  ]}
+                >
+                  Day {day.dayInLevel}
+                </Text>
               )}
-
-              {/* Day label inside circle */}
-              <Text
-                style={[
-                  styles.dayNumber,
-                  isComplete && styles.dayNumberComplete,
-                  isToday && styles.dayNumberToday,
-                  isLocked && styles.dayNumberLocked,
-                ]}
-              >
-                Day {day.dayInLevel}
-              </Text>
             </Pressable>
           );
         })}
@@ -248,7 +244,7 @@ function DayRow({
               styles.trophyPressable,
               {
                 left: getSlotLeft(trophySlot) + (circleSize - trophySize) / 2,
-                top: 16 + (circleSize - trophySize) / 2,
+                top: (circleSize - trophySize) / 2,
                 width: trophySize,
                 height: trophySize,
               },
@@ -287,6 +283,15 @@ function LevelSection({ level, onDayPress, availableWidth }: LevelSectionProps) 
         isAllComplete && styles.levelSectionComplete,
       ]}
     >
+      {/* Header Image for Level 1 */}
+      {level.levelNumber === 1 && (
+        <Image
+          source={require("@/assets/program-header.png")}
+          style={styles.levelHeaderImage}
+          resizeMode="cover"
+        />
+      )}
+
       {/* Level Header */}
       <View style={styles.levelHeader}>
         <View style={styles.levelTitleRow}>
@@ -492,12 +497,30 @@ export default function ProgramScreen() {
     );
   }
 
+  const needsAnalysis = screenError?.includes("no_history") || error?.includes("no_history");
+
   const emptyState = (
     <View style={styles.center}>
-      <Text style={styles.stateText}>
-        {screenError ?? error ?? "No program found. Generate one from your latest analysis."}
-      </Text>
-      <PillNavButton kind="solid" label="Generate program" onPress={() => bootstrap(true)} />
+      {needsAnalysis ? (
+        <>
+          <Text style={styles.emptyTitle}>No Program Yet</Text>
+          <Text style={styles.stateText}>
+            Run your first face analysis to unlock your personalized 70-day program.
+          </Text>
+          <PillNavButton
+            kind="solid"
+            label="Start Analysis"
+            onPress={() => router.push("/(tabs)/analysis")}
+          />
+        </>
+      ) : (
+        <>
+          <Text style={styles.stateText}>
+            {screenError ?? error ?? "No program found. Generate one from your latest analysis."}
+          </Text>
+          <PillNavButton kind="solid" label="Generate program" onPress={() => bootstrap(true)} />
+        </>
+      )}
     </View>
   );
 
@@ -583,9 +606,16 @@ const styles = StyleSheet.create({
     gap: SP[3],
   },
   stateText: {
-    color: COLORS.text,
+    color: COLORS.sub,
     textAlign: "center",
     paddingHorizontal: SP[4],
+    lineHeight: 22,
+  },
+  emptyTitle: {
+    color: COLORS.text,
+    fontSize: 22,
+    fontWeight: "700",
+    textAlign: "center",
   },
   footerRow: {
     gap: SP[2],
@@ -604,7 +634,7 @@ const styles = StyleSheet.create({
   title: {
     color: COLORS.text,
     fontSize: 26,
-    fontWeight: "800",
+    fontFamily: "Poppins-SemiBold",
     letterSpacing: -0.5,
   },
   overallProgressBadge: {
@@ -616,11 +646,12 @@ const styles = StyleSheet.create({
   overallProgressText: {
     color: COLORS.bgBottom,
     fontSize: 14,
-    fontWeight: "800",
+    fontFamily: "Poppins-SemiBold",
   },
   sub: {
     color: COLORS.sub,
     fontSize: 14,
+    fontFamily: "Poppins-SemiBold",
   },
   statsRow: {
     flexDirection: "row",
@@ -639,13 +670,14 @@ const styles = StyleSheet.create({
   statValue: {
     color: COLORS.text,
     fontSize: 18,
-    fontWeight: "700",
+    fontFamily: "Poppins-SemiBold",
   },
   statLabel: {
     color: COLORS.sub,
     fontSize: 11,
     textTransform: "uppercase",
     letterSpacing: 0.5,
+    fontFamily: "Poppins-SemiBold",
   },
   statDivider: {
     width: 1,
@@ -682,6 +714,12 @@ const styles = StyleSheet.create({
     borderColor: "#22c55e",
     backgroundColor: "rgba(34, 197, 94, 0.05)",
   },
+  levelHeaderImage: {
+    width: "100%",
+    height: 120,
+    borderRadius: RADII.lg,
+    marginBottom: SP[2],
+  },
 
   // Level Header
   levelHeader: {
@@ -697,7 +735,7 @@ const styles = StyleSheet.create({
   levelTitle: {
     color: COLORS.text,
     fontSize: 18,
-    fontWeight: "700",
+    fontFamily: "Poppins-SemiBold",
   },
   levelTitleLocked: {
     color: COLORS.sub,
@@ -709,13 +747,14 @@ const styles = StyleSheet.create({
   levelProgress: {
     color: COLORS.sub,
     fontSize: 14,
-    fontWeight: "600",
+    fontFamily: "Poppins-SemiBold",
   },
   levelSubtitle: {
     color: COLORS.sub,
     fontSize: 12,
     textAlign: "center",
     marginTop: SP[1],
+    fontFamily: "Poppins-SemiBold",
   },
 
   // Level Progress Bar
@@ -751,27 +790,19 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
-  // Fire emoji
-  fireContainer: {
-    position: "absolute",
-    top: 0,
-    alignItems: "center",
-  },
+  // Fire emoji (for today's day)
   fireEmoji: {
-    fontSize: 14,
+    fontSize: 18,
   },
 
   // Day number inside circle
   dayNumber: {
     color: COLORS.text,
     fontSize: 12,
-    fontWeight: "800",
+    fontFamily: "Poppins-SemiBold",
   },
   dayNumberComplete: {
     color: "#ffffff",
-  },
-  dayNumberToday: {
-    color: "#9333ea",
   },
   dayNumberLocked: {
     color: "rgba(255,255,255,0.4)",

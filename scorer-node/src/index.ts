@@ -2,6 +2,7 @@
 // Render-ready Express entry point with concurrency guard, CORS, and graceful shutdown.
 
 import express from "express";
+import compression from "compression";
 import cors, { type CorsOptions } from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
@@ -64,6 +65,9 @@ import { requestTimeout } from "./middleware/timeout.js";
 
 const app = express();
 app.set("trust proxy", 1); // we are behind Railway's proxy; needed for correct client IPs
+
+// Gzip compression - reduces JSON payload size by ~70-90%
+app.use(compression());
 
 // Mount metrics early; harmless order-wise
 initMetrics(app, { enabled: true, path: "/metrics" }); // <-- ADD THIS
