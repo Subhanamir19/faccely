@@ -2,7 +2,13 @@
 import { create } from "zustand";
 import { getJSON, setJSON } from "@/lib/storage";
 
-type OnboardingData = { age?: number; ethnicity?: string; gender?: string };
+type OnboardingData = {
+  age?: number;
+  ethnicity?: string;
+  gender?: string;
+  useCase?: string;
+  looksmaxxingExperience?: string;
+};
 
 type State = {
   data: OnboardingData;

@@ -151,7 +151,7 @@ export default function WelcomeIntroScreen() {
 
   const handleBegin = useCallback(() => {
     globalTrack("welcome_screen_begin_tapped");
-    router.push({ pathname: "/(onboarding)/age", params: { autofocus: "1" } });
+    router.push("/(onboarding)/use-case");
   }, []);
 
   const handlePressIn = useCallback(() => {
