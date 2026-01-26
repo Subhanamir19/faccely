@@ -18,7 +18,20 @@
       "Bash(npx expo install:*)",
       "Bash(copy \"c:\\\\SS\\\\loading-video.mp4\" \"c:\\\\SS\\\\facely\\\\assets\\\\loading\\\\loading-video.mp4\")",
       "Bash(cp:*)",
-      "Bash(cmd /c \"copy /Y C:\\\\SS\\\\image.png C:\\\\SS\\\\facely\\\\assets\\\\program-header.png && dir C:\\\\SS\\\\facely\\\\assets\\\\program-header.png\")"
+      "Bash(cmd /c \"copy /Y C:\\\\SS\\\\image.png C:\\\\SS\\\\facely\\\\assets\\\\program-header.png && dir C:\\\\SS\\\\facely\\\\assets\\\\program-header.png\")",
+      "Bash(npm run dev:*)",
+      "Bash(node --version:*)",
+      "Bash(npm:*)",
+      "Bash(npx tsx:*)",
+      "Bash(netstat:*)",
+      "Bash(tasklist:*)",
+      "Bash(taskkill //F //PID 8536)",
+      "Bash(taskkill:*)",
+      "Bash(node -e \"require\\(''dotenv''\\).config\\(\\); console.log\\(''Key length:'', process.env.OPENAI_API_KEY?.length\\); console.log\\(''First 20:'', process.env.OPENAI_API_KEY?.slice\\(0,20\\)\\); console.log\\(''Last 10:'', process.env.OPENAI_API_KEY?.slice\\(-10\\)\\); console.log\\(''Has CR:'', process.env.OPENAI_API_KEY?.includes\\(''\\\\r''\\)\\); console.log\\(''Has newline:'', process.env.OPENAI_API_KEY?.includes\\(''\\\\n''\\)\\);\")",
+      "Bash(echo $OPENAI_API_KEY)",
+      "Bash(powershell -Command \"[System.Environment]::GetEnvironmentVariable\\(''OPENAI_API_KEY'', ''User''\\)\")",
+      "Bash(tree:*)",
+      "WebFetch(domain:faccely-production.up.railway.app)"
     ]
   }
 }

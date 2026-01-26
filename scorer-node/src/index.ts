@@ -10,6 +10,8 @@ import multer from "multer";
 import OpenAI from "openai";
 import sharp from "sharp";
 import * as fs from "fs";
+import os from "os";
+import path from "path";
 import sigmaRouter from "./routes/sigma.js";
 import jobsRouter from "./routes/jobs.js";           // ← add this
 import { historyRouter } from "./routes/history.js";
@@ -18,11 +20,11 @@ import { idempotency } from "./middleware/idempotency.js";
 import { verifyAuth } from "./middleware/auth.js";
 import { bootQueues, queuesProbe } from "./queue/index.js";
 import routineAsyncRouter from "./routes/routineAsync.js";
-import { initMetrics } from "./observability/metrics.js";
+import { initMetrics, setConcurrencyStateGetter } from "./observability/metrics.js";
 
 
 
-import config, { PROVIDERS, ROUTINE, SERVER } from "./config/index.js";
+import config, { IS_DEV, PROVIDERS, ROUTINE, SERVER } from "./config/index.js";
 
 console.log("[BOOT]", {
   env: config.NODE_ENV,
@@ -55,7 +57,9 @@ import { programsRouter } from "./routes/programs.js";
 import { createScan } from "./supabase/scans.js";
 import { uploadScanImage } from "./supabase/storage.js";
 import { createAnalysis } from "./supabase/analyses.js";
+import { checkDbHealth } from "./supabase/client.js";
 import { requestTimeout } from "./middleware/timeout.js";
+import { checkRedisHealth } from "./lib/redis.js";
 
 
 
@@ -152,9 +156,17 @@ app.use((req, res, next) => {
   next();
 });
 
-/* -------------------------- Multer memory storage -------------------------- */
+/* -------------------------- Multer disk storage ---------------------------- */
+// Disk storage prevents OOM under concurrent uploads (100 users × 15MB = 1.5GB RAM)
 const upload = multer({
-  storage: multer.memoryStorage(),
+  storage: multer.diskStorage({
+    destination: os.tmpdir(),
+    filename: (_req, file, cb) => {
+      const uniqueSuffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const ext = path.extname(file.originalname) || ".jpg";
+      cb(null, `upload-${uniqueSuffix}${ext}`);
+    },
+  }),
   limits: { fileSize: 15 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     const ok = new Set([
@@ -175,14 +187,16 @@ const upload = multer({
 /* -------------------------------------------------------------------------- */
 
 async function toJpegBuffer(file: Express.Multer.File) {
-  if (!file?.buffer?.length) {
+  // Support both disk storage (file.path) and memory storage (file.buffer) for flexibility
+  const inputSource = file.path || file.buffer;
+  if (!inputSource || (file.buffer && !file.buffer.length)) {
     const err: any = new Error("empty_upload_buffer");
     err.status = 415;
     err.hint = "Use a JPEG or PNG image, not HEIC/HEIF or empty input.";
     throw err;
   }
   try {
-    const out = await sharp(file.buffer).rotate().jpeg({ quality: 92, mozjpeg: true }).toBuffer();
+    const out = await sharp(inputSource).rotate().jpeg({ quality: 92, mozjpeg: true }).toBuffer();
     return { buffer: out, mime: "image/jpeg" as const };
   } catch (e: any) {
     const msg = String(e?.message || e);
@@ -195,6 +209,34 @@ async function toJpegBuffer(file: Express.Multer.File) {
     }
     throw e;
   }
+}
+
+// Cleanup temp file after processing
+function cleanupTempFile(file?: Express.Multer.File) {
+  if (file?.path) {
+    fs.unlink(file.path, (err) => {
+      if (err && err.code !== "ENOENT") {
+        console.warn("[cleanup] failed to delete temp file:", file.path, err.message);
+      }
+    });
+  }
+}
+
+// Get buffer from file (works with both disk and memory storage)
+async function getFileBuffer(file: Express.Multer.File): Promise<Buffer> {
+  if (file.buffer) {
+    return file.buffer;
+  }
+  if (file.path) {
+    return fs.promises.readFile(file.path);
+  }
+  throw new Error("No file data available");
+}
+
+// Check if file has data (works with both disk and memory storage)
+function hasFileData(file?: Express.Multer.File): boolean {
+  if (!file) return false;
+  return Boolean(file.path || (file.buffer && file.buffer.length > 0));
 }
 
 
@@ -470,6 +512,9 @@ const queue: Waiter[] = [];
 type ConcurrencyToken = { id: number; released: boolean };
 let nextTokenId = 0;
 
+// Expose concurrency state to metrics
+setConcurrencyStateGetter(() => ({ active, queuePending: queue.length }));
+
 function overloadedError(reason: "queue_full" | "timeout") {
   const err: any = new Error("server_overloaded");
   err.reason = reason;
@@ -560,8 +605,31 @@ app.use("/routine/async", verifyAuth, routineAsyncRouter);
 app.use("/sigma", requestTimeout(30_000), verifyAuth, sigmaRouter);
 app.use("/jobs", verifyAuth, jobsRouter);                    // ← add this line
 
-app.get("/health", (_req, res) => res.json({ ok: true }));
+// Comprehensive health check endpoint
+app.get("/health", async (_req, res) => {
+  const [db, redis] = await Promise.all([
+    checkDbHealth(),
+    checkRedisHealth(),
+  ]);
 
+  const overallOk = db.ok && (redis.ok || !redis.enabled);
+
+  res.status(overallOk ? 200 : 503).json({
+    ok: overallOk,
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString(),
+    components: {
+      database: db,
+      redis,
+      concurrency: {
+        active,
+        max: MAX_CONCURRENT,
+        queuePending: queue.length,
+        queueMax: MAX_QUEUE_PENDING,
+      },
+    },
+  });
+});
 
 // Queue health probe (enabled only when REDIS_URL is set)
 app.get("/queues/health", async (_req, res) => {
@@ -694,15 +762,16 @@ app.post("/analyze", upload.single("image"), async (req, res) => {
             hint: "Ensure the multipart field is named 'image'.",
           })
         );
-    if (!req.file.buffer?.length)
+    if (!hasFileData(req.file))
       return res.status(400).json(
         apiError("empty_file_buffer", "Uploaded file contained no data.", {
           hint: "Do not set Content-Type manually when sending FormData.",
         })
       );
 
-    console.log("[/analyze] buffer:", preview(req.file.buffer));
-    const { scores, modelVersion } = await scoreImageBytes(openai, req.file.buffer, req.file.mimetype);
+    const fileBuffer = await getFileBuffer(req.file);
+    console.log("[/analyze] buffer:", preview(fileBuffer));
+    const { scores, modelVersion } = await scoreImageBytes(openai, fileBuffer, req.file.mimetype);
     const parsed = ScoresSchema.parse(scores);
 
     let scanId: string | undefined;
@@ -711,7 +780,7 @@ app.post("/analyze", upload.single("image"), async (req, res) => {
         const frontKey = await uploadScanImage({
           userId,
           variant: "front",
-          buffer: req.file.buffer,
+          buffer: fileBuffer,
           contentType: req.file.mimetype,
           requestId: res.locals.requestId,
         });
@@ -734,6 +803,7 @@ app.post("/analyze", upload.single("image"), async (req, res) => {
       }
     }
 
+    cleanupTempFile(req.file);
     if (scanId) return res.json({ ...parsed, scanId });
     return res.json(parsed);
   } catch (err: any) {
@@ -764,6 +834,7 @@ app.post("/analyze", upload.single("image"), async (req, res) => {
       .json(apiError("analysis_failed", "Analysis failed. Please retry with a clearer photo.", { err }));
     return;
   } finally {
+    cleanupTempFile(req.file);
     if (slot) release(slot);
     console.log("[/analyze] ms =", Date.now() - t0);
   }
@@ -800,12 +871,14 @@ app.post(
           })
         );
 
-      console.log("[/analyze/pair] buffers:", preview(frontal.buffer), preview(side.buffer));
+      const frontalBuffer = await getFileBuffer(frontal);
+      const sideBuffer = await getFileBuffer(side);
+      console.log("[/analyze/pair] buffers:", preview(frontalBuffer), preview(sideBuffer));
       const { scores, modelVersion } = await scoreImagePairBytes(
         openai,
-        frontal.buffer,
+        frontalBuffer,
         frontal.mimetype,
-        side.buffer,
+        sideBuffer,
         side.mimetype
       );
       const parsed = ScoresSchema.parse(scores);
@@ -816,14 +889,14 @@ app.post(
           const frontKey = await uploadScanImage({
             userId,
             variant: "front",
-            buffer: frontal.buffer,
+            buffer: frontalBuffer,
             contentType: frontal.mimetype,
             requestId: res.locals.requestId,
           });
           const sideKey = await uploadScanImage({
             userId,
             variant: "side",
-            buffer: side.buffer,
+            buffer: sideBuffer,
             contentType: side.mimetype,
             requestId: res.locals.requestId,
           });
@@ -842,6 +915,12 @@ app.post(
             requestId: res.locals.requestId,
             error: err instanceof Error ? err.message : String(err),
           });
+          // In development, return scores anyway even if persist fails
+          // The user still gets their analysis, just not saved to DB
+          if (IS_DEV) {
+            console.warn("[/analyze/pair] DEV MODE: returning scores despite persist failure");
+            return res.json(parsed);
+          }
           return res.status(502).json({ error: "scan_persist_failed" });
         }
       }
@@ -866,6 +945,9 @@ app.post(
         .json(apiError("analysis_failed", "Analysis failed. Please retry with a clearer photo.", { err }));
       return;
     } finally {
+      const files = req.files as Record<string, Express.Multer.File[]> | undefined;
+      cleanupTempFile(files?.frontal?.[0]);
+      cleanupTempFile(files?.side?.[0]);
       if (slot) release(slot);
       console.log("[/analyze/pair] ms =", Date.now() - t0);
     }
@@ -930,6 +1012,7 @@ app.post("/analyze/explain", async (req, res) => {
     });
     return;
   } finally {
+    cleanupTempFile(req.file);
     if (slot) release(slot);
     console.log("[/analyze/explain] ms =", Date.now() - t0);
   }
@@ -1010,6 +1093,9 @@ app.post("/analyze/explain/pair", async (req, res) => {
     });
     return;
   } finally {
+    const files = req.files as Record<string, Express.Multer.File[]> | undefined;
+    cleanupTempFile(files?.frontal?.[0]);
+    cleanupTempFile(files?.side?.[0]);
     if (slot) release(slot);
     console.log("[/analyze/explain/pair] ms =", Date.now() - t0);
   }

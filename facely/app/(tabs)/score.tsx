@@ -15,6 +15,7 @@ import MetricCardShell from "@/components/layout/MetricCardShell";
 import MetricPagerFooter from "@/components/layout/MetricPagerFooter";
 import { SP } from "@/lib/tokens";
 import useMetricSizing from "@/components/layout/useMetricSizing.ts";
+import ScoresSummaryCard from "@/components/scores/ScoresSummaryCard";
 
 // ƒo. default Text (Poppins)
 import Text from "@/components/ui/T";
@@ -81,6 +82,11 @@ type MetricItem = {
   icon?: 'jaw' | 'sym' | 'cheek' | 'dimorph' | 'skin' | 'eyesym' | 'nose';
   locked?: boolean;      // future gating if needed
 };
+
+// Card type for FlatList - either summary or individual metric
+type CardItem =
+  | { type: "summary"; key: string }
+  | { type: "metric"; key: string; item: MetricItem };
 
 type MetricDefinition = {
   apiKey: string;
@@ -737,6 +743,13 @@ function applyApiScores(api: any): MetricItem[] {
   });
 }
 
+// Calculate total/average score from all metrics
+function calculateTotalScore(metrics: MetricItem[]): number {
+  if (!metrics.length) return 0;
+  const sum = metrics.reduce((acc, m) => acc + m.score, 0);
+  return Math.round(sum / metrics.length);
+}
+
 export default function ScoreScreen() {
   const { imageUri, sideImageUri, scores, explLoading, explError } = useScores();
   const sizing = useMetricSizing();
@@ -744,10 +757,38 @@ export default function ScoreScreen() {
 
   const [index, setIndex] = useState(0);
   const [metrics, setMetrics] = useState<MetricItem[]>(DEFAULT_METRICS);
-  const activePalette = useMemo(
-    () => getScorePalette(metrics[index]?.score ?? DEFAULT_METRICS[0].score),
-    [metrics, index]
+
+  // Build card items: summary card at index 0, then individual metric cards
+  const cardItems = useMemo<CardItem[]>(() => {
+    const items: CardItem[] = [{ type: "summary", key: "__summary__" }];
+    metrics.forEach((m) => {
+      items.push({ type: "metric", key: m.key, item: m });
+    });
+    return items;
+  }, [metrics]);
+
+  // Total score for summary card
+  const totalScore = useMemo(() => calculateTotalScore(metrics), [metrics]);
+
+  // For summary card, we need metrics in the format expected by ScoresSummaryCard
+  const summaryMetrics = useMemo(
+    () =>
+      metrics.map((m) => ({
+        key: m.key,
+        label: m.key,
+        score: m.score,
+      })),
+    [metrics]
   );
+
+  const activePalette = useMemo(() => {
+    if (index === 0) {
+      // Summary card - use total score color
+      return getScorePalette(totalScore);
+    }
+    const metricIndex = index - 1;
+    return getScorePalette(metrics[metricIndex]?.score ?? DEFAULT_METRICS[0].score);
+  }, [metrics, index, totalScore]);
 
   const params = useLocalSearchParams<{ scoresPayload?: string }>();
 
@@ -758,13 +799,12 @@ export default function ScoreScreen() {
       setMetrics(applyApiScores(payload));
       setIndex(0);
       listRef.current?.scrollToOffset({ offset: 0, animated: false });
-
     } catch {
       // ignore bad payloads
     }
   }, [params.scoresPayload]);
 
-  const listRef = useRef<FlatList>(null);
+  const listRef = useRef<FlatList<CardItem>>(null);
 
   const getItemLayout = useCallback(
     (_: any, i: number) => ({ length: snap, offset: snap * i, index: i }),
@@ -772,30 +812,55 @@ export default function ScoreScreen() {
   );
 
   const renderItem = useCallback(
-    ({ item, index: i }: { item: MetricItem; index: number }) => (
-      <View style={[styles.cardItemWrapper, { width: snap }]}>
-        <MetricCardShell
-          withOuterPadding={false}
-          renderSurface={false}
-          style={styles.cardShell}
-          sizing={sizing}
-        >
-          {(usableWidth) => (
-            <MetricCard item={item} width={usableWidth} active={i === index} />
-          )}
-        </MetricCardShell>
-      </View>
-    ),
-    [index, sizing, snap]
+    ({ item, index: i }: { item: CardItem; index: number }) => {
+      if (item.type === "summary") {
+        return (
+          <View style={[styles.cardItemWrapper, { width: snap }]}>
+            <MetricCardShell
+              withOuterPadding={false}
+              renderSurface={false}
+              style={styles.cardShell}
+              sizing={sizing}
+            >
+              {(usableWidth) => (
+                <ScoresSummaryCard
+                  metrics={summaryMetrics}
+                  totalScore={totalScore}
+                  width={usableWidth}
+                  active={i === index}
+                  imageUri={imageUri}
+                />
+              )}
+            </MetricCardShell>
+          </View>
+        );
+      }
+
+      return (
+        <View style={[styles.cardItemWrapper, { width: snap }]}>
+          <MetricCardShell
+            withOuterPadding={false}
+            renderSurface={false}
+            style={styles.cardShell}
+            sizing={sizing}
+          >
+            {(usableWidth) => (
+              <MetricCard item={item.item} width={usableWidth} active={i === index} />
+            )}
+          </MetricCardShell>
+        </View>
+      );
+    },
+    [index, sizing, snap, summaryMetrics, totalScore, imageUri]
   );
 
   const scrollTo = useCallback(
     (i: number) => {
-      const clamped = Math.max(0, Math.min(metrics.length - 1, i));
+      const clamped = Math.max(0, Math.min(cardItems.length - 1, i));
       listRef.current?.scrollToOffset({ offset: clamped * snap, animated: true });
       setIndex(clamped);
     },
-    [snap]
+    [snap, cardItems.length]
   );
 
   const goPrev = useCallback(() => scrollTo(index - 1), [index, scrollTo]);
@@ -811,14 +876,14 @@ export default function ScoreScreen() {
     }
     router.push({ pathname: "/loading", params: { mode: "advanced", phase: "analysis" } });
   }, [scores, imageUri, sideImageUri]);
-  
+
   const handleNextNav = useCallback(() => {
-    if (index === metrics.length - 1) {
+    if (index === cardItems.length - 1) {
       handleAdvanced();
       return;
     }
     goNext();
-  }, [handleAdvanced, goNext, index, metrics.length]);
+  }, [handleAdvanced, goNext, index, cardItems.length]);
 
   return (
     <Screen
@@ -827,15 +892,15 @@ export default function ScoreScreen() {
         <View>
           <MetricPagerFooter
             index={index}
-            total={metrics.length}
+            total={cardItems.length}
             onPrev={goPrev}
             onNext={handleNextNav}
             isFirst={index === 0}
-            isLast={index === metrics.length - 1}
-            nextLabel={index === metrics.length - 1 ? "Advanced analysis" : "Next"}
+            isLast={index === cardItems.length - 1}
+            nextLabel={index === cardItems.length - 1 ? "Advanced analysis" : "Next"}
             nextDisabled={explLoading}
             nextLoading={explLoading}
-            helperText={metrics.length > 1 ? "Swipe to view more metrics" : undefined}
+            helperText={cardItems.length > 1 ? "Swipe to view more metrics" : undefined}
             padX={0}
           />
           {!!explError && (
@@ -847,7 +912,7 @@ export default function ScoreScreen() {
       }
     >
       <ImageBackground
-        source={require("../../assets/bg/score-bg.jpg")} // make sure file path is correct
+        source={require("../../assets/bg/score-bg.jpg")}
         style={StyleSheet.absoluteFill}
         resizeMode="cover"
       >
@@ -858,8 +923,8 @@ export default function ScoreScreen() {
         <FlatList
           ref={listRef}
           horizontal
-          data={metrics}
-          keyExtractor={(m) => m.key}
+          data={cardItems}
+          keyExtractor={(c) => c.key}
           renderItem={renderItem}
           showsHorizontalScrollIndicator={false}
           decelerationRate="fast"

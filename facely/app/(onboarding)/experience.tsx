@@ -85,9 +85,9 @@ export default function ExperienceScreen() {
 
           {/* Inner content */}
           <View style={styles.inner}>
-            {/* Progress: step 2 of 5 in new flow */}
+            {/* Progress: step 2 of 7 */}
             <View style={styles.progressTrack}>
-              <View style={[styles.progressFill, { width: "40%" }]} />
+              <View style={[styles.progressFill, { width: `${(2 / 7) * 100}%` }]} />
             </View>
 
             {/* Back button */}

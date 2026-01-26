@@ -6,8 +6,11 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
   Platform,
+  Alert,
+  ActivityIndicator,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import Animated, {
@@ -19,50 +22,36 @@ import Animated, {
   withDelay,
   withRepeat,
   withTiming,
+  withSequence,
 } from "react-native-reanimated";
 import { router } from "expo-router";
+import { Check, Gift } from "lucide-react-native";
 import { useOnboarding } from "@/store/onboarding";
 import { useAuthStore } from "@/store/auth";
+import { useSubscriptionStore } from "@/store/subscription";
 import { syncUserProfile } from "@/lib/api/user";
-
-const COLORS = {
-  bgTop: "#000000",
-  bgBottom: "#0B0B0B",
-  lime: "#B4F34D",
-  limeHi: "#A6F02F",
-  limeGlow: "rgba(180,243,77,0.25)",
-  text: "#FFFFFF",
-  textDim: "rgba(200,200,200,0.85)",
-  textSub: "rgba(218,218,218,0.96)",
-  card: "rgba(18,18,18,0.85)",
-  cardBorder: "rgba(255,255,255,0.08)",
-};
-
-const RADII = {
-  xl: 28,
-  lg: 20,
-  md: 16,
-  sm: 12,
-};
+import {
+  getOfferings,
+  purchasePackage,
+  restorePurchases,
+  checkSubscriptionStatus,
+} from "@/lib/revenuecat";
+import { COLORS, RADII } from "@/lib/tokens";
+import { PurchasesPackage } from "react-native-purchases";
 
 const { width } = Dimensions.get("window");
 
 const CONTENT_WIDTH = Math.round(width * 0.86);
-const PLAN_CARD_HEIGHT = 84;
-const PLAN_SECTION_TOP = 44 + 34 + 8 + 40 + 32; // cumulative layout spacing
-const GLOW_RADIUS = 240;
-const GLOW_DIAMETER = GLOW_RADIUS * 2;
-const GLOW_TOP = PLAN_SECTION_TOP + PLAN_CARD_HEIGHT / 2 - GLOW_RADIUS;
-const GLOW_LEFT = width / 2 - GLOW_RADIUS;
 
 const FEATURE_ITEMS = [
-  "Aesthetics scoring",
-  "Personalized recommendations",
-  "Facial improvement analysis",
-  "See your 10 by 10 version",
+  "AI aesthetics scoring & analysis",
+  "Personalized improvement recommendations",
+  "Facial symmetry & structure insights",
+  "Progress tracking & history",
+  "Unlimited scans",
 ] as const;
 
-type PlanKey = "weekly" | "monthly";
+type PlanKey = "weekly" | "monthly" | "yearly";
 
 const AnimatedLinearGradient = Animated.createAnimatedComponent(LinearGradient);
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
@@ -75,7 +64,6 @@ const FeatureRow: React.FC<{ label: string; delay: number; isLast?: boolean }> =
 }) => {
   const opacity = useSharedValue(0);
   const translateY = useSharedValue(16);
-  const scale = useSharedValue(0.9);
 
   useEffect(() => {
     opacity.value = withDelay(
@@ -93,21 +81,11 @@ const FeatureRow: React.FC<{ label: string; delay: number; isLast?: boolean }> =
         easing: Easing.out(Easing.cubic),
       }),
     );
-    scale.value = withDelay(
-      delay,
-      withTiming(1, {
-        duration: 300,
-        easing: Easing.out(Easing.cubic),
-      }),
-    );
-  }, [delay, opacity, scale, translateY]);
+  }, [delay, opacity, translateY]);
 
   const rowStyle = useAnimatedStyle(() => ({
     opacity: opacity.value,
-    transform: [
-      { translateY: translateY.value },
-      { scale: scale.value },
-    ],
+    transform: [{ translateY: translateY.value }],
   }));
 
   return (
@@ -115,11 +93,7 @@ const FeatureRow: React.FC<{ label: string; delay: number; isLast?: boolean }> =
       style={[styles.featureRow, !isLast && styles.featureRowSpacing, rowStyle]}
     >
       <View style={styles.featureIconWrap}>
-        <View style={styles.featureIconGlow}>
-          <View style={styles.featureIconFill}>
-            <View style={styles.check} />
-          </View>
-        </View>
+        <Check size={18} color="#111" strokeWidth={3} />
       </View>
       <Text style={styles.featureLabel}>{label}</Text>
     </Animated.View>
@@ -129,53 +103,31 @@ const FeatureRow: React.FC<{ label: string; delay: number; isLast?: boolean }> =
 const PlanCard: React.FC<{
   label: string;
   price: string;
+  period: string;
+  badge?: string;
+  savings?: string;
+  selected: boolean;
   onPress: () => void;
-  onPressIn: () => void;
-  onPressOut: () => void;
   animation: {
     scale: Animated.SharedValue<number>;
     progress: Animated.SharedValue<number>;
-    badgeOffset?: Animated.SharedValue<number>;
-    badgeOpacity?: Animated.SharedValue<number>;
-    shimmer?: Animated.SharedValue<number>;
   };
-  showBadge?: boolean;
-}> = ({
-  label,
-  price,
-  onPress,
-  onPressIn,
-  onPressOut,
-  animation,
-  showBadge,
-}) => {
+}> = ({ label, price, period, badge, savings, selected, onPress, animation }) => {
   const cardStyle = useAnimatedStyle(() => ({
     transform: [{ scale: animation.scale.value }],
     borderColor: interpolateColor(
       animation.progress.value,
       [0, 1],
-      [COLORS.cardBorder, COLORS.lime],
+      [COLORS.cardBorder, COLORS.accent],
     ),
-    shadowOpacity: interpolate(animation.progress.value, [0, 1], [0, 0.25]),
-    shadowRadius: interpolate(animation.progress.value, [0, 1], [0, 16]),
-    elevation: interpolate(animation.progress.value, [0, 1], [0, 10]),
+    shadowOpacity: interpolate(animation.progress.value, [0, 1], [0, 0.35]),
   }));
-
-  const badgeStyle = useAnimatedStyle(() => {
-    if (!showBadge || !animation.badgeOffset || !animation.badgeOpacity) {
-      return {};
-    }
-    return {
-      opacity: animation.badgeOpacity.value,
-      transform: [{ translateY: animation.badgeOffset.value }],
-    };
-  });
 
   const labelStyle = useAnimatedStyle(() => ({
     color: interpolateColor(
       animation.progress.value,
       [0, 1],
-      [COLORS.textDim, "#111111"],
+      ["rgba(200,200,200,0.85)", "#111111"],
     ),
   }));
 
@@ -183,7 +135,7 @@ const PlanCard: React.FC<{
     color: interpolateColor(
       animation.progress.value,
       [0, 1],
-      [COLORS.textDim, "#111111"],
+      [COLORS.text, "#111111"],
     ),
   }));
 
@@ -191,64 +143,57 @@ const PlanCard: React.FC<{
     opacity: animation.progress.value,
   }));
 
-  const shimmerStyle = useAnimatedStyle(() => {
-    if (!animation.shimmer) return {};
-    return {
-      transform: [
-        {
-          translateX: interpolate(animation.shimmer.value, [0, 1], [-20, 20]),
-        },
-      ],
-    };
-  });
-
   return (
     <AnimatedPressable
       style={[styles.planCard, cardStyle]}
       onPress={onPress}
-      onPressIn={onPressIn}
-      onPressOut={onPressOut}
     >
       <Animated.View pointerEvents="none" style={[styles.planGradient, gradientStyle]}>
-        <AnimatedLinearGradient
-          colors={[COLORS.lime, COLORS.limeHi]}
+        <LinearGradient
+          colors={[COLORS.accent, "#A6F02F"]}
           start={{ x: 0, y: 0.5 }}
           end={{ x: 1, y: 0.5 }}
           style={StyleSheet.absoluteFill}
           pointerEvents="none"
         />
       </Animated.View>
-      {showBadge ? (
-        <Animated.View style={[styles.badgeContainer, badgeStyle]}>
+      {badge && (
+        <View style={styles.badgeContainer}>
           <View style={styles.badge}>
-            <Text style={styles.badgeText}>Best Deal</Text>
-            <AnimatedLinearGradient
-              colors={[
-                "rgba(255,255,255,0)",
-                "rgba(255,255,255,0.35)",
-                "rgba(255,255,255,0)",
-              ]}
-              locations={[0, 0.5, 1]}
-              start={{ x: 0, y: 0.5 }}
-              end={{ x: 1, y: 0.5 }}
-              style={[styles.badgeShimmer, shimmerStyle]}
-              pointerEvents="none"
-            />
+            <Text style={styles.badgeText}>{badge}</Text>
           </View>
-        </Animated.View>
-      ) : null}
-      <AnimatedText style={[styles.planLabel, labelStyle]}>{label}</AnimatedText>
-      <AnimatedText style={[styles.planPrice, priceStyle]}>{price}</AnimatedText>
+        </View>
+      )}
+      <View style={styles.planContent}>
+        <AnimatedText style={[styles.planLabel, labelStyle]}>{label}</AnimatedText>
+        <AnimatedText style={[styles.planPrice, priceStyle]}>{price}</AnimatedText>
+        <AnimatedText style={[styles.planPeriod, labelStyle]}>{period}</AnimatedText>
+        {savings && (
+          <View style={styles.savingsBadge}>
+            <Text style={styles.savingsText}>{savings}</Text>
+          </View>
+        )}
+      </View>
     </AnimatedPressable>
   );
 };
 
 const PaywallScreen: React.FC = () => {
-  const [selected, setSelected] = useState<PlanKey>("monthly");
+  const [selected, setSelected] = useState<PlanKey>("yearly");
+  const [showPromoInput, setShowPromoInput] = useState(false);
+  const [promoCode, setPromoCode] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [packages, setPackages] = useState<{
+    weekly?: PurchasesPackage;
+    monthly?: PurchasesPackage;
+    yearly?: PurchasesPackage;
+  }>({});
+
   const finishOnboarding = useOnboarding((state) => state.finish);
   const setOnboardingCompletedFromOnboarding = useAuthStore(
     (state) => state.setOnboardingCompletedFromOnboarding
   );
+  const subscriptionStore = useSubscriptionStore();
 
   const screenFade = useSharedValue(0);
 
@@ -259,72 +204,89 @@ const PaywallScreen: React.FC = () => {
     });
   }, [screenFade]);
 
+  // Fetch offerings on mount
+  useEffect(() => {
+    const mapPackagesFromOfferings = (offerings: any) => {
+      const pkgs = offerings.current.availablePackages;
+      const mapped: typeof packages = {};
+
+      pkgs.forEach((pkg: any) => {
+        const id = pkg.identifier.toLowerCase();
+        if (id.includes("weekly")) mapped.weekly = pkg;
+        else if (id.includes("yearly") || id.includes("annual")) mapped.yearly = pkg;
+        else if (id.includes("monthly")) mapped.monthly = pkg;
+      });
+
+      return mapped;
+    };
+
+    const fetchOfferings = async () => {
+      // Guard: if offerings already exist in store, use them
+      if (subscriptionStore.offerings) {
+        if (__DEV__) {
+          console.log("[Paywall] Using cached offerings from store");
+        }
+        const mapped = mapPackagesFromOfferings(subscriptionStore.offerings);
+        setPackages(mapped);
+        return;
+      }
+
+      setIsLoading(true);
+      try {
+        const offerings = await getOfferings();
+        if (offerings?.current) {
+          subscriptionStore.setOfferings(offerings);
+
+          // Map packages by identifier
+          const mapped = mapPackagesFromOfferings(offerings);
+          setPackages(mapped);
+
+          if (__DEV__) {
+            console.log("[Paywall] Available packages:", Object.keys(mapped));
+          }
+        }
+      } catch (error) {
+        console.error("[Paywall] Failed to fetch offerings:", error);
+        Alert.alert(
+          "Connection Error",
+          "Failed to load subscription options. Please check your connection and try again."
+        );
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    void fetchOfferings();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only run once on mount
+
   const weeklyScale = useSharedValue(selected === "weekly" ? 1.02 : 1);
   const monthlyScale = useSharedValue(selected === "monthly" ? 1.02 : 1);
+  const yearlyScale = useSharedValue(selected === "yearly" ? 1.02 : 1);
+
   const weeklyProgress = useSharedValue(selected === "weekly" ? 1 : 0);
   const monthlyProgress = useSharedValue(selected === "monthly" ? 1 : 0);
-  const badgeOffset = useSharedValue(selected === "monthly" ? 0 : -8);
-  const badgeOpacity = useSharedValue(selected === "monthly" ? 1 : 0);
-  const badgeShimmer = useSharedValue(0);
+  const yearlyProgress = useSharedValue(selected === "yearly" ? 1 : 0);
 
   useEffect(() => {
-    const activeScale = selected === "weekly" ? weeklyScale : monthlyScale;
-    const inactiveScale = selected === "weekly" ? monthlyScale : weeklyScale;
-    const activeProgress = selected === "weekly" ? weeklyProgress : monthlyProgress;
-    const inactiveProgress = selected === "weekly" ? monthlyProgress : weeklyProgress;
+    const scales = { weekly: weeklyScale, monthly: monthlyScale, yearly: yearlyScale };
+    const progresses = { weekly: weeklyProgress, monthly: monthlyProgress, yearly: yearlyProgress };
 
-    activeScale.value = withTiming(1.02, {
-      duration: 250,
-      easing: Easing.out(Easing.back(1.2)),
-    });
-    inactiveScale.value = withTiming(1, {
-      duration: 250,
-      easing: Easing.out(Easing.cubic),
-    });
+    Object.keys(scales).forEach((key) => {
+      const planKey = key as PlanKey;
+      const isSelected = planKey === selected;
 
-    activeProgress.value = withTiming(1, {
-      duration: 250,
-      easing: Easing.out(Easing.cubic),
-    });
-    inactiveProgress.value = withTiming(0, {
-      duration: 250,
-      easing: Easing.out(Easing.cubic),
-    });
+      scales[planKey].value = withTiming(isSelected ? 1.02 : 1, {
+        duration: 250,
+        easing: Easing.out(isSelected ? Easing.back(1.2) : Easing.cubic),
+      });
 
-    if (selected === "monthly") {
-      badgeOffset.value = withTiming(0, {
-        duration: 220,
-        easing: Easing.out(Easing.quad),
+      progresses[planKey].value = withTiming(isSelected ? 1 : 0, {
+        duration: 250,
+        easing: Easing.out(Easing.cubic),
       });
-      badgeOpacity.value = withTiming(1, {
-        duration: 220,
-        easing: Easing.out(Easing.quad),
-      });
-    } else {
-      badgeOffset.value = withTiming(-8, {
-        duration: 220,
-        easing: Easing.out(Easing.quad),
-      });
-      badgeOpacity.value = withTiming(0, {
-        duration: 220,
-        easing: Easing.out(Easing.quad),
-      });
-    }
-  }, [badgeOffset, badgeOpacity, monthlyProgress, monthlyScale, selected, weeklyProgress, weeklyScale]);
-
-  useEffect(() => {
-    badgeShimmer.value = withDelay(
-      400,
-      withRepeat(
-        withTiming(1, {
-          duration: 2400,
-          easing: Easing.linear,
-        }),
-        -1,
-        false,
-      ),
-    );
-  }, [badgeShimmer]);
+    });
+  }, [selected, weeklyScale, monthlyScale, yearlyScale, weeklyProgress, monthlyProgress, yearlyProgress]);
 
   const containerStyle = useAnimatedStyle(() => ({
     opacity: screenFade.value,
@@ -335,7 +297,7 @@ const PaywallScreen: React.FC = () => {
     setSelected(plan);
   };
 
-  const onContinue = useCallback(async () => {
+  const completeOnboardingAndNavigate = useCallback(async () => {
     try {
       await finishOnboarding();
       setOnboardingCompletedFromOnboarding(true);
@@ -354,6 +316,131 @@ const PaywallScreen: React.FC = () => {
       router.replace("/(tabs)/take-picture");
     }
   }, [finishOnboarding, setOnboardingCompletedFromOnboarding]);
+
+  const onContinue = useCallback(async () => {
+    setIsLoading(true);
+    subscriptionStore.setLoading(true);
+
+    try {
+      const selectedPackage = packages[selected];
+
+      if (!selectedPackage) {
+        Alert.alert(
+          "Package Not Available",
+          "The selected package is not available. Please try another plan."
+        );
+        return;
+      }
+
+      subscriptionStore.setCurrentPackage(selectedPackage);
+
+      // Attempt purchase
+      const customerInfo = await purchasePackage(selectedPackage);
+
+      if (!customerInfo) {
+        // User cancelled
+        return;
+      }
+
+      // Check if user has entitlement (only updates RevenueCat state, never touches promo)
+      const hasEntitlement = await checkSubscriptionStatus();
+      subscriptionStore.setRevenueCatEntitlement(hasEntitlement);
+      const hasAccess = hasEntitlement || subscriptionStore.promoActivated;
+
+      if (hasAccess) {
+        Alert.alert(
+          "Success!",
+          "Welcome to Sigma Max Pro! You now have access to all premium features.",
+          [
+            {
+              text: "Get Started",
+              onPress: () => void completeOnboardingAndNavigate(),
+            },
+          ]
+        );
+      } else {
+        Alert.alert(
+          "Purchase Completed",
+          "Your purchase was successful, but we couldn't verify your subscription. Please try restoring purchases.",
+          [
+            {
+              text: "OK",
+              onPress: () => void completeOnboardingAndNavigate(),
+            },
+          ]
+        );
+      }
+    } catch (error: any) {
+      console.error("[Paywall] Purchase error:", error);
+      Alert.alert(
+        "Purchase Failed",
+        error.message || "An error occurred while processing your purchase. Please try again."
+      );
+    } finally {
+      setIsLoading(false);
+      subscriptionStore.setLoading(false);
+    }
+  }, [selected, packages, subscriptionStore, completeOnboardingAndNavigate]);
+
+  const onRestorePurchases = useCallback(async () => {
+    setIsLoading(true);
+    subscriptionStore.setLoading(true);
+
+    try {
+      await restorePurchases();
+
+      // Check if user has entitlement (only updates RevenueCat state, never touches promo)
+      const hasEntitlement = await checkSubscriptionStatus();
+      subscriptionStore.setRevenueCatEntitlement(hasEntitlement);
+      const hasAccess = hasEntitlement || subscriptionStore.promoActivated;
+
+      if (hasAccess) {
+        Alert.alert(
+          "Purchases Restored!",
+          "Your subscription has been restored. Welcome back to Sigma Max Pro!",
+          [
+            {
+              text: "Continue",
+              onPress: () => void completeOnboardingAndNavigate(),
+            },
+          ]
+        );
+      } else {
+        Alert.alert(
+          "No Purchases Found",
+          "We couldn't find any previous purchases associated with your account."
+        );
+      }
+    } catch (error: any) {
+      console.error("[Paywall] Restore error:", error);
+      Alert.alert(
+        "Restore Failed",
+        error.message || "Failed to restore purchases. Please try again."
+      );
+    } finally {
+      setIsLoading(false);
+      subscriptionStore.setLoading(false);
+    }
+  }, [subscriptionStore, completeOnboardingAndNavigate]);
+
+  const onApplyPromoCode = useCallback(() => {
+    const success = subscriptionStore.activatePromoCode(promoCode);
+
+    if (success) {
+      Alert.alert(
+        "Promo Code Activated!",
+        "You've unlocked Sigma Max Pro! Enjoy all premium features.",
+        [
+          {
+            text: "Get Started",
+            onPress: () => void completeOnboardingAndNavigate(),
+          },
+        ]
+      );
+    } else {
+      Alert.alert("Invalid Code", "The promo code you entered is not valid. Please try again.");
+    }
+  }, [promoCode, subscriptionStore, completeOnboardingAndNavigate]);
 
   const primaryScale = useSharedValue(1);
   const primaryGlow = useSharedValue(0);
@@ -397,24 +484,6 @@ const PaywallScreen: React.FC = () => {
     );
   }, [primaryGlow]);
 
-  const onPlanPressIn = (plan: PlanKey) => {
-    const target = plan === "weekly" ? weeklyScale : monthlyScale;
-    const base = plan === selected ? 1.06 : 1.04;
-    target.value = withTiming(base, {
-      duration: 160,
-      easing: Easing.out(Easing.quad),
-    });
-  };
-
-  const onPlanPressOut = (plan: PlanKey) => {
-    const target = plan === "weekly" ? weeklyScale : monthlyScale;
-    const base = plan === selected ? 1.02 : 1;
-    target.value = withTiming(base, {
-      duration: 200,
-      easing: Easing.out(Easing.cubic),
-    });
-  };
-
   return (
     <SafeAreaView style={styles.safeArea}>
       <LinearGradient
@@ -423,19 +492,6 @@ const PaywallScreen: React.FC = () => {
         end={{ x: 0.5, y: 1 }}
         style={StyleSheet.absoluteFill}
       />
-      <View pointerEvents="none" style={styles.glowContainer}>
-        <LinearGradient
-          colors={[
-            "rgba(180,243,77,0.32)",
-            "rgba(180,243,77,0.16)",
-            "rgba(180,243,77,0.0)",
-          ]}
-          locations={[0, 0.48, 1]}
-          start={{ x: 0.5, y: 0 }}
-          end={{ x: 0.5, y: 1 }}
-          style={styles.glow}
-        />
-      </View>
       <Animated.View style={[styles.flex, containerStyle]}>
         <ScrollView
           showsVerticalScrollIndicator={false}
@@ -444,43 +500,46 @@ const PaywallScreen: React.FC = () => {
           <View style={styles.inner}>
             {/* HEADER */}
             <View style={styles.header}>
-              <Text style={styles.title}>Sigma Max Premium</Text>
+              <Text style={styles.title}>Unlock Your Full Potential</Text>
               <Text style={styles.subtitle}>
-                Unlock every Sigma Max feature: AI aesthetics scoring, improvement insights
-                & personalized plans.
+                Get AI-powered aesthetics insights, personalized recommendations, and unlimited access to all features.
               </Text>
             </View>
 
             {/* PRICING */}
-            <View style={styles.pricingRow}>
+            <View style={styles.pricingColumn}>
               <PlanCard
                 label="Weekly"
-                price="$5/week"
+                price="$3.99"
+                period="per week"
+                selected={selected === "weekly"}
                 onPress={() => onSelectPlan("weekly")}
-                onPressIn={() => onPlanPressIn("weekly")}
-                onPressOut={() => onPlanPressOut("weekly")}
                 animation={{ scale: weeklyScale, progress: weeklyProgress }}
               />
-              <View style={styles.planSpacer} />
               <PlanCard
                 label="Monthly"
-                price="$12/month"
+                price="$8.99"
+                period="per month"
+                badge="Most Popular"
+                selected={selected === "monthly"}
                 onPress={() => onSelectPlan("monthly")}
-                onPressIn={() => onPlanPressIn("monthly")}
-                onPressOut={() => onPlanPressOut("monthly")}
-                animation={{
-                  scale: monthlyScale,
-                  progress: monthlyProgress,
-                  badgeOffset,
-                  badgeOpacity,
-                  shimmer: badgeShimmer,
-                }}
-                showBadge
+                animation={{ scale: monthlyScale, progress: monthlyProgress }}
+              />
+              <PlanCard
+                label="Yearly"
+                price="$49.99"
+                period="per year"
+                badge="Best Value"
+                savings="Save 76%"
+                selected={selected === "yearly"}
+                onPress={() => onSelectPlan("yearly")}
+                animation={{ scale: yearlyScale, progress: yearlyProgress }}
               />
             </View>
 
             {/* FEATURES */}
             <View style={styles.featureCard}>
+              <Text style={styles.featureHeader}>What's Included:</Text>
               {FEATURE_ITEMS.map((item, index) => (
                 <FeatureRow
                   key={item}
@@ -491,18 +550,65 @@ const PaywallScreen: React.FC = () => {
               ))}
             </View>
 
-            {/* BUTTONS */}
+            {/* PRIMARY BUTTON */}
             <AnimatedPressable
               style={[styles.primaryButton, primaryGlowStyle, primaryButtonStyle]}
               onPress={onContinue}
               onPressIn={onPrimaryPressIn}
               onPressOut={onPrimaryPressOut}
+              disabled={isLoading}
             >
-              <Text style={styles.primaryButtonText}>Continue</Text>
+              {isLoading ? (
+                <ActivityIndicator color="#0B0B0B" />
+              ) : (
+                <Text style={styles.primaryButtonText}>Start Subscription</Text>
+              )}
             </AnimatedPressable>
-            <Pressable style={styles.secondaryButton} onPress={onContinue}>
-              <Text style={styles.secondaryText}>Continue without subscription</Text>
+
+            {/* RESTORE PURCHASES */}
+            <Pressable style={styles.restoreButton} onPress={onRestorePurchases} disabled={isLoading}>
+              <Text style={styles.restoreText}>Restore Purchases</Text>
             </Pressable>
+
+            {/* PROMO CODE */}
+            <Pressable
+              style={styles.promoToggle}
+              onPress={() => setShowPromoInput(!showPromoInput)}
+            >
+              <Gift size={16} color={COLORS.accent} strokeWidth={2} />
+              <Text style={styles.promoToggleText}>Have a promo code?</Text>
+            </Pressable>
+
+            {showPromoInput && (
+              <View style={styles.promoSection}>
+                <View style={styles.promoInputWrapper}>
+                  <TextInput
+                    style={styles.promoInput}
+                    placeholder="Enter code"
+                    placeholderTextColor="rgba(200,200,200,0.5)"
+                    value={promoCode}
+                    onChangeText={setPromoCode}
+                    autoCapitalize="characters"
+                    autoCorrect={false}
+                  />
+                  <Pressable style={styles.promoApplyButton} onPress={onApplyPromoCode}>
+                    <Text style={styles.promoApplyText}>Apply</Text>
+                  </Pressable>
+                </View>
+              </View>
+            )}
+
+            {/* LEGAL */}
+            <View style={styles.legal}>
+              <Text style={styles.legalText}>
+                Subscription automatically renews unless auto-renew is turned off at least 24 hours before the end of the current period.
+              </Text>
+              <View style={styles.legalLinks}>
+                <Text style={styles.legalLink}>Terms of Service</Text>
+                <Text style={styles.legalSeparator}>•</Text>
+                <Text style={styles.legalLink}>Privacy Policy</Text>
+              </View>
+            </View>
           </View>
         </ScrollView>
       </Animated.View>
@@ -526,10 +632,12 @@ const styles = StyleSheet.create({
   inner: {
     alignItems: "center",
     paddingTop: 44,
+    paddingHorizontal: 20,
   },
   header: {
     width: CONTENT_WIDTH,
     alignItems: "center",
+    marginBottom: 32,
   },
   title: {
     fontFamily: "Poppins-SemiBold",
@@ -543,168 +651,146 @@ const styles = StyleSheet.create({
     fontFamily: "Poppins-Regular",
     fontSize: 14,
     lineHeight: 20,
-    color: COLORS.textDim,
+    color: "rgba(200,200,200,0.85)",
     textAlign: "center",
     maxWidth: Math.round(width * 0.8),
   },
-  pricingRow: {
-    flexDirection: "row",
+  pricingColumn: {
     width: CONTENT_WIDTH,
-    marginTop: 32,
-    justifyContent: "space-between",
+    gap: 16,
   },
   planCard: {
-    width: 155,
-    height: PLAN_CARD_HEIGHT,
-    borderRadius: RADII.md,
-    borderWidth: 1,
-    paddingHorizontal: 18,
-    paddingVertical: 16,
-    justifyContent: "center",
-    alignItems: "center",
+    width: "100%",
+    minHeight: 100,
+    borderRadius: RADII.lg,
+    borderWidth: 1.5,
+    paddingHorizontal: 20,
+    paddingVertical: 18,
     backgroundColor: COLORS.card,
     overflow: "hidden",
-    shadowColor: COLORS.lime,
+    shadowColor: COLORS.accent,
     shadowOpacity: 0,
-    shadowRadius: 0,
-    shadowOffset: { width: 0, height: 0 },
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 4 },
   },
   planGradient: {
     ...StyleSheet.absoluteFillObject,
   },
-  planSpacer: {
-    width: 20,
+  planContent: {
+    alignItems: "center",
   },
   planLabel: {
     fontFamily: "Poppins-SemiBold",
-    fontSize: 18,
-    lineHeight: 22,
+    fontSize: 20,
+    lineHeight: 24,
     color: COLORS.text,
     textAlign: "center",
   },
   planPrice: {
     fontFamily: "Poppins-SemiBold",
-    fontSize: 16,
-    lineHeight: 20,
+    fontSize: 32,
+    lineHeight: 38,
     color: COLORS.text,
     textAlign: "center",
-    marginTop: 8,
+    marginTop: 4,
+  },
+  planPeriod: {
+    fontFamily: "Poppins-Regular",
+    fontSize: 14,
+    lineHeight: 18,
+    color: "rgba(200,200,200,0.7)",
+    textAlign: "center",
+    marginTop: 2,
   },
   badgeContainer: {
     position: "absolute",
-    top: -32,
-    left: 0,
-    right: 0,
+    top: -10,
+    right: 16,
     alignItems: "center",
     justifyContent: "center",
   },
   badge: {
     paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingVertical: 4,
     borderRadius: RADII.sm,
-    backgroundColor: COLORS.lime,
+    backgroundColor: COLORS.accent,
     justifyContent: "center",
     alignItems: "center",
-    shadowColor: COLORS.lime,
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    overflow: "hidden",
   },
   badgeText: {
     fontFamily: "Poppins-SemiBold",
-    fontSize: 12,
-    lineHeight: 16,
+    fontSize: 11,
+    lineHeight: 14,
     color: "#111111",
   },
-  badgeShimmer: {
-    position: "absolute",
-    top: 0,
-    bottom: 0,
-    width: 40,
+  savingsBadge: {
+    marginTop: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: RADII.sm,
+    backgroundColor: "rgba(180,243,77,0.15)",
+  },
+  savingsText: {
+    fontFamily: "Poppins-SemiBold",
+    fontSize: 12,
+    color: COLORS.accent,
   },
   featureCard: {
     width: CONTENT_WIDTH,
-    marginTop: 36,
+    marginTop: 32,
     backgroundColor: COLORS.card,
     borderRadius: RADII.lg,
-    paddingVertical: 24,
+    paddingVertical: 20,
     paddingHorizontal: 20,
     borderWidth: 1,
     borderColor: COLORS.cardBorder,
-    shadowColor: "#000000",
-    shadowOpacity: 0.6,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 8 },
+  },
+  featureHeader: {
+    fontFamily: "Poppins-SemiBold",
+    fontSize: 16,
+    color: COLORS.text,
+    marginBottom: 16,
   },
   featureRow: {
     flexDirection: "row",
     alignItems: "center",
   },
   featureRowSpacing: {
-    marginBottom: 16,
+    marginBottom: 14,
   },
   featureIconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 14,
-    backgroundColor: "rgba(180,243,77,0.05)",
-  },
-  featureIconGlow: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "rgba(180,243,77,0.12)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  featureIconFill: {
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: COLORS.lime,
     justifyContent: "center",
     alignItems: "center",
-    shadowColor: "rgba(255,255,255,0.35)",
-    shadowOpacity: 0.6,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-  },
-  check: {
-    width: 14,
-    height: 8,
-    borderBottomWidth: 2,
-    borderLeftWidth: 2,
-    borderColor: "#111111",
-    transform: [{ rotate: "-45deg" }],
+    marginRight: 12,
+    backgroundColor: COLORS.accent,
   },
   featureLabel: {
     flex: 1,
     fontFamily: "Poppins-Regular",
-    fontSize: 15,
+    fontSize: 14,
     lineHeight: 20,
     color: COLORS.text,
   },
   primaryButton: {
     width: CONTENT_WIDTH,
     height: 56,
-    borderRadius: RADII.xl,
+    borderRadius: RADII.pill,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: COLORS.lime,
+    backgroundColor: COLORS.accent,
     overflow: "visible",
     ...(Platform.OS === "android"
       ? { elevation: 12 }
       : {
-          shadowColor: COLORS.lime,
+          shadowColor: COLORS.accent,
           shadowOpacity: 0.35,
           shadowRadius: 24,
           shadowOffset: { width: 0, height: 8 },
         }),
-    marginTop: 44,
+    marginTop: 32,
   },
   primaryButtonText: {
     fontFamily: "Poppins-SemiBold",
@@ -712,27 +798,88 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     color: "#0B0B0B",
   },
-  secondaryButton: {
+  restoreButton: {
     marginTop: 16,
+    paddingVertical: 8,
+  },
+  restoreText: {
+    fontFamily: "Poppins-Regular",
+    fontSize: 14,
+    color: "rgba(200,200,200,0.7)",
+    textDecorationLine: "underline",
+  },
+  promoToggle: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 16,
+    paddingVertical: 8,
+  },
+  promoToggleText: {
+    fontFamily: "Poppins-Regular",
+    fontSize: 14,
+    color: COLORS.accent,
+  },
+  promoSection: {
     width: CONTENT_WIDTH,
+    marginTop: 12,
+  },
+  promoInputWrapper: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  promoInput: {
+    flex: 1,
+    height: 48,
+    backgroundColor: COLORS.inputBg,
+    borderRadius: RADII.md,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+    paddingHorizontal: 16,
+    color: COLORS.text,
+    fontFamily: "Poppins-Regular",
+    fontSize: 14,
+  },
+  promoApplyButton: {
+    height: 48,
+    paddingHorizontal: 24,
+    backgroundColor: COLORS.accent,
+    borderRadius: RADII.md,
     justifyContent: "center",
     alignItems: "center",
   },
-  secondaryText: {
-    fontFamily: "Poppins-Regular",
+  promoApplyText: {
+    fontFamily: "Poppins-SemiBold",
     fontSize: 14,
-    color: "rgba(200,200,200,0.65)",
+    color: "#0B0B0B",
   },
-  glowContainer: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: -1,
+  legal: {
+    width: CONTENT_WIDTH,
+    marginTop: 32,
+    alignItems: "center",
   },
-  glow: {
-    position: "absolute",
-    top: GLOW_TOP,
-    left: GLOW_LEFT,
-    width: GLOW_DIAMETER,
-    height: GLOW_DIAMETER,
-    borderRadius: GLOW_RADIUS,
+  legalText: {
+    fontFamily: "Poppins-Regular",
+    fontSize: 11,
+    lineHeight: 16,
+    color: "rgba(200,200,200,0.5)",
+    textAlign: "center",
+    marginBottom: 8,
+  },
+  legalLinks: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  legalLink: {
+    fontFamily: "Poppins-Regular",
+    fontSize: 11,
+    color: "rgba(200,200,200,0.6)",
+    textDecorationLine: "underline",
+  },
+  legalSeparator: {
+    fontSize: 11,
+    color: "rgba(200,200,200,0.4)",
   },
 });

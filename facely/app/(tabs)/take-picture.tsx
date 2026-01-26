@@ -759,11 +759,6 @@ export default function TakePicture() {
           >
             <Image source={guideSrc} style={{ width: "100%", height: "100%" }} resizeMode="cover" />
             <NeonFrame />
-            {overlay === "frontal" ? (
-              <FrontalGuides w={Math.round((360 / 4) * 3)} h={480} />
-            ) : (
-              <SideGuides w={Math.round((360 / 4) * 3)} h={480} />
-            )}
           </View>
 
           <Text

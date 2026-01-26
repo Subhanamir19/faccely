@@ -3,7 +3,6 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
 export type AuthStatus = "checking" | "signedOut" | "authenticated";
-export type SubscriptionStatus = "none" | "active" | "grace" | "unknown";
 
 type User = {
   uid: string;
@@ -17,7 +16,6 @@ type AuthState = {
   idToken: string | null;
   isAnonymous: boolean;
   onboardingCompleted: boolean;
-  subscriptionStatus: SubscriptionStatus;
   deviceId: string | null;
   sessionId: string | null;
   initialized: boolean;
@@ -25,7 +23,6 @@ type AuthState = {
   refreshIdToken: (force?: boolean) => Promise<string | null>;
   getIdTokenOrThrow: () => Promise<string>;
   setOnboardingCompleted: (value: boolean) => void;
-  setSubscriptionStatus: (status: SubscriptionStatus) => void;
   setSessionId: (sessionId: string | null) => void;
   logout: () => Promise<void>;
   setIdToken: (idToken: string | null) => void;
@@ -61,7 +58,6 @@ export const useAuthStore = create<AuthState>()(
       idToken: null,
       isAnonymous: false,
       onboardingCompleted: false,
-      subscriptionStatus: "unknown",
       deviceId: null,
       sessionId: null,
       initialized: false,
@@ -115,9 +111,6 @@ export const useAuthStore = create<AuthState>()(
       },
       setOnboardingCompletedFromOnboarding: (completed) => {
         set({ onboardingCompleted: completed });
-      },
-      setSubscriptionStatus: (status) => {
-        set({ subscriptionStatus: status });
       },
       setSessionId: (sessionId) => {
         set({ sessionId });
@@ -177,7 +170,6 @@ export const useAuthStore = create<AuthState>()(
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({
         onboardingCompleted: state.onboardingCompleted,
-        subscriptionStatus: state.subscriptionStatus,
         deviceId: state.deviceId,
         sessionId: state.sessionId,
       }),

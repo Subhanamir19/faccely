@@ -4,6 +4,7 @@ import type { Scores, MetricKey } from "./validators.js";
 import { normalizeToPngDataUrl } from "./lib/image-normalize.js";
 import crypto from "crypto";
 import { PROVIDERS, CACHE_LIMITS } from "./config/index.js";
+import { withRetry, isRetryableError } from "./lib/retry.js";
 
 /* ------------------------------ Config/Env -------------------------------- */
 
@@ -302,22 +303,31 @@ export async function scoreImageBytes(
           scoresResponseFormatLogged = true;
         }
 
-        const resp = await client.chat.completions.create({
-          model: modelName,
-          temperature: 0.1,
-          response_format,
+        const resp = await withRetry(
+          () => client.chat.completions.create({
+            model: modelName,
+            temperature: 0.1,
+            response_format,
 
-          messages: [
-            { role: "system", content: SYSTEM_MSG_SINGLE },
-            {
-              role: "user",
-              content: [
-                { type: "text", text: USER_PROMPT_SINGLE },
-                { type: "image_url", image_url: { url: dataUrl } },
-              ] as any,
+            messages: [
+              { role: "system", content: SYSTEM_MSG_SINGLE },
+              {
+                role: "user",
+                content: [
+                  { type: "text", text: USER_PROMPT_SINGLE },
+                  { type: "image_url", image_url: { url: dataUrl } },
+                ] as any,
+              },
+            ],
+          }),
+          {
+            maxAttempts: 2,
+            baseDelayMs: 1500,
+            onRetry: (attempt, err, delay) => {
+              console.warn(`[single] ${modelName} retry ${attempt}: ${(err as Error).message}, waiting ${Math.round(delay)}ms`);
             },
-          ],
-        });
+          }
+        );
         console.log(
           `[single] openai ms (model=${modelName}) =`,
           Date.now() - attemptStart
@@ -415,23 +425,32 @@ export async function scoreImagePairBytes(
           });
           scoresResponseFormatLogged = true;
         }
-        const resp = await client.chat.completions.create({
-          model: modelName,
-          temperature: 0.1,
-          response_format,
+        const resp = await withRetry(
+          () => client.chat.completions.create({
+            model: modelName,
+            temperature: 0.1,
+            response_format,
 
-          messages: [
-            { role: "system", content: SYSTEM_MSG_PAIR },
-            {
-              role: "user",
-              content: [
-                { type: "text", text: USER_PROMPT_PAIR },
-                { type: "image_url", image_url: { url: frontalDataUrl } },
-                { type: "image_url", image_url: { url: sideDataUrl } },
-              ] as any,
+            messages: [
+              { role: "system", content: SYSTEM_MSG_PAIR },
+              {
+                role: "user",
+                content: [
+                  { type: "text", text: USER_PROMPT_PAIR },
+                  { type: "image_url", image_url: { url: frontalDataUrl } },
+                  { type: "image_url", image_url: { url: sideDataUrl } },
+                ] as any,
+              },
+            ],
+          }),
+          {
+            maxAttempts: 2,
+            baseDelayMs: 1500,
+            onRetry: (attempt, err, delay) => {
+              console.warn(`[pair] ${modelName} retry ${attempt}: ${(err as Error).message}, waiting ${Math.round(delay)}ms`);
             },
-          ],
-        });
+          }
+        );
         console.log(
           `[pair] openai ms (model=${modelName}) =`,
           Date.now() - attemptStart

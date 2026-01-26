@@ -12,7 +12,8 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.sigmamax.app"
     },
     "android": {
       "package": "com.sigmamax.app",
@@ -44,15 +45,6 @@
       "assets/**/*"
     ],
     "extra": {
-      "EXPO_PUBLIC_API_BASE_URL": "https://faccely-production.up.railway.app",
-      "EXPO_PUBLIC_FIREBASE_API_KEY": "UNUSED",
-      "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN": "UNUSED",
-      "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "UNUSED",
-      "EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET": "UNUSED",
-      "EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID": "UNUSED",
-      "EXPO_PUBLIC_FIREBASE_APP_ID": "UNUSED",
-      "EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID": "UNUSED",
-      "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "",
       "router": {},
       "eas": {
         "projectId": "897d04ae-b434-4398-8032-cb9cb1b1a918"

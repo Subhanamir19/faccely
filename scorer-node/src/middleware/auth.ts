@@ -1,80 +1,85 @@
 import type { NextFunction, Request, Response } from "express";
 import { jwtVerify, type JWTPayload } from "jose";
-import { AUTH, FEATURES } from "../config/index.js";
+import { AUTH, IS_DEV } from "../config/index.js";
 
-const jwtSecret = AUTH.supabaseJwtSecret ? new TextEncoder().encode(AUTH.supabaseJwtSecret) : null;
+/**
+ * Auth middleware for Supabase JWT validation.
+ *
+ * In production: Requires valid Supabase JWT token
+ * In development: Falls back to consistent dev user if no JWT secret configured
+ */
 
-function bearerFrom(req: Request): string | null {
+// Pre-encode JWT secret once at startup (null if not configured)
+const jwtSecret = AUTH.jwtSecret ? new TextEncoder().encode(AUTH.jwtSecret) : null;
+
+// Consistent dev user ID - use a valid UUID format so it can exist in DB if needed
+const DEV_USER_ID = "00000000-0000-0000-0000-000000000000";
+
+function extractBearerToken(req: Request): string | null {
   const header = req.header("authorization") ?? req.header("Authorization");
   if (!header) return null;
   const match = header.match(/^Bearer\s+(.+)$/i);
   return match?.[1]?.trim() || null;
 }
 
-function setIdentityFromClaims(res: Response, payload: JWTPayload) {
+function setIdentityFromClaims(res: Response, payload: JWTPayload): void {
   const userId = typeof payload.sub === "string" ? payload.sub : undefined;
-  const email = typeof (payload as any)?.email === "string" ? (payload as any).email : undefined;
-  const deviceId =
-    typeof (payload as any)?.device_id === "string"
-      ? (payload as any).device_id
-      : typeof (payload as any)?.deviceId === "string"
-      ? (payload as any).deviceId
-      : undefined;
+  const email = typeof (payload as Record<string, unknown>).email === "string"
+    ? (payload as Record<string, unknown>).email as string
+    : undefined;
 
   if (userId) res.locals.userId = userId;
   if (email) res.locals.email = email;
-  if (deviceId) res.locals.deviceId = deviceId;
-}
-
-function setIdentityFromHeaders(req: Request, res: Response) {
-  const userId = req.header("x-user-id")?.trim();
-  const email = req.header("x-email")?.trim();
-  const deviceId = req.header("x-device-id")?.trim();
-
-  if (userId) res.locals.userId = userId;
-  if (email) res.locals.email = email;
-  if (deviceId) res.locals.deviceId = deviceId;
 }
 
 export async function verifyAuth(req: Request, res: Response, next: NextFunction) {
-  console.log("[auth] verifyAuth start", { hasAuthHeader: !!req.headers.authorization });
-  const token = bearerFrom(req);
+  const token = extractBearerToken(req);
+
+  // Case 1: Token provided - validate it
   if (token) {
+    // If JWT validation is not configured
     if (!jwtSecret) {
-      console.log("[auth] invalid_token: no SUPABASE_JWT_SECRET configured");
-      return res.status(401).json({ error: "invalid_token" });
+      if (IS_DEV) {
+        // Development: use consistent dev user
+        console.log("[auth] dev mode: JWT not configured, using dev user");
+        res.locals.userId = DEV_USER_ID;
+        return next();
+      }
+      // Production without JWT secret is a misconfiguration
+      console.error("[auth] FATAL: No SUPABASE_JWT_SECRET in production");
+      return res.status(500).json({ error: "server_misconfigured" });
     }
+
+    // Validate the JWT
     try {
       const { payload } = await jwtVerify(token, jwtSecret, {
-        issuer: AUTH.supabaseIssuer ?? undefined,
-        audience: AUTH.supabaseAudience ?? undefined,
+        issuer: AUTH.issuer ?? undefined,
+        audience: AUTH.audience ?? undefined,
         algorithms: ["HS256"],
       });
-      console.log("[auth] jwtVerify success", {
-        hasSub: typeof payload.sub === "string",
-        issuer: payload.iss,
-      });
+
       setIdentityFromClaims(res, payload);
+
       if (!res.locals.userId) {
-        console.log("[auth] invalid_token: missing sub in payload");
-        return res.status(401).json({ error: "invalid_token" });
+        return res.status(401).json({ error: "invalid_token", reason: "missing_sub" });
       }
+
       return next();
-    } catch (err: any) {
-      console.log("[auth] jwtVerify error", { name: err?.name, message: err?.message });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "unknown";
+      console.warn("[auth] JWT verification failed:", message);
       return res.status(401).json({ error: "invalid_token" });
     }
   }
 
-  if (FEATURES.allowHeaderIdentity) {
-    console.log("[auth] header fallback", {
-      allowHeaderIdentity: true,
-      userId: req.headers["x-user-id"],
-    });
-    setIdentityFromHeaders(req, res);
+  // Case 2: No token provided
+  if (IS_DEV) {
+    // Development: allow requests without auth using dev user
+    console.log("[auth] dev mode: no token, using dev user");
+    res.locals.userId = DEV_USER_ID;
     return next();
   }
 
-  console.log("[auth] missing_token: no bearer and no header fallback");
+  // Production: require authentication
   return res.status(401).json({ error: "missing_token" });
 }

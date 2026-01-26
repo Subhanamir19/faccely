@@ -10,6 +10,8 @@ import { useRoutineStore } from "../store/routineStore";
 import { scheduleDaily } from "../lib/time/nextMidnight";
 import { AuthProvider } from "@/providers/AuthProvider";
 import { useAuthStore } from "@/store/auth";
+import { initializeRevenueCat, addCustomerInfoUpdateListener } from "@/lib/revenuecat";
+import { useSubscriptionStore } from "@/store/subscription";
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -43,6 +45,43 @@ export default function RootLayout() {
     if (!authInitialized || !idToken) return;
     console.log("ID TOKEN:", useAuthStore.getState().idToken);
   }, [authInitialized, idToken]);
+
+  // Initialize RevenueCat after auth is ready and set up customer info listener
+  useEffect(() => {
+    if (!authInitialized) return;
+
+    let unsubscribeListener: (() => void) | null = null;
+
+    const initRC = async () => {
+      try {
+        const uid = useAuthStore.getState().uid;
+        await initializeRevenueCat(uid || undefined);
+
+        // After successful initialization, add the customer info listener
+        // This handles real-time subscription changes (renewals, expiry, refunds)
+        if (useSubscriptionStore.getState().isRevenueCatInitialized) {
+          unsubscribeListener = addCustomerInfoUpdateListener();
+          if (__DEV__) {
+            console.log("[Layout] RevenueCat customer info listener added");
+          }
+        }
+      } catch (error) {
+        console.error("[App] Failed to initialize RevenueCat:", error);
+      }
+    };
+
+    void initRC();
+
+    // Cleanup listener on unmount
+    return () => {
+      if (unsubscribeListener) {
+        unsubscribeListener();
+        if (__DEV__) {
+          console.log("[Layout] RevenueCat customer info listener removed");
+        }
+      }
+    };
+  }, [authInitialized]);
 
   return (
     <AuthProvider>

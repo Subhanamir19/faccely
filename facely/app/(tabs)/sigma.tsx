@@ -62,14 +62,49 @@ function MessageBubble({ message }: { message: SigmaMessage }) {
   );
 }
 
+function BouncingDot({ delay }: { delay: number }) {
+  const translateY = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(translateY, {
+          toValue: -6,
+          duration: 300,
+          delay,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        Animated.timing(translateY, {
+          toValue: 0,
+          duration: 300,
+          easing: Easing.in(Easing.cubic),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    animation.start();
+    return () => animation.stop();
+  }, [translateY, delay]);
+
+  return (
+    <Animated.View
+      style={[
+        styles.typingDot,
+        { transform: [{ translateY }] },
+      ]}
+    />
+  );
+}
+
 function TypingBubble() {
   return (
     <View style={[styles.messageRow, styles.messageRowAssistant]}>
       <View style={[styles.messageBubble, styles.assistantBubble, styles.typingBubble]}>
         <View style={styles.typingDotsRow}>
-          <View style={[styles.typingDot, { opacity: 0.9 }]} />
-          <View style={[styles.typingDot, { opacity: 0.7 }]} />
-          <View style={[styles.typingDot, { opacity: 0.5 }]} />
+          <BouncingDot delay={0} />
+          <BouncingDot delay={150} />
+          <BouncingDot delay={300} />
         </View>
       </View>
     </View>
@@ -307,7 +342,7 @@ const styles = StyleSheet.create({
   },
   backIcon: {
     fontSize: 20,
-    color: "#FFFFFFE6",
+    color: COLORS.sigmaWhite,
     fontFamily: "Poppins-SemiBold",
   },
   headerContent: {
@@ -380,8 +415,8 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
   },
   assistantBubble: {
-    backgroundColor: "rgba(255,255,255,0.06)",
-    borderColor: "rgba(255,255,255,0.08)",
+    backgroundColor: COLORS.sigmaGlass,
+    borderColor: COLORS.cardBorder,
   },
   messageText: {
     fontFamily: "Poppins-Medium",
@@ -395,20 +430,21 @@ const styles = StyleSheet.create({
     color: COLORS.sigmaWhite,
   },
   typingBubble: {
-    paddingVertical: 10,
-    paddingHorizontal: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
   },
   typingDotsRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "flex-start",
-    gap: 6,
+    gap: 8,
+    height: 16,
   },
   typingDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: COLORS.sigmaWhite,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: COLORS.sigmaLime,
   },
   emptyState: {
     height: 200,

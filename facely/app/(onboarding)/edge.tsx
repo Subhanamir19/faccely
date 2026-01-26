@@ -155,6 +155,11 @@ export default function EdgeScreen() {
       <StatusBar barStyle="light-content" backgroundColor="#000" />
       <SafeAreaView style={{ flex: 1 }}>
         <View style={styles.content}>
+          {/* Progress: step 6 of 7 */}
+          <View style={styles.progressTrack}>
+            <View style={[styles.progressFill, { width: `${(6 / 7) * 100}%` }]} />
+          </View>
+
           <T style={styles.header}>You might already be losing your edge...</T>
 
           {/* Glass card */}
@@ -224,6 +229,21 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingTop: 28,
     paddingBottom: 24,
+    paddingHorizontal: 24,
+  },
+
+  progressTrack: {
+    height: 8,
+    width: CARD_W,
+    borderRadius: 999,
+    backgroundColor: "#2A2A2A",
+    overflow: "hidden",
+    marginBottom: 16,
+  },
+  progressFill: {
+    height: "100%",
+    backgroundColor: ACCENT,
+    borderRadius: 999,
   },
 
   header: {

@@ -80,9 +80,9 @@ export default function EthnicityScreen() {
 
           {/* Inner content with 24 px padding */}
           <View style={styles.inner}>
-            {/* Progress (8 px), then 16 gap */}
+            {/* Progress: step 4 of 7 */}
             <View style={styles.progressTrack}>
-              <View style={[styles.progressFill, { width: "30%" }]} />
+              <View style={[styles.progressFill, { width: `${(4 / 7) * 100}%` }]} />
             </View>
 
             <T style={styles.title}>What’s your ethnicity?</T>

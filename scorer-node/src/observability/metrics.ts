@@ -1,11 +1,40 @@
 // src/observability/metrics.ts
 // Minimal Prometheus-style metrics without extra deps.
-// Exposes queue depths and basic process stats.
+// Exposes queue depths, concurrency stats, and basic process stats.
 
 import type { Application } from "express";
 import os from "node:os";
 import { queuesProbe } from "../queue/index.js";
-import { SERVICE } from "../config/index.js";
+import { SERVICE, SERVER } from "../config/index.js";
+
+// Counters for request tracking (in-memory, resets on restart)
+const requestCounters = {
+  total: 0,
+  success: 0,
+  error: 0,
+  timeout: 0,
+  overloaded: 0,
+};
+
+const openaiCounters = {
+  requests: 0,
+  success: 0,
+  retries: 0,
+  failures: 0,
+  rateLimited: 0,
+};
+
+// Export functions to increment counters from other modules
+export function incrementRequestCounter(type: keyof typeof requestCounters) {
+  requestCounters[type]++;
+}
+
+export function incrementOpenAICounter(type: keyof typeof openaiCounters) {
+  openaiCounters[type]++;
+}
+
+// Concurrency state getter (will be set by index.ts)
+let getConcurrencyState: () => { active: number; queuePending: number } = () => ({ active: 0, queuePending: 0 });
 
 /**
  * Render a small text payload in Prometheus exposition format.
@@ -94,7 +123,39 @@ function renderPrometheusText(sample: {
   lines.push(`sigma_system_memory_bytes{type="total"} ${sample.system.totalmem_bytes}`);
   lines.push(`sigma_system_memory_bytes{type="free"} ${sample.system.freemem_bytes}`);
 
+  // Concurrency metrics
+  const concurrency = getConcurrencyState();
+  lines.push(`# HELP sigma_concurrency_slots Concurrent processing slots`);
+  lines.push(`# TYPE sigma_concurrency_slots gauge`);
+  lines.push(`sigma_concurrency_slots{type="active"} ${concurrency.active}`);
+  lines.push(`sigma_concurrency_slots{type="max"} ${SERVER.maxConcurrent}`);
+  lines.push(`sigma_concurrency_slots{type="queue_pending"} ${concurrency.queuePending}`);
+  lines.push(`sigma_concurrency_slots{type="queue_max"} ${SERVER.requestQueueMaxPending}`);
+
+  // Request counters
+  lines.push(`# HELP sigma_requests_total Total HTTP requests by status`);
+  lines.push(`# TYPE sigma_requests_total counter`);
+  lines.push(`sigma_requests_total{status="total"} ${requestCounters.total}`);
+  lines.push(`sigma_requests_total{status="success"} ${requestCounters.success}`);
+  lines.push(`sigma_requests_total{status="error"} ${requestCounters.error}`);
+  lines.push(`sigma_requests_total{status="timeout"} ${requestCounters.timeout}`);
+  lines.push(`sigma_requests_total{status="overloaded"} ${requestCounters.overloaded}`);
+
+  // OpenAI counters
+  lines.push(`# HELP sigma_openai_total OpenAI API calls by outcome`);
+  lines.push(`# TYPE sigma_openai_total counter`);
+  lines.push(`sigma_openai_total{status="requests"} ${openaiCounters.requests}`);
+  lines.push(`sigma_openai_total{status="success"} ${openaiCounters.success}`);
+  lines.push(`sigma_openai_total{status="retries"} ${openaiCounters.retries}`);
+  lines.push(`sigma_openai_total{status="failures"} ${openaiCounters.failures}`);
+  lines.push(`sigma_openai_total{status="rate_limited"} ${openaiCounters.rateLimited}`);
+
   return lines.join("\n") + "\n";
+}
+
+// Allow index.ts to provide the concurrency state getter
+export function setConcurrencyStateGetter(getter: () => { active: number; queuePending: number }) {
+  getConcurrencyState = getter;
 }
 
 export function initMetrics(

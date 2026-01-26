@@ -94,3 +94,38 @@ export async function redisDel(key: string): Promise<boolean> {
 export function k(...parts: Array<string | number>): string {
   return [SERVICE.name, ...parts].join(":");
 }
+
+/**
+ * Check Redis connectivity and measure latency.
+ */
+export async function checkRedisHealth(): Promise<{
+  ok: boolean;
+  enabled: boolean;
+  latencyMs: number;
+  error?: string;
+}> {
+  if (!isRedisEnabled()) {
+    return { ok: true, enabled: false, latencyMs: 0 };
+  }
+
+  const start = Date.now();
+  try {
+    const redis = await getRedis();
+    if (!redis) {
+      return { ok: false, enabled: true, latencyMs: Date.now() - start, error: "Redis client unavailable" };
+    }
+
+    const pong = await redis.ping();
+    const latencyMs = Date.now() - start;
+
+    if (pong !== "PONG") {
+      return { ok: false, enabled: true, latencyMs, error: `Unexpected response: ${pong}` };
+    }
+
+    return { ok: true, enabled: true, latencyMs };
+  } catch (err) {
+    const latencyMs = Date.now() - start;
+    const message = err instanceof Error ? err.message : String(err);
+    return { ok: false, enabled: true, latencyMs, error: message };
+  }
+}

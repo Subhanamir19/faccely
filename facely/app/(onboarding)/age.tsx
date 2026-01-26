@@ -177,7 +177,7 @@ const styles = StyleSheet.create({
         }),
   },
 
-  // Progress (step 1 of 3)
+  // Progress (step 3 of 7)
   progressTrack: {
     height: 8,
     borderRadius: 999,
@@ -187,7 +187,7 @@ const styles = StyleSheet.create({
   },
   progressFill: {
     height: "100%",
-    width: `${(1 / 3) * 100}%`,
+    width: `${(3 / 7) * 100}%`,
     backgroundColor: ACCENT,
   },
 

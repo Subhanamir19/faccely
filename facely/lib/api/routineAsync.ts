@@ -1,8 +1,8 @@
 // src/lib/api/routineAsync.ts
 // Async Routine client: start job, query job, poll with backoff.
-// Uses EXPO_PUBLIC_API_BASE_URL (Expo public env) for both dev/prod.
+// Uses centralized API_BASE config for both dev/prod.
 
-const API_BASE = process.env.EXPO_PUBLIC_API_BASE_URL ?? "http://localhost:8080";
+import { API_BASE } from "./config";
 import { buildAuthHeadersAsync } from "./authHeaders";
 
 // -------- Types (mirror server responses, minimal but safe) ----------

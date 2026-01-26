@@ -198,6 +198,11 @@ export default function TrustAccuracyScreen() {
           },
         ]}
       >
+        {/* Progress: step 7 of 7 (final step) */}
+        <View style={styles.progressTrack}>
+          <View style={styles.progressFill} />
+        </View>
+
         <View>
           <T
             accessibilityRole="header"
@@ -245,6 +250,20 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 24,
     justifyContent: "space-between",
+  },
+  progressTrack: {
+    height: 8,
+    width: "100%",
+    borderRadius: 999,
+    backgroundColor: "#2A2A2A",
+    overflow: "hidden",
+    marginBottom: 16,
+  },
+  progressFill: {
+    height: "100%",
+    width: "100%",
+    backgroundColor: ACCENT,
+    borderRadius: 999,
   },
   title: {
     color: "#FFFFFF",

@@ -51,10 +51,6 @@ export default function UseCaseScreen() {
     router.push("/(onboarding)/experience");
   };
 
-  const onBack = () => {
-    router.back();
-  };
-
   return (
     <View style={styles.screen}>
       {/* Background: pure black gradient with faint diagonal reflection */}
@@ -81,23 +77,10 @@ export default function UseCaseScreen() {
 
           {/* Inner content */}
           <View style={styles.inner}>
-            {/* Progress: step 1 of 5 in new flow (use-case → experience → age → ethnicity → gender) */}
+            {/* Progress: step 1 of 7 (use-case → experience → age → ethnicity → gender → edge → trust) */}
             <View style={styles.progressTrack}>
-              <View style={[styles.progressFill, { width: "20%" }]} />
+              <View style={[styles.progressFill, { width: `${(1 / 7) * 100}%` }]} />
             </View>
-
-            {/* Back button */}
-            <Pressable
-              onPress={onBack}
-              accessibilityRole="button"
-              accessibilityLabel="Go back"
-              style={({ pressed }) => [
-                styles.backButton,
-                pressed && { opacity: 0.7 },
-              ]}
-            >
-              <T style={styles.backButtonText}>← Back</T>
-            </Pressable>
 
             <T style={styles.title}>What do you want to use the app for?</T>
             <T style={styles.sub} numberOfLines={2}>
@@ -244,23 +227,6 @@ const styles = StyleSheet.create({
     height: "100%",
     backgroundColor: ACCENT,
     borderRadius: 999,
-  },
-
-  backButton: {
-    alignSelf: "flex-start",
-    marginBottom: 12,
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    marginLeft: -8,
-  },
-  backButtonText: {
-    fontSize: 14,
-    color: SUB,
-    fontFamily: Platform.select({
-      ios: "Poppins-Medium",
-      android: "Poppins-Medium",
-      default: "Poppins-Medium",
-    }),
   },
 
   title: {

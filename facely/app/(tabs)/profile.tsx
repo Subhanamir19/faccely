@@ -6,6 +6,8 @@ import {
   StyleSheet,
   Image,
   Alert,
+  Linking,
+  Platform,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
@@ -22,7 +24,9 @@ import { useProtocolsStore } from "@/store/protocolsStore";
 import { useRoutineStore } from "@/store/routineStore";
 import { useSigmaStore } from "@/store/sigma";
 import { useRecommendations } from "@/store/recommendations";
+import { useSubscriptionStore } from "@/store/subscription";
 import { persistAvatarFromUri } from "@/lib/media/avatar";
+import { restorePurchases, checkSubscriptionStatus, logoutUser as logoutRevenueCatUser } from "@/lib/revenuecat";
 
 async function resetLocalUserData() {
   try {
@@ -49,6 +53,10 @@ async function resetLocalUserData() {
   try {
     useRecommendations.getState().reset();
   } catch {}
+  // Reset subscription state (clears both RevenueCat entitlement and promo activation)
+  try {
+    useSubscriptionStore.getState().reset();
+  } catch {}
 }
 
 export default function ProfileScreen() {
@@ -59,9 +67,14 @@ export default function ProfileScreen() {
   const avatarUri = useProfile((state) => state.avatarUri);
   const hydrateProfile = useProfile((state) => state.hydrate);
   const setProfileAvatar = useProfile((state) => state.setAvatar);
+  const revenueCatEntitlement = useSubscriptionStore((state) => state.revenueCatEntitlement);
+  const promoActivated = useSubscriptionStore((state) => state.promoActivated);
+  const setRevenueCatEntitlement = useSubscriptionStore((state) => state.setRevenueCatEntitlement);
+  const hasAccess = revenueCatEntitlement || promoActivated;
   const [changingPhoto, setChangingPhoto] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
+  const [restoringPurchases, setRestoringPurchases] = useState(false);
   const [isHydrating, setIsHydrating] = useState(true);
 
   useEffect(() => {
@@ -129,6 +142,14 @@ export default function ProfileScreen() {
     if (loggingOut || deletingAccount) return;
     setLoggingOut(true);
     try {
+      // Logout from RevenueCat first (clears user association)
+      try {
+        await logoutRevenueCatUser();
+      } catch (rcErr) {
+        if (__DEV__) {
+          console.warn("[Profile] RevenueCat logout failed:", rcErr);
+        }
+      }
       await resetLocalUserData();
       await supabase.auth.signOut();
       // AuthProvider will re-enter anonymous automatically.
@@ -162,6 +183,14 @@ export default function ProfileScreen() {
     if (deletingAccount) return;
     setDeletingAccount(true);
     try {
+      // Logout from RevenueCat first (clears user association)
+      try {
+        await logoutRevenueCatUser();
+      } catch (rcErr) {
+        if (__DEV__) {
+          console.warn("[Profile] RevenueCat logout failed:", rcErr);
+        }
+      }
       await resetLocalUserData();
       try {
         await supabase.auth.signOut();
@@ -178,6 +207,51 @@ export default function ProfileScreen() {
       Alert.alert("Delete account failed", message);
     } finally {
       setDeletingAccount(false);
+    }
+  };
+
+  const handleRestorePurchases = async () => {
+    if (restoringPurchases || isHydrating) return;
+    setRestoringPurchases(true);
+    try {
+      await restorePurchases();
+      // Only updates RevenueCat state, never touches promo
+      const hasEntitlement = await checkSubscriptionStatus();
+      setRevenueCatEntitlement(hasEntitlement);
+
+      if (hasEntitlement) {
+        Alert.alert(
+          "Purchases Restored!",
+          "Your subscription has been restored successfully."
+        );
+      } else {
+        Alert.alert(
+          "No Purchases Found",
+          "We couldn't find any previous purchases associated with your account."
+        );
+      }
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to restore purchases. Please try again.";
+      Alert.alert("Restore Failed", message);
+    } finally {
+      setRestoringPurchases(false);
+    }
+  };
+
+  const handleManageSubscription = async () => {
+    try {
+      if (Platform.OS === "ios") {
+        await Linking.openURL("https://apps.apple.com/account/subscriptions");
+      } else if (Platform.OS === "android") {
+        await Linking.openURL(
+          "https://play.google.com/store/account/subscriptions"
+        );
+      }
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to open subscription management.";
+      Alert.alert("Error", message);
     }
   };
 
@@ -237,6 +311,39 @@ export default function ProfileScreen() {
           <View style={styles.row}>
             <T style={styles.rowLabel}>Age</T>
             <T style={styles.rowValue}>{age}</T>
+          </View>
+        </GlassCard>
+
+        <GlassCard style={styles.card}>
+          <View style={styles.cardHeader}>
+            <T style={styles.cardLabel}>Subscription</T>
+            <T style={styles.cardSubtext}>
+              {hasAccess
+                ? promoActivated
+                  ? "Active (Promo Code)"
+                  : "Active - Sigma Max Pro"
+                : "No active subscription"}
+            </T>
+          </View>
+          <View style={styles.subscriptionActions}>
+            <View style={styles.subscriptionBtn}>
+              <GlassBtn
+                label={restoringPurchases ? "Restoring..." : "Restore Purchases"}
+                variant="glass"
+                onPress={handleRestorePurchases}
+                disabled={restoringPurchases || isHydrating}
+              />
+            </View>
+            {hasAccess && !promoActivated && (
+              <View style={styles.subscriptionBtn}>
+                <GlassBtn
+                  label="Manage Subscription"
+                  variant="primary"
+                  onPress={handleManageSubscription}
+                  disabled={isHydrating}
+                />
+              </View>
+            )}
           </View>
         </GlassCard>
 
@@ -388,6 +495,14 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   dangerBtn: {
+    width: "100%",
+  },
+  subscriptionActions: {
+    flexDirection: "column",
+    gap: 12,
+    marginTop: 8,
+  },
+  subscriptionBtn: {
     width: "100%",
   },
 });

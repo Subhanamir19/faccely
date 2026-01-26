@@ -4,6 +4,8 @@ import { ActivityIndicator, View } from "react-native";
 import { supabase } from "@/lib/supabase/client";
 import { syncUserProfile } from "@/lib/api/user";
 import { useAuthStore } from "@/store/auth";
+import { useSubscriptionStore } from "@/store/subscription";
+import { checkSubscriptionStatus } from "@/lib/revenuecat";
 
 type Props = {
   children: React.ReactNode;
@@ -55,6 +57,36 @@ export function AuthProvider({ children }: Props) {
         } else if (reason === "user_updated") {
           syncUserProfile().catch(() => {});
         }
+
+        // Check and sync subscription status with RevenueCat (only if initialized)
+        // Note: This only updates revenueCatEntitlement, never touches promoActivated
+        const isRevenueCatInitialized = useSubscriptionStore.getState().isRevenueCatInitialized;
+        if (isRevenueCatInitialized) {
+          checkSubscriptionStatus()
+            .then((hasEntitlement) => {
+              useSubscriptionStore.getState().setRevenueCatEntitlement(hasEntitlement);
+              if (__DEV__) {
+                const state = useSubscriptionStore.getState();
+                console.log("[AuthProvider] Subscription synced:", {
+                  revenueCat: hasEntitlement,
+                  promo: state.promoActivated,
+                  hasAccess: hasEntitlement || state.promoActivated,
+                });
+              }
+            })
+            .catch((error) => {
+              // On network error, keep existing persisted state
+              // Don't kick out users who might just be offline
+              if (__DEV__) {
+                console.warn("[AuthProvider] Subscription check failed, keeping cached state:", error);
+              }
+            });
+        } else {
+          if (__DEV__) {
+            console.log("[AuthProvider] Skipping subscription check - RevenueCat not initialized yet");
+          }
+        }
+
         return;
       }
 

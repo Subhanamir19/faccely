@@ -78,9 +78,9 @@ export default function GenderScreen() {
 
           {/* Inner content (24 px padding) */}
           <View style={styles.inner}>
-            {/* Progress: 8 px high, 100% (step 3/3) */}
+            {/* Progress: step 5 of 7 */}
             <View style={styles.progressTrack}>
-              <View style={[styles.progressFill, { width: "100%" }]} />
+              <View style={[styles.progressFill, { width: `${(5 / 7) * 100}%` }]} />
             </View>
 
             <T style={styles.title}>What’s your gender?</T>

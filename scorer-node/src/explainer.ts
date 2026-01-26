@@ -3,6 +3,7 @@ import OpenAI from "openai";
 import crypto from "crypto";
 import { Scores, metricKeys, type MetricKey } from "./validators.js";
 import { PROVIDERS, CACHE_LIMITS } from "./config/index.js";
+import { withRetry } from "./lib/retry.js";
 
 /**
  * Explainer goals
@@ -505,24 +506,33 @@ ${JSON.stringify(scores)}
       });
       explainResponseFormatLogged = true;
     }
-    const resp = await client.chat.completions.create({
-      model: MODEL,
-      temperature: 0.4,
-      top_p: 0.9,
-      max_tokens: 1300,
-      response_format,
+    const resp = await withRetry(
+      () => client.chat.completions.create({
+        model: MODEL,
+        temperature: 0.4,
+        top_p: 0.9,
+        max_tokens: 1300,
+        response_format,
 
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT_BASE },
-        {
-          role: "user",
-          content: [
-            { type: "text", text: userText },
-            { type: "image_url", image_url: { url: `data:${mime};base64,${img64}` } },
-          ],
+        messages: [
+          { role: "system", content: SYSTEM_PROMPT_BASE },
+          {
+            role: "user",
+            content: [
+              { type: "text", text: userText },
+              { type: "image_url", image_url: { url: `data:${mime};base64,${img64}` } },
+            ],
+          },
+        ],
+      }),
+      {
+        maxAttempts: 2,
+        baseDelayMs: 1500,
+        onRetry: (attempt, err, delay) => {
+          console.warn(`[explain-single] retry ${attempt}: ${(err as Error).message}, waiting ${Math.round(delay)}ms`);
         },
-      ],
-    });
+      }
+    );
 
     const parsed = normalizeResponse(resp.choices?.[0]?.message?.content);
     lruSet(key, parsed);
@@ -589,25 +599,34 @@ ${JSON.stringify(scores)}
       explainResponseFormatLogged = true;
     }
 
-    const resp = await client.chat.completions.create({
-      model: MODEL,
-      temperature: 0.4,
-      top_p: 0.9,
-      max_tokens: 1500,
-      response_format,
+    const resp = await withRetry(
+      () => client.chat.completions.create({
+        model: MODEL,
+        temperature: 0.4,
+        top_p: 0.9,
+        max_tokens: 1500,
+        response_format,
 
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT_BASE },
-        {
-          role: "user",
-          content: [
-            { type: "text", text: userText },
-            { type: "image_url", image_url: { url: `data:${frontalMime};base64,${f64}` } }, // frontal
-            { type: "image_url", image_url: { url: `data:${sideMime};base64,${s64}` } },     // profile
-          ],
+        messages: [
+          { role: "system", content: SYSTEM_PROMPT_BASE },
+          {
+            role: "user",
+            content: [
+              { type: "text", text: userText },
+              { type: "image_url", image_url: { url: `data:${frontalMime};base64,${f64}` } }, // frontal
+              { type: "image_url", image_url: { url: `data:${sideMime};base64,${s64}` } },     // profile
+            ],
+          },
+        ],
+      }),
+      {
+        maxAttempts: 2,
+        baseDelayMs: 1500,
+        onRetry: (attempt, err, delay) => {
+          console.warn(`[explain-pair] retry ${attempt}: ${(err as Error).message}, waiting ${Math.round(delay)}ms`);
         },
-      ],
-    });
+      }
+    );
 
     const parsed = normalizeResponse(resp.choices?.[0]?.message?.content);
     lruSet(key, parsed);
