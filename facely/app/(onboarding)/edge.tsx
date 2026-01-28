@@ -1,64 +1,55 @@
 // app/(onboarding)/edge.tsx
+// "Losing your edge" screen with animated stat bars
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-
 import {
   View,
   StyleSheet,
-  SafeAreaView,
   StatusBar,
   Dimensions,
   Platform,
   Animated,
   Easing,
+  Pressable,
 } from "react-native";
 import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
-
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { ChevronLeft } from "lucide-react-native";
 import { router } from "expo-router";
 
 import T from "@/components/ui/T";
-import GlassBtn from "@/components/ui/GlassBtn";
+import Button from "@/components/ui/Button";
+import { COLORS, SP, RADII, getProgressForStep } from "@/lib/tokens";
+import { hapticLight } from "@/lib/haptics";
 
-/** Tokens */
-const ACCENT = "#B4F34D";
-const BG_TOP = "#000000";
-const BG_BOTTOM = "#0B0B0B";
-const CARD_FILL = "rgba(18,18,18,0.90)";
-const CARD_BORDER = "rgba(255,255,255,0.08)";
-const TEXT = "#FFFFFF";
-const SUB = "rgba(160,160,160,0.80)";
-const TRACK_BG = "#141414";
-const TRACK_BORDER = "#242424";
-const DARK_FILL = "#3A3A3A"; // readable vs TRACK_BG on Android
-
-/** Layout */
 const { width } = Dimensions.get("window");
 const CARD_W = Math.round(width * 0.86);
 const BAR_W = 110;
-const BAR_H = 220;
+const BAR_H = 200;
 const GAP = 40;
 
-/* ---------------- Vertical Stat Bar ---------------- */
+// Vertical stat bar component
 type BarProps = {
   topLine1: string;
   topLine2?: string;
-  percent: number; // 0..100
+  percent: number;
   fill: string;
   pctTextColor: string;
   delay?: number;
 };
 
-const VerticalStatBar: React.FC<BarProps> = ({
+function VerticalStatBar({
   topLine1,
   topLine2,
   percent,
   fill,
   pctTextColor,
   delay = 150,
-}) => {
+}: BarProps) {
   const [trackHeight, setTrackHeight] = useState(BAR_H);
   const trackHeightRef = useRef(BAR_H);
   const progress = useRef(new Animated.Value(0)).current;
+
   const fillStyle = useMemo(
     () => ({
       height: progress.interpolate({
@@ -67,10 +58,9 @@ const VerticalStatBar: React.FC<BarProps> = ({
         extrapolate: "clamp",
       }),
     }),
-    [progress, trackHeight],
+    [progress, trackHeight]
   );
 
-  // Always replay the animation on mount/refresh
   useEffect(() => {
     progress.stopAnimation();
     progress.setValue(0);
@@ -83,136 +73,158 @@ const VerticalStatBar: React.FC<BarProps> = ({
         useNativeDriver: false,
       }),
     ]);
-
     animation.start();
-
-    return () => {
-      animation.stop();
-    };
+    return () => animation.stop();
   }, [progress, percent, delay]);
 
   const onTrackLayout = (e: any) => {
     const h = e?.nativeEvent?.layout?.height || BAR_H;
     if (!h || h === trackHeightRef.current) return;
-
     trackHeightRef.current = h;
     setTrackHeight(h);
   };
 
   return (
     <View style={styles.barCol}>
-      <T style={styles.barTitle}>{topLine1}</T>
-      {topLine2 ? (
+      <T variant="captionSemiBold" color="text">
+        {topLine1}
+      </T>
+      {topLine2 && (
         <T
-          style={[
-            styles.barTitle,
-            topLine2 === "Blueprint" ? { color: ACCENT } : null,
-          ]}
+          variant="captionSemiBold"
+          color={topLine2 === "Blueprint" ? "accent" : "text"}
         >
           {topLine2}
         </T>
-      ) : null}
-
-<View style={styles.barOuter} onLayout={onTrackLayout}>
-{/* Bottom-anchored fill; only top corners rounded */}
+      )}
+      <View style={styles.barOuter} onLayout={onTrackLayout}>
         <Animated.View
           style={[styles.barFill, { backgroundColor: fill }, fillStyle]}
         >
           <View style={styles.pctWrap}>
-            <T style={[styles.pctText, { color: pctTextColor }]}>{percent}%</T>
+            <T variant="bodySemiBold" style={{ color: pctTextColor }}>
+              {percent}%
+            </T>
           </View>
         </Animated.View>
-
-        {/* ultra-faint sheen so dark fills read at low % */}
         <View pointerEvents="none" style={styles.fillSheen} />
       </View>
     </View>
   );
-};
+}
 
-/* ---------------- Screen ---------------- */
 export default function EdgeScreen() {
-  const onContinue = useCallback(() => {
+  const insets = useSafeAreaInsets();
+  const progress = getProgressForStep("edge");
+
+  const handleContinue = useCallback(() => {
     router.push("/(onboarding)/trust");
+  }, []);
+
+  const handleBack = useCallback(() => {
+    hapticLight();
+    router.back();
   }, []);
 
   return (
     <View style={styles.screen}>
+      <StatusBar barStyle="light-content" />
+
       <LinearGradient
-        colors={[BG_TOP, BG_BOTTOM]}
+        colors={[COLORS.bgTop, COLORS.bgBottom]}
         start={{ x: 0.5, y: 0 }}
         end={{ x: 0.5, y: 1 }}
         style={StyleSheet.absoluteFill}
       />
-      {/* faint diagonal reflection */}
+
       <LinearGradient
-        colors={["#FFFFFF08", "#00000000"]}
+        colors={["rgba(255,255,255,0.03)", "transparent"]}
         start={{ x: 0.2, y: 0 }}
         end={{ x: 0.8, y: 1 }}
         style={styles.diagonalReflection}
       />
 
-      <StatusBar barStyle="light-content" backgroundColor="#000" />
-      <SafeAreaView style={{ flex: 1 }}>
-        <View style={styles.content}>
-          {/* Progress: step 6 of 7 */}
-          <View style={styles.progressTrack}>
-            <View style={[styles.progressFill, { width: `${(6 / 7) * 100}%` }]} />
-          </View>
-
-          <T style={styles.header}>You might already be losing your edge...</T>
-
-          {/* Glass card */}
-          <BlurView
-            intensity={Platform.OS === "android" ? 34 : 45}
-            tint="dark"
-            style={[styles.card, styles.cardShadow]}
-          >
-            <View style={[StyleSheet.absoluteFill, styles.cardOverlay]} />
-            <View style={styles.cardHairline} />
-
-            <View style={styles.inner}>
-              {/* Bars centered */}
-              <View style={styles.barsRow}>
-                <VerticalStatBar
-                  topLine1="Lifestyle"
-                  topLine2="Impact"
-                  percent={31}
-                  fill={DARK_FILL}
-                  pctTextColor="#FFFFFF"
-                  delay={100}
-                />
-                <View style={{ width: GAP }} />
-                <VerticalStatBar
-                  topLine1="Genetic"
-                  topLine2="Blueprint"
-                  percent={69}
-                  fill={ACCENT}
-                  pctTextColor="#000000"
-                  delay={220}
-                />
-              </View>
-
-              <T style={styles.caption}>
-                Sigma Max gives you a precision-based plan to unlock your
-                aesthetic potential.
-              </T>
-            </View>
-          </BlurView>
-
-          {/* CTA */}
-          <View style={styles.ctaWrap}>
-            <GlassBtn label="Continue" variant="primary" height={56} onPress={onContinue} />
-          </View>
+      <View
+        style={[
+          styles.content,
+          {
+            paddingTop: insets.top + SP[6],
+            paddingBottom: insets.bottom + SP[6],
+          },
+        ]}
+      >
+        {/* Progress bar */}
+        <View style={styles.progressTrack}>
+          <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
         </View>
-      </SafeAreaView>
+
+        {/* Back button */}
+        <Pressable
+          onPress={handleBack}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+          hitSlop={8}
+          style={styles.backButton}
+        >
+          <ChevronLeft size={18} color={COLORS.sub} strokeWidth={2.5} />
+          <T variant="captionMedium" color="sub">
+            Back
+          </T>
+        </Pressable>
+
+        {/* Header */}
+        <T variant="h1" color="text" style={styles.header}>
+          You might already be losing your edge...
+        </T>
+
+        {/* Glass card with bars */}
+        <BlurView
+          intensity={Platform.OS === "android" ? 34 : 45}
+          tint="dark"
+          style={[styles.card, styles.cardShadow]}
+        >
+          <View style={[StyleSheet.absoluteFill, styles.cardOverlay]} />
+          <View style={styles.cardHairline} />
+
+          <View style={styles.inner}>
+            <View style={styles.barsRow}>
+              <VerticalStatBar
+                topLine1="Lifestyle"
+                topLine2="Impact"
+                percent={31}
+                fill="#3A3A3A"
+                pctTextColor={COLORS.text}
+                delay={100}
+              />
+              <View style={{ width: GAP }} />
+              <VerticalStatBar
+                topLine1="Genetic"
+                topLine2="Blueprint"
+                percent={69}
+                fill={COLORS.accent}
+                pctTextColor={COLORS.bgBottom}
+                delay={220}
+              />
+            </View>
+
+            <T variant="caption" color="sub" align="center" style={styles.caption}>
+              Sigma Max gives you a precision-based plan to unlock your aesthetic
+              potential.
+            </T>
+          </View>
+        </BlurView>
+
+        {/* CTA */}
+        <View style={styles.ctaWrap}>
+          <Button label="Continue" onPress={handleContinue} variant="primary" />
+        </View>
+      </View>
     </View>
   );
 }
 
-/* ---------------- Styles ---------------- */
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: "#000" },
+  screen: { flex: 1, backgroundColor: COLORS.bgTop },
 
   diagonalReflection: {
     position: "absolute",
@@ -226,42 +238,42 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingTop: 28,
-    paddingBottom: 24,
-    paddingHorizontal: 24,
+    paddingHorizontal: SP[6],
   },
 
   progressTrack: {
     height: 8,
     width: CARD_W,
-    borderRadius: 999,
-    backgroundColor: "#2A2A2A",
+    borderRadius: RADII.circle,
+    backgroundColor: COLORS.track,
     overflow: "hidden",
-    marginBottom: 16,
+    marginBottom: SP[4],
   },
   progressFill: {
     height: "100%",
-    backgroundColor: ACCENT,
-    borderRadius: 999,
+    backgroundColor: COLORS.accent,
+    borderRadius: RADII.circle,
+  },
+
+  backButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    marginBottom: SP[3],
+    paddingVertical: SP[1],
+    paddingRight: SP[2],
+    gap: 2,
   },
 
   header: {
     width: CARD_W,
-    fontSize: 32,
-    lineHeight: 38,
-    color: TEXT,
     textAlign: "left",
-    fontFamily: Platform.select({
-      ios: "Poppins-SemiBold",
-      android: "Poppins-SemiBold",
-      default: "Poppins-SemiBold",
-    }),
+    marginBottom: SP[5],
   },
 
   card: {
     width: CARD_W,
-    borderRadius: 32,
+    borderRadius: RADII.card,
     overflow: "hidden",
   },
   cardShadow: {
@@ -275,9 +287,9 @@ const styles = StyleSheet.create({
       : { elevation: 8 }),
   },
   cardOverlay: {
-    backgroundColor: CARD_FILL,
+    backgroundColor: COLORS.card,
     borderWidth: 1,
-    borderColor: CARD_BORDER,
+    borderColor: COLORS.cardBorder,
   },
   cardHairline: {
     position: "absolute",
@@ -285,12 +297,12 @@ const styles = StyleSheet.create({
     right: 0,
     top: 0,
     height: 1,
-    backgroundColor: "rgba(255,255,255,0.05)",
+    backgroundColor: COLORS.cardHairline,
   },
 
   inner: {
-    paddingHorizontal: 32,
-    paddingVertical: 48,
+    paddingHorizontal: SP[8],
+    paddingVertical: SP[10],
     alignItems: "center",
     justifyContent: "center",
   },
@@ -302,26 +314,15 @@ const styles = StyleSheet.create({
     height: BAR_H + 48,
   },
 
-  // Bars
   barCol: { width: BAR_W, alignItems: "center" },
-  barTitle: {
-    color: TEXT,
-    fontSize: 16,
-    lineHeight: 20,
-    fontFamily: Platform.select({
-      ios: "Poppins-SemiBold",
-      android: "Poppins-SemiBold",
-      default: "Poppins-SemiBold",
-    }),
-  },
   barOuter: {
     width: BAR_W,
     height: BAR_H,
-    marginTop: 10,
-    borderRadius: 16,
-    backgroundColor: TRACK_BG,
+    marginTop: SP[3],
+    borderRadius: RADII.lg,
+    backgroundColor: "#141414",
     borderWidth: 1,
-    borderColor: TRACK_BORDER,
+    borderColor: "#242424",
     overflow: "hidden",
     position: "relative",
   },
@@ -329,41 +330,25 @@ const styles = StyleSheet.create({
     position: "absolute",
     bottom: 0,
     width: "100%",
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
+    borderTopLeftRadius: RADII.lg,
+    borderTopRightRadius: RADII.lg,
   },
   fillSheen: {
     ...StyleSheet.absoluteFillObject,
-    borderRadius: 16,
+    borderRadius: RADII.lg,
     borderWidth: 0.5,
     borderColor: "rgba(255,255,255,0.02)",
   },
-  pctWrap: { alignItems: "center", paddingBottom: 10 },
-  pctText: {
-    fontSize: 18,
-    fontFamily: Platform.select({
-      ios: "Poppins-SemiBold",
-      android: "Poppins-SemiBold",
-      default: "Poppins-SemiBold",
-    }),
-  },
+  pctWrap: { alignItems: "center", paddingBottom: SP[3] },
 
   caption: {
-    marginTop: 24,
-    color: SUB,
-    textAlign: "center",
-    fontSize: 14,
-    lineHeight: 20,
-    fontFamily: Platform.select({
-      ios: "Poppins-Regular",
-      android: "Poppins-Regular",
-      default: "Poppins-Regular",
-    }),
+    marginTop: SP[6],
+    maxWidth: 280,
   },
 
   ctaWrap: {
     width: CARD_W,
-    marginTop: 8,
-    flexDirection: "row",
+    marginTop: "auto",
+    paddingTop: SP[6],
   },
 });

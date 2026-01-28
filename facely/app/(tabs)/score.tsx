@@ -175,11 +175,13 @@ const TIER_BOUNDS = [
   { min: 81, max: 100 },
 ] as const;
 
+// Score color bands - using app's lime green accent for positive scores
+const ACCENT = "#B4F34D";
 const SCORE_COLOR_BANDS = [
-  { max: 39, color: "#EF4444" }, // dY"' Poor / Critical
-  { max: 59, color: "#BE00E8" }, // dYYœ Improving / Mid-Tier
-  { max: 79, color: "#F59E0B" }, // dYYÿ Needs Work
-  { max: 100, color: "#B4F34D" }, // dY's Excellent
+  { max: 39, color: "#EF4444" },  // Red - Needs Work
+  { max: 54, color: "#F59E0B" },  // Orange - Developing
+  { max: 69, color: "#A3E635" },  // Light lime - Good
+  { max: 100, color: ACCENT },    // Full accent - Excellent
 ] as const;
 
 type ScorePalette = {

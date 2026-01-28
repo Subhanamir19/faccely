@@ -1,91 +1,121 @@
 // app/(onboarding)/age.tsx
-import { useCallback, useEffect, useRef, useState } from "react";
-
-import {
-  View,
-  StyleSheet,
-  Pressable,
-  Platform,
-  StatusBar,
-  AccessibilityInfo,
-  findNodeHandle,
-} from "react-native";
-import { router, useLocalSearchParams } from "expo-router";
-import { useFocusEffect } from "@react-navigation/native";
+// Age input screen with custom circular stepper
+import React, { useCallback, useEffect, useState } from "react";
+import { View, StyleSheet, Pressable, Platform, StatusBar } from "react-native";
+import { router } from "expo-router";
 import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { ChevronLeft, Plus, Minus } from "lucide-react-native";
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  FadeInDown,
+  Easing,
+} from "react-native-reanimated";
+
 import T from "@/components/ui/T";
+import Button from "@/components/ui/Button";
+import { OnboardingCard } from "@/components/onboarding";
+import { COLORS, SP, RADII, getProgressForStep } from "@/lib/tokens";
+import { hapticLight, hapticSelection } from "@/lib/haptics";
 import { useOnboarding } from "@/store/onboarding";
 
-const ACCENT = "#B4F34D";
-const BG_TOP = "#000000";
-const BG_BOTTOM = "#0B0B0B";
-const CARD_BG = "rgba(18,18,18,0.90)"; // #121212 @ 90%
-const CARD_BORDER = "rgba(255,255,255,0.08)";
-const TEXT = "#FFFFFF";
-const TEXT_DIM = "rgba(160,160,160,0.80)";
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 export default function AgeScreen() {
-  const params = useLocalSearchParams<{ autofocus?: string }>();
-
+  const insets = useSafeAreaInsets();
   const { data, setField } = useOnboarding();
   const [age, setAge] = useState<number>(
     Number.isFinite(data.age) ? Number(data.age) : 25
   );
-  const firstControlRef = useRef<any>(null);
+
+  const progress = getProgressForStep("age");
 
   useEffect(() => {
     setField("age", age);
-  }, [age]);
+  }, [age, setField]);
 
-  useFocusEffect(
-    useCallback(() => {
-      if (params.autofocus !== "1") {
-        return;
-      }
+  const dec = useCallback(() => {
+    hapticSelection();
+    setAge((a) => Math.max(10, a - 1));
+  }, []);
 
-      const timeout = setTimeout(() => {
-        const handle = firstControlRef.current
-          ? findNodeHandle(firstControlRef.current)
-          : null;
-        if (handle != null) {
-          try {
-            AccessibilityInfo.setAccessibilityFocus(handle);
-          } catch {
-            // no-op for platforms without focus APIs
-          }
-        }
-      }, 250);
+  const inc = useCallback(() => {
+    hapticSelection();
+    setAge((a) => Math.min(100, a + 1));
+  }, []);
 
-      return () => clearTimeout(timeout);
-    }, [params.autofocus])
-  );
+  const handleNext = useCallback(() => {
+    router.push("/(onboarding)/ethnicity");
+  }, []);
 
-  const dec = () => setAge(a => Math.max(10, a - 1));
-  const inc = () => setAge(a => Math.min(100, a + 1));
-  const next = () => router.push("/(onboarding)/ethnicity");
-  const skip = () => router.push("/(onboarding)/ethnicity");
+  const handleSkip = useCallback(() => {
+    setField("age", 25);
+    router.push("/(onboarding)/ethnicity");
+  }, [setField]);
+
+  const handleBack = useCallback(() => {
+    hapticLight();
+    router.back();
+  }, []);
 
   return (
-    <LinearGradient
-      colors={[BG_TOP, BG_BOTTOM]}
-      style={styles.bg}
-      start={{ x: 0.5, y: 0 }}
-      end={{ x: 0.5, y: 1 }}
-    >
+    <View style={styles.screen}>
       <StatusBar barStyle="light-content" />
-      <View style={styles.cardWrap}>
-        {/* Blur on the card container; no reflections to avoid Android banding */}
-        <BlurView intensity={Platform.OS === "android" ? 20 : 30} tint="dark" style={styles.cardOuter}>
-          <View style={styles.card}>
-            {/* Progress */}
-            <View style={styles.progressTrack}>
-              <View style={styles.progressFill} />
-            </View>
 
-            {/* Copy */}
-            <T style={styles.title}>How old are you?</T>
-            <T style={styles.sub}>
+      {/* Background gradient */}
+      <LinearGradient
+        colors={[COLORS.bgTop, COLORS.bgBottom]}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 1 }}
+        style={StyleSheet.absoluteFill}
+      />
+
+      {/* Diagonal reflection */}
+      <LinearGradient
+        colors={["rgba(255,255,255,0.03)", "transparent"]}
+        start={{ x: 0.2, y: 0 }}
+        end={{ x: 0.8, y: 1 }}
+        style={styles.diagonalReflection}
+      />
+
+      <View
+        style={[
+          styles.centerWrap,
+          {
+            paddingTop: insets.top + SP[4],
+            paddingBottom: insets.bottom + SP[4],
+          },
+        ]}
+      >
+        <Animated.View entering={FadeInDown.duration(350).easing(Easing.out(Easing.cubic))}>
+          <OnboardingCard>
+            {/* Progress bar */}
+            <ProgressBar progress={progress} />
+
+            {/* Back button */}
+            <Pressable
+              onPress={handleBack}
+              accessibilityRole="button"
+              accessibilityLabel="Go back"
+              hitSlop={8}
+              style={styles.backButton}
+            >
+              <ChevronLeft size={18} color={COLORS.sub} strokeWidth={2.5} />
+              <T variant="captionMedium" color="sub">
+                Back
+              </T>
+            </Pressable>
+
+            {/* Title */}
+            <T variant="h3" color="text" align="center">
+              How old are you?
+            </T>
+
+            {/* Subtitle */}
+            <T variant="caption" color="sub" align="center" style={styles.subtitle}>
               We use your age to calibrate{"\n"}health & aesthetics benchmarks.
             </T>
 
@@ -93,124 +123,151 @@ export default function AgeScreen() {
             <View style={styles.circleWrap}>
               <LinearGradient
                 pointerEvents="none"
-                colors={["#00000000", `${ACCENT}0D`]} // ~5% at rim
+                colors={["transparent", `${COLORS.accent}0D`]}
                 style={styles.circleGlow}
               />
               <View style={styles.circleCore}>
-              <Pressable
-                  ref={firstControlRef}
-                  hitSlop={16}
-                  onPress={inc}
-                  style={[styles.sideBtn, styles.leftBtn]}
-                >
-                  <T style={styles.sideSymbol}>＋</T>
-                </Pressable>
+                <StepperButton onPress={inc} position="left">
+                  <Plus size={18} color={COLORS.text} strokeWidth={2.5} />
+                </StepperButton>
 
-                <View style={{ alignItems: "center" }}>
-                  <T style={styles.ageText}>{age}</T>
+                <View style={styles.ageCenter}>
+                  <T variant="h1" color="text" style={styles.ageText}>
+                    {age}
+                  </T>
                   <View style={styles.underline} />
                 </View>
 
-                <Pressable hitSlop={16} onPress={dec} style={[styles.sideBtn, styles.rightBtn]}>
-                  <T style={styles.sideSymbol}>－</T>
-                </Pressable>
+                <StepperButton onPress={dec} position="right">
+                  <Minus size={18} color={COLORS.text} strokeWidth={2.5} />
+                </StepperButton>
               </View>
             </View>
 
-            {/* Buttons */}
-            <Pressable
-              onPress={next}
-              style={({ pressed }) => [styles.primaryBtn, pressed && styles.pressed]}
-            >
-              <T style={styles.primaryLabel}>Next</T>
-            </Pressable>
-
-            <Pressable
-              onPress={skip}
-              style={({ pressed }) => [styles.ghostBtn, pressed && styles.pressed]}
-            >
-              <T style={styles.ghostLabel}>Skip</T>
-            </Pressable>
-          </View>
-        </BlurView>
+            {/* CTAs */}
+            <View style={styles.ctaContainer}>
+              <Button label="Next" onPress={handleNext} variant="primary" />
+              <Button
+                label="Skip"
+                onPress={handleSkip}
+                variant="ghost"
+                style={styles.secondaryButton}
+              />
+            </View>
+          </OnboardingCard>
+        </Animated.View>
       </View>
-    </LinearGradient>
+    </View>
   );
 }
 
-const R_CARD = 32;
+// Progress bar component
+function ProgressBar({ progress }: { progress: number }) {
+  return (
+    <View style={styles.progressTrack}>
+      <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
+    </View>
+  );
+}
+
+// Stepper button component
+function StepperButton({
+  onPress,
+  position,
+  children,
+}: {
+  onPress: () => void;
+  position: "left" | "right";
+  children: React.ReactNode;
+}) {
+  const scale = useSharedValue(1);
+
+  const handlePressIn = () => {
+    scale.value = withSpring(0.9, { damping: 15 });
+  };
+
+  const handlePressOut = () => {
+    scale.value = withSpring(1, { damping: 15 });
+  };
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  return (
+    <AnimatedPressable
+      onPress={onPress}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+      hitSlop={16}
+      style={[
+        styles.sideBtn,
+        position === "left" ? styles.leftBtn : styles.rightBtn,
+        animatedStyle,
+      ]}
+    >
+      {children}
+    </AnimatedPressable>
+  );
+}
 
 const styles = StyleSheet.create({
-  bg: {
+  screen: {
+    flex: 1,
+    backgroundColor: COLORS.bgTop,
+  },
+  diagonalReflection: {
+    position: "absolute",
+    left: -50,
+    right: -50,
+    top: -80,
+    height: 260,
+    transform: [{ rotate: "12deg" }],
+  },
+  centerWrap: {
     flex: 1,
     justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: SP[4],
   },
 
-  cardWrap: {
-    paddingHorizontal: 18,
-    justifyContent: "center",
-  },
-
-  cardOuter: {
-    alignSelf: "center",
-    width: "92%",
-    borderRadius: R_CARD,
-    overflow: "hidden",
-  },
-
-  card: {
-    backgroundColor: CARD_BG,
-    borderRadius: R_CARD,
-    borderWidth: 1,
-    borderColor: CARD_BORDER,
-    paddingHorizontal: 24,
-    paddingTop: 20,
-    paddingBottom: 22,
-    position: "relative",
-    ...(Platform.OS === "android"
-      ? { elevation: 8 }
-      : {
-          shadowColor: "#000",
-          shadowOpacity: 0.35,
-          shadowRadius: 30,
-          shadowOffset: { width: 0, height: 18 },
-        }),
-  },
-
-  // Progress (step 3 of 7)
+  // Progress bar
   progressTrack: {
     height: 8,
-    borderRadius: 999,
-    backgroundColor: "#2A2A2A",
+    width: "100%",
+    borderRadius: RADII.circle,
+    backgroundColor: COLORS.track,
     overflow: "hidden",
-    marginBottom: 16,
+    marginBottom: SP[4],
   },
   progressFill: {
     height: "100%",
-    width: `${(3 / 7) * 100}%`,
-    backgroundColor: ACCENT,
+    backgroundColor: COLORS.accent,
+    borderRadius: RADII.circle,
   },
 
-  title: {
-    fontSize: 22,
-    lineHeight: 28,
-    color: TEXT,
-    textAlign: "center",
-    marginTop: 2,
-  },
-  sub: {
-    fontSize: 14,
-    lineHeight: 20,
-    color: TEXT_DIM,
-    textAlign: "center",
-    marginTop: 10,
-    marginBottom: 22,
+  // Back button
+  backButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    marginBottom: SP[3],
+    marginLeft: -SP[1],
+    paddingVertical: SP[1],
+    paddingRight: SP[2],
+    gap: 2,
   },
 
+  subtitle: {
+    marginTop: SP[2],
+    marginBottom: SP[5],
+  },
+
+  // Circular stepper
   circleWrap: {
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 28,
+    marginBottom: SP[6],
   },
   circleGlow: {
     position: "absolute",
@@ -225,13 +282,28 @@ const styles = StyleSheet.create({
     borderRadius: 80,
     backgroundColor: "#0E1114",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.07)",
+    borderColor: COLORS.cardBorder,
     alignItems: "center",
     justifyContent: "center",
     position: "relative",
     overflow: "hidden",
   },
+  ageCenter: {
+    alignItems: "center",
+  },
+  ageText: {
+    fontSize: 40,
+    letterSpacing: 0.5,
+  },
+  underline: {
+    height: 2,
+    borderRadius: 2,
+    backgroundColor: COLORS.accent,
+    marginTop: SP[2],
+    width: 52,
+  },
 
+  // Stepper buttons
   sideBtn: {
     width: 34,
     height: 34,
@@ -240,76 +312,28 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: "rgba(255,255,255,0.04)",
     borderWidth: 1,
-    borderColor: `${ACCENT}4D`,
+    borderColor: COLORS.accentBorder,
     position: "absolute",
     top: "50%",
-    marginTop: -17, // center vertically
-    ...(Platform.OS === "android"
-      ? {}
-      : {
-          shadowColor: ACCENT,
+    marginTop: -17,
+    ...(Platform.OS === "ios"
+      ? {
+          shadowColor: COLORS.accent,
           shadowOpacity: 0.18,
           shadowRadius: 4,
           shadowOffset: { width: 0, height: 1 },
-        }),
+        }
+      : {}),
   },
   leftBtn: { left: 16 },
   rightBtn: { right: 16 },
 
-  sideSymbol: {
-    fontSize: 18,
-    color: TEXT,
-    fontFamily: "Poppins-SemiBold",
+  // CTAs
+  ctaContainer: {
+    marginTop: SP[2],
+    gap: SP[3],
   },
-
-  ageText: {
-    fontSize: 40,
-    letterSpacing: 0.5,
-    color: TEXT,
-    textAlign: "center",
+  secondaryButton: {
+    marginTop: 0,
   },
-  underline: {
-    height: 2,
-    borderRadius: 2,
-    backgroundColor: ACCENT,
-    marginTop: 8,
-    width: 52,
-  },
-
-  primaryBtn: {
-    height: 56,
-    borderRadius: 28,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 12,
-    backgroundColor: ACCENT,
-    ...(Platform.OS === "android"
-      ? { elevation: 12 }
-      : {
-          shadowColor: ACCENT,
-          shadowOpacity: 0.35,
-          shadowRadius: 24,
-          shadowOffset: { width: 0, height: 8 },
-        }),
-  },
-  primaryLabel: {
-    color: "#0B0B0B",
-    fontSize: 18,
-  },
-
-  ghostBtn: {
-    height: 56,
-    borderRadius: 28,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "transparent",
-    borderWidth: 2,
-    borderColor: "#2D2D2D",
-  },
-  ghostLabel: {
-    color: TEXT,
-    fontSize: 18,
-  },
-
-  pressed: { transform: [{ translateY: 1 }] },
 });

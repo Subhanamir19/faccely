@@ -31,7 +31,10 @@
       "Bash(echo $OPENAI_API_KEY)",
       "Bash(powershell -Command \"[System.Environment]::GetEnvironmentVariable\\(''OPENAI_API_KEY'', ''User''\\)\")",
       "Bash(tree:*)",
-      "WebFetch(domain:faccely-production.up.railway.app)"
+      "WebFetch(domain:faccely-production.up.railway.app)",
+      "Bash(npx claude-code:*)",
+      "WebFetch(domain:github.com)",
+      "Bash(npx skills:*)"
     ]
   }
 }

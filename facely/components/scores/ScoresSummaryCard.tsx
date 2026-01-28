@@ -21,12 +21,13 @@ const POP_MEDIUM = Platform.select({
   default: "Poppins-Medium",
 });
 
-// Score color bands
+// Score color bands - using app's lime green accent for positive scores
+const ACCENT = "#B4F34D";
 const SCORE_COLOR_BANDS = [
   { max: 39, color: "#EF4444", label: "Needs Work" },
-  { max: 59, color: "#BE00E8", label: "Developing" },
-  { max: 79, color: "#F59E0B", label: "Good" },
-  { max: 100, color: "#B4F34D", label: "Excellent" },
+  { max: 54, color: "#F59E0B", label: "Developing" },
+  { max: 69, color: "#A3E635", label: "Good" },        // Lighter lime for "Good"
+  { max: 100, color: ACCENT, label: "Excellent" },     // Full accent for "Excellent"
 ] as const;
 
 function getScoreColor(score: number): string {

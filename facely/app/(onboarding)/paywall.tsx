@@ -36,7 +36,8 @@ import {
   restorePurchases,
   checkSubscriptionStatus,
 } from "@/lib/revenuecat";
-import { COLORS, RADII } from "@/lib/tokens";
+import { COLORS, RADII, SP, TYPE } from "@/lib/tokens";
+import { hapticMedium, hapticLight } from "@/lib/haptics";
 import { PurchasesPackage } from "react-native-purchases";
 
 const { width } = Dimensions.get("window");
@@ -105,6 +106,7 @@ const PlanCard: React.FC<{
   price: string;
   period: string;
   badge?: string;
+  badgeType?: "popular" | "best";
   savings?: string;
   selected: boolean;
   onPress: () => void;
@@ -112,7 +114,7 @@ const PlanCard: React.FC<{
     scale: Animated.SharedValue<number>;
     progress: Animated.SharedValue<number>;
   };
-}> = ({ label, price, period, badge, savings, selected, onPress, animation }) => {
+}> = ({ label, price, period, badge, badgeType = "popular", savings, selected, onPress, animation }) => {
   const cardStyle = useAnimatedStyle(() => ({
     transform: [{ scale: animation.scale.value }],
     borderColor: interpolateColor(
@@ -159,8 +161,14 @@ const PlanCard: React.FC<{
       </Animated.View>
       {badge && (
         <View style={styles.badgeContainer}>
-          <View style={styles.badge}>
-            <Text style={styles.badgeText}>{badge}</Text>
+          <View style={[
+            styles.badge,
+            badgeType === "best" ? styles.badgeBest : styles.badgePopular
+          ]}>
+            <Text style={[
+              styles.badgeText,
+              badgeType === "best" && styles.badgeTextBest
+            ]}>{badge}</Text>
           </View>
         </View>
       )}
@@ -423,8 +431,13 @@ const PaywallScreen: React.FC = () => {
     }
   }, [subscriptionStore, completeOnboardingAndNavigate]);
 
-  const onApplyPromoCode = useCallback(() => {
-    const success = subscriptionStore.activatePromoCode(promoCode);
+  const onApplyPromoCode = useCallback(async () => {
+    if (!promoCode.trim()) {
+      Alert.alert("Enter a Code", "Please enter a promo code.");
+      return;
+    }
+
+    const success = await subscriptionStore.activatePromoCode(promoCode);
 
     if (success) {
       Alert.alert(
@@ -438,7 +451,8 @@ const PaywallScreen: React.FC = () => {
         ]
       );
     } else {
-      Alert.alert("Invalid Code", "The promo code you entered is not valid. Please try again.");
+      const errorMessage = subscriptionStore.error || "The promo code you entered is not valid.";
+      Alert.alert("Invalid Code", errorMessage);
     }
   }, [promoCode, subscriptionStore, completeOnboardingAndNavigate]);
 
@@ -460,6 +474,7 @@ const PaywallScreen: React.FC = () => {
   });
 
   const onPrimaryPressIn = () => {
+    hapticMedium();
     primaryScale.value = withTiming(0.96, {
       duration: 120,
       easing: Easing.out(Easing.cubic),
@@ -521,6 +536,7 @@ const PaywallScreen: React.FC = () => {
                 price="$8.99"
                 period="per month"
                 badge="Most Popular"
+                badgeType="popular"
                 selected={selected === "monthly"}
                 onPress={() => onSelectPlan("monthly")}
                 animation={{ scale: monthlyScale, progress: monthlyProgress }}
@@ -530,6 +546,7 @@ const PaywallScreen: React.FC = () => {
                 price="$49.99"
                 period="per year"
                 badge="Best Value"
+                badgeType="best"
                 savings="Save 76%"
                 selected={selected === "yearly"}
                 onPress={() => onSelectPlan("yearly")}
@@ -637,7 +654,7 @@ const styles = StyleSheet.create({
   header: {
     width: CONTENT_WIDTH,
     alignItems: "center",
-    marginBottom: 32,
+    marginBottom: SP[6],
   },
   title: {
     fontFamily: "Poppins-SemiBold",
@@ -667,7 +684,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 18,
     backgroundColor: COLORS.card,
-    overflow: "hidden",
+    overflow: "visible",
     shadowColor: COLORS.accent,
     shadowOpacity: 0,
     shadowRadius: 16,
@@ -675,6 +692,8 @@ const styles = StyleSheet.create({
   },
   planGradient: {
     ...StyleSheet.absoluteFillObject,
+    borderRadius: RADII.lg,
+    overflow: "hidden",
   },
   planContent: {
     alignItems: "center",
@@ -704,24 +723,49 @@ const styles = StyleSheet.create({
   },
   badgeContainer: {
     position: "absolute",
-    top: -10,
+    top: -12,
     right: 16,
     alignItems: "center",
     justifyContent: "center",
+    zIndex: 10,
   },
   badge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
     borderRadius: RADII.sm,
-    backgroundColor: COLORS.accent,
     justifyContent: "center",
     alignItems: "center",
+  },
+  badgePopular: {
+    backgroundColor: COLORS.accent,
+    ...(Platform.OS === "ios"
+      ? {
+          shadowColor: COLORS.accent,
+          shadowOpacity: 0.6,
+          shadowRadius: 8,
+          shadowOffset: { width: 0, height: 2 },
+        }
+      : { elevation: 8 }),
+  },
+  badgeBest: {
+    backgroundColor: "#FFD700",
+    ...(Platform.OS === "ios"
+      ? {
+          shadowColor: "#FFD700",
+          shadowOpacity: 0.7,
+          shadowRadius: 10,
+          shadowOffset: { width: 0, height: 2 },
+        }
+      : { elevation: 10 }),
   },
   badgeText: {
     fontFamily: "Poppins-SemiBold",
     fontSize: 11,
     lineHeight: 14,
     color: "#111111",
+  },
+  badgeTextBest: {
+    color: "#1a1a00",
   },
   savingsBadge: {
     marginTop: 8,

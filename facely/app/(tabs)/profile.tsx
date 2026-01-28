@@ -61,7 +61,6 @@ async function resetLocalUserData() {
 
 export default function ProfileScreen() {
   const authUser = useAuthStore((state) => state.user);
-  const isAnonymous = useAuthStore((state) => state.isAnonymous);
   const onboardingData = useOnboarding((state) => state.data);
   const hydrateOnboarding = useOnboarding((state) => state.hydrate);
   const avatarUri = useProfile((state) => state.avatarUri);
@@ -97,12 +96,12 @@ export default function ProfileScreen() {
     (authUser as any)?.fullName ||
     (authUser as any)?.firstName ||
     (authUser as any)?.name ||
-    (isAnonymous ? "Guest" : "Unknown user");
+    "User";
   const email =
     (authUser as any)?.email ??
     (authUser as any)?.emailAddress ??
     (authUser as any)?.emailAddresses?.[0]?.emailAddress ??
-    (isAnonymous ? "Not linked" : "Email unavailable");
+    "Email unavailable";
 
   const avatarSource = avatarUri
     ? { uri: avatarUri }
@@ -283,9 +282,7 @@ export default function ProfileScreen() {
           <GlassCard style={styles.card}>
             <View style={styles.cardHeader}>
               <T style={styles.cardLabel}>Linked account</T>
-              <T style={styles.cardSubtext}>
-                {isAnonymous ? "Guest session" : "Signed in with email"}
-              </T>
+              <T style={styles.cardSubtext}>Signed in with email</T>
             </View>
             <View style={styles.accountRow}>
               <View>

@@ -6,14 +6,21 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { PurchasesOfferings, PurchasesPackage } from "react-native-purchases";
+import { validatePromoCode } from "@/lib/api/promo";
 
-const PROMO_CODE = "SIGMABOSS";
-const STORAGE_KEY = "sigma_subscription_v1";
+const STORAGE_KEY = "sigma_subscription_v2"; // Bumped version for new fields
+
+// Offline grace period: 7 days in milliseconds
+// After this period, cached entitlements are considered expired and must be re-verified
+const OFFLINE_GRACE_PERIOD_MS = 7 * 24 * 60 * 60 * 1000;
 
 type SubscriptionState = {
   // Two independent sources of access
   revenueCatEntitlement: boolean;
   promoActivated: boolean;
+
+  // Timestamp tracking for offline grace period
+  lastVerifiedAt: number | null; // Unix timestamp when subscription was last verified
 
   // UI state
   isLoading: boolean;
@@ -29,7 +36,8 @@ type SubscriptionState = {
   setOfferings: (offerings: PurchasesOfferings | null) => void;
   setCurrentPackage: (pkg: PurchasesPackage | null) => void;
   setError: (error: string | null) => void;
-  activatePromoCode: (code: string) => boolean;
+  activatePromoCode: (code: string) => Promise<boolean>;
+  isEntitlementValid: () => boolean;
   reset: () => void;
 };
 
@@ -38,6 +46,7 @@ export const useSubscriptionStore = create<SubscriptionState>()(
     (set, get) => ({
       revenueCatEntitlement: false,
       promoActivated: false,
+      lastVerifiedAt: null,
       isLoading: false,
       isRevenueCatInitialized: false,
       offerings: null,
@@ -45,15 +54,18 @@ export const useSubscriptionStore = create<SubscriptionState>()(
       error: null,
 
       setRevenueCatEntitlement: (entitled: boolean) => {
+        const now = Date.now();
         if (__DEV__) {
           const { promoActivated } = get();
           console.log("[Subscription] RevenueCat entitlement update:", {
             revenueCat: entitled,
             promo: promoActivated,
             effectiveAccess: entitled || promoActivated,
+            verifiedAt: new Date(now).toISOString(),
           });
         }
-        set({ revenueCatEntitlement: entitled });
+        // Update timestamp whenever we verify with RevenueCat
+        set({ revenueCatEntitlement: entitled, lastVerifiedAt: now });
       },
 
       setLoading: (loading) => set({ isLoading: loading }),
@@ -66,23 +78,57 @@ export const useSubscriptionStore = create<SubscriptionState>()(
 
       setError: (error) => set({ error }),
 
-      activatePromoCode: (code: string): boolean => {
-        const trimmed = code.trim().toUpperCase();
-        if (trimmed === PROMO_CODE) {
-          set({ promoActivated: true, error: null });
-          if (__DEV__) {
-            console.log("[Subscription] Promo code activated");
+      activatePromoCode: async (code: string): Promise<boolean> => {
+        set({ isLoading: true, error: null });
+        try {
+          const result = await validatePromoCode(code);
+          if (result.valid) {
+            set({ promoActivated: true, error: null, isLoading: false });
+            if (__DEV__) {
+              console.log("[Subscription] Promo code activated via server");
+            }
+            return true;
           }
-          return true;
+          set({ error: result.message || "Invalid promo code", isLoading: false });
+          return false;
+        } catch (error) {
+          set({ error: "Failed to validate promo code", isLoading: false });
+          return false;
         }
-        set({ error: "Invalid promo code" });
-        return false;
+      },
+
+      isEntitlementValid: (): boolean => {
+        const { revenueCatEntitlement, promoActivated, lastVerifiedAt } = get();
+
+        // Promo codes don't expire (validated server-side on activation)
+        if (promoActivated) return true;
+
+        // No RevenueCat entitlement = no access
+        if (!revenueCatEntitlement) return false;
+
+        // No verification timestamp = treat as expired (force re-verify)
+        if (!lastVerifiedAt) return false;
+
+        // Check if within grace period
+        const elapsed = Date.now() - lastVerifiedAt;
+        const isWithinGracePeriod = elapsed < OFFLINE_GRACE_PERIOD_MS;
+
+        if (__DEV__ && !isWithinGracePeriod) {
+          console.log("[Subscription] Cached entitlement expired:", {
+            lastVerified: new Date(lastVerifiedAt).toISOString(),
+            elapsedDays: Math.floor(elapsed / (24 * 60 * 60 * 1000)),
+            gracePeriodDays: OFFLINE_GRACE_PERIOD_MS / (24 * 60 * 60 * 1000),
+          });
+        }
+
+        return isWithinGracePeriod;
       },
 
       reset: () => {
         set({
           revenueCatEntitlement: false,
           promoActivated: false,
+          lastVerifiedAt: null,
           isLoading: false,
           isRevenueCatInitialized: false,
           offerings: null,
@@ -97,6 +143,7 @@ export const useSubscriptionStore = create<SubscriptionState>()(
       partialize: (state) => ({
         promoActivated: state.promoActivated,
         revenueCatEntitlement: state.revenueCatEntitlement,
+        lastVerifiedAt: state.lastVerifiedAt,
       }),
     }
   )
@@ -104,9 +151,8 @@ export const useSubscriptionStore = create<SubscriptionState>()(
 
 export const getSubscriptionState = () => useSubscriptionStore.getState();
 
-// Helper hook for checking access
+// Helper hook for checking access (respects offline grace period)
 export const useHasAccess = () => {
-  const revenueCatEntitlement = useSubscriptionStore((state) => state.revenueCatEntitlement);
-  const promoActivated = useSubscriptionStore((state) => state.promoActivated);
-  return revenueCatEntitlement || promoActivated;
+  const isEntitlementValid = useSubscriptionStore((state) => state.isEntitlementValid);
+  return isEntitlementValid();
 };

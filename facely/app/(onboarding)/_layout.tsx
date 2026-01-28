@@ -9,6 +9,7 @@ export default function OnboardingLayout() {
       <Stack.Screen name="welcome" />
       <Stack.Screen name="use-case" />
       <Stack.Screen name="experience" />
+      <Stack.Screen name="goals" />
       <Stack.Screen name="age" />
       <Stack.Screen name="ethnicity" />
       <Stack.Screen name="gender" />

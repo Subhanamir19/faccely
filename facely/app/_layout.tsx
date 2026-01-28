@@ -43,7 +43,8 @@ export default function RootLayout() {
   useEffect(() => {
     if (!__DEV__) return;
     if (!authInitialized || !idToken) return;
-    console.log("ID TOKEN:", useAuthStore.getState().idToken);
+    // Only log token presence, never the actual value
+    console.log("[Auth] Token present:", idToken ? `${idToken.slice(0, 10)}...` : "none");
   }, [authInitialized, idToken]);
 
   // Initialize RevenueCat after auth is ready and set up customer info listener

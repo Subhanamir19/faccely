@@ -8,6 +8,7 @@ type OnboardingData = {
   gender?: string;
   useCase?: string;
   looksmaxxingExperience?: string;
+  goals?: string[];
 };
 
 type State = {

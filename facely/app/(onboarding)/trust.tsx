@@ -1,4 +1,5 @@
 // app/(onboarding)/trust.tsx
+// Accuracy/trust screen with animated percentage counter
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AccessibilityInfo,
@@ -10,6 +11,7 @@ import {
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { ChevronLeft } from "lucide-react-native";
 import Animated, {
   Easing,
   runOnJS,
@@ -17,21 +19,16 @@ import Animated, {
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
-  withSpring,
   withTiming,
 } from "react-native-reanimated";
 
 import T from "@/components/ui/T";
-
-const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
-
-type TrackFn = (event: string, params?: Record<string, unknown>) => void;
-
-const track: TrackFn = () => {};
+import Button from "@/components/ui/Button";
+import { COLORS, SP, RADII, getProgressForStep } from "@/lib/tokens";
+import { hapticLight, hapticSuccess } from "@/lib/haptics";
 
 const RAW_TARGET_ACCURACY = 98.5;
 const ANIMATION_DURATION = 1400;
-const ACCENT = "#B4F34D";
 
 const clampToRange = (value: number, min: number, max: number) => {
   "worklet";
@@ -39,67 +36,46 @@ const clampToRange = (value: number, min: number, max: number) => {
 };
 
 const formatAccuracy = (value: number) => {
-  'worklet';
+  "worklet";
   return `${value.toFixed(1)}%`;
 };
 
 const sanitizeAccuracy = (value: unknown) => {
   const numeric = typeof value === "number" ? value : Number(value);
-  if (!Number.isFinite(numeric)) {
-    if (__DEV__) {
-      console.warn(
-        "[TrustAccuracy] Invalid accuracy value provided; defaulting to 0.",
-        value,
-      );
-    }
-    return 0;
-  }
-
-  const clamped = clampToRange(numeric, 0, 100);
-
-  if (__DEV__ && clamped !== numeric) {
-    console.warn(
-      `[TrustAccuracy] Accuracy value ${numeric} out of bounds; clamped to ${clamped}.`,
-    );
-  }
-  return clamped;
+  if (!Number.isFinite(numeric)) return 0;
+  return clampToRange(numeric, 0, 100);
 };
 
 export default function TrustAccuracyScreen() {
   const insets = useSafeAreaInsets();
   const prefersReducedMotion = useReducedMotion();
+  const progress = getProgressForStep("trust");
 
   const targetAccuracy = useMemo(
     () => sanitizeAccuracy(RAW_TARGET_ACCURACY),
-    [],
+    []
   );
 
   const finalAccuracyText = useMemo(
     () => formatAccuracy(targetAccuracy),
-    [targetAccuracy],
+    [targetAccuracy]
   );
 
   const animatedAccuracy = useSharedValue(0);
-  const buttonScale = useSharedValue(1);
   const [metricText, setMetricText] = useState(formatAccuracy(0));
 
   const announceAccuracy = useCallback(() => {
+    hapticSuccess();
     AccessibilityInfo.announceForAccessibility(
-      `Accuracy ${targetAccuracy.toFixed(1)} percent.`,
+      `Accuracy ${targetAccuracy.toFixed(1)} percent.`
     );
   }, [targetAccuracy]);
 
   const handleAnimationComplete = useCallback(() => {
-    track("trust_screen_anim_complete", {
-      targetAccuracy,
-      durationMs: ANIMATION_DURATION,
-    });
     announceAccuracy();
-  }, [announceAccuracy, targetAccuracy]);
+  }, [announceAccuracy]);
 
   useEffect(() => {
-    track("trust_screen_shown", { targetAccuracy });
-
     if (prefersReducedMotion) {
       animatedAccuracy.value = targetAccuracy;
       setMetricText(finalAccuracyText);
@@ -119,7 +95,7 @@ export default function TrustAccuracyScreen() {
         if (finished) {
           runOnJS(handleAnimationComplete)();
         }
-      },
+      }
     );
 
     return () => {
@@ -153,37 +129,23 @@ export default function TrustAccuracyScreen() {
         runOnJS(setMetricText)(nextText);
       }
     },
-    [setMetricText],
+    [setMetricText]
   );
 
-  const buttonAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: buttonScale.value }],
-  }));
+  const handleContinue = useCallback(() => {
+    // Go to auth screen - after auth, user will be redirected to paywall via index.tsx
+    router.push("/(auth)/login");
+  }, []);
 
-  const onContinue = useCallback(() => {
-    track("trust_screen_continue_tapped", { targetAccuracy });
-    router.push("/(onboarding)/paywall");
-  }, [targetAccuracy]);
-
-  const onPressIn = useCallback(() => {
-    buttonScale.value = withTiming(0.98, {
-      duration: 80,
-      easing: Easing.out(Easing.cubic),
-    });
-  }, [buttonScale]);
-
-  const onPressOut = useCallback(() => {
-    buttonScale.value = withSpring(1, {
-      damping: 12,
-      stiffness: 200,
-      mass: 0.8,
-    });
-  }, [buttonScale]);
+  const handleBack = useCallback(() => {
+    hapticLight();
+    router.back();
+  }, []);
 
   return (
     <View style={styles.screen}>
       <LinearGradient
-        colors={["#000000", "#0B0B0B"]}
+        colors={[COLORS.bgTop, COLORS.bgBottom]}
         style={StyleSheet.absoluteFill}
         start={{ x: 0.5, y: 0 }}
         end={{ x: 0.5, y: 1 }}
@@ -193,26 +155,43 @@ export default function TrustAccuracyScreen() {
         style={[
           styles.content,
           {
-            paddingTop: insets.top + 40,
-            paddingBottom: insets.bottom + 24,
+            paddingTop: insets.top + SP[6],
+            paddingBottom: insets.bottom + SP[6],
           },
         ]}
       >
-        {/* Progress: step 7 of 7 (final step) */}
+        {/* Progress bar */}
         <View style={styles.progressTrack}>
-          <View style={styles.progressFill} />
+          <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
         </View>
 
-        <View>
+        {/* Back button */}
+        <Pressable
+          onPress={handleBack}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+          hitSlop={8}
+          style={styles.backButton}
+        >
+          <ChevronLeft size={18} color={COLORS.sub} strokeWidth={2.5} />
+          <T variant="captionMedium" color="sub">
+            Back
+          </T>
+        </Pressable>
+
+        <View style={styles.mainContent}>
           <T
+            variant="h2"
+            color="text"
             accessibilityRole="header"
-            style={styles.title}
             accessibilityLabel="How precise is Sigma Max?"
           >
             {"How precise is\nSigma Max?"}
           </T>
-          <T style={styles.subtitle}>
-            Every symmetry, contour, and ratio analyzed with near-perfect precision.
+
+          <T variant="body" color="sub" style={styles.subtitle}>
+            Every symmetry, contour, and ratio analyzed with near-perfect
+            precision.
           </T>
 
           <View style={styles.metricBlock}>
@@ -222,20 +201,14 @@ export default function TrustAccuracyScreen() {
             >
               {metricText}
             </T>
-            <T style={styles.metricCaption}>Accuracy</T>
+            <T variant="bodySemiBold" color="accent">
+              Accuracy
+            </T>
           </View>
         </View>
 
-        <AnimatedPressable
-          accessibilityRole="button"
-          onPress={onContinue}
-          onPressIn={onPressIn}
-          onPressOut={onPressOut}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          style={[styles.ctaButton, buttonAnimatedStyle]}
-        >
-          <T style={styles.ctaLabel}>Continue</T>
-        </AnimatedPressable>
+        {/* CTA */}
+        <Button label="Continue" onPress={handleContinue} variant="primary" size="lg" />
       </View>
     </View>
   );
@@ -244,84 +217,48 @@ export default function TrustAccuracyScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: "#000000",
+    backgroundColor: COLORS.bgTop,
   },
   content: {
     flex: 1,
-    paddingHorizontal: 24,
-    justifyContent: "space-between",
+    paddingHorizontal: SP[6],
   },
   progressTrack: {
     height: 8,
     width: "100%",
-    borderRadius: 999,
-    backgroundColor: "#2A2A2A",
+    borderRadius: RADII.circle,
+    backgroundColor: COLORS.track,
     overflow: "hidden",
-    marginBottom: 16,
+    marginBottom: SP[4],
   },
   progressFill: {
     height: "100%",
-    width: "100%",
-    backgroundColor: ACCENT,
-    borderRadius: 999,
+    backgroundColor: COLORS.accent,
+    borderRadius: RADII.circle,
   },
-  title: {
-    color: "#FFFFFF",
-    fontSize: 28,
-    lineHeight: 34,
-    letterSpacing: -0.5,
-    fontFamily: "Poppins-SemiBold",
-    fontWeight: "700",
+  backButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    marginBottom: SP[4],
+    paddingVertical: SP[1],
+    paddingRight: SP[2],
+    gap: 2,
+  },
+  mainContent: {
+    flex: 1,
   },
   subtitle: {
-    marginTop: 12,
-    color: "rgba(160,160,160,0.80)",
-    fontSize: 16,
-    lineHeight: 22,
-    letterSpacing: 0,
-    fontFamily: "Poppins-SemiBold",
-    fontWeight: "500",
+    marginTop: SP[3],
   },
   metricBlock: {
-    marginTop: 48,
+    marginTop: SP[12],
   },
   metric: {
-    color: ACCENT,
+    color: COLORS.accent,
     fontSize: 96,
     lineHeight: 100,
     letterSpacing: -0.5,
     fontFamily: "Poppins-SemiBold",
-    fontWeight: "700",
-  },
-  metricCaption: {
-    marginTop: 12,
-    color: ACCENT,
-    fontSize: 16,
-    lineHeight: 20,
-    fontFamily: "Poppins-SemiBold",
-    fontWeight: "600",
-  },
-  ctaButton: {
-    width: "100%",
-    height: 64,
-    borderRadius: 999,
-    backgroundColor: ACCENT,
-    alignItems: "center",
-    justifyContent: "center",
-    ...(Platform.OS === "android"
-      ? { elevation: 12 }
-      : {
-          shadowColor: ACCENT,
-          shadowOpacity: 0.35,
-          shadowRadius: 24,
-          shadowOffset: { width: 0, height: 8 },
-        }),
-  },
-  ctaLabel: {
-    color: "#0B0B0B",
-    fontSize: 18,
-    lineHeight: 22,
-    fontFamily: "Poppins-SemiBold",
-    fontWeight: "700",
   },
 });

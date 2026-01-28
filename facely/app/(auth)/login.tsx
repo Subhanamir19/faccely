@@ -1,5 +1,5 @@
 // facely/app/(auth)/login.tsx
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 
@@ -52,12 +52,12 @@ function getErrorMessage(error: unknown): string {
 export default function LoginScreen() {
   const status = useAuthStore((state) => state.status);
   const initialized = useAuthStore((state) => state.initialized);
-  const isAnonymous = useAuthStore((state) => state.isAnonymous);
   const userEmail = useAuthStore((state) => state.user?.email ?? null);
   const params = useLocalSearchParams<{ redirectTo?: ParamValue }>();
   const redirectTo = takeFirst(params.redirectTo);
 
-  const [mode, setMode] = useState<Mode>(() => (isAnonymous ? "signUp" : "signIn"));
+  // Default to signUp for new users, signIn if they might have an account
+  const [mode, setMode] = useState<Mode>("signUp");
 
   const [email, setEmail] = useState(userEmail ?? "");
   const [password, setPassword] = useState("");
@@ -71,11 +71,8 @@ export default function LoginScreen() {
   const clerkReady = initialized;
   const step = "credentials" as const;
 
-  useEffect(() => {
-    if (!initialized) return;
-    if (!isAnonymous && mode === "signUp") setMode("signIn");
-    if (isAnonymous && mode === "signIn" && !userEmail) setMode("signUp");
-  }, [initialized, isAnonymous, mode, userEmail]);
+  // No longer need mode management based on anonymous state
+  // Users can freely switch between signIn and signUp
 
   const canSubmitCredentials = useMemo(() => {
     if (submitting || !initialized) return false;
@@ -133,17 +130,15 @@ export default function LoginScreen() {
         });
         if (error) throw error;
       } else {
-        if (!isAnonymous) {
-          setErrorText("You are already signed in. Use Sign in instead.");
-          return;
-        }
-        const { error } = await supabase.auth.updateUser({
+        // Standard sign up flow (not anonymous upgrade)
+        const { error } = await supabase.auth.signUp({
           email: normalizedEmail,
           password,
         });
         if (error) {
           const msg = String(error.message || "").toLowerCase();
-          if (msg.includes("already") && msg.includes("registered")) {
+          // Handle "already registered" error
+          if (msg.includes("already") || msg.includes("registered") || msg.includes("exists")) {
             setMode("signIn");
             setErrorText("That email already has an account. Please sign in instead.");
             return;
@@ -154,25 +149,20 @@ export default function LoginScreen() {
 
       await syncUserProfile();
 
+      // Let index.tsx handle routing based on onboarding/subscription status
       if (redirectTo && redirectTo.startsWith("/")) {
         router.replace(redirectTo as any);
         return;
       }
 
-      const canGoBack =
-        typeof router.canGoBack === "function" ? router.canGoBack() : false;
-      if (canGoBack) {
-        router.back();
-        return;
-      }
-
-      router.replace("/(tabs)/take-picture");
+      // Go to index which will route to onboarding or main app
+      router.replace("/");
     } catch (err) {
       setErrorText(getErrorMessage(err));
     } finally {
       setSubmitting(false);
     }
-  }, [email, initialized, isAnonymous, mode, password, passwordConfirm, redirectTo, submitting]);
+  }, [email, initialized, mode, password, passwordConfirm, redirectTo, submitting]);
 
   const submitVerificationCode = useCallback(async () => {
     // Legacy no-op (Clerk-only). Supabase does not require email codes in this setup.
@@ -206,7 +196,7 @@ export default function LoginScreen() {
         </Pressable>
         <Pressable
           onPress={() => switchMode("signUp")}
-          disabled={submitting || !isAnonymous}
+          disabled={submitting}
           style={[styles.segmentItem, mode === "signUp" ? styles.segmentItemActive : null]}
         >
           <Text style={[styles.segmentText, mode === "signUp" ? styles.segmentTextActive : null]}>

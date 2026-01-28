@@ -14,6 +14,7 @@ import os from "os";
 import path from "path";
 import sigmaRouter from "./routes/sigma.js";
 import jobsRouter from "./routes/jobs.js";           // ← add this
+import promoRouter from "./routes/promo.js";
 import { historyRouter } from "./routes/history.js";
 import { usersRouter } from "./routes/users.js";
 import { idempotency } from "./middleware/idempotency.js";
@@ -604,6 +605,7 @@ app.use("/routine/async", verifyAuth, routineAsyncRouter);
 
 app.use("/sigma", requestTimeout(30_000), verifyAuth, sigmaRouter);
 app.use("/jobs", verifyAuth, jobsRouter);                    // ← add this line
+app.use("/promo", verifyAuth, promoRouter);
 
 // Comprehensive health check endpoint
 app.get("/health", async (_req, res) => {

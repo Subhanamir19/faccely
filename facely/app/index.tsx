@@ -9,13 +9,19 @@ const MIN_SPLASH_DURATION = 2500; // 2.5 seconds minimum splash display
 
 export default function IndexGate() {
   const status = useAuthStore((state) => state.status);
-  const { completed, hydrate } = useOnboarding();
+  const isAnonymous = useAuthStore((state) => state.isAnonymous);
+  const initialized = useAuthStore((state) => state.initialized);
+  const { completed, hydrate, data: onboardingData } = useOnboarding();
   // Get both sources of access - promo OR RevenueCat entitlement grants access
   const revenueCatEntitlement = useSubscriptionStore((state) => state.revenueCatEntitlement);
   const promoActivated = useSubscriptionStore((state) => state.promoActivated);
   const hasAccess = revenueCatEntitlement || promoActivated;
   const [onboardingHydrated, setOnboardingHydrated] = useState(false);
   const [minSplashElapsed, setMinSplashElapsed] = useState(false);
+
+  // Check if user has completed the onboarding questions (but may not have subscribed yet)
+  // If they have age and gender set, they've gone through all the question screens
+  const hasCompletedQuestions = Boolean(onboardingData?.age && onboardingData?.gender);
 
   // Ensure minimum splash duration
   useEffect(() => {
@@ -43,25 +49,30 @@ export default function IndexGate() {
     };
   }, [hydrate]);
 
-  const onboardingCompleted = completed;
-  // Wait for both: data to be ready AND minimum splash time elapsed
-  const isLoading = status !== "authenticated" || !onboardingHydrated || !minSplashElapsed;
+  // Wait for auth to be initialized, onboarding hydrated, and minimum splash time
+  const isLoading = !initialized || !onboardingHydrated || !minSplashElapsed;
 
   // Show VideoSplash while checking auth, hydrating onboarding, and during minimum splash time
   if (isLoading) {
     return <VideoSplash visible={true} />;
   }
 
-  // If onboarding not completed, go directly to first onboarding screen (skip welcome)
-  if (!onboardingCompleted) {
+  // If onboarding questions not completed, go to onboarding first (no auth required yet)
+  if (!hasCompletedQuestions) {
     return <Redirect href="/(onboarding)/use-case" />;
   }
 
-  // If onboarding completed but no access (neither RevenueCat nor promo), go to paywall
-  if (onboardingCompleted && !hasAccess) {
+  // Questions done - now require auth before paywall
+  // This ensures users have a stable identity for subscription recovery
+  if (status !== "authenticated" || isAnonymous) {
+    return <Redirect href="/(auth)/login" />;
+  }
+
+  // Authenticated but no subscription - go to paywall
+  if (!hasAccess) {
     return <Redirect href="/(onboarding)/paywall" />;
   }
 
-  // If onboarding completed and subscribed, go to main app
+  // Onboarding questions done, authenticated, and subscribed - go to main app
   return <Redirect href="/(tabs)/take-picture" />;
 }
