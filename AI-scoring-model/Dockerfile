@@ -27,9 +27,13 @@ COPY model_output/ /app/model_output/
 # Copy API code
 COPY api/ /app/api/
 
+# Copy startup script
+COPY start.sh /app/start.sh
+RUN chmod +x /app/start.sh
+
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 ENV PORT=8000
 
-# Run the API - use shell form with explicit sh -c for variable expansion
-CMD ["sh", "-c", "uvicorn api.main:app --host 0.0.0.0 --port $PORT"]
+# Run the API via startup script
+CMD ["/app/start.sh"]

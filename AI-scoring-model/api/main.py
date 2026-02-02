@@ -3,19 +3,30 @@ FastAPI microservice for facial scoring ML model.
 Replaces OpenAI API scoring with local PyTorch EfficientNet model.
 """
 
+import os
+import sys
 import io
 import base64
 from pathlib import Path
 from typing import Optional
 
+print("=== ML Scoring API Starting ===", flush=True)
+print(f"Python version: {sys.version}", flush=True)
+print(f"Working directory: {os.getcwd()}", flush=True)
+
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+print("FastAPI imported", flush=True)
+
 import torch
+print(f"PyTorch version: {torch.__version__}", flush=True)
 import torch.nn as nn
 from torchvision import transforms
+print("torchvision imported", flush=True)
 from PIL import Image
 import timm
+print("All imports complete", flush=True)
 
 # ============================================================================
 # Configuration
@@ -94,19 +105,46 @@ def load_model():
     if model is not None:
         return model
 
+    print(f"Looking for model at: {MODEL_PATH}", flush=True)
+    print(f"Model path exists: {MODEL_PATH.exists()}", flush=True)
+
     if not MODEL_PATH.exists():
-        raise RuntimeError(f"Model not found at {MODEL_PATH}")
+        # Try alternative paths
+        alt_paths = [
+            Path("/app/model_output/best_model.pth"),
+            Path("./model_output/best_model.pth"),
+            Path("../model_output/best_model.pth"),
+        ]
+        for alt in alt_paths:
+            print(f"Trying alternative: {alt} - exists: {alt.exists()}", flush=True)
+            if alt.exists():
+                global MODEL_PATH
+                MODEL_PATH = alt
+                break
+        else:
+            print(f"ERROR: Model not found at any path!", flush=True)
+            raise RuntimeError(f"Model not found at {MODEL_PATH}")
 
-    print(f"Loading model from: {MODEL_PATH}")
-    model = FacialScoreModel(pretrained=False)
-    checkpoint = torch.load(MODEL_PATH, map_location=device, weights_only=False)
-    model.load_state_dict(checkpoint["model_state_dict"])
-    model = model.to(device)
-    model.eval()
+    print(f"Loading model from: {MODEL_PATH}", flush=True)
+    try:
+        model = FacialScoreModel(pretrained=False)
+        print("Model architecture created", flush=True)
 
-    print(f"Model loaded successfully (epoch {checkpoint['epoch'] + 1})")
-    print(f"Device: {device}")
-    return model
+        checkpoint = torch.load(MODEL_PATH, map_location=device, weights_only=False)
+        print("Checkpoint loaded", flush=True)
+
+        model.load_state_dict(checkpoint["model_state_dict"])
+        print("State dict loaded", flush=True)
+
+        model = model.to(device)
+        model.eval()
+
+        print(f"Model loaded successfully (epoch {checkpoint['epoch'] + 1})", flush=True)
+        print(f"Device: {device}", flush=True)
+        return model
+    except Exception as e:
+        print(f"ERROR loading model: {e}", flush=True)
+        raise
 
 # ============================================================================
 # API Models
@@ -151,16 +189,28 @@ app.add_middleware(
 @app.on_event("startup")
 async def startup_event():
     """Load model on startup."""
-    load_model()
+    print("=== Startup event triggered ===", flush=True)
+    try:
+        load_model()
+        print("=== Startup complete ===", flush=True)
+    except Exception as e:
+        print(f"=== Startup FAILED: {e} ===", flush=True)
+        # Don't raise - let the app start so we can see health check errors
 
 @app.get("/health", response_model=HealthResponse)
 async def health():
     """Health check endpoint."""
+    print(f"Health check called, model loaded: {model is not None}", flush=True)
     return HealthResponse(
-        status="ok",
+        status="ok" if model is not None else "model_not_loaded",
         model_loaded=model is not None,
         device=str(device)
     )
+
+@app.get("/")
+async def root():
+    """Root endpoint for basic connectivity test."""
+    return {"status": "ok", "service": "facial-scoring-ml"}
 
 def process_image(image: Image.Image) -> dict:
     """Process a single image and return scores."""
