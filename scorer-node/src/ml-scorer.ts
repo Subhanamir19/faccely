@@ -10,6 +10,31 @@ import FormData from "form-data";
 
 type ScoreResult = { scores: Scores; modelVersion: string };
 
+// Timeout for ML API calls (30 seconds)
+const ML_API_TIMEOUT_MS = 30_000;
+
+/**
+ * Fetch with timeout support
+ */
+async function fetchWithTimeout(
+  url: string,
+  options: RequestInit & { headers?: Record<string, string> },
+  timeoutMs: number
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    return response;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 /**
  * Score a single image using the ML API.
  */
@@ -24,11 +49,15 @@ export async function scoreWithML(imageBuffer: Buffer): Promise<ScoreResult> {
     contentType: "image/jpeg",
   });
 
-  const response = await fetch(`${ML_SCORING.apiUrl}/score`, {
-    method: "POST",
-    body: formData as any,
-    headers: formData.getHeaders(),
-  });
+  const response = await fetchWithTimeout(
+    `${ML_SCORING.apiUrl}/score`,
+    {
+      method: "POST",
+      body: formData as any,
+      headers: formData.getHeaders(),
+    },
+    ML_API_TIMEOUT_MS
+  );
 
   if (!response.ok) {
     const errorText = await response.text();
@@ -67,11 +96,15 @@ export async function scoreWithMLPair(
     contentType: "image/jpeg",
   });
 
-  const response = await fetch(`${ML_SCORING.apiUrl}/score/pair`, {
-    method: "POST",
-    body: formData as any,
-    headers: formData.getHeaders(),
-  });
+  const response = await fetchWithTimeout(
+    `${ML_SCORING.apiUrl}/score/pair`,
+    {
+      method: "POST",
+      body: formData as any,
+      headers: formData.getHeaders(),
+    },
+    ML_API_TIMEOUT_MS
+  );
 
   if (!response.ok) {
     const errorText = await response.text();
@@ -97,10 +130,16 @@ export async function checkMLHealth(): Promise<boolean> {
   }
 
   try {
-    const response = await fetch(`${ML_SCORING.apiUrl}/health`, {
-      method: "GET",
-    });
-    return response.ok;
+    const response = await fetchWithTimeout(
+      `${ML_SCORING.apiUrl}/health`,
+      { method: "GET" },
+      5000 // 5 second timeout for health check
+    );
+    if (!response.ok) return false;
+
+    const data = await response.json();
+    // Check that model is actually loaded
+    return data.model_loaded === true;
   } catch {
     return false;
   }

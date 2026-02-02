@@ -105,32 +105,31 @@ def load_model():
     if model is not None:
         return model
 
-    print(f"Looking for model at: {MODEL_PATH}", flush=True)
-    print(f"Model path exists: {MODEL_PATH.exists()}", flush=True)
+    # Find the model file
+    possible_paths = [
+        MODEL_PATH,
+        Path("/app/model_output/best_model.pth"),
+        Path("./model_output/best_model.pth"),
+        Path("../model_output/best_model.pth"),
+    ]
 
-    if not MODEL_PATH.exists():
-        # Try alternative paths
-        alt_paths = [
-            Path("/app/model_output/best_model.pth"),
-            Path("./model_output/best_model.pth"),
-            Path("../model_output/best_model.pth"),
-        ]
-        for alt in alt_paths:
-            print(f"Trying alternative: {alt} - exists: {alt.exists()}", flush=True)
-            if alt.exists():
-                global MODEL_PATH
-                MODEL_PATH = alt
-                break
-        else:
-            print(f"ERROR: Model not found at any path!", flush=True)
-            raise RuntimeError(f"Model not found at {MODEL_PATH}")
+    model_path = None
+    for path in possible_paths:
+        print(f"Checking path: {path} - exists: {path.exists()}", flush=True)
+        if path.exists():
+            model_path = path
+            break
 
-    print(f"Loading model from: {MODEL_PATH}", flush=True)
+    if model_path is None:
+        print(f"ERROR: Model not found at any path!", flush=True)
+        raise RuntimeError(f"Model not found. Tried: {possible_paths}")
+
+    print(f"Loading model from: {model_path}", flush=True)
     try:
         model = FacialScoreModel(pretrained=False)
         print("Model architecture created", flush=True)
 
-        checkpoint = torch.load(MODEL_PATH, map_location=device, weights_only=False)
+        checkpoint = torch.load(model_path, map_location=device, weights_only=False)
         print("Checkpoint loaded", flush=True)
 
         model.load_state_dict(checkpoint["model_state_dict"])
@@ -201,9 +200,14 @@ async def startup_event():
 async def health():
     """Health check endpoint."""
     print(f"Health check called, model loaded: {model is not None}", flush=True)
+    if model is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Model not loaded"
+        )
     return HealthResponse(
-        status="ok" if model is not None else "model_not_loaded",
-        model_loaded=model is not None,
+        status="ok",
+        model_loaded=True,
         device=str(device)
     )
 
