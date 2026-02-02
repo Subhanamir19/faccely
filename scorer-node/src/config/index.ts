@@ -11,6 +11,14 @@ dotenv.config({ override: true });
 // Helper to normalize empty strings to undefined
 const emptyToUndefined = (v?: string) => (v && v.trim() ? v.trim() : undefined);
 
+// Normalize URL to ensure it has https:// scheme
+const normalizeUrl = (v?: string): string | undefined => {
+  if (!v || !v.trim()) return undefined;
+  const trimmed = v.trim().replace(/\/+$/, ""); // Remove trailing slashes
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
+};
+
 const EnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: z.coerce.number().int().positive().default(8080),
@@ -34,7 +42,7 @@ const EnvSchema = z.object({
   OPENAI_MODEL_SIGMA: z.string().optional().transform(emptyToUndefined),
 
   // ML Scoring API - uses local ML model instead of OpenAI for scoring
-  ML_SCORING_API_URL: z.string().optional().transform(emptyToUndefined),
+  ML_SCORING_API_URL: z.string().optional().transform(normalizeUrl),
   ML_SCORING_ENABLED: z.string().optional(),
 
   // Sigma AI tuning

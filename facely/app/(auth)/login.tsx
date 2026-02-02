@@ -8,7 +8,6 @@ import GlassBtn from "@/components/ui/GlassBtn";
 import { FieldInput, FieldLabel } from "@/components/ui/FieldGroup";
 import { COLORS, SP } from "@/lib/tokens";
 import { supabase } from "@/lib/supabase/client";
-import { syncUserProfile } from "@/lib/api/user";
 import { useAuthStore } from "@/store/auth";
 
 type Mode = "signIn" | "signUp";
@@ -131,7 +130,7 @@ export default function LoginScreen() {
         if (error) throw error;
       } else {
         // Standard sign up flow (not anonymous upgrade)
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
           email: normalizedEmail,
           password,
         });
@@ -145,9 +144,48 @@ export default function LoginScreen() {
           }
           throw error;
         }
+
+        // If no session returned, email verification may be required
+        // Check if user was created but session wasn't established
+        if (data?.user && !data?.session) {
+          // User created but needs email verification OR auto-confirm is disabled
+          // Try to sign in immediately in case auto-confirm is enabled but session wasn't returned
+          const { error: signInError } = await supabase.auth.signInWithPassword({
+            email: normalizedEmail,
+            password,
+          });
+          if (signInError) {
+            // If sign-in fails, it might be email verification is truly required
+            const msg = String(signInError.message || "").toLowerCase();
+            if (msg.includes("email") && msg.includes("confirm")) {
+              setErrorText("Please check your email to verify your account, then sign in.");
+              setMode("signIn");
+              return;
+            }
+            throw signInError;
+          }
+        }
       }
 
-      await syncUserProfile();
+      // Wait for auth state to be updated by the AuthProvider listener
+      // The AuthProvider handles syncUserProfile when auth state changes
+      const waitForAuth = async (maxWaitMs = 5000): Promise<boolean> => {
+        const start = Date.now();
+        while (Date.now() - start < maxWaitMs) {
+          const { status, uid } = useAuthStore.getState();
+          if (status === "authenticated" && uid) {
+            return true;
+          }
+          await new Promise((r) => setTimeout(r, 100));
+        }
+        return false;
+      };
+
+      const authReady = await waitForAuth();
+      if (!authReady) {
+        setErrorText("Authentication is taking longer than expected. Please try again.");
+        return;
+      }
 
       // Let index.tsx handle routing based on onboarding/subscription status
       if (redirectTo && redirectTo.startsWith("/")) {
