@@ -3,8 +3,9 @@ import OpenAI from "openai";
 import type { Scores, MetricKey } from "./validators.js";
 import { normalizeToPngDataUrl } from "./lib/image-normalize.js";
 import crypto from "crypto";
-import { PROVIDERS, CACHE_LIMITS } from "./config/index.js";
+import { PROVIDERS, CACHE_LIMITS, ML_SCORING } from "./config/index.js";
 import { withRetry, isRetryableError } from "./lib/retry.js";
+import { scoreWithML, scoreWithMLPair } from "./ml-scorer.js";
 
 /* ------------------------------ Config/Env -------------------------------- */
 
@@ -263,6 +264,29 @@ export async function scoreImageBytes(
 
   console.log("[scoreImageBytes] input:", preview(bytes));
 
+  // Use ML scoring if enabled
+  if (ML_SCORING.enabled) {
+    console.log("[single] ML scoring enabled, using ML API");
+    const t0 = Date.now();
+    try {
+      const result = await scoreWithML(bytes);
+      console.log("[single] ML API ms =", Date.now() - t0);
+      console.log("[single] ML SCORES =>", result.scores);
+
+      // Apply anti-five-snap for consistency with OpenAI scoring
+      const key = cacheKeySingle(sha256Hex(bytes));
+      const adjusted = antiFiveSnap(result.scores, `${key}|ml`);
+      const finalResult = { scores: adjusted, modelVersion: result.modelVersion };
+
+      // Cache the result
+      cacheSet(key, finalResult);
+      return finalResult;
+    } catch (err) {
+      console.error("[single] ML scoring failed, falling back to OpenAI:", err);
+      // Fall through to OpenAI scoring
+    }
+  }
+
   const t0 = Date.now();
   const dataUrl = await normalizeToPngDataUrl(bytes, { maxEdge: 1024 });
   console.log("[single] normalize ms =", Date.now() - t0);
@@ -382,6 +406,29 @@ export async function scoreImagePairBytes(
     "side:",
     preview(sideBytes)
   );
+
+  // Use ML scoring if enabled
+  if (ML_SCORING.enabled) {
+    console.log("[pair] ML scoring enabled, using ML API");
+    const t0 = Date.now();
+    try {
+      const result = await scoreWithMLPair(frontalBytes, sideBytes);
+      console.log("[pair] ML API ms =", Date.now() - t0);
+      console.log("[pair] ML SCORES =>", result.scores);
+
+      // Apply anti-five-snap for consistency
+      const key = cacheKeyPair(sha256Hex(frontalBytes), sha256Hex(sideBytes));
+      const adjusted = antiFiveSnap(result.scores, `${key}|ml`);
+      const finalResult = { scores: adjusted, modelVersion: result.modelVersion };
+
+      // Cache the result
+      cacheSet(key, finalResult);
+      return finalResult;
+    } catch (err) {
+      console.error("[pair] ML scoring failed, falling back to OpenAI:", err);
+      // Fall through to OpenAI scoring
+    }
+  }
 
   const t0 = Date.now();
   const [frontalDataUrl, sideDataUrl] = await Promise.all([

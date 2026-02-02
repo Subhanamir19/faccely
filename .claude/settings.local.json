@@ -34,7 +34,14 @@
       "WebFetch(domain:faccely-production.up.railway.app)",
       "Bash(npx claude-code:*)",
       "WebFetch(domain:github.com)",
-      "Bash(npx skills:*)"
+      "Bash(npx skills:*)",
+      "Bash(python -c:*)",
+      "Bash(dir:*)",
+      "Bash(powershell -Command:*)",
+      "Bash(c:SSAI-scoring-modelvenvScriptspython.exe c:SSAI-scoring-modeltest_model.py)",
+      "Bash(\"/c/SS/AI-scoring-model/venv/Scripts/python.exe\" \"/c/SS/AI-scoring-model/test_model.py\")",
+      "Bash(\"/c/SS/AI-scoring-model/venv/Scripts/pip.exe\" install fastapi uvicorn python-multipart)",
+      "Bash(\"/c/SS/AI-scoring-model/venv/Scripts/python.exe\" -c:*)"
     ]
   }
 }

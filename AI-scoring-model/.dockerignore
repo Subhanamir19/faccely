@@ -1,0 +1,27 @@
+# Python
+venv/
+__pycache__/
+*.py[cod]
+.env
+
+# Training data (not needed for inference)
+training_data/
+normalized_dataset/
+Images/
+
+# Score/progress files
+*_scores.json
+*_progress.json
+
+# Git
+.git/
+.gitignore
+
+# Training scripts (not needed for API)
+train_model.py
+generate_missing_scores.py
+organize_training_data.py
+label_full_dataset.py
+test_model.py
+
+# Only keep: api/, model_output/, Dockerfile, railway.json

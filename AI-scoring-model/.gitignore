@@ -1,0 +1,18 @@
+# Python
+venv/
+__pycache__/
+*.py[cod]
+.env
+
+# Training data (not needed for deployment)
+training_data/
+normalized_dataset/
+Images/
+
+# Score files (training artifacts)
+*_scores.json
+scoring_progress.json
+labeling_progress.json
+
+# Keep model output for deployment
+!model_output/

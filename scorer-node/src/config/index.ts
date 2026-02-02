@@ -26,12 +26,16 @@ const EnvSchema = z.object({
   S3_KEY: z.string().optional().transform(emptyToUndefined),
   S3_SECRET: z.string().optional().transform(emptyToUndefined),
 
-  // OpenAI - required in non-test environments
+  // OpenAI - required in non-test environments (for explanations)
   OPENAI_API_KEY: z.string().optional().transform(emptyToUndefined),
   OPENAI_EXPLAINER_MODEL: z.string().min(1).default("gpt-4o-mini"),
   OPENAI_SCORES_MODEL: z.string().min(1).default("gpt-4o"),
   OPENAI_SCORES_MODEL_FALLBACK: z.string().optional().transform(emptyToUndefined),
   OPENAI_MODEL_SIGMA: z.string().optional().transform(emptyToUndefined),
+
+  // ML Scoring API - uses local ML model instead of OpenAI for scoring
+  ML_SCORING_API_URL: z.string().optional().transform(emptyToUndefined),
+  ML_SCORING_ENABLED: z.string().optional(),
 
   // Sigma AI tuning
   SIGMA_TEMPERATURE: z.coerce.number().min(0).max(2).default(0.3),
@@ -179,6 +183,12 @@ export const FEATURES = {
   asyncAnalyze: isTruthyFlag(env.FF_ASYNC_ANALYZE),
   asyncRoutine: isTruthyFlag(env.FF_ASYNC_ROUTINE),
   sigmaEnabled: isTruthyFlag(env.FEATURE_SIGMA_ENABLED),
+  mlScoringEnabled: isTruthyFlag(env.ML_SCORING_ENABLED),
+};
+
+export const ML_SCORING = {
+  apiUrl: env.ML_SCORING_API_URL ?? null,
+  enabled: isTruthyFlag(env.ML_SCORING_ENABLED) && Boolean(env.ML_SCORING_API_URL),
 };
 
 export const QUEUES = {
@@ -211,5 +221,5 @@ export function assertProvider(name: string, present: unknown): asserts present 
 export default {
   NODE_ENV, IS_PROD, IS_DEV, IS_TEST,
   SERVICE, SERVER, PROVIDERS, REDIS, STORAGE,
-  TTL, CACHE_LIMITS, ROUTINE, WORKERS, FEATURES, QUEUES, SLO, AUTH,
+  TTL, CACHE_LIMITS, ROUTINE, WORKERS, FEATURES, QUEUES, SLO, AUTH, ML_SCORING,
 };

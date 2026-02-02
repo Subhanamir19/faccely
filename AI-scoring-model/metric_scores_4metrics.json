@@ -1,0 +1,3456 @@
+{
+    "metadata": {
+      "description": "Auto-labeled by geom_advanced_model_300_plus",
+      "metrics": [
+        "jawline",
+        "cheekbones",
+        "eyes_symmetry",
+        "nose_shape",
+        "masculinity",
+        "potential"
+      ],
+      "score_range": "0-100",
+      "generated_at": "2025-08-12T11:24:35.920754",
+      "total_images": 435
+    },
+    "scores": {
+      "1.jpg": {
+        "jawline": 85.10202586274606,
+        "cheekbones": 79.90125840268053,
+        "eyes_symmetry": 77.08629046857158,
+        "nose_shape": 75.22087044396177,
+        "masculinity": 90.11180791909851,
+        "potential": 98.49824788249518
+      },
+      "2.jpg": {
+        "jawline": 76.33001566596931,
+        "cheekbones": 76.53352447389994,
+        "eyes_symmetry": 65.15155664418837,
+        "nose_shape": 61.8735647574879,
+        "masculinity": 40.95308836457828,
+        "potential": 91.03081710690354
+      },
+      "3.jpg": {
+        "jawline": 67.452663734817,
+        "cheekbones": 64.82451426806503,
+        "eyes_symmetry": 80.33365800746618,
+        "nose_shape": 75.82512730624833,
+        "masculinity": 69.88875143120524,
+        "potential": 76.84726029941541
+      },
+      "4.jpg": {
+        "jawline": 71.87884909924396,
+        "cheekbones": 70.77693721881357,
+        "eyes_symmetry": 86.39875218181646,
+        "nose_shape": 69.33091846325694,
+        "masculinity": 80.0017414243472,
+        "potential": 93.48306439123938
+      },
+      "5.jpg": {
+        "jawline": 94.66599616174366,
+        "cheekbones": 93.99556469557793,
+        "eyes_symmetry": 96.76831426559586,
+        "nose_shape": 91.19739207916481,
+        "masculinity": 91.70255970328955,
+        "potential": 98.45253011136957
+      },
+      "6.jpg": {
+        "jawline": 72.08143230650998,
+        "cheekbones": 82.07232726407871,
+        "eyes_symmetry": 90.07364527725088,
+        "nose_shape": 84.7824234780116,
+        "masculinity": 67.1017920700335,
+        "potential": 85.45996386685682
+      },
+      "7.jpg": {
+        "jawline": 72.4381147849753,
+        "cheekbones": 65.13592039732252,
+        "eyes_symmetry": 84.34705468854321,
+        "nose_shape": 77.56878319895048,
+        "masculinity": 71.58857573361598,
+        "potential": 95.68407807783046
+      },
+      "8.jpg": {
+        "jawline": 66.84156816274573,
+        "cheekbones": 61.74092300217086,
+        "eyes_symmetry": 85.94243295257729,
+        "nose_shape": 80.80769181910203,
+        "masculinity": 60.49170693404363,
+        "potential": 83.96322302211856
+      },
+      "9.jpg": {
+        "jawline": 68.8645886528539,
+        "cheekbones": 69.50467019198993,
+        "eyes_symmetry": 83.83226113291899,
+        "nose_shape": 77.47144766529873,
+        "masculinity": 72.20220622376112,
+        "potential": 96.15906306686196
+      },
+      "10.jpg": {
+        "jawline": 67.90706263181295,
+        "cheekbones": 65.8828121429263,
+        "eyes_symmetry": 77.46629701359213,
+        "nose_shape": 74.55076041328091,
+        "masculinity": 74.0523540953601,
+        "potential": 95.75264344331208
+      },
+      "11.jpg": {
+        "jawline": 71.8183713633423,
+        "cheekbones": 76.94616673510994,
+        "eyes_symmetry": 86.94396880712247,
+        "nose_shape": 81.36599999617894,
+        "masculinity": 72.06595704640712,
+        "potential": 95.80884865268615
+      },
+      "12.jpg": {
+        "jawline": null,
+        "cheekbones": null,
+        "eyes_symmetry": null,
+        "nose_shape": null,
+        "masculinity": null,
+        "potential": null
+      },
+      "13.jpg": {
+        "jawline": 86.89420479397319,
+        "cheekbones": 71.85540400685855,
+        "eyes_symmetry": 75.93859425227244,
+        "nose_shape": 74.64622787744624,
+        "masculinity": 41.54941368026571,
+        "potential": 97.17093025710953
+      },
+      "14.jpg": {
+        "jawline": 67.88793379796084,
+        "cheekbones": 65.90952050095188,
+        "eyes_symmetry": 77.34177607538635,
+        "nose_shape": 75.24003477836997,
+        "masculinity": 74.03045052671354,
+        "potential": 90.49088850145671
+      },
+      "15.jpg": {
+        "jawline": 76.36212146405335,
+        "cheekbones": 72.44614565931734,
+        "eyes_symmetry": 80.56616924596591,
+        "nose_shape": 77.71478200329564,
+        "masculinity": 79.16020131770061,
+        "potential": 85.38916659423882
+      },
+      "16.jpg": {
+        "jawline": 61.90051747629255,
+        "cheekbones": 57.38317527995065,
+        "eyes_symmetry": 79.02893046304919,
+        "nose_shape": 73.53576298988958,
+        "masculinity": 70.04377395240292,
+        "potential": 70.74358627098626
+      },
+      "17.jpg": {
+        "jawline": 79.15422424331636,
+        "cheekbones": 80.90888968452032,
+        "eyes_symmetry": 90.10684261646597,
+        "nose_shape": 54.992846570026806,
+        "masculinity": 83.2317072016824,
+        "potential": 95.60093115718232
+      },
+      "18.jpg": {
+        "jawline": 23.7163840267652,
+        "cheekbones": 36.42090248850671,
+        "eyes_symmetry": 64.8853761826303,
+        "nose_shape": 58.59246976523648,
+        "masculinity": 70.64545562221707,
+        "potential": 69.06174245012778
+      },
+      "19.jpg": {
+        "jawline": 81.29306024548208,
+        "cheekbones": 75.25421031092147,
+        "eyes_symmetry": 87.64508986625212,
+        "nose_shape": 80.58630798894693,
+        "masculinity": 83.34243177111739,
+        "potential": 93.40397746366727
+      },
+      "20.jpg": {
+        "jawline": 60.96783307118089,
+        "cheekbones": 65.88067597619283,
+        "eyes_symmetry": 72.8253993838959,
+        "nose_shape": 45.64701276736768,
+        "masculinity": 66.0377844964655,
+        "potential": 84.88862100700344
+      },
+      "21.jpg": {
+        "jawline": 43.65060102068806,
+        "cheekbones": 56.11695412679499,
+        "eyes_symmetry": 62.88107741841528,
+        "nose_shape": 48.67634405759536,
+        "masculinity": 54.967311989322766,
+        "potential": 66.5348050617482
+      },
+      "22.jpg": {
+        "jawline": 52.601630979318664,
+        "cheekbones": 56.61362040812092,
+        "eyes_symmetry": 75.01340593913224,
+        "nose_shape": 69.99178374964775,
+        "masculinity": 66.13789635403437,
+        "potential": 88.14509328328103
+      },
+      "23.jpg": {
+        "jawline": 30.875029437812735,
+        "cheekbones": 54.11534577410012,
+        "eyes_symmetry": 68.62645229713941,
+        "nose_shape": 44.73895044168712,
+        "masculinity": 69.67839658969623,
+        "potential": 68.71136330333786
+      },
+      "24.jpg": {
+        "jawline": 57.92933787314319,
+        "cheekbones": 66.93446219786608,
+        "eyes_symmetry": 87.73870467419762,
+        "nose_shape": 84.96079749046103,
+        "masculinity": 28.89373936306692,
+        "potential": 98.14772755554617
+      },
+      "25.jpg": {
+        "jawline": 90.62189869764198,
+        "cheekbones": 69.05807553079092,
+        "eyes_symmetry": 82.40139060504885,
+        "nose_shape": 80.00516306751403,
+        "masculinity": 61.65877677762565,
+        "potential": 95.05487905673787
+      },
+      "26.jpg": {
+        "jawline": 28.913345466372956,
+        "cheekbones": 34.95794532891184,
+        "eyes_symmetry": 56.705554576825705,
+        "nose_shape": 50.44134170892546,
+        "masculinity": 58.67464651904358,
+        "potential": 77.83244549341337
+      },
+      "27.jpg": {
+        "jawline": 40.58524399592784,
+        "cheekbones": 39.6736928987745,
+        "eyes_symmetry": 26.55320294166198,
+        "nose_shape": 56.199248780181726,
+        "masculinity": 60.389624017266335,
+        "potential": 77.24951486201212
+      },
+      "28.jpg": {
+        "jawline": 65.08243177131844,
+        "cheekbones": 58.67347555802451,
+        "eyes_symmetry": 55.2241577412655,
+        "nose_shape": 65.74386326744356,
+        "masculinity": 72.83546853185226,
+        "potential": 86.375158687105
+      },
+      "29.jpg": {
+        "jawline": 74.97850406101682,
+        "cheekbones": 69.21214432172916,
+        "eyes_symmetry": 87.73112230510122,
+        "nose_shape": 85.14513740370398,
+        "masculinity": 78.9357944178609,
+        "potential": 88.84519124782184
+      },
+      "30.jpg": {
+        "jawline": 38.63698613432417,
+        "cheekbones": 38.08933860602459,
+        "eyes_symmetry": 69.15200129346485,
+        "nose_shape": 44.89688667700468,
+        "masculinity": 69.64771930247433,
+        "potential": 88.30891917066182
+      },
+      "31.jpg": {
+        "jawline": 33.37314980140169,
+        "cheekbones": 42.93177185086171,
+        "eyes_symmetry": 49.742635060967075,
+        "nose_shape": 36.39435248548228,
+        "masculinity": 54.00950592542144,
+        "potential": 82.01230163479964
+      },
+      "32.jpg": {
+        "jawline": 74.79725697824968,
+        "cheekbones": 78.70178800239917,
+        "eyes_symmetry": 84.4052044735468,
+        "nose_shape": 79.4364024547823,
+        "masculinity": 79.86440943474358,
+        "potential": 93.7870347412753
+      },
+      "33.jpg": {
+        "jawline": 39.644852604540255,
+        "cheekbones": 35.70363549207093,
+        "eyes_symmetry": 68.96934995885984,
+        "nose_shape": 44.95852639649752,
+        "masculinity": 70.2328369619186,
+        "potential": 89.24154092912818
+      },
+      "34.jpg": {
+        "jawline": 41.77859726929803,
+        "cheekbones": 39.507576552615454,
+        "eyes_symmetry": 70.06191777022282,
+        "nose_shape": 47.538697059050264,
+        "masculinity": 71.9315494648444,
+        "potential": 86.93342713445804
+      },
+      "35.jpg": {
+        "jawline": 63.389206180938245,
+        "cheekbones": 58.9278675096424,
+        "eyes_symmetry": 39.21811180560619,
+        "nose_shape": 36.650334881217724,
+        "masculinity": 37.81918032938931,
+        "potential": 94.69260222187434
+      },
+      "36.jpg": {
+        "jawline": 32.07826254041611,
+        "cheekbones": 32.12884978473424,
+        "eyes_symmetry": 67.97053869692188,
+        "nose_shape": 56.360361786496796,
+        "masculinity": 69.9639738667149,
+        "potential": 89.16956363062053
+      },
+      "37.jpg": {
+        "jawline": 36.51690182071711,
+        "cheekbones": 32.65212782631026,
+        "eyes_symmetry": 61.662877089379705,
+        "nose_shape": 57.7126438942379,
+        "masculinity": 66.82707592443948,
+        "potential": 81.96569467889849
+      },
+      "38.jpg": {
+        "jawline": 41.35966705003787,
+        "cheekbones": 46.99553891565483,
+        "eyes_symmetry": 73.77003286282013,
+        "nose_shape": 60.99705856363368,
+        "masculinity": 52.458366623955456,
+        "potential": 65.11533901833549
+      },
+      "39.jpg": {
+        "jawline": 39.227254203789485,
+        "cheekbones": 52.93306474260233,
+        "eyes_symmetry": 72.36187090795724,
+        "nose_shape": 66.37443095150653,
+        "masculinity": 71.15724228105532,
+        "potential": 73.1487039436186
+      },
+      "40.jpg": {
+        "jawline": 60.244699863861975,
+        "cheekbones": 55.05951080998604,
+        "eyes_symmetry": 78.01097405523662,
+        "nose_shape": 69.51646686482422,
+        "masculinity": 72.97559682959782,
+        "potential": 71.05750489931941
+      },
+      "41.jpg": {
+        "jawline": 83.25902919168583,
+        "cheekbones": 91.8054239495501,
+        "eyes_symmetry": 84.98313909302396,
+        "nose_shape": 92.49211011903996,
+        "masculinity": 90.72269349391141,
+        "potential": 96.27006458833239
+      },
+      "42.jpg": {
+        "jawline": 40.011536051965614,
+        "cheekbones": 35.6589859729223,
+        "eyes_symmetry": 55.474232614448034,
+        "nose_shape": 57.11579764807769,
+        "masculinity": 67.13095864324009,
+        "potential": 96.7897232210485
+      },
+      "43.jpg": {
+        "jawline": 49.82452661098736,
+        "cheekbones": 57.46178110058893,
+        "eyes_symmetry": 66.55345869693025,
+        "nose_shape": 72.3460522027066,
+        "masculinity": 72.3047368196294,
+        "potential": 84.93875283523609
+      },
+      "44.jpg": {
+        "jawline": 44.35947797379993,
+        "cheekbones": 58.8093445076219,
+        "eyes_symmetry": 65.27343289756489,
+        "nose_shape": 68.3149170816889,
+        "masculinity": 77.57168263884485,
+        "potential": 85.19124355989668
+      },
+      "45.jpg": {
+        "jawline": 88.87487130145105,
+        "cheekbones": 92.39333597399346,
+        "eyes_symmetry": 88.19110568945449,
+        "nose_shape": 89.68610471246294,
+        "masculinity": 92.63052252158639,
+        "potential": 95.22562108832686
+      },
+      "46.jpg": {
+        "jawline": 83.64666305906448,
+        "cheekbones": 82.09852978986574,
+        "eyes_symmetry": 82.62250132708176,
+        "nose_shape": 83.44399364604203,
+        "masculinity": 31.472589874607863,
+        "potential": 97.92677188977241
+      },
+      "47.jpg": {
+        "jawline": 77.4463945539591,
+        "cheekbones": 75.2010890524867,
+        "eyes_symmetry": 85.25068902970554,
+        "nose_shape": 80.9650915782104,
+        "masculinity": 89.88233374513767,
+        "potential": 81.45782300671388
+      },
+      "48.jpg": {
+        "jawline": 33.131460520762,
+        "cheekbones": 44.09214533396757,
+        "eyes_symmetry": 59.92547878211391,
+        "nose_shape": 53.67422434530779,
+        "masculinity": 68.91036061679567,
+        "potential": 56.95559139545054
+      },
+      "49.jpg": {
+        "jawline": 55.135806269181266,
+        "cheekbones": 53.62914857765603,
+        "eyes_symmetry": 67.01975437638453,
+        "nose_shape": 62.81420703987865,
+        "masculinity": 78.35874042763368,
+        "potential": 62.556467833005115
+      },
+      "50.jpg": {
+        "jawline": 61.78511363132185,
+        "cheekbones": 63.47424418872189,
+        "eyes_symmetry": 78.49257129253203,
+        "nose_shape": 59.75017196050107,
+        "masculinity": 64.58666100355785,
+        "potential": 94.1235998682545
+      },
+      "51.jpg": {
+        "jawline": 38.62497052270644,
+        "cheekbones": 48.116392357337126,
+        "eyes_symmetry": 59.015177007241434,
+        "nose_shape": 51.429589259222574,
+        "masculinity": 64.49519544740708,
+        "potential": 85.6210442955996
+      },
+      "52.jpg": {
+        "jawline": 52.386638861034974,
+        "cheekbones": 56.292618433538706,
+        "eyes_symmetry": 69.47384600438617,
+        "nose_shape": 65.1305462326279,
+        "masculinity": 79.90673845301943,
+        "potential": 89.36880196103627
+      },
+      "53.jpg": {
+        "jawline": 88.11287806192394,
+        "cheekbones": 92.69731374930875,
+        "eyes_symmetry": 88.76034277322194,
+        "nose_shape": 59.53362880256211,
+        "masculinity": 92.21109827308345,
+        "potential": 95.56521046361573
+      },
+      "54.jpg": {
+        "jawline": 43.38844724258757,
+        "cheekbones": 55.58940030571477,
+        "eyes_symmetry": 70.52865014320614,
+        "nose_shape": 66.28975525154053,
+        "masculinity": 80.24758682807789,
+        "potential": 89.40973368646793
+      },
+      "55.jpg": {
+        "jawline": 35.39960222655817,
+        "cheekbones": 49.33313240927749,
+        "eyes_symmetry": 60.974332306761845,
+        "nose_shape": 57.60664059203005,
+        "masculinity": 72.32115571359154,
+        "potential": 90.27685835232634
+      },
+      "56.jpg": {
+        "jawline": 40.10629205776873,
+        "cheekbones": 53.71415287605034,
+        "eyes_symmetry": 69.19070613132511,
+        "nose_shape": 63.34350037248809,
+        "masculinity": 79.6088331378464,
+        "potential": 91.95037370654225
+      },
+      "57.jpg": {
+        "jawline": 61.13209726317249,
+        "cheekbones": 60.663443469921745,
+        "eyes_symmetry": 55.38810797576513,
+        "nose_shape": 46.809473604928364,
+        "masculinity": 34.01592440957192,
+        "potential": 96.3414923996871
+      },
+      "58.jpg": {
+        "jawline": 58.09271233236632,
+        "cheekbones": 64.3576704480765,
+        "eyes_symmetry": 72.13251724289306,
+        "nose_shape": 68.34031599597216,
+        "masculinity": 70.3165549499364,
+        "potential": 89.06922119330619
+      },
+      "59.jpg": {
+        "jawline": 49.069541629744045,
+        "cheekbones": 55.65385039476418,
+        "eyes_symmetry": 69.06906876573562,
+        "nose_shape": 63.56803833740129,
+        "masculinity": 80.81384039915177,
+        "potential": 89.13472990506891
+      },
+      "60.jpg": {
+        "jawline": 77.89815729534774,
+        "cheekbones": 72.7855909022287,
+        "eyes_symmetry": 83.13539986570028,
+        "nose_shape": 76.00757867786504,
+        "masculinity": 88.26233282767238,
+        "potential": 97.35517546991316
+      },
+      "61.jpg": {
+        "jawline": 41.78211713468791,
+        "cheekbones": 38.668636502745585,
+        "eyes_symmetry": 51.00158087880364,
+        "nose_shape": 48.266203386231155,
+        "masculinity": 62.096962080497455,
+        "potential": 78.38974464605487
+      },
+      "62.jpg": {
+        "jawline": 63.918275796247286,
+        "cheekbones": 64.78180177723493,
+        "eyes_symmetry": 80.41831587565625,
+        "nose_shape": 50.12216015202388,
+        "masculinity": 89.4657881333126,
+        "potential": 91.52818250882399
+      },
+      "63.jpg": {
+        "jawline": 41.50411360823118,
+        "cheekbones": 45.53774230081482,
+        "eyes_symmetry": 58.85472636461245,
+        "nose_shape": 55.02279765242454,
+        "masculinity": 69.86135412031511,
+        "potential": 85.45673763483828
+      },
+      "64.jpg": {
+        "jawline": 48.65945938989483,
+        "cheekbones": 53.2757025036688,
+        "eyes_symmetry": 46.20638682029029,
+        "nose_shape": 64.99666706885449,
+        "masculinity": 48.72229677889034,
+        "potential": 87.76845679315778
+      },
+      "65.jpg": {
+        "jawline": 72.01083586873067,
+        "cheekbones": 76.60976450584342,
+        "eyes_symmetry": 80.91948841344606,
+        "nose_shape": 73.7022265068326,
+        "masculinity": 86.46544258199694,
+        "potential": 91.24588277334571
+      },
+      "66.jpg": {
+        "jawline": 66.22272255037187,
+        "cheekbones": 64.42188635147372,
+        "eyes_symmetry": 78.2000831441391,
+        "nose_shape": 72.09270387050871,
+        "masculinity": 60.14570732316124,
+        "potential": 92.62667677549041
+      },
+      "67.jpg": {
+        "jawline": 44.46728361290576,
+        "cheekbones": 49.3209150074313,
+        "eyes_symmetry": 68.75777845041596,
+        "nose_shape": 72.48229471737713,
+        "masculinity": 68.51446890604103,
+        "potential": 85.3714904488487
+      },
+      "68.jpg": {
+        "jawline": 94.63868304381562,
+        "cheekbones": 80.83073266068662,
+        "eyes_symmetry": 87.81951861082693,
+        "nose_shape": 85.14303428176537,
+        "masculinity": 88.61858086837933,
+        "potential": 97.89614309600796
+      },
+      "69.jpg": {
+        "jawline": 64.23418722204138,
+        "cheekbones": 54.87488559793654,
+        "eyes_symmetry": 79.1671982687614,
+        "nose_shape": 75.37267626688795,
+        "masculinity": 59.971109455669506,
+        "potential": 94.30302917528876
+      },
+      "70.jpg": {
+        "jawline": 30.84005684560088,
+        "cheekbones": 44.7742657356344,
+        "eyes_symmetry": 61.79986569419432,
+        "nose_shape": 56.53043799939984,
+        "masculinity": 54.23583708974156,
+        "potential": 93.68822042017234
+      },
+      "71.jpg": {
+        "jawline": 50.552318574449146,
+        "cheekbones": 44.814886660866314,
+        "eyes_symmetry": 61.59676811589002,
+        "nose_shape": 57.72252179741682,
+        "masculinity": 60.75325619686476,
+        "potential": 91.96342170385971
+      },
+      "72.jpg": {
+        "jawline": 40.31377683808582,
+        "cheekbones": 40.91111477021329,
+        "eyes_symmetry": 58.445195546810524,
+        "nose_shape": 54.99830127599066,
+        "masculinity": 70.28760775372363,
+        "potential": 89.6647317063581
+      },
+      "73.jpg": {
+        "jawline": 83.80423980650245,
+        "cheekbones": 89.63363236375716,
+        "eyes_symmetry": 88.14957570241336,
+        "nose_shape": 87.13057303500047,
+        "masculinity": 85.53776590465003,
+        "potential": 94.19893324641316
+      },
+      "74.jpg": {
+        "jawline": 37.17254812296103,
+        "cheekbones": 46.62163429832335,
+        "eyes_symmetry": 53.86110135254889,
+        "nose_shape": 50.890999624681875,
+        "masculinity": 63.397224462074405,
+        "potential": 90.40500096920093
+      },
+      "75.jpg": {
+        "jawline": 41.012681752160475,
+        "cheekbones": 42.8896025113886,
+        "eyes_symmetry": 56.57603828622191,
+        "nose_shape": 55.96099182878307,
+        "masculinity": 68.39380621399104,
+        "potential": 92.98226258699727
+      },
+      "76.jpg": {
+        "jawline": 70.88240348833783,
+        "cheekbones": 66.16999293439454,
+        "eyes_symmetry": 79.91454456141079,
+        "nose_shape": 75.25003499500393,
+        "masculinity": 89.1549096799852,
+        "potential": 71.52118277443232
+      },
+      "77.jpg": {
+        "jawline": 38.05236962156783,
+        "cheekbones": 36.74120922991185,
+        "eyes_symmetry": 59.684747832578594,
+        "nose_shape": 55.32782965093358,
+        "masculinity": 22.45457231150959,
+        "potential": 89.72251272548179
+      },
+      "78.jpg": {
+        "jawline": 30.78121442689889,
+        "cheekbones": 43.67233098866589,
+        "eyes_symmetry": 29.092154510381143,
+        "nose_shape": 55.63164682413373,
+        "masculinity": 69.87214794362572,
+        "potential": 89.6440676564859
+      },
+      "79.jpg": {
+        "jawline": 73.15248999520142,
+        "cheekbones": 80.81471451660512,
+        "eyes_symmetry": 86.62359575538763,
+        "nose_shape": 88.24400811094004,
+        "masculinity": 89.57144215067466,
+        "potential": 97.64217439453319
+      },
+      "80.jpg": {
+        "jawline": 65.39659318979048,
+        "cheekbones": 54.24257770553519,
+        "eyes_symmetry": 68.10820167045642,
+        "nose_shape": 52.903363870942265,
+        "masculinity": 77.89925908577911,
+        "potential": 64.34287418795441
+      },
+      "81.jpg": {
+        "jawline": 47.864885875600905,
+        "cheekbones": 42.37713155610996,
+        "eyes_symmetry": 62.94086990052275,
+        "nose_shape": 45.621680702276336,
+        "masculinity": 70.21018166113392,
+        "potential": 80.85746541921822
+      },
+      "82.jpg": {
+        "jawline": 38.754422111248665,
+        "cheekbones": 36.03157843240223,
+        "eyes_symmetry": 48.93186048148534,
+        "nose_shape": 46.01067054116443,
+        "masculinity": 58.592319321877206,
+        "potential": 73.89700602064974
+      },
+      "83.jpg": {
+        "jawline": 60.779821804136,
+        "cheekbones": 67.25001557948377,
+        "eyes_symmetry": 71.35905313502278,
+        "nose_shape": 68.83021266008024,
+        "masculinity": 63.75935853962654,
+        "potential": 92.8489014003715
+      },
+      "84.jpg": {
+        "jawline": 77.42069828641384,
+        "cheekbones": 73.7448479407243,
+        "eyes_symmetry": 88.7435109708827,
+        "nose_shape": 81.32906036457793,
+        "masculinity": 87.5357023608581,
+        "potential": 85.36175299662825
+      },
+      "85.jpg": {
+        "jawline": 68.6892668469876,
+        "cheekbones": 63.91309161783411,
+        "eyes_symmetry": 76.23374781287706,
+        "nose_shape": 61.13069767160883,
+        "masculinity": 84.47765456936004,
+        "potential": 72.33858481586756
+      },
+      "86.jpg": {
+        "jawline": 86.6600773517229,
+        "cheekbones": 92.28499983063887,
+        "eyes_symmetry": 88.19151511519135,
+        "nose_shape": 86.17063759890156,
+        "masculinity": 93.186882566155,
+        "potential": 95.27781399260725
+      },
+      "87.jpg": {
+        "jawline": 51.57079275064406,
+        "cheekbones": 47.18909868945884,
+        "eyes_symmetry": 78.90965481595353,
+        "nose_shape": 64.94418625796995,
+        "masculinity": 70.13924717863853,
+        "potential": 89.00219270590605
+      },
+      "88.jpg": {
+        "jawline": 67.43897490056554,
+        "cheekbones": 73.20124714439503,
+        "eyes_symmetry": 66.48394913576503,
+        "nose_shape": 55.04148158991243,
+        "masculinity": 70.60669177568096,
+        "potential": 93.31697490522062
+      },
+      "89.jpg": {
+        "jawline": 50.93053591267926,
+        "cheekbones": 64.54195369176901,
+        "eyes_symmetry": 60.27931208401285,
+        "nose_shape": 57.29419453016912,
+        "masculinity": 44.30908315027718,
+        "potential": 93.48241595864852
+      },
+      "90.jpg": {
+        "jawline": 61.13502430971695,
+        "cheekbones": 81.80338763804696,
+        "eyes_symmetry": 66.51044777462651,
+        "nose_shape": 61.71848709106388,
+        "masculinity": 31.146825085634394,
+        "potential": 94.36444907067322
+      },
+      "91.jpg": {
+        "jawline": 70.8400077812181,
+        "cheekbones": 65.95162605768448,
+        "eyes_symmetry": 80.51382798015848,
+        "nose_shape": 47.551766593399854,
+        "masculinity": 89.75334157244126,
+        "potential": 91.31646372774655
+      },
+      "92.jpg": {
+        "jawline": 52.34226266249899,
+        "cheekbones": 48.48200967394981,
+        "eyes_symmetry": 61.94061243959828,
+        "nose_shape": 60.65125397853262,
+        "masculinity": 70.64637714458992,
+        "potential": 92.5566613087774
+      },
+      "93.jpg": {
+        "jawline": 40.42032952472602,
+        "cheekbones": 36.97057644831967,
+        "eyes_symmetry": 50.74386070336723,
+        "nose_shape": 45.56695936047844,
+        "masculinity": 61.63809771426708,
+        "potential": 90.9029571468477
+      },
+      "94.jpg": {
+        "jawline": 53.93569581316588,
+        "cheekbones": 47.40460337205624,
+        "eyes_symmetry": 60.674233549242345,
+        "nose_shape": 58.42025256386792,
+        "masculinity": 70.14324103283074,
+        "potential": 88.28773364319177
+      },
+      "95.jpg": {
+        "jawline": 32.87040383123357,
+        "cheekbones": 34.49563062270365,
+        "eyes_symmetry": 45.19535199237921,
+        "nose_shape": 37.90850112072934,
+        "masculinity": 52.14123501304157,
+        "potential": 86.25476033410939
+      },
+      "96.jpg": {
+        "jawline": 67.57811151003511,
+        "cheekbones": 63.67994170059679,
+        "eyes_symmetry": 79.04647950963817,
+        "nose_shape": 73.81277616349122,
+        "masculinity": 85.72112453542819,
+        "potential": 93.16089721715987
+      },
+      "97.jpg": {
+        "jawline": 68.46639468344992,
+        "cheekbones": 53.254846877377766,
+        "eyes_symmetry": 69.74784109463077,
+        "nose_shape": 49.282090744873344,
+        "masculinity": 75.3243694670428,
+        "potential": 89.70015581253253
+      },
+      "98.jpg": {
+        "jawline": 81.09407025017588,
+        "cheekbones": 76.99033673136638,
+        "eyes_symmetry": 84.99873254397755,
+        "nose_shape": 71.41355960212564,
+        "masculinity": 89.69168198210832,
+        "potential": 95.26590798052942
+      },
+      "99.jpg": {
+        "jawline": 75.46622034806096,
+        "cheekbones": 88.69551758478566,
+        "eyes_symmetry": 87.28848923125628,
+        "nose_shape": 84.31223452332318,
+        "masculinity": 91.74281620547924,
+        "potential": 94.02963816926196
+      },
+      "100.jpg": {
+        "jawline": 87.87627473993871,
+        "cheekbones": 93.25862764505109,
+        "eyes_symmetry": 87.47129914152762,
+        "nose_shape": 83.24729171185176,
+        "masculinity": 90.7127006016595,
+        "potential": 94.67201590005679
+      },
+      "101.jpg": {
+        "jawline": 42.304483243574964,
+        "cheekbones": 59.17051603746114,
+        "eyes_symmetry": 68.0035748906819,
+        "nose_shape": 41.02760119527838,
+        "masculinity": 51.38877886402133,
+        "potential": 85.85841028931515
+      },
+      "102.jpg": {
+        "jawline": 43.51420223850097,
+        "cheekbones": 48.11486196684772,
+        "eyes_symmetry": 62.17617039729514,
+        "nose_shape": 75.61680273620941,
+        "masculinity": 37.12751422389743,
+        "potential": 96.2168855576152
+      },
+      "103.jpg": {
+        "jawline": 82.48708857151436,
+        "cheekbones": 77.45374434758882,
+        "eyes_symmetry": 84.09143541928646,
+        "nose_shape": 78.2998177855585,
+        "masculinity": 88.79564587776643,
+        "potential": 90.44068532263313
+      },
+      "104.jpg": {
+        "jawline": 79.91393777444806,
+        "cheekbones": 74.830513315596,
+        "eyes_symmetry": 84.8518230585005,
+        "nose_shape": 78.45516335680452,
+        "masculinity": 89.52758449378858,
+        "potential": 87.3105050687807
+      },
+      "105.jpg": {
+        "jawline": 76.60850805464476,
+        "cheekbones": 73.5025004485759,
+        "eyes_symmetry": 79.10443458518847,
+        "nose_shape": 67.7785423729051,
+        "masculinity": 70.65751830950065,
+        "potential": 97.64975615799477
+      },
+      "106.jpg": {
+        "jawline": 90.17850850443534,
+        "cheekbones": 93.19047001854027,
+        "eyes_symmetry": 89.13326192493341,
+        "nose_shape": 88.24150067723,
+        "masculinity": 91.69553533921201,
+        "potential": 95.22192153565717
+      },
+      "107.jpg": {
+        "jawline": 83.10280355251356,
+        "cheekbones": 76.59439590441333,
+        "eyes_symmetry": 85.7681278849072,
+        "nose_shape": 89.48061063146822,
+        "masculinity": 85.78099964830766,
+        "potential": 95.43156189575174
+      },
+      "108.jpg": {
+        "jawline": 93.57106507092243,
+        "cheekbones": 89.78642571674949,
+        "eyes_symmetry": 96.01900041850402,
+        "nose_shape": 78.57648438735501,
+        "masculinity": 89.5984499529877,
+        "potential": 97.14244841603563
+      },
+      "109.jpg": {
+        "jawline": 83.70774003233707,
+        "cheekbones": 85.0934261753686,
+        "eyes_symmetry": 88.33019031100241,
+        "nose_shape": 79.76148983039947,
+        "masculinity": 90.19031959373284,
+        "potential": 99.02895220801973
+      },
+      "110.jpg": {
+        "jawline": 90.43913252627013,
+        "cheekbones": 89.35101227205489,
+        "eyes_symmetry": 89.6703583462826,
+        "nose_shape": 89.99834926322427,
+        "masculinity": 87.18586413222903,
+        "potential": 99.65638909597949
+      },
+      "111.jpg": {
+        "jawline": 79.94446109703419,
+        "cheekbones": 76.09344933802595,
+        "eyes_symmetry": 84.82785976180084,
+        "nose_shape": 79.0051648995303,
+        "masculinity": 89.95847533542779,
+        "potential": 98.27376672280477
+      },
+      "112.jpg": {
+        "jawline": 73.43368854858444,
+        "cheekbones": 57.777999110387746,
+        "eyes_symmetry": 63.2847995056632,
+        "nose_shape": 84.26278346822959,
+        "masculinity": 65.33689492774285,
+        "potential": 96.69511696370367
+      },
+      "113.jpg": {
+        "jawline": 68.73165451361568,
+        "cheekbones": 59.81567757721814,
+        "eyes_symmetry": 79.75367628782372,
+        "nose_shape": 56.66189280019289,
+        "masculinity": 64.30114295638853,
+        "potential": 86.74305202251195
+      },
+      "114.jpg": {
+        "jawline": 73.73360876058513,
+        "cheekbones": 76.84531374262654,
+        "eyes_symmetry": 61.4248144366684,
+        "nose_shape": 56.12136408859837,
+        "masculinity": 94.23548117298107,
+        "potential": 96.99210922401522
+      },
+      "115.jpg": {
+        "jawline": 65.38436153550494,
+        "cheekbones": 66.5661738326463,
+        "eyes_symmetry": 71.58698537974324,
+        "nose_shape": 68.29291293113842,
+        "masculinity": 52.62158482836032,
+        "potential": 87.22629369147725
+      },
+      "116.jpg": {
+        "jawline": 94.76735653194116,
+        "cheekbones": 86.60717239697381,
+        "eyes_symmetry": 87.85174141675184,
+        "nose_shape": 89.29656440477949,
+        "masculinity": 86.15529893520942,
+        "potential": 94.69865014667664
+      },
+      "117.jpg": {
+        "jawline": 92.05103724163614,
+        "cheekbones": 90.83072348154727,
+        "eyes_symmetry": 92.85998842406889,
+        "nose_shape": 79.36689312257772,
+        "masculinity": 95.53519746835497,
+        "potential": 99.84503327299653
+      },
+      "118.jpg": {
+        "jawline": 90.31103174129123,
+        "cheekbones": 82.14370794901518,
+        "eyes_symmetry": 87.90869964500311,
+        "nose_shape": 83.35162988786767,
+        "masculinity": 84.15273631573173,
+        "potential": 98.93980379284987
+      },
+      "119.jpg": {
+        "jawline": 79.35193713236104,
+        "cheekbones": 88.51837418869201,
+        "eyes_symmetry": 88.5808074424402,
+        "nose_shape": 90.55373931442918,
+        "masculinity": 68.50874896579514,
+        "potential": 92.81916740253631
+      },
+      "120.jpg": {
+        "jawline": 79.61573874798646,
+        "cheekbones": 85.05837460498876,
+        "eyes_symmetry": 86.26782770150899,
+        "nose_shape": 87.60570476800329,
+        "masculinity": 76.63932442442528,
+        "potential": 98.34660143272305
+      },
+      "121.jpg": {
+        "jawline": 84.00354972713052,
+        "cheekbones": 86.1204675171437,
+        "eyes_symmetry": 85.3835252551824,
+        "nose_shape": 87.73388678973501,
+        "masculinity": 84.99079807550909,
+        "potential": 94.89617169698256
+      },
+      "122.jpg": {
+        "jawline": 84.49869158227578,
+        "cheekbones": 83.00436979424013,
+        "eyes_symmetry": 79.96391426453144,
+        "nose_shape": 75.53460225409641,
+        "masculinity": 90.93659961628279,
+        "potential": 98.56512683355358
+      },
+      "123.jpg": {
+        "jawline": 89.73613160629935,
+        "cheekbones": 84.42422903135713,
+        "eyes_symmetry": 89.2202352541022,
+        "nose_shape": 84.83143436264449,
+        "masculinity": 87.06749363583418,
+        "potential": 96.8409101882986
+      },
+      "124.jpg": {
+        "jawline": 65.81132888836007,
+        "cheekbones": 77.65300351955801,
+        "eyes_symmetry": 76.92610966625793,
+        "nose_shape": 61.05133797905545,
+        "masculinity": 71.28003707814435,
+        "potential": 90.09811603600721
+      },
+      "125.jpg": {
+        "jawline": 97.8535018065549,
+        "cheekbones": 97.07415668597115,
+        "eyes_symmetry": 91.86015929762983,
+        "nose_shape": 76.60645089235128,
+        "masculinity": 85.24521625407262,
+        "potential": 96.82682169038517
+      },
+      "126.jpg": {
+        "jawline": 88.19046523606055,
+        "cheekbones": 84.27959664348761,
+        "eyes_symmetry": 88.41759476267346,
+        "nose_shape": 79.99939799088743,
+        "masculinity": 85.23421466531013,
+        "potential": 95.20946753184725
+      },
+      "127.jpg": {
+        "jawline": 84.81007628811669,
+        "cheekbones": 83.30949596417246,
+        "eyes_symmetry": 92.43863073276752,
+        "nose_shape": 67.80657117030978,
+        "masculinity": 84.78256764541831,
+        "potential": 96.98416272711185
+      },
+      "128.jpg": {
+        "jawline": 72.49171384479689,
+        "cheekbones": 73.1795914115678,
+        "eyes_symmetry": 81.42098623452245,
+        "nose_shape": 69.89724851720906,
+        "masculinity": 79.65470182308708,
+        "potential": 98.49184899437037
+      },
+      "129.jpg": {
+        "jawline": 90.95737015727772,
+        "cheekbones": 90.27760272111664,
+        "eyes_symmetry": 91.82585614353854,
+        "nose_shape": 83.44478661366347,
+        "masculinity": 82.0093711731784,
+        "potential": 100.0
+      },
+      "130.jpg": {
+        "jawline": 85.8682156524292,
+        "cheekbones": 86.19531088794503,
+        "eyes_symmetry": 86.61562015400231,
+        "nose_shape": 91.71915300750108,
+        "masculinity": 68.24841487987797,
+        "potential": 94.44990399384236
+      },
+      "131.jpg": {
+        "jawline": 82.9866975614335,
+        "cheekbones": 77.60607877163497,
+        "eyes_symmetry": 71.54143596125,
+        "nose_shape": 72.76897257014697,
+        "masculinity": 55.54073708822855,
+        "potential": 87.88281927824285
+      },
+      "132.jpg": {
+        "jawline": 87.4930023380719,
+        "cheekbones": 90.7272247197847,
+        "eyes_symmetry": 84.64654993986693,
+        "nose_shape": 76.06700017441365,
+        "masculinity": 71.0894651634013,
+        "potential": 93.89852333688785
+      },
+      "133.jpg": {
+        "jawline": 91.1520458520955,
+        "cheekbones": 94.75655092091911,
+        "eyes_symmetry": 96.88310942343445,
+        "nose_shape": 92.87049205908795,
+        "masculinity": 73.68649883590516,
+        "potential": 98.94319506351805
+      },
+      "134.jpg": {
+        "jawline": 89.88007509303581,
+        "cheekbones": 91.05432289956372,
+        "eyes_symmetry": 90.38150449300875,
+        "nose_shape": 80.62324616802566,
+        "masculinity": 77.83508706027408,
+        "potential": 97.42683087308772
+      },
+      "135.jpg": {
+        "jawline": 59.34639268178298,
+        "cheekbones": 51.73869605298231,
+        "eyes_symmetry": 62.903028565897955,
+        "nose_shape": 54.86443925158691,
+        "masculinity": 64.8677137910954,
+        "potential": 95.60264658004843
+      },
+      "136.jpg": {
+        "jawline": 95.16577642759121,
+        "cheekbones": 89.30118900387752,
+        "eyes_symmetry": 97.9568591129419,
+        "nose_shape": 89.57974533623542,
+        "masculinity": 82.89360390154386,
+        "potential": 96.22796076329331
+      },
+      "137.jpg": {
+        "jawline": 94.19309562831238,
+        "cheekbones": 98.16813303140657,
+        "eyes_symmetry": 89.72171587693715,
+        "nose_shape": 87.71309602377612,
+        "masculinity": 85.31178343268283,
+        "potential": 93.66826497343918
+      },
+      "138.jpg": {
+        "jawline": 91.01852587577999,
+        "cheekbones": 92.38264345190987,
+        "eyes_symmetry": 86.08979314866019,
+        "nose_shape": 87.89437420534075,
+        "masculinity": 86.10364829483045,
+        "potential": 98.15933153631727
+      },
+      "139.jpg": {
+        "jawline": 81.26805750694639,
+        "cheekbones": 71.11042201178094,
+        "eyes_symmetry": 74.74805490143514,
+        "nose_shape": 80.25109412937442,
+        "masculinity": 65.46158567385322,
+        "potential": 95.83381135724238
+      },
+      "140.jpg": {
+        "jawline": 62.935651552993754,
+        "cheekbones": 61.53886355375783,
+        "eyes_symmetry": 84.24081789404985,
+        "nose_shape": 47.07469715549506,
+        "masculinity": 50.007706218805836,
+        "potential": 98.14079747418606
+      },
+      "141.jpg": {
+        "jawline": 83.80006365970358,
+        "cheekbones": 83.39036899797908,
+        "eyes_symmetry": 77.40201174426164,
+        "nose_shape": 80.73771587610776,
+        "masculinity": 79.68421634012897,
+        "potential": 98.78543546116214
+      },
+      "142.jpg": {
+        "jawline": 89.82897583416906,
+        "cheekbones": 83.64411665748672,
+        "eyes_symmetry": 93.68041470473722,
+        "nose_shape": 86.70933102673769,
+        "masculinity": 86.32795837838114,
+        "potential": 91.33878339985583
+      },
+      "143.jpg": {
+        "jawline": 97.24049239023185,
+        "cheekbones": 97.65872638702454,
+        "eyes_symmetry": 91.41315731255588,
+        "nose_shape": 85.40834495924983,
+        "masculinity": 93.451347227838,
+        "potential": 98.99775644489766
+      },
+      "144.jpg": {
+        "jawline": 98.15034808548864,
+        "cheekbones": 95.4411148512143,
+        "eyes_symmetry": 88.33237513769193,
+        "nose_shape": 86.3174210650245,
+        "masculinity": 81.06176434596573,
+        "potential": 98.02614605994196
+      },
+      "145.jpg": {
+        "jawline": 97.06453774484325,
+        "cheekbones": 91.03243854301361,
+        "eyes_symmetry": 92.27585375574142,
+        "nose_shape": 77.40701100252372,
+        "masculinity": 87.56980390268623,
+        "potential": 97.99971676160122
+      },
+      "146.jpg": {
+        "jawline": 35.30228730539578,
+        "cheekbones": 47.920923732863194,
+        "eyes_symmetry": 50.68887324330469,
+        "nose_shape": 49.92791676857095,
+        "masculinity": 56.13093444934932,
+        "potential": 79.77069006546543
+      },
+      "147.jpg": {
+        "jawline": 88.76635461578894,
+        "cheekbones": 85.65208929067151,
+        "eyes_symmetry": 81.1222001061486,
+        "nose_shape": 77.94115307305754,
+        "masculinity": 77.35655475295347,
+        "potential": 98.66229794116046
+      },
+      "148.jpg": {
+        "jawline": 80.72344931762309,
+        "cheekbones": 86.8761614078447,
+        "eyes_symmetry": 76.41136319627776,
+        "nose_shape": 73.68835145432404,
+        "masculinity": 87.08971135118315,
+        "potential": 93.49438538465083
+      },
+      "149.jpg": {
+        "jawline": 88.13437407048242,
+        "cheekbones": 86.04906864875984,
+        "eyes_symmetry": 87.65383319792407,
+        "nose_shape": 74.80003233062558,
+        "masculinity": 63.00767491168991,
+        "potential": 97.17121836995358
+      },
+      "150.jpg": {
+        "jawline": 79.8543817199045,
+        "cheekbones": 78.31041184121683,
+        "eyes_symmetry": 76.62840870016223,
+        "nose_shape": 76.15950057070229,
+        "masculinity": 83.33012369022082,
+        "potential": 90.89464339878108
+      },
+      "151.jpg": {
+        "jawline": 93.81529722821766,
+        "cheekbones": 92.95036358717347,
+        "eyes_symmetry": 91.26888861927993,
+        "nose_shape": 94.32685002303346,
+        "masculinity": 72.31165786009446,
+        "potential": 95.48636087531769
+      },
+      "152.jpg": {
+        "jawline": 65.48975251593298,
+        "cheekbones": 54.30404746437638,
+        "eyes_symmetry": 76.32578965996275,
+        "nose_shape": 46.577758401232394,
+        "masculinity": 51.27154773800359,
+        "potential": 96.04499759934733
+      },
+      "153.jpg": {
+        "jawline": 84.32573077757222,
+        "cheekbones": 78.44679212821227,
+        "eyes_symmetry": 90.55579986343027,
+        "nose_shape": 81.06802723091722,
+        "masculinity": 87.29502875095542,
+        "potential": 96.07294599657844
+      },
+      "154.jpg": {
+        "jawline": 80.22927978769766,
+        "cheekbones": 82.3405164219367,
+        "eyes_symmetry": 81.8147593495319,
+        "nose_shape": 84.24736521898764,
+        "masculinity": 82.90128739957638,
+        "potential": 98.57213217979871
+      },
+      "155.jpg": {
+        "jawline": 97.86162393663686,
+        "cheekbones": 98.18917019399122,
+        "eyes_symmetry": 91.12469971688634,
+        "nose_shape": 87.05728361585071,
+        "masculinity": 87.49861317001861,
+        "potential": 99.03499669902813
+      },
+      "156.jpg": {
+        "jawline": 93.87441659677246,
+        "cheekbones": 87.28795476242549,
+        "eyes_symmetry": 88.91138539982612,
+        "nose_shape": 75.34261217188538,
+        "masculinity": 91.11626371935839,
+        "potential": 98.99124022713885
+      },
+      
+      "158.jpg": {
+        "jawline": 92.34569159970047,
+        "cheekbones": 95.30824401266652,
+        "eyes_symmetry": 85.26345744720003,
+        "nose_shape": 77.35582155094856,
+        "masculinity": 73.8366774585098,
+        "potential": 88.0514840200597
+      },
+      "159.jpg": {
+        "jawline": 89.65779003883534,
+        "cheekbones": 90.32264802487317,
+        "eyes_symmetry": 83.50261902448365,
+        "nose_shape": 83.41129308860225,
+        "masculinity": 80.93086922669187,
+        "potential": 97.62540749855361
+      },
+      "160.jpg": {
+        "jawline": 49.90005989870676,
+        "cheekbones": 76.48776691127613,
+        "eyes_symmetry": 69.83148854953602,
+        "nose_shape": 78.46693804125826,
+        "masculinity": 70.33458902774558,
+        "potential": 88.1963982444835
+      },
+      "161.jpg": {
+        "jawline": 92.76663606797334,
+        "cheekbones": 94.03279585318637,
+        "eyes_symmetry": 88.77133791512297,
+        "nose_shape": 91.12799142185712,
+        "masculinity": 90.92962394122588,
+        "potential": 99.91593966228673
+      },
+      "162.jpg": {
+        "jawline": 93.69005989848097,
+        "cheekbones": 89.09307435116342,
+        "eyes_symmetry": 80.9223544443336,
+        "nose_shape": 86.57403231031566,
+        "masculinity": 54.627229943769315,
+        "potential": 96.75517665035095
+      },
+      "163.jpg": {
+        "jawline": 78.45110237717216,
+        "cheekbones": 79.05522624903949,
+        "eyes_symmetry": 79.11792119221727,
+        "nose_shape": 73.91355978670359,
+        "masculinity": 85.00923976541368,
+        "potential": 98.30544936932759
+      },
+      "164.jpg": {
+        "jawline": 78.58065940118473,
+        "cheekbones": 90.2806938649405,
+        "eyes_symmetry": 84.0470646658564,
+        "nose_shape": 62.332418315437415,
+        "masculinity": 80.76094705350047,
+        "potential": 96.49136585299267
+      },
+      "165.jpg": {
+        "jawline": 95.67184784290856,
+        "cheekbones": 95.74099325696041,
+        "eyes_symmetry": 93.5364473171166,
+        "nose_shape": 86.64224070459784,
+        "masculinity": 93.81776873835078,
+        "potential": 98.92472064659941
+      },
+      "166.jpg": {
+        "jawline": 89.94716917115545,
+        "cheekbones": 84.89165122314932,
+        "eyes_symmetry": 79.59543288530392,
+        "nose_shape": 74.64590073277296,
+        "masculinity": 73.54714701708563,
+        "potential": 98.53277570281902
+      },
+      "167.jpg": {
+        "jawline": 79.04234147913567,
+        "cheekbones": 77.40217916284595,
+        "eyes_symmetry": 87.20104156770971,
+        "nose_shape": 73.71969206658487,
+        "masculinity": 71.54657767363209,
+        "potential": 50.927505571989464
+      },
+      "168.jpg": {
+        "jawline": 52.172747448101326,
+        "cheekbones": 45.711517457181635,
+        "eyes_symmetry": 79.93594031163468,
+        "nose_shape": 55.846218018239234,
+        "masculinity": 60.89892745024999,
+        "potential": 81.82275104550811
+      },
+      "169.jpg": {
+        "jawline": 94.66599616174366,
+        "cheekbones": 93.99556469557793,
+        "eyes_symmetry": 96.76831426559586,
+        "nose_shape": 91.19739207916481,
+        "masculinity": 91.70255970328955,
+        "potential": 98.45253011136957
+      },
+      "170.jpg": {
+        "jawline": 92.41616738091095,
+        "cheekbones": 77.42507447724007,
+        "eyes_symmetry": 86.57215182937576,
+        "nose_shape": 91.19360417335334,
+        "masculinity": 84.91791960584122,
+        "potential": 96.75402762842997
+      },
+      "171.jpg": {
+        "jawline": 75.8110172653595,
+        "cheekbones": 88.2594495353342,
+        "eyes_symmetry": 89.49822009075692,
+        "nose_shape": 71.36741884565821,
+        "masculinity": 73.09702863489545,
+        "potential": 96.13135499417697
+      },
+      "172.jpg": {
+        "jawline": 88.418902984284,
+        "cheekbones": 84.12893945743372,
+        "eyes_symmetry": 75.4991440143067,
+        "nose_shape": 69.98005273736563,
+        "masculinity": 95.34623566850769,
+        "potential": 89.47229752415659
+      },
+      "173.jpg": {
+        "jawline": 95.39446123554998,
+        "cheekbones": 90.5362696301006,
+        "eyes_symmetry": 88.61533309705835,
+        "nose_shape": 77.48039415423926,
+        "masculinity": 90.25572193644132,
+        "potential": 96.65562721795828
+      },
+      "174.jpg": {
+        "jawline": 63.33882557983401,
+        "cheekbones": 64.931511570839,
+        "eyes_symmetry": 70.66152261822936,
+        "nose_shape": 77.42520404156623,
+        "masculinity": 48.409864185617366,
+        "potential": 96.11937387316694
+      },
+      "175.jpg": {
+        "jawline": 62.01349832561835,
+        "cheekbones": 70.50970439233559,
+        "eyes_symmetry": 77.40839006494876,
+        "nose_shape": 70.98663703346323,
+        "masculinity": 56.8518190082238,
+        "potential": 97.36947127907013
+      },
+      "176.jpg": {
+        "jawline": 84.97380660518509,
+        "cheekbones": 89.74525710635994,
+        "eyes_symmetry": 90.74211023439473,
+        "nose_shape": 74.23980363517401,
+        "masculinity": 86.79976753914903,
+        "potential": 95.8572662486928
+      },
+      "177.jpg": {
+        "jawline": 89.24677890391182,
+        "cheekbones": 84.84256955550055,
+        "eyes_symmetry": 75.24008107582152,
+        "nose_shape": 68.46693243113513,
+        "masculinity": 93.35335360390414,
+        "potential": 89.88402218001802
+      },
+      "178.jpg": {
+        "jawline": 91.55301608943755,
+        "cheekbones": 88.18184176947197,
+        "eyes_symmetry": 85.97500626099081,
+        "nose_shape": 74.71723138645923,
+        "masculinity": 87.63192635197369,
+        "potential": 96.0430623049686
+      },
+      "179.jpg": {
+        "jawline": 84.88109153155523,
+        "cheekbones": 88.19023901798276,
+        "eyes_symmetry": 71.22794381392993,
+        "nose_shape": 70.25035111625857,
+        "masculinity": 77.61140790736309,
+        "potential": 97.5453960825695
+      },
+      "180.jpg": {
+        "jawline": 85.59997514727934,
+        "cheekbones": 84.19931469468484,
+        "eyes_symmetry": 86.15679464416355,
+        "nose_shape": 84.84345527684619,
+        "masculinity": 67.5283383272476,
+        "potential": 92.73393095511076
+      },
+      "181.jpg": {
+        "jawline": 80.25345159196502,
+        "cheekbones": 74.20266101316814,
+        "eyes_symmetry": 83.35546122491371,
+        "nose_shape": 70.52441986681718,
+        "masculinity": 88.03534898916874,
+        "potential": 97.21428039847672
+      },
+      "182.jpg": {
+        "jawline": 82.19041447714976,
+        "cheekbones": 79.53071990629986,
+        "eyes_symmetry": 69.80425910600471,
+        "nose_shape": 77.69694924642668,
+        "masculinity": 46.64703039811085,
+        "potential": 97.71035928793894
+      },
+      "183.jpg": {
+        "jawline": 98.06249329074488,
+        "cheekbones": 95.18294595137503,
+        "eyes_symmetry": 90.9037170834866,
+        "nose_shape": 79.2883270241127,
+        "masculinity": 93.18376619983127,
+        "potential": 98.41073101907189
+      },
+      "184.jpg": {
+        "jawline": 56.2315832719918,
+        "cheekbones": 50.26996623799597,
+        "eyes_symmetry": 67.14423109964007,
+        "nose_shape": 74.77836523257191,
+        "masculinity": 28.930366456952587,
+        "potential": 98.87717061129979
+      },
+      "185.jpg": {
+        "jawline": 65.17509085649877,
+        "cheekbones": 66.3101968699483,
+        "eyes_symmetry": 78.280663729446,
+        "nose_shape": 71.41104121554704,
+        "masculinity": 45.25500620757775,
+        "potential": 95.87004332439619
+      },
+      "186.jpg": {
+        "jawline": 84.60310576986964,
+        "cheekbones": 78.97063453409268,
+        "eyes_symmetry": 88.1876523162154,
+        "nose_shape": 77.37643569046301,
+        "masculinity": 81.9145097331836,
+        "potential": 94.57957141666185
+      },
+      "187.jpg": {
+        "jawline": 80.03226150978827,
+        "cheekbones": 82.66033134139467,
+        "eyes_symmetry": 83.94481255579419,
+        "nose_shape": 68.82161372492885,
+        "masculinity": 87.6173845014408,
+        "potential": 97.63422091271022
+      },
+      "188.jpg": {
+        "jawline": 86.03402868181459,
+        "cheekbones": 87.60770302880567,
+        "eyes_symmetry": 92.60376934399268,
+        "nose_shape": 85.20424224565294,
+        "masculinity": 89.71147744682703,
+        "potential": 95.13352476831135
+      },
+      "189.jpg": {
+        "jawline": 55.819196975390675,
+        "cheekbones": 60.42196628824443,
+        "eyes_symmetry": 74.26987794764644,
+        "nose_shape": 89.72407069670435,
+        "masculinity": 33.78928937076423,
+        "potential": 99.00180767855987
+      },
+      "190.jpg": {
+        "jawline": 27.651744880162887,
+        "cheekbones": 33.799967962893525,
+        "eyes_symmetry": 43.904572318966274,
+        "nose_shape": 47.859892179056175,
+        "masculinity": 40.27806684963862,
+        "potential": 71.02079583895488
+      },
+      "191.jpg": {
+        "jawline": 62.131801135427125,
+        "cheekbones": 50.59914094759447,
+        "eyes_symmetry": 63.057339368756836,
+        "nose_shape": 72.04680426267154,
+        "masculinity": 26.53327072711065,
+        "potential": 97.37075802746597
+      },
+      "192.jpg": {
+        "jawline": 84.54757086455746,
+        "cheekbones": 82.62228480530987,
+        "eyes_symmetry": 89.9256269387942,
+        "nose_shape": 86.43156072172835,
+        "masculinity": 76.7328679609877,
+        "potential": 95.65369075588147
+      },
+      "193.jpg": {
+        "jawline": 74.84403718855181,
+        "cheekbones": 76.4520550406495,
+        "eyes_symmetry": 83.68983031420296,
+        "nose_shape": 74.00611263429768,
+        "masculinity": 84.69078012085043,
+        "potential": 97.10372767710078
+      },
+      "194.jpg": {
+        "jawline": 84.13058925802949,
+        "cheekbones": 81.50124791086309,
+        "eyes_symmetry": 88.01384501443894,
+        "nose_shape": 88.52512000403432,
+        "masculinity": 77.62020242794733,
+        "potential": 96.65674396057949
+      },
+      "195.jpg": {
+        "jawline": 71.1616402801703,
+        "cheekbones": 73.44165555924278,
+        "eyes_symmetry": 84.26059962177811,
+        "nose_shape": 76.58616583367719,
+        "masculinity": 54.96186952117587,
+        "potential": 98.16285909111566
+      },
+      "196.jpg": {
+        "jawline": 93.89728776845149,
+        "cheekbones": 87.96778193493121,
+        "eyes_symmetry": 90.53844292431481,
+        "nose_shape": 89.89753541971717,
+        "masculinity": 86.57822612973897,
+        "potential": 98.30884976666955
+      },
+      "197.jpg": {
+        "jawline": 70.79755080644586,
+        "cheekbones": 76.18092764627849,
+        "eyes_symmetry": 87.44321772997559,
+        "nose_shape": 89.24822395123698,
+        "masculinity": 68.3747164595019,
+        "potential": 100.0
+      },
+      "198.jpg": {
+        "jawline": 75.11612292310232,
+        "cheekbones": 76.54290508983144,
+        "eyes_symmetry": 80.65325290929252,
+        "nose_shape": 85.89213429581943,
+        "masculinity": 74.23343266123324,
+        "potential": 92.98308647264079
+      },
+      "199.jpg": {
+        "jawline": 65.09504009897277,
+        "cheekbones": 69.64058594303056,
+        "eyes_symmetry": 77.86509030137253,
+        "nose_shape": 66.27303503162628,
+        "masculinity": 64.06304444543107,
+        "potential": 88.52845441827881
+      },
+      "200.jpg": {
+        "jawline": 82.29040074148801,
+        "cheekbones": 56.55922339947453,
+        "eyes_symmetry": 87.55037095908528,
+        "nose_shape": 63.87688903124757,
+        "masculinity": 62.394960923074784,
+        "potential": 95.6703696707206
+      },
+      "201.jpg": {
+        "jawline": 35.18270764033,
+        "cheekbones": 40.168243678534154,
+        "eyes_symmetry": 62.93438299979049,
+        "nose_shape": 66.38419258665925,
+        "masculinity": 59.20199599551648,
+        "potential": 94.89936740772906
+      },
+      "202.jpg": {
+        "jawline": 72.33508385929184,
+        "cheekbones": 72.82326004997397,
+        "eyes_symmetry": 63.76021055105431,
+        "nose_shape": 48.312619735831134,
+        "masculinity": 68.99743669989874,
+        "potential": 97.30147229244328
+      },
+      "203.jpg": {
+        "jawline": 91.73071650570377,
+        "cheekbones": 93.71926437722925,
+        "eyes_symmetry": 81.25093948656637,
+        "nose_shape": 72.130756725098,
+        "masculinity": 66.15774041553347,
+        "potential": 98.404016057083
+      },
+      "204.jpg": {
+        "jawline": 64.15472838078277,
+        "cheekbones": 66.72925296998041,
+        "eyes_symmetry": 77.32954255085724,
+        "nose_shape": 74.73833381697251,
+        "masculinity": 72.86837598183945,
+        "potential": 96.54371580346678
+      },
+      "205.jpg": {
+        "jawline": 86.82832535060645,
+        "cheekbones": 89.16081369391453,
+        "eyes_symmetry": 91.83535297972665,
+        "nose_shape": 77.61671333375571,
+        "masculinity": 91.77083277182206,
+        "potential": 97.52409055692162
+      },
+      "206.jpg": {
+        "jawline": 86.52621307557513,
+        "cheekbones": 85.37908555537334,
+        "eyes_symmetry": 87.92405985105505,
+        "nose_shape": 74.13961554081135,
+        "masculinity": 81.65336627713897,
+        "potential": 97.37991202708007
+      },
+      "207.jpg": {
+        "jawline": 84.32687247166497,
+        "cheekbones": 79.06586464651944,
+        "eyes_symmetry": 84.16694886457898,
+        "nose_shape": 87.33769552419459,
+        "masculinity": 65.84066462324147,
+        "potential": 98.30319231322142
+      },
+      "208.jpg": {
+        "jawline": 79.7117780070039,
+        "cheekbones": 81.6195061090997,
+        "eyes_symmetry": 86.34744025896629,
+        "nose_shape": 76.00767637229903,
+        "masculinity": 79.25907589031745,
+        "potential": 91.12723271414552
+      },
+      "209.jpg": {
+        "jawline": 80.71185801673981,
+        "cheekbones": 76.69583763013618,
+        "eyes_symmetry": 81.50247612401304,
+        "nose_shape": 79.33077784994202,
+        "masculinity": 84.66702993321178,
+        "potential": 98.00017166071247
+      },
+      "210.jpg": {
+        "jawline": 86.51819167339087,
+        "cheekbones": 84.0834410108025,
+        "eyes_symmetry": 81.54893713331681,
+        "nose_shape": 72.7205408280716,
+        "masculinity": 71.14394126362569,
+        "potential": 97.38765906819322
+      },
+      "211.jpg": {
+        "jawline": 51.97446426403987,
+        "cheekbones": 62.80518265689123,
+        "eyes_symmetry": 72.18681788241967,
+        "nose_shape": 72.80929158517093,
+        "masculinity": 34.76307546379598,
+        "potential": 97.443994342573
+      },
+      "212.jpg": {
+        "jawline": 79.47949853826272,
+        "cheekbones": 73.99194909500287,
+        "eyes_symmetry": 90.32327486479434,
+        "nose_shape": 86.91337464003986,
+        "masculinity": 75.79053710383762,
+        "potential": 99.08236381417422
+      },
+      "213.jpg": {
+        "jawline": 87.12630051039245,
+        "cheekbones": 88.838432488027,
+        "eyes_symmetry": 86.01533242358542,
+        "nose_shape": 68.83375654962795,
+        "masculinity": 80.85435564401064,
+        "potential": 99.03382692306197
+      },
+      "214.jpg": {
+        "jawline": 75.55028202463872,
+        "cheekbones": 66.66061695419772,
+        "eyes_symmetry": 77.15430830284217,
+        "nose_shape": 73.7588995849515,
+        "masculinity": 77.01269906544242,
+        "potential": 98.16865560557156
+      },
+      "215.jpg": {
+        "jawline": 81.70236713047987,
+        "cheekbones": 76.2717399596396,
+        "eyes_symmetry": 88.85691663014472,
+        "nose_shape": 88.05667588213203,
+        "masculinity": 66.70546291265006,
+        "potential": 95.51432047551467
+      },
+      "216.jpg": {
+        "jawline": 60.668157201546066,
+        "cheekbones": 59.624785097693845,
+        "eyes_symmetry": 63.00648028345014,
+        "nose_shape": 72.44814473624072,
+        "masculinity": 38.325884140019774,
+        "potential": 98.267035939797
+      },
+      "217.jpg": {
+        "jawline": 76.75088638159582,
+        "cheekbones": 80.24934689301759,
+        "eyes_symmetry": 82.5676776011062,
+        "nose_shape": 83.35884139484538,
+        "masculinity": 82.1777708099553,
+        "potential": 95.73530185947334
+      },
+      "218.jpg": {
+        "jawline": 84.10161731119098,
+        "cheekbones": 71.02881211799212,
+        "eyes_symmetry": 85.2554747226851,
+        "nose_shape": 92.14614686860222,
+        "masculinity": 87.77616621033063,
+        "potential": 93.58768346738836
+      },
+      "219.jpg": {
+        "jawline": 86.71831307636542,
+        "cheekbones": 56.977959298886404,
+        "eyes_symmetry": 69.7250445180649,
+        "nose_shape": 64.87577485619958,
+        "masculinity": 68.67584824211909,
+        "potential": 98.06679590951198
+      },
+      "220.jpg": {
+        "jawline": 87.95491578917174,
+        "cheekbones": 72.13602466080634,
+        "eyes_symmetry": 91.97041465121971,
+        "nose_shape": 76.93749250317748,
+        "masculinity": 83.75246235360808,
+        "potential": 98.15695736384181
+      },
+      "221.jpg": {
+        "jawline": 83.16898693605887,
+        "cheekbones": 72.73026625794397,
+        "eyes_symmetry": 79.18464171812829,
+        "nose_shape": 83.19441640183311,
+        "masculinity": 74.95164529953054,
+        "potential": 98.80315706451262
+      },
+      "222.jpg": {
+        "jawline": 80.69215332483714,
+        "cheekbones": 69.50562900395373,
+        "eyes_symmetry": 78.56222452945883,
+        "nose_shape": 73.5108951653835,
+        "masculinity": 94.99550559786736,
+        "potential": 97.91285848949305
+      },
+      "223.jpg": {
+        "jawline": 87.75971023810139,
+        "cheekbones": 72.79525811456591,
+        "eyes_symmetry": 76.4345661152649,
+        "nose_shape": 85.83797450425315,
+        "masculinity": 76.80144841344685,
+        "potential": 97.68016170652217
+      },
+      "224.jpg": {
+        "jawline": 64.60003333954657,
+        "cheekbones": 78.69549120419283,
+        "eyes_symmetry": 57.9860721380524,
+        "nose_shape": 48.569800184177176,
+        "masculinity": 68.9856158582554,
+        "potential": 89.53953637314397
+      },
+      "225.jpg": {
+        "jawline": 84.9739948033095,
+        "cheekbones": 70.12517168789061,
+        "eyes_symmetry": 84.2088939108752,
+        "nose_shape": 72.74545093796668,
+        "masculinity": 74.3883852517909,
+        "potential": 97.95759424586176
+      },
+      "226.jpg": {
+        "jawline": 80.22191689094899,
+        "cheekbones": 82.99499335590154,
+        "eyes_symmetry": 85.20022095161336,
+        "nose_shape": 74.6750216615732,
+        "masculinity": 81.45317978420537,
+        "potential": 93.20515951904477
+      },
+      "227.jpg": {
+        "jawline": 66.15481990054926,
+        "cheekbones": 69.79531351698292,
+        "eyes_symmetry": 60.59780771990906,
+        "nose_shape": 65.37649641390925,
+        "masculinity": 35.13708507547922,
+        "potential": 91.70020971277562
+      },
+      "228.jpg": {
+        "jawline": 82.40875989257977,
+        "cheekbones": 79.75385922263965,
+        "eyes_symmetry": 89.6849256078422,
+        "nose_shape": 85.78354283453889,
+        "masculinity": 83.80136199404524,
+        "potential": 91.69830976804677
+      },
+      "229.jpg": {
+        "jawline": 91.84405551294901,
+        "cheekbones": 86.78992070696337,
+        "eyes_symmetry": 90.91088233075611,
+        "nose_shape": 84.40759257281566,
+        "masculinity": 85.1008619045138,
+        "potential": 97.52748316576513
+      },
+      "230.jpg": {
+        "jawline": 88.08525905845924,
+        "cheekbones": 73.30909606260028,
+        "eyes_symmetry": 90.96584368135184,
+        "nose_shape": 69.86984848841169,
+        "masculinity": 88.52273537727827,
+        "potential": 90.0836304121805
+      },
+      "231.jpg": {
+        "jawline": 73.53791137571967,
+        "cheekbones": 71.54473105520225,
+        "eyes_symmetry": 83.84252101925537,
+        "nose_shape": 69.58617903391696,
+        "masculinity": 77.52912338444946,
+        "potential": 91.6153619002476
+      },
+      "232.jpg": {
+        "jawline": 84.43086358082603,
+        "cheekbones": 80.70817423213094,
+        "eyes_symmetry": 88.33983550298454,
+        "nose_shape": 87.60903293330318,
+        "masculinity": 86.90789298307084,
+        "potential": 95.44362782631026
+      },
+      "233.jpg": {
+        "jawline": 90.854670276352,
+        "cheekbones": 78.39261393860424,
+        "eyes_symmetry": 79.61157398106889,
+        "nose_shape": 71.87135273408845,
+        "masculinity": 74.69900663148137,
+        "potential": 99.02457568441837
+      },
+      "234.jpg": {
+        "jawline": 60.37288952363258,
+        "cheekbones": 59.271956528101946,
+        "eyes_symmetry": 71.81425707336876,
+        "nose_shape": 54.10978948284123,
+        "masculinity": 67.08324272369546,
+        "potential": 94.03790372917487
+      },
+      "235.jpg": {
+        "jawline": 56.596916259606814,
+        "cheekbones": 46.16899569871317,
+        "eyes_symmetry": 51.99942697217648,
+        "nose_shape": 34.58291823074112,
+        "masculinity": 56.45119526026285,
+        "potential": 84.45807710503156
+      },
+      "236.jpg": {
+        "jawline": 87.46239121060063,
+        "cheekbones": 79.47127439855615,
+        "eyes_symmetry": 90.01773447557825,
+        "nose_shape": 75.12778616170696,
+        "masculinity": 80.28430657088991,
+        "potential": 92.42984538111212
+      },
+      "237.jpg": {
+        "jawline": 94.49629150315882,
+        "cheekbones": 83.1257403733662,
+        "eyes_symmetry": 94.0221589994077,
+        "nose_shape": 85.09588260225422,
+        "masculinity": 87.3439973614969,
+        "potential": 94.77808130027167
+      },
+      "238.jpg": {
+        "jawline": 54.89677371421729,
+        "cheekbones": 56.38623797450686,
+        "eyes_symmetry": 71.81691122310995,
+        "nose_shape": 62.7153935391031,
+        "masculinity": 67.33234515540157,
+        "potential": 85.81718672965994
+      },
+      "239.jpg": {
+        "jawline": 51.39711700093561,
+        "cheekbones": 54.69692100920774,
+        "eyes_symmetry": 63.656913677898196,
+        "nose_shape": 66.78569603483967,
+        "masculinity": 67.46725418678157,
+        "potential": 84.62969234745515
+      },
+      "240.jpg": {
+        "jawline": 66.42252952117197,
+        "cheekbones": 68.22669504294075,
+        "eyes_symmetry": 59.563014536393716,
+        "nose_shape": 73.1779004907736,
+        "masculinity": 37.3604710393884,
+        "potential": 90.87796821305375
+      },
+      "241.jpg": {
+        "jawline": 84.417450118535,
+        "cheekbones": 78.05730594060574,
+        "eyes_symmetry": 73.56394277044075,
+        "nose_shape": 65.72879100544185,
+        "masculinity": 74.30264198911546,
+        "potential": 96.71294863048021
+      },
+      "242.jpg": {
+        "jawline": 82.6705446516021,
+        "cheekbones": 80.01912662447829,
+        "eyes_symmetry": 87.81538177962574,
+        "nose_shape": 81.02983553333462,
+        "masculinity": 71.5674702298527,
+        "potential": 88.03077267732169
+      },
+      "243.jpg": {
+        "jawline": 82.63902707733456,
+        "cheekbones": 90.4513442132623,
+        "eyes_symmetry": 87.15288424907062,
+        "nose_shape": 85.42965772910844,
+        "masculinity": 76.09445223672499,
+        "potential": 94.81927924170954
+      },
+      "244.jpg": {
+        "jawline": 72.9515784843403,
+        "cheekbones": 61.72978172290198,
+        "eyes_symmetry": 87.0957218124721,
+        "nose_shape": 77.3588350208558,
+        "masculinity": 67.03757255957807,
+        "potential": 90.32005267138148
+      },
+      "245.jpg": {
+        "jawline": 87.39570817298474,
+        "cheekbones": 86.32043718288483,
+        "eyes_symmetry": 87.76388699763993,
+        "nose_shape": 83.1209762182737,
+        "masculinity": 80.67419079148749,
+        "potential": 90.51123356606578
+      },
+      "246.jpg": {
+        "jawline": 48.23079161813574,
+        "cheekbones": 54.21614139745166,
+        "eyes_symmetry": 44.64902770620421,
+        "nose_shape": 68.48267194451367,
+        "masculinity": 51.42457806975111,
+        "potential": 80.72178273703214
+      },
+      "247.jpg": {
+        "jawline": 83.74443732187366,
+        "cheekbones": 80.67968315902648,
+        "eyes_symmetry": 85.9388871418784,
+        "nose_shape": 77.97156132394637,
+        "masculinity": 76.03716768649954,
+        "potential": 93.64419865790178
+      },
+      "248.jpg": {
+        "jawline": 48.71359309003619,
+        "cheekbones": 56.49095010130269,
+        "eyes_symmetry": 69.47750119772935,
+        "nose_shape": 69.5516662943896,
+        "masculinity": 63.60296783796457,
+        "potential": 88.4858596116195
+      },
+      "249.jpg": {
+        "jawline": 84.88295882988064,
+        "cheekbones": 77.69039589940931,
+        "eyes_symmetry": 89.87903005941253,
+        "nose_shape": 77.81574499590579,
+        "masculinity": 78.71737523389469,
+        "potential": 93.90693175407144
+      },
+      "250.jpg": {
+        "jawline": 46.793243306054784,
+        "cheekbones": 50.002145282231815,
+        "eyes_symmetry": 57.85535824448686,
+        "nose_shape": 43.57884374559351,
+        "masculinity": 60.82381659975799,
+        "potential": 90.65186984735914
+      },
+      "251.jpg": {
+        "jawline": 67.43382780505087,
+        "cheekbones": 68.58351842341366,
+        "eyes_symmetry": 82.21479033480641,
+        "nose_shape": 77.4137412482966,
+        "masculinity": 83.20756159674828,
+        "potential": 95.82760862584104
+      },
+      "252.jpg": {
+        "jawline": 86.11870909097469,
+        "cheekbones": 89.89753441630256,
+        "eyes_symmetry": 80.41164260996737,
+        "nose_shape": 78.81480278725486,
+        "masculinity": 80.76001987932086,
+        "potential": 94.30590005732105
+      },
+      "253.jpg": {
+        "jawline": 81.78084112260368,
+        "cheekbones": 80.68491685085323,
+        "eyes_symmetry": 73.87790670494977,
+        "nose_shape": 75.34936981532768,
+        "masculinity": 46.16155307370772,
+        "potential": 95.57764241647297
+      },
+      "254.jpg": {
+        "jawline": 63.52795874464811,
+        "cheekbones": 70.06049601176598,
+        "eyes_symmetry": 81.0388279857776,
+        "nose_shape": 71.27510725924107,
+        "masculinity": 78.5496451455621,
+        "potential": 95.65272328935946
+      },
+      "255.jpg": {
+        "jawline": 83.15219344254649,
+        "cheekbones": 81.28353298344759,
+        "eyes_symmetry": 88.72749816840093,
+        "nose_shape": 74.7244660021323,
+        "masculinity": 81.7703713544492,
+        "potential": 96.31308768594566
+      },
+      "256.jpg": {
+        "jawline": 69.799163733002,
+        "cheekbones": 71.11263011499877,
+        "eyes_symmetry": 85.21976792189946,
+        "nose_shape": 77.90983799879643,
+        "masculinity": 83.16097910109856,
+        "potential": 97.83883291757172
+      },
+      "257.jpg": {
+        "jawline": 39.99230443609877,
+        "cheekbones": 44.0302337780681,
+        "eyes_symmetry": 53.401736515627974,
+        "nose_shape": 49.14818849828363,
+        "masculinity": 49.91368968209389,
+        "potential": 81.83029594181029
+      },
+      "258.jpg": {
+        "jawline": 87.29670637044309,
+        "cheekbones": 89.37526921349856,
+        "eyes_symmetry": 91.45340707190464,
+        "nose_shape": 88.29540748069313,
+        "masculinity": 85.45568547371455,
+        "potential": 96.51845735032478
+      },
+      "259.jpg": {
+        "jawline": 88.84366574555746,
+        "cheekbones": 85.41540052101658,
+        "eyes_symmetry": 90.6045846221703,
+        "nose_shape": 71.45093888791602,
+        "masculinity": 81.92715647734576,
+        "potential": 97.02101982204401
+      },
+      "260.jpg": {
+        "jawline": 78.11973144740314,
+        "cheekbones": 63.78031843448408,
+        "eyes_symmetry": 76.98510399621638,
+        "nose_shape": 81.8396220492777,
+        "masculinity": 75.826807171089,
+        "potential": 93.4622003852837
+      },
+      "261.jpg": {
+        "jawline": 73.09667036131816,
+        "cheekbones": 79.1243859593716,
+        "eyes_symmetry": 86.08699243797172,
+        "nose_shape": 80.77672225249347,
+        "masculinity": 76.63019603016454,
+        "potential": 94.08355721683613
+      },
+      "262.jpg": {
+        "jawline": 77.74527149004044,
+        "cheekbones": 79.47858421897705,
+        "eyes_symmetry": 90.75520869740306,
+        "nose_shape": 74.21762912191384,
+        "masculinity": 79.65685824029713,
+        "potential": 93.07453487279604
+      },
+      "263.jpg": {
+        "jawline": 78.1451925825816,
+        "cheekbones": 66.14776906051857,
+        "eyes_symmetry": 87.12838137139278,
+        "nose_shape": 69.5156652289893,
+        "masculinity": 76.25007985148551,
+        "potential": 94.73308438325078
+      },
+      "264.jpg": {
+        "jawline": 88.29167984289458,
+        "cheekbones": 88.27528539857435,
+        "eyes_symmetry": 88.4817966839479,
+        "nose_shape": 64.06899570573007,
+        "masculinity": 69.87709566105339,
+        "potential": 92.64592064552393
+      },
+      "265.jpg": {
+        "jawline": 64.4546325409341,
+        "cheekbones": 74.09703119576722,
+        "eyes_symmetry": 78.81021345803683,
+        "nose_shape": 64.95786617876291,
+        "masculinity": 76.00237105896662,
+        "potential": 90.01146045563267
+      },
+      "266.jpg": {
+        "jawline": 87.2214341623862,
+        "cheekbones": 83.72982937914435,
+        "eyes_symmetry": 87.5102785617596,
+        "nose_shape": 76.45695274758054,
+        "masculinity": 73.30869012456019,
+        "potential": 93.74230912183029
+      },
+      "267.jpg": {
+        "jawline": 68.61928482510045,
+        "cheekbones": 72.899149800062,
+        "eyes_symmetry": 79.45688480454045,
+        "nose_shape": 75.13108691745737,
+        "masculinity": 78.44495694708985,
+        "potential": 92.74654278217423
+      },
+      "268.jpg": {
+        "jawline": 81.78718363148842,
+        "cheekbones": 76.11730602828938,
+        "eyes_symmetry": 79.49785662001071,
+        "nose_shape": 71.7434675415705,
+        "masculinity": 75.46476102859428,
+        "potential": 95.6788544537521
+      },
+      "269.jpg": {
+        "jawline": 86.23732860931264,
+        "cheekbones": 84.21049870300125,
+        "eyes_symmetry": 86.70690659561197,
+        "nose_shape": 81.35393003904069,
+        "masculinity": 76.75241879468163,
+        "potential": 98.73153522903999
+      },
+      "270.jpg": {
+        "jawline": 63.30429125596991,
+        "cheekbones": 62.74382666077062,
+        "eyes_symmetry": 78.5070319461254,
+        "nose_shape": 62.69225431689532,
+        "masculinity": 77.28424887713393,
+        "potential": 83.46977501247923
+      },
+      "271.jpg": {
+        "jawline": 74.63423891803772,
+        "cheekbones": 67.21101852106207,
+        "eyes_symmetry": 61.610064458163684,
+        "nose_shape": 59.35378507418997,
+        "masculinity": 52.11465625811365,
+        "potential": 92.34187665614695
+      },
+      "272.jpg": {
+        "jawline": 59.900869036356234,
+        "cheekbones": 59.56860784647043,
+        "eyes_symmetry": 73.00882381867426,
+        "nose_shape": 71.38341703267852,
+        "masculinity": 75.47869486256069,
+        "potential": 89.13070560007831
+      },
+      "273.jpg": {
+        "jawline": 74.22654048655764,
+        "cheekbones": 75.44448863125993,
+        "eyes_symmetry": 71.65513868115143,
+        "nose_shape": 58.65005238759379,
+        "masculinity": 75.9204136645094,
+        "potential": 85.94162352836342
+      },
+      "274.jpg": {
+        "jawline": 91.19722826388298,
+        "cheekbones": 96.50016970391364,
+        "eyes_symmetry": 90.2298353629983,
+        "nose_shape": 89.74094413505765,
+        "masculinity": 88.15301946313289,
+        "potential": 97.96180299521987
+      },
+      "275.jpg": {
+        "jawline": 75.01066296747163,
+        "cheekbones": 85.41555905285072,
+        "eyes_symmetry": 84.87256110232958,
+        "nose_shape": 70.51597014208154,
+        "masculinity": 78.5849083966944,
+        "potential": 93.41841774096717
+      },
+      "276.jpg": {
+        "jawline": 62.509757439411416,
+        "cheekbones": 64.79010930720546,
+        "eyes_symmetry": 67.18521817330632,
+        "nose_shape": 76.54371379895167,
+        "masculinity": 74.91963060721864,
+        "potential": 88.07772215910802
+      },
+      "277.jpg": {
+        "jawline": 74.11542814331953,
+        "cheekbones": 66.32579378920367,
+        "eyes_symmetry": 84.16781312899319,
+        "nose_shape": 77.03828588070557,
+        "masculinity": 78.27009774440516,
+        "potential": 98.04332757910568
+      },
+      "278.jpg": {
+        "jawline": 52.30921097316398,
+        "cheekbones": 66.83496951975755,
+        "eyes_symmetry": 68.11792645314608,
+        "nose_shape": 75.22151824391622,
+        "masculinity": 78.29087212998343,
+        "potential": 95.12729757814488
+      },
+      "279.jpg": {
+        "jawline": 35.84273676124953,
+        "cheekbones": 30.756301519144998,
+        "eyes_symmetry": 42.34587881294651,
+        "nose_shape": 33.78898125534742,
+        "masculinity": 45.89140954811889,
+        "potential": 79.25982070621001
+      },
+      "280.jpg": {
+        "jawline": 97.5569610130951,
+        "cheekbones": 93.23033367204745,
+        "eyes_symmetry": 91.09473266779929,
+        "nose_shape": 83.187895536121,
+        "masculinity": 93.03198743653428,
+        "potential": 99.15958846828734
+      },
+      "281.jpg": {
+        "jawline": 39.48919720602558,
+        "cheekbones": 47.741661338292296,
+        "eyes_symmetry": 59.934316625144405,
+        "nose_shape": 51.2929762404287,
+        "masculinity": 73.40449038364486,
+        "potential": 85.42806667938582
+      },
+      "282.jpg": {
+        "jawline": 57.09100449296355,
+        "cheekbones": 57.942679237961244,
+        "eyes_symmetry": 75.96427697516151,
+        "nose_shape": 69.56539895190772,
+        "masculinity": 71.60260091034765,
+        "potential": 93.9987429550549
+      },
+      "283.jpg": {
+        "jawline": 68.40515130957561,
+        "cheekbones": 61.32220776897504,
+        "eyes_symmetry": 75.94236092000456,
+        "nose_shape": 61.12137427476803,
+        "masculinity": 67.45574822353737,
+        "potential": 83.20049136224186
+      },
+      "284.jpg": {
+        "jawline": 83.09991574453777,
+        "cheekbones": 80.84386880408435,
+        "eyes_symmetry": 79.21723472968755,
+        "nose_shape": 80.1584701362379,
+        "masculinity": 81.34382269946411,
+        "potential": 88.18402370922566
+      },
+      "285.jpg": {
+        "jawline": 77.05485321500264,
+        "cheekbones": 70.21510821317315,
+        "eyes_symmetry": 80.97215424501816,
+        "nose_shape": 79.43534051465377,
+        "masculinity": 85.97822337907823,
+        "potential": 86.55358586240641
+      },
+      "286.jpg": {
+        "jawline": 79.1531665851434,
+        "cheekbones": 76.81663894051032,
+        "eyes_symmetry": 80.44329765676001,
+        "nose_shape": 71.52843171365306,
+        "masculinity": 88.80487013482893,
+        "potential": 90.96905701805592
+      },
+      "287.jpg": {
+        "jawline": 59.20343526826906,
+        "cheekbones": 71.85636991330948,
+        "eyes_symmetry": 73.1976715580684,
+        "nose_shape": 71.06659943668859,
+        "masculinity": 71.32423384653707,
+        "potential": 88.89055923859274
+      },
+      "288.jpg": {
+        "jawline": 66.17090717194657,
+        "cheekbones": 63.00879386367581,
+        "eyes_symmetry": 81.67244481429444,
+        "nose_shape": 80.69965406638823,
+        "masculinity": 75.88733628174299,
+        "potential": 97.44252371529463
+      },
+      "289.jpg": {
+        "jawline": 86.12676850787011,
+        "cheekbones": 77.46200772946555,
+        "eyes_symmetry": 82.80414312828826,
+        "nose_shape": 92.32415974641148,
+        "masculinity": 80.332382053124,
+        "potential": 98.6527680062829
+      },
+      "290.jpg": {
+        "jawline": 46.84983315099937,
+        "cheekbones": 43.13745316082547,
+        "eyes_symmetry": 75.21896768206923,
+        "nose_shape": 63.03293938513553,
+        "masculinity": 65.61113250277789,
+        "potential": 88.41448539848635
+      },
+      "291.jpg": {
+        "jawline": 77.61027527337467,
+        "cheekbones": 74.05799263625109,
+        "eyes_symmetry": 85.33472763011547,
+        "nose_shape": 78.41195567720102,
+        "masculinity": 78.85070236206779,
+        "potential": 94.99637191667978
+      },
+      "292.jpg": {
+        "jawline": 75.39591584757241,
+        "cheekbones": 76.90087805790509,
+        "eyes_symmetry": 88.59069085583418,
+        "nose_shape": 84.63756144186354,
+        "masculinity": 82.20420362047972,
+        "potential": 94.82927927272402
+      },
+      "293.jpg": {
+        "jawline": 83.15901259200695,
+        "cheekbones": 76.89109683260699,
+        "eyes_symmetry": 85.28834016013735,
+        "nose_shape": 86.46928235720772,
+        "masculinity": 82.10192095736367,
+        "potential": 93.03355141374696
+      },
+      
+      "295.jpg": {
+        "jawline": 53.45643757798509,
+        "cheekbones": 58.89345195798113,
+        "eyes_symmetry": 72.60613386398522,
+        "nose_shape": 58.86083857683066,
+        "masculinity": 76.83001544448067,
+        "potential": 89.63992887593548
+      },
+      "296.jpg": {
+        "jawline": 96.5172202411947,
+        "cheekbones": 92.29855895746672,
+        "eyes_symmetry": 87.36482856348555,
+        "nose_shape": 83.26524248157007,
+        "masculinity": 90.56417764379775,
+        "potential": 97.06450963663134
+      },
+      "297.jpg": {
+        "jawline": 48.81085317627142,
+        "cheekbones": 55.20454205149016,
+        "eyes_symmetry": 64.35835302352629,
+        "nose_shape": 64.78151486351202,
+        "masculinity": 58.59901444749575,
+        "potential": 85.5877123939027
+      },
+      "298.jpg": {
+        "jawline": 56.513477361160994,
+        "cheekbones": 71.81464171249152,
+        "eyes_symmetry": 68.41132223610282,
+        "nose_shape": 78.91407204737337,
+        "masculinity": 70.84613149033719,
+        "potential": 95.3656032568071
+      },
+      "299.jpg": {
+        "jawline": 30.873406140486736,
+        "cheekbones": 42.175493707163945,
+        "eyes_symmetry": 51.9019761564389,
+        "nose_shape": 54.7662690498642,
+        "masculinity": 63.68131054194498,
+        "potential": 86.11922105859635
+      },
+      "300.jpg": {
+        "jawline": 46.32927588730888,
+        "cheekbones": 58.25568012695272,
+        "eyes_symmetry": 61.768879504417384,
+        "nose_shape": 61.8861000979062,
+        "masculinity": 69.29548931567683,
+        "potential": 94.58871919026953
+      },
+      "301.jpg": {
+        "jawline": 91.06865484870562,
+        "cheekbones": 83.57574535772639,
+        "eyes_symmetry": 83.5126691502705,
+        "nose_shape": 76.81985565260985,
+        "masculinity": 78.86864520811619,
+        "potential": 98.69893767326404
+      },
+      "302.jpg": {
+        "jawline": 70.5142297860906,
+        "cheekbones": 77.6269845787879,
+        "eyes_symmetry": 87.93613510003317,
+        "nose_shape": 83.60182332507745,
+        "masculinity": 81.21437526655673,
+        "potential": 95.53415899001999
+      },
+      "303.jpg": {
+        "jawline": 77.42902513698166,
+        "cheekbones": 80.71609687941155,
+        "eyes_symmetry": 80.64558666377708,
+        "nose_shape": 75.32809164749126,
+        "masculinity": 76.88013246717681,
+        "potential": 94.68671084674314
+      },
+      "304.jpg": {
+        "jawline": 53.03763130027908,
+        "cheekbones": 45.94837484015494,
+        "eyes_symmetry": 68.39703784955954,
+        "nose_shape": 60.19172806128042,
+        "masculinity": 65.46177503964792,
+        "potential": 87.93430740198556
+      },
+      "305.jpg": {
+        "jawline": 81.93014958463235,
+        "cheekbones": 78.20343608171629,
+        "eyes_symmetry": 67.6868589100308,
+        "nose_shape": 70.35494420258738,
+        "masculinity": 81.43022284817036,
+        "potential": 93.43122962675633
+      },
+      "306.jpg": {
+        "jawline": 82.27421195206983,
+        "cheekbones": 86.13820234586102,
+        "eyes_symmetry": 84.56520216651494,
+        "nose_shape": 86.96461612139058,
+        "masculinity": 73.68100570724073,
+        "potential": 93.38532213580851
+      },
+      "307.jpg": {
+        "jawline": 58.842589957967,
+        "cheekbones": 58.20661327032203,
+        "eyes_symmetry": 71.8177532772562,
+        "nose_shape": 65.90413749944226,
+        "masculinity": 57.841639293808775,
+        "potential": 91.2586193439725
+      },
+      "308.jpg": {
+        "jawline": 81.20353632419233,
+        "cheekbones": 81.97062575795343,
+        "eyes_symmetry": 80.31749662057133,
+        "nose_shape": 85.86588768613157,
+        "masculinity": 85.90814220660275,
+        "potential": 98.51538300762171
+      },
+      "309.jpg": {
+        "jawline": 57.83045217022554,
+        "cheekbones": 54.506863620135746,
+        "eyes_symmetry": 69.43122544822802,
+        "nose_shape": 50.76828123454021,
+        "masculinity": 67.01133363801193,
+        "potential": 74.94471603658545
+      },
+      "310.jpg": {
+        "jawline": 68.51352110076,
+        "cheekbones": 61.29550648305722,
+        "eyes_symmetry": 64.47726473872387,
+        "nose_shape": 70.65535115040771,
+        "masculinity": 51.83058401673965,
+        "potential": 93.73255758882883
+      },
+      "311.jpg": {
+        "jawline": 83.42094233765486,
+        "cheekbones": 84.64065034365416,
+        "eyes_symmetry": 85.07845197122086,
+        "nose_shape": 77.09465293638836,
+        "masculinity": 87.23550262860962,
+        "potential": 92.69352654338327
+      },
+      "312.jpg": {
+        "jawline": 57.41537225087388,
+        "cheekbones": 70.24236412632604,
+        "eyes_symmetry": 86.09825040170139,
+        "nose_shape": 68.93754347950322,
+        "masculinity": 80.76323100253548,
+        "potential": 97.47934178303151
+      },
+      "313.jpg": {
+        "jawline": 72.83238669620462,
+        "cheekbones": 69.4345636229846,
+        "eyes_symmetry": 70.0641677853746,
+        "nose_shape": 75.89913552651863,
+        "masculinity": 48.36154570960431,
+        "potential": 92.8905085431814
+      },
+      "314.jpg": {
+        "jawline": 83.85027448724819,
+        "cheekbones": 78.80626705491203,
+        "eyes_symmetry": 75.26931209027505,
+        "nose_shape": 76.92090926571956,
+        "masculinity": 75.27066333773405,
+        "potential": 94.19199747362916
+      },
+      "315.jpg": {
+        "jawline": 76.3188375440344,
+        "cheekbones": 79.68163950736582,
+        "eyes_symmetry": 73.940788922204,
+        "nose_shape": 66.05210695257854,
+        "masculinity": 77.27931644357662,
+        "potential": 94.10287451829093
+      },
+      "316.jpg": {
+        "jawline": 84.9903852448775,
+        "cheekbones": 87.1981107644112,
+        "eyes_symmetry": 89.25544923674501,
+        "nose_shape": 73.35763437653895,
+        "masculinity": 74.10748941860412,
+        "potential": 99.11456240276374
+      },
+      "317.jpg": {
+        "jawline": 74.46713657363262,
+        "cheekbones": 71.22083995305336,
+        "eyes_symmetry": 78.309096109666,
+        "nose_shape": 66.24542043362713,
+        "masculinity": 87.18747096090213,
+        "potential": 91.21135674862244
+      },
+      "318.jpg": {
+        "jawline": 73.74359315242324,
+        "cheekbones": 78.70653059972247,
+        "eyes_symmetry": 77.47708789568327,
+        "nose_shape": 79.11630486299237,
+        "masculinity": 70.91737965209369,
+        "potential": 98.8667521286888
+      },
+      "319.jpg": {
+        "jawline": 34.09856655276626,
+        "cheekbones": 36.02279319374999,
+        "eyes_symmetry": 53.0908921796439,
+        "nose_shape": 48.097423116710296,
+        "masculinity": 47.8956152962986,
+        "potential": 84.44652593856509
+      },
+      "320.jpg": {
+        "jawline": 43.25432656673716,
+        "cheekbones": 52.94468230756039,
+        "eyes_symmetry": 64.46100485828491,
+        "nose_shape": 52.47967363156213,
+        "masculinity": 63.34466185573768,
+        "potential": 80.99783038756203
+      },
+      "321.jpg": {
+        "jawline": 51.21169596812323,
+        "cheekbones": 51.202264949840846,
+        "eyes_symmetry": 78.40281611395541,
+        "nose_shape": 62.09022641318437,
+        "masculinity": 77.46680522382381,
+        "potential": 87.75655530568139
+      },
+      "322.jpg": {
+        "jawline": 92.87787670388133,
+        "cheekbones": 93.98365042648854,
+        "eyes_symmetry": 92.00394528870312,
+        "nose_shape": 91.47740435500697,
+        "masculinity": 87.48703615752154,
+        "potential": 96.60246223452319
+      },
+      "323.jpg": {
+        "jawline": 75.33090685147492,
+        "cheekbones": 74.31183143738058,
+        "eyes_symmetry": 70.22927528119077,
+        "nose_shape": 68.61216871890188,
+        "masculinity": 69.32985996037678,
+        "potential": 96.74191291135175
+      },
+      "324.jpg": {
+        "jawline": 58.790956010743905,
+        "cheekbones": 70.39997377393921,
+        "eyes_symmetry": 72.90030620513099,
+        "nose_shape": 71.55360718665838,
+        "masculinity": 73.31902252318287,
+        "potential": 89.69615958135245
+      },
+      "325.jpg": {
+        "jawline": 56.82992223663365,
+        "cheekbones": 48.53966666111778,
+        "eyes_symmetry": 60.477346125018435,
+        "nose_shape": 47.598045302772356,
+        "masculinity": 52.03920847702395,
+        "potential": 83.83552182162302
+      },
+      "326.jpg": {
+        "jawline": 88.35459096101171,
+        "cheekbones": 89.04201816084625,
+        "eyes_symmetry": 86.9557744800173,
+        "nose_shape": 86.67865812475081,
+        "masculinity": 78.94023569142598,
+        "potential": 96.1886555820513
+      },
+      "327.jpg": {
+        "jawline": 63.793043919230364,
+        "cheekbones": 68.44520871785663,
+        "eyes_symmetry": 77.30344321699813,
+        "nose_shape": 51.74436523250025,
+        "masculinity": 73.22512001238039,
+        "potential": 86.2880418518043
+      },
+      "328.jpg": {
+        "jawline": 80.95827267337472,
+        "cheekbones": 84.98747734510557,
+        "eyes_symmetry": 87.70367510249707,
+        "nose_shape": 85.83871476804455,
+        "masculinity": 82.99859747840054,
+        "potential": 97.06553494196471
+      },
+      "329.jpg": {
+        "jawline": 69.96450419507171,
+        "cheekbones": 74.96068840262241,
+        "eyes_symmetry": 73.12932339162099,
+        "nose_shape": 57.64148554206475,
+        "masculinity": 78.79224037386697,
+        "potential": 91.881647140116
+      },
+      "330.jpg": {
+        "jawline": 73.49866539743914,
+        "cheekbones": 75.64774868694276,
+        "eyes_symmetry": 78.20154659623398,
+        "nose_shape": 72.07461038947115,
+        "masculinity": 70.36123481633159,
+        "potential": 85.29241581874682
+      },
+      "331.jpg": {
+        "jawline": 80.27361143605172,
+        "cheekbones": 80.92331940809918,
+        "eyes_symmetry": 92.68663380013076,
+        "nose_shape": 81.84058356202574,
+        "masculinity": 86.23827976694938,
+        "potential": 99.04324538215089
+      },
+      "332.jpg": {
+        "jawline": 91.93833978819588,
+        "cheekbones": 92.70358924718663,
+        "eyes_symmetry": 91.30771505064025,
+        "nose_shape": 79.83084505813923,
+        "masculinity": 87.19158584006748,
+        "potential": 94.03910407685363
+      },
+      "333.jpg": {
+        "jawline": 47.52554566720292,
+        "cheekbones": 50.55356603275558,
+        "eyes_symmetry": 56.89051043524706,
+        "nose_shape": 46.803087986473784,
+        "masculinity": 72.24531477151508,
+        "potential": 89.70207802236153
+      },
+      "334.jpg": {
+        "jawline": 94.36182047486096,
+        "cheekbones": 87.61820467320794,
+        "eyes_symmetry": 89.1249727140172,
+        "nose_shape": 90.17988341018417,
+        "masculinity": 90.44266218002011,
+        "potential": 97.8976715604303
+      },
+      "335.jpg": {
+        "jawline": 28.37751071953205,
+        "cheekbones": 32.404439889407755,
+        "eyes_symmetry": 55.937158842290046,
+        "nose_shape": 50.997226829035995,
+        "masculinity": 63.03796717142605,
+        "potential": 87.91999387045368
+      },
+      "336.jpg": {
+        "jawline": 89.12962252928698,
+        "cheekbones": 94.97175762901179,
+        "eyes_symmetry": 89.00736333399705,
+        "nose_shape": 79.20507273326623,
+        "masculinity": 85.82461946467369,
+        "potential": 93.99775216607226
+      },
+      "337.jpg": {
+        "jawline": 84.24159586384395,
+        "cheekbones": 85.64129179518982,
+        "eyes_symmetry": 80.785745435657,
+        "nose_shape": 73.777310630394,
+        "masculinity": 76.82709159648043,
+        "potential": 92.55621722261671
+      },
+      "338.jpg": {
+        "jawline": 52.0417624331428,
+        "cheekbones": 63.028055528321104,
+        "eyes_symmetry": 67.56397593478097,
+        "nose_shape": 47.24009698382014,
+        "masculinity": 65.93957548903877,
+        "potential": 82.5661156281271
+      },
+      "339.jpg": {
+        "jawline": 88.93805044965464,
+        "cheekbones": 87.23506683352039,
+        "eyes_symmetry": 89.56896973479058,
+        "nose_shape": 84.89635329869041,
+        "masculinity": 85.52779202146684,
+        "potential": 95.65120645774199
+      },
+      "340.jpg": {
+        "jawline": 60.58251886223504,
+        "cheekbones": 67.34192620915205,
+        "eyes_symmetry": 56.26795322525475,
+        "nose_shape": 36.05451453671428,
+        "masculinity": 54.482493575903625,
+        "potential": 86.11967998903822
+      },
+      "341.jpg": {
+        "jawline": 84.00922779098505,
+        "cheekbones": 78.7723971637448,
+        "eyes_symmetry": 83.00704282188414,
+        "nose_shape": 68.31753838366728,
+        "masculinity": 74.10999494795799,
+        "potential": 95.81778942402698
+      },
+      "342.jpg": {
+        "jawline": 80.29016682940163,
+        "cheekbones": 81.26196263659475,
+        "eyes_symmetry": 72.07776296183587,
+        "nose_shape": 58.4219988698876,
+        "masculinity": 77.9295387784967,
+        "potential": 92.28469549296744
+      },
+      "343.jpg": {
+        "jawline": 66.1232827716991,
+        "cheekbones": 71.62513149878625,
+        "eyes_symmetry": 71.68666738661253,
+        "nose_shape": 47.259872616957175,
+        "masculinity": 58.08730521587694,
+        "potential": 92.74050556339596
+      },
+      "344.jpg": {
+        "jawline": 79.27800667765177,
+        "cheekbones": 78.75602055687784,
+        "eyes_symmetry": 88.28659789530526,
+        "nose_shape": 80.16145581066492,
+        "masculinity": 73.005982503814,
+        "potential": 96.16941798343255
+      },
+      "345.jpg": {
+        "jawline": 56.5029012244165,
+        "cheekbones": 65.01063814433797,
+        "eyes_symmetry": 71.57601835341403,
+        "nose_shape": 48.27726510342536,
+        "masculinity": 74.08373587598835,
+        "potential": 85.2453908256558
+      },
+      "346.jpg": {
+        "jawline": 91.52264185384202,
+        "cheekbones": 87.14029228171388,
+        "eyes_symmetry": 91.20684773483842,
+        "nose_shape": 93.24076790886923,
+        "masculinity": 86.98973225887796,
+        "potential": 93.36090229031787
+      },
+      "347.jpg": {
+        "jawline": 59.61849724086667,
+        "cheekbones": 66.38773088539673,
+        "eyes_symmetry": 86.07059718281187,
+        "nose_shape": 60.05882589011569,
+        "masculinity": 70.93235182640092,
+        "potential": 90.49887150592654
+      },
+      "348.jpg": {
+        "jawline": 78.16110264461946,
+        "cheekbones": 79.01837293361562,
+        "eyes_symmetry": 80.7738318404576,
+        "nose_shape": 77.82718315321756,
+        "masculinity": 85.49786222405776,
+        "potential": 100.0
+      },
+      
+      "350.jpg": {
+        "jawline": 81.82806667456178,
+        "cheekbones": 77.90355687790286,
+        "eyes_symmetry": 84.35555599301213,
+        "nose_shape": 65.41706324531955,
+        "masculinity": 70.2917389655398,
+        "potential": 92.27431093556672
+      },
+      "351.jpg": {
+        "jawline": 52.78831025100198,
+        "cheekbones": 64.39199050923571,
+        "eyes_symmetry": 83.27289176687817,
+        "nose_shape": 78.67531123657112,
+        "masculinity": 81.82662713432163,
+        "potential": 93.14441926916815
+      },
+      "352.jpg": {
+        "jawline": 78.29158026293901,
+        "cheekbones": 75.14243849571105,
+        "eyes_symmetry": 76.264525917867,
+        "nose_shape": 66.95472750522971,
+        "masculinity": 77.52900108758176,
+        "potential": 86.86520707739412
+      },
+      "353.jpg": {
+        "jawline": 69.03367345141636,
+        "cheekbones": 69.4662230362159,
+        "eyes_symmetry": 70.9647097241122,
+        "nose_shape": 70.62167290125352,
+        "masculinity": 53.48431549304775,
+        "potential": 87.91315118416634
+      },
+      "354.jpg": {
+        "jawline": 62.34559133682427,
+        "cheekbones": 67.10800962696251,
+        "eyes_symmetry": 63.47703969947293,
+        "nose_shape": 74.18160141073281,
+        "masculinity": 39.13285157214531,
+        "potential": 94.48871811352068
+      },
+      "355.jpg": {
+        "jawline": 64.97621542485317,
+        "cheekbones": 62.220737773392806,
+        "eyes_symmetry": 62.843523082954896,
+        "nose_shape": 70.00944209859966,
+        "masculinity": 26.873399553289993,
+        "potential": 94.47123339801809
+      },
+      "356.jpg": {
+        "jawline": 71.06981140175087,
+        "cheekbones": 71.48856613106388,
+        "eyes_symmetry": 71.64031669833494,
+        "nose_shape": 67.29004453392257,
+        "masculinity": 46.7813444644338,
+        "potential": 91.20293270231109
+      },
+      "357.jpg": {
+        "jawline": 64.39479913282933,
+        "cheekbones": 65.16063020655893,
+        "eyes_symmetry": 70.02066823026085,
+        "nose_shape": 65.19900821031769,
+        "masculinity": 75.96543887414488,
+        "potential": 89.20772550081028
+      },
+      "358.jpg": {
+        "jawline": 69.32551455158641,
+        "cheekbones": 65.2165552728442,
+        "eyes_symmetry": 61.21132129521848,
+        "nose_shape": 52.0259227427183,
+        "masculinity": 72.39795921774852,
+        "potential": 89.36357904070552
+      },
+      "359.jpg": {
+        "jawline": 69.44122745807309,
+        "cheekbones": 70.60383780778302,
+        "eyes_symmetry": 85.72647886975835,
+        "nose_shape": 69.1259023025891,
+        "masculinity": 80.69845796156177,
+        "potential": 84.58639196951067
+      },
+      "360.jpg": {
+        "jawline": 74.60374340634226,
+        "cheekbones": 67.59400702576637,
+        "eyes_symmetry": 88.40103889070649,
+        "nose_shape": 81.91402839063375,
+        "masculinity": 81.4725331980748,
+        "potential": 94.34016008839193
+      },
+      "361.jpg": {
+        "jawline": 63.86606024778281,
+        "cheekbones": 65.73576587471588,
+        "eyes_symmetry": 66.99973432871847,
+        "nose_shape": 64.49982638654383,
+        "masculinity": 56.4214794015538,
+        "potential": 91.0667977345481
+      },
+      "362.jpg": {
+        "jawline": 73.42517813471026,
+        "cheekbones": 69.97080683043703,
+        "eyes_symmetry": 75.54765080868707,
+        "nose_shape": 82.14166847205671,
+        "masculinity": 71.41283540564147,
+        "potential": 97.61300331032135
+      },
+      "363.jpg": {
+        "jawline": 71.97176064794226,
+        "cheekbones": 80.77462594000367,
+        "eyes_symmetry": 83.7773689781912,
+        "nose_shape": 84.90122556330485,
+        "masculinity": 76.95599944437356,
+        "potential": 89.5031020072395
+      },
+      "364.jpg": {
+        "jawline": 90.24645026649715,
+        "cheekbones": 86.37869382196357,
+        "eyes_symmetry": 85.31814429962631,
+        "nose_shape": 89.37446653739613,
+        "masculinity": 86.45084554983066,
+        "potential": 96.85331593603847
+      },
+      "365.jpg": {
+        "jawline": 65.1730664102393,
+        "cheekbones": 72.86516670853625,
+        "eyes_symmetry": 63.85662581127658,
+        "nose_shape": 59.74891191578144,
+        "masculinity": 47.23889032147503,
+        "potential": 93.98275415422137
+      },
+      "366.jpg": {
+        "jawline": 66.26113371926505,
+        "cheekbones": 76.76194026983613,
+        "eyes_symmetry": 72.38788525459097,
+        "nose_shape": 68.12347201365255,
+        "masculinity": 72.54116670585162,
+        "potential": 92.71141361839472
+      },
+      "367.jpg": {
+        "jawline": 88.96578023471389,
+        "cheekbones": 80.75289724533818,
+        "eyes_symmetry": 87.23276462799232,
+        "nose_shape": 81.92972215125818,
+        "masculinity": 81.40331218582365,
+        "potential": 97.51876590657331
+      },
+      "368.jpg": {
+        "jawline": 56.498858318654754,
+        "cheekbones": 46.5673577010215,
+        "eyes_symmetry": 50.814035833604756,
+        "nose_shape": 69.21348185133586,
+        "masculinity": 33.91461609563253,
+        "potential": 96.36487417135369
+      },
+      "369.jpg": {
+        "jawline": 62.01413822624749,
+        "cheekbones": 59.51131089403546,
+        "eyes_symmetry": 77.44765073835563,
+        "nose_shape": 66.20984080921328,
+        "masculinity": 52.62393094614115,
+        "potential": 87.60949526377884
+      },
+      "370.jpg": {
+        "jawline": 74.89006374952615,
+        "cheekbones": 80.31042216347785,
+        "eyes_symmetry": 83.88977292901437,
+        "nose_shape": 82.86730629194174,
+        "masculinity": 56.76440648134443,
+        "potential": 92.61464560058567
+      },
+      "371.jpg": {
+        "jawline": 71.51414504435779,
+        "cheekbones": 71.4183832110157,
+        "eyes_symmetry": 67.98597594370685,
+        "nose_shape": 63.519814581957725,
+        "masculinity": 72.10325012550175,
+        "potential": 88.33331456143009
+      },
+      "372.jpg": {
+        "jawline": 56.025844380862424,
+        "cheekbones": 63.98698189658645,
+        "eyes_symmetry": 71.31181545815689,
+        "nose_shape": 62.974626678032095,
+        "masculinity": 59.59927177789629,
+        "potential": 92.61079088221638
+      },
+      "373.jpg": {
+        "jawline": 83.65752222351088,
+        "cheekbones": 78.53060664513042,
+        "eyes_symmetry": 73.30964198823195,
+        "nose_shape": 74.82663707381846,
+        "masculinity": 40.71322275326184,
+        "potential": 94.86908839715876
+      },
+      "374.jpg": {
+        "jawline": 72.57812590946811,
+        "cheekbones": 72.80975412281158,
+        "eyes_symmetry": 72.38074818064113,
+        "nose_shape": 75.88278389076966,
+        "masculinity": 35.45431869142707,
+        "potential": 96.59186787697213
+      },
+      "375.jpg": {
+        "jawline": 40.70224004318956,
+        "cheekbones": 74.01262896179887,
+        "eyes_symmetry": 68.81474502698569,
+        "nose_shape": 60.9621992987705,
+        "masculinity": 30.31253772438238,
+        "potential": 95.37180046376591
+      },
+      "376.jpg": {
+        "jawline": 40.70224004318956,
+        "cheekbones": 74.01262896179887,
+        "eyes_symmetry": 68.81474502698569,
+        "nose_shape": 60.9621992987705,
+        "masculinity": 30.31253772438238,
+        "potential": 95.37180046376591
+      },
+      
+      "378.jpg": {
+        "jawline": 54.486295135989735,
+        "cheekbones": 49.70026358125277,
+        "eyes_symmetry": 53.17759343674003,
+        "nose_shape": 69.79706935168282,
+        "masculinity": 32.207479767230616,
+        "potential": 95.41306969063697
+      },
+      "379.jpg": {
+        "jawline": 24.214495409488237,
+        "cheekbones": 27.778712699545462,
+        "eyes_symmetry": 41.131030834853384,
+        "nose_shape": 66.17134192585047,
+        "masculinity": 30.584924954452966,
+        "potential": 96.77143290176629
+      },
+      "380.jpg": {
+        "jawline": 68.99426889423403,
+        "cheekbones": 76.76891736928727,
+        "eyes_symmetry": 70.03105927453001,
+        "nose_shape": 69.70638605936675,
+        "masculinity": 42.87624883858946,
+        "potential": 97.40764638147039
+      },
+      "381.jpg": {
+        "jawline": 61.4169833707169,
+        "cheekbones": 87.57786260022267,
+        "eyes_symmetry": 87.93028597798528,
+        "nose_shape": 49.60932759412366,
+        "masculinity": 85.69030087924143,
+        "potential": 96.29477752043809
+      },
+      "382.jpg": {
+        "jawline": 73.07303638529552,
+        "cheekbones": 74.07105867035041,
+        "eyes_symmetry": 71.15581233453301,
+        "nose_shape": 47.48713968214908,
+        "masculinity": 54.68873547129221,
+        "potential": 95.231239201568
+      },
+      "383.jpg": {
+        "jawline": 47.69640069794681,
+        "cheekbones": 48.036953809172054,
+        "eyes_symmetry": 47.40856790863245,
+        "nose_shape": 56.85128461066782,
+        "masculinity": 39.75008635595956,
+        "potential": 98.0446018817717
+      },
+      "384.jpg": {
+        "jawline": 53.80729533508808,
+        "cheekbones": 62.699359313111295,
+        "eyes_symmetry": 61.035196190694215,
+        "nose_shape": 68.59752166948526,
+        "masculinity": 43.140046384767565,
+        "potential": 98.50310619157176
+      },
+      "385.jpg": {
+        "jawline": 80.70799853169737,
+        "cheekbones": 89.05691701528269,
+        "eyes_symmetry": 90.489870530772,
+        "nose_shape": 82.33048298317901,
+        "masculinity": 87.63857788420263,
+        "potential": 96.37098722355647
+      },
+      "386.jpg": {
+        "jawline": 26.013081324521693,
+        "cheekbones": 35.798261026495695,
+        "eyes_symmetry": 42.64984605972675,
+        "nose_shape": 83.20585372105535,
+        "masculinity": 13.842582900021386,
+        "potential": 97.58477593516318
+      },
+      "387.jpg": {
+        "jawline": 54.87015062813201,
+        "cheekbones": 47.78662221920895,
+        "eyes_symmetry": 82.12539180817485,
+        "nose_shape": 62.72683653214123,
+        "masculinity": 46.03303884007231,
+        "potential": 94.14795212025356
+      },
+      "388.jpg": {
+        "jawline": 75.30804617513547,
+        "cheekbones": 75.88777826829418,
+        "eyes_symmetry": 95.7218373316108,
+        "nose_shape": 73.53472503278498,
+        "masculinity": 53.0353349686529,
+        "potential": 97.69388943802622
+      },
+      "389.jpg": {
+        "jawline": 84.92288758272437,
+        "cheekbones": 90.62266284332763,
+        "eyes_symmetry": 86.12639051819583,
+        "nose_shape": 90.46591220673791,
+        "masculinity": 88.94261446906923,
+        "potential": 98.23973911310503
+      },
+      "390.jpg": {
+        "jawline": 67.96111434308958,
+        "cheekbones": 73.69684322093332,
+        "eyes_symmetry": 57.69857817455276,
+        "nose_shape": 82.05809324268942,
+        "masculinity": 48.2650407483644,
+        "potential": 97.77321784059679
+      },
+      "391.jpg": {
+        "jawline": 47.053171523955925,
+        "cheekbones": 44.63305514799056,
+        "eyes_symmetry": 73.88898962785903,
+        "nose_shape": 69.63840016967126,
+        "masculinity": 33.70165432095981,
+        "potential": 83.97169948689417
+      },
+      "392.jpg": {
+        "jawline": 68.43541666325419,
+        "cheekbones": 73.60902890573543,
+        "eyes_symmetry": 59.83059806288651,
+        "nose_shape": 59.410006701217746,
+        "masculinity": 35.16986445323411,
+        "potential": 94.34552589459771
+      },
+      "393.jpg": {
+        "jawline": 86.24812246160612,
+        "cheekbones": 81.94643440827939,
+        "eyes_symmetry": 78.48107383397087,
+        "nose_shape": 45.34003458529939,
+        "masculinity": 59.15714053913153,
+        "potential": 89.45294377641518
+      },
+      "394.jpg": {
+        "jawline": 72.9963756490562,
+        "cheekbones": 77.277873285541,
+        "eyes_symmetry": 58.77424541847741,
+        "nose_shape": 75.01713317136364,
+        "masculinity": 64.79349802822806,
+        "potential": 97.10888123125049
+      },
+      "395.jpg": {
+        "jawline": 58.91461845681929,
+        "cheekbones": 66.56262944673652,
+        "eyes_symmetry": 72.07811157238595,
+        "nose_shape": 78.51213695346844,
+        "masculinity": 59.69720993712585,
+        "potential": 95.21959400277908
+      },
+      "396.jpg": {
+        "jawline": 42.337551786407595,
+        "cheekbones": 42.7656899838329,
+        "eyes_symmetry": 49.628214543637725,
+        "nose_shape": 48.06857919357111,
+        "masculinity": 34.01313607641133,
+        "potential": 86.20100816766717
+      },
+      "397.jpg": {
+        "jawline": 17.743821735569853,
+        "cheekbones": 25.76983793921582,
+        "eyes_symmetry": 35.61929468876123,
+        "nose_shape": 27.26451072288344,
+        "masculinity": 39.00294292297649,
+        "potential": 78.49589162775763
+      },
+      "398.jpg": {
+        "jawline": 86.8943413467221,
+        "cheekbones": 75.51578955176375,
+        "eyes_symmetry": 81.09396604369014,
+        "nose_shape": 76.92721774281436,
+        "masculinity": 90.76534051091623,
+        "potential": 98.48454336300739
+      },
+      "399.jpg": {
+        "jawline": 33.83147554594366,
+        "cheekbones": 45.48541931528326,
+        "eyes_symmetry": 51.234620182513126,
+        "nose_shape": 53.894736201032316,
+        "masculinity": 42.030286924042194,
+        "potential": 80.63467854112194
+      },
+      "400.jpg": {
+        "jawline": 59.71147208330897,
+        "cheekbones": 65.55340609869637,
+        "eyes_symmetry": 60.77518569263063,
+        "nose_shape": 65.98213861577642,
+        "masculinity": 20.179433068506828,
+        "potential": 94.46814885676969
+      },
+      "401.jpg": {
+        "jawline": 91.61594317096456,
+        "cheekbones": 92.23258432024909,
+        "eyes_symmetry": 92.99020789851748,
+        "nose_shape": 77.9873666468362,
+        "masculinity": 79.59201182216474,
+        "potential": 96.9676327084188
+      },
+      "402.jpg": {
+        "jawline": 79.2326513740745,
+        "cheekbones": 82.0610623567624,
+        "eyes_symmetry": 76.37464399275822,
+        "nose_shape": 48.01591564414181,
+        "masculinity": 60.84720853835955,
+        "potential": 98.38726940918843
+      },
+      "403.jpg": {
+        "jawline": 59.173633347148716,
+        "cheekbones": 64.61235340116122,
+        "eyes_symmetry": 75.52511962535392,
+        "nose_shape": 79.83528325834185,
+        "masculinity": 31.128719144577584,
+        "potential": 97.77487562803013
+      },
+      "404.jpg": {
+        "jawline": 35.619134381479526,
+        "cheekbones": 42.51545334409114,
+        "eyes_symmetry": 52.33051077169009,
+        "nose_shape": 52.8883811205564,
+        "masculinity": 69.2469462306775,
+        "potential": 96.77196243585094
+      },
+      "405.jpg": {
+        "jawline": 61.418304617218375,
+        "cheekbones": 62.017320959371304,
+        "eyes_symmetry": 75.51006695520749,
+        "nose_shape": 68.3056391271857,
+        "masculinity": 53.38869450987291,
+        "potential": 87.81329876693637
+      },
+      "406.jpg": {
+        "jawline": 54.55854880814668,
+        "cheekbones": 61.30781869437025,
+        "eyes_symmetry": 49.5665770404856,
+        "nose_shape": 51.21180798712866,
+        "masculinity": 60.384454664503046,
+        "potential": 94.45478571029335
+      },
+      "407.jpg": {
+        "jawline": 89.3563256282303,
+        "cheekbones": 85.19340382896038,
+        "eyes_symmetry": 40.55980427964011,
+        "nose_shape": 68.8255964429752,
+        "masculinity": 79.66153654888669,
+        "potential": 95.60181270044284
+      },
+      "408.jpg": {
+        "jawline": 89.01154648538012,
+        "cheekbones": 93.94690810902998,
+        "eyes_symmetry": 90.5736676270426,
+        "nose_shape": 85.7707520097421,
+        "masculinity": 89.95408682091447,
+        "potential": 99.13237604086132
+      },
+      "409.jpg": {
+        "jawline": 80.08351554988032,
+        "cheekbones": 81.06261965034729,
+        "eyes_symmetry": 87.2005149363935,
+        "nose_shape": 85.43543149052388,
+        "masculinity": 90.84921121981566,
+        "potential": 99.51708878369345
+      },
+      "410.jpg": {
+        "jawline": 89.92218923375867,
+        "cheekbones": 85.9649055651158,
+        "eyes_symmetry": 89.09431225722363,
+        "nose_shape": 92.22277181854267,
+        "masculinity": 85.7565119171587,
+        "potential": 97.35072251072422
+      },
+      "411.jpg": {
+        "jawline": 89.40014559880332,
+        "cheekbones": 84.4247104789942,
+        "eyes_symmetry": 79.07746645889273,
+        "nose_shape": 64.94935688825564,
+        "masculinity": 86.617867909496,
+        "potential": 96.37937287771722
+      },
+      
+      "413.jpg": {
+        "jawline": 71.87884909924396,
+        "cheekbones": 70.77693721881357,
+        "eyes_symmetry": 86.39875218181646,
+        "nose_shape": 69.33091846325694,
+        "masculinity": 80.0017414243472,
+        "potential": 93.48306439123938
+      },
+      "414.jpg": {
+        "jawline": 82.85143139875206,
+        "cheekbones": 61.60069943538288,
+        "eyes_symmetry": 57.935990598039865,
+        "nose_shape": 64.49305504002841,
+        "masculinity": 28.16042562019958,
+        "potential": 98.28910232626272
+      },
+      "415.jpg": {
+        "jawline": 89.90699272969935,
+        "cheekbones": 87.17553690453889,
+        "eyes_symmetry": 90.19441590996065,
+        "nose_shape": 72.98610513962676,
+        "masculinity": 87.66940596813787,
+        "potential": 95.00732665311604
+      },
+      "416.jpg": {
+        "jawline": 90.0473275492139,
+        "cheekbones": 82.38977247700336,
+        "eyes_symmetry": 79.98661030034542,
+        "nose_shape": 80.67185688444755,
+        "masculinity": 73.91830677125293,
+        "potential": 96.20093174919859
+      },
+      "417.jpg": {
+        "jawline": 94.55281423652777,
+        "cheekbones": 92.15313160443559,
+        "eyes_symmetry": 94.22220316757193,
+        "nose_shape": 82.77424875101173,
+        "masculinity": 77.80600988271401,
+        "potential": 99.95396617077618
+      },
+      "418.jpg": {
+        "jawline": 96.10867741250807,
+        "cheekbones": 92.39398354210174,
+        "eyes_symmetry": 89.08789269259165,
+        "nose_shape": 89.07594231242824,
+        "masculinity": 78.94692543056257,
+        "potential": 98.82361094757374
+      },
+      "419.jpg": {
+        "jawline": 85.84458280872447,
+        "cheekbones": 82.03403945707896,
+        "eyes_symmetry": 76.61811086820806,
+        "nose_shape": 88.51634447438153,
+        "masculinity": 79.98408774315415,
+        "potential": 97.16132641825901
+      },
+      "420.jpg": {
+        "jawline": 88.30729362274319,
+        "cheekbones": 84.97318792065079,
+        "eyes_symmetry": 90.89216669676019,
+        "nose_shape": 92.33968609843771,
+        "masculinity": 73.2040408729628,
+        "potential": 97.56870375147105
+      },
+      "421.jpg": {
+        "jawline": 74.38181519675389,
+        "cheekbones": 74.33783114951422,
+        "eyes_symmetry": 85.57194957373177,
+        "nose_shape": 82.99489232814051,
+        "masculinity": 74.85214663168145,
+        "potential": 75.11783436202435
+      },
+      "422.jpg": {
+        "jawline": 84.19190660489122,
+        "cheekbones": 78.84461005027975,
+        "eyes_symmetry": 88.72564028441582,
+        "nose_shape": 85.75425351452405,
+        "masculinity": 83.2439988937321,
+        "potential": 81.86413567588822
+      },
+      "423.jpg": {
+        "jawline": 80.02266272799933,
+        "cheekbones": 67.70304822587302,
+        "eyes_symmetry": 83.75012447376635,
+        "nose_shape": 77.19661127144246,
+        "masculinity": 88.17530581567397,
+        "potential": 80.3435067397035
+      },
+      "424.jpg": {
+        "jawline": 88.5438657292176,
+        "cheekbones": 84.88633325910459,
+        "eyes_symmetry": 88.6919641132565,
+        "nose_shape": 84.65016829580719,
+        "masculinity": 87.3767903126688,
+        "potential": 90.26100202758712
+      },
+      "425.jpg": {
+        "jawline": 64.48350523417909,
+        "cheekbones": 77.87102467029162,
+        "eyes_symmetry": 43.53407556887145,
+        "nose_shape": 48.41560700763551,
+        "masculinity": 27.797718747257587,
+        "potential": 96.31268356804688
+      },
+      "426.jpg": {
+        "jawline": 79.64477348927632,
+        "cheekbones": 80.69861287524837,
+        "eyes_symmetry": 94.491677167249,
+        "nose_shape": 90.2460907214516,
+        "masculinity": 75.0567318080257,
+        "potential": 86.92712835682869
+      },
+      "427.jpg": {
+        "jawline": 64.98682278615554,
+        "cheekbones": 58.92420438133636,
+        "eyes_symmetry": 83.69453099518564,
+        "nose_shape": 77.17313265292564,
+        "masculinity": 59.182916049426545,
+        "potential": 93.39188756019794
+      },
+      "428.jpg": {
+        "jawline": 71.80988611181914,
+        "cheekbones": 65.83095196975115,
+        "eyes_symmetry": 84.52208448701283,
+        "nose_shape": 78.7702905820875,
+        "masculinity": 68.54906961214516,
+        "potential": 96.98289255392662
+      },
+      "429.jpg": {
+        "jawline": 70.09664975571935,
+        "cheekbones": 65.35880054990413,
+        "eyes_symmetry": 83.92710403275535,
+        "nose_shape": 77.60212991728861,
+        "masculinity": 70.87021348867005,
+        "potential": 77.13918560686771
+      },
+      "430.jpg": {
+        "jawline": 71.36839742182362,
+        "cheekbones": 67.49250718838097,
+        "eyes_symmetry": 81.30957666533457,
+        "nose_shape": 74.42605920601777,
+        "masculinity": 73.38339823801728,
+        "potential": 90.4304375261988
+      },
+      "431.jpg": {
+        "jawline": 89.81245125791578,
+        "cheekbones": 80.26069233763796,
+        "eyes_symmetry": 87.72184300768016,
+        "nose_shape": 80.06957074191243,
+        "masculinity": 88.57120018246643,
+        "potential": 94.55541165152881
+      },
+      "432.jpg": {
+        "jawline": 56.78078277458328,
+        "cheekbones": 59.06442839747685,
+        "eyes_symmetry": 78.64367716039486,
+        "nose_shape": 65.91478032333741,
+        "masculinity": 53.46324846438935,
+        "potential": 72.78361881434309
+      },
+      "433.jpg": {
+        "jawline": 71.30322484466731,
+        "cheekbones": 64.31675098159623,
+        "eyes_symmetry": 84.4484084107012,
+        "nose_shape": 80.30822682611849,
+        "masculinity": 58.347706629945996,
+        "potential": 91.72387896038369
+      },
+      "434.jpg": {
+        "jawline": 69.48140421435328,
+        "cheekbones": 65.69140384724058,
+        "eyes_symmetry": 81.8228415021188,
+        "nose_shape": 79.44740207729657,
+        "masculinity": 69.56350000387872,
+        "potential": 77.7823496824869
+      }
+    }
+  }
+  

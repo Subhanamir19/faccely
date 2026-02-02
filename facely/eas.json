@@ -1,8 +1,27 @@
 {
+  "cli": {
+    "version": ">= 5.0.0"
+  },
   "build": {
-    "internal": {
-      "env": {
-        "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_live_Y2xlcmsuc2lnbWFtYXguYXBwJA"
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "ios": {
+        "simulator": false
+      }
+    },
+    "preview": {
+      "distribution": "internal"
+    },
+    "production": {
+      "distribution": "store"
+    }
+  },
+  "submit": {
+    "production": {
+      "ios": {
+        "appleId": "jibaig729@gmail.com",
+        "ascAppId": "6758243146"
       }
     }
   }
