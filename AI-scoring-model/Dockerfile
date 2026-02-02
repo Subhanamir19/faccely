@@ -29,6 +29,7 @@ COPY api/ /app/api/
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
+ENV PORT=8000
 
-# Run the API - Railway sets PORT dynamically
-CMD uvicorn api.main:app --host 0.0.0.0 --port ${PORT:-8000}
+# Run the API - use shell form with explicit sh -c for variable expansion
+CMD ["sh", "-c", "uvicorn api.main:app --host 0.0.0.0 --port $PORT"]
