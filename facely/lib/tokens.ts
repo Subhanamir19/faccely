@@ -49,6 +49,7 @@ export const COLORS = {
 
   // Status colors
   error: "#EF4444",
+  errorLight: "#F97316",  // Orange - between error and warning
   warning: "#F59E0B",
   success: "#22C55E",
 
@@ -142,6 +143,17 @@ export const TYPE = {
     lineHeight: 20,
     fontFamily: "Poppins-SemiBold",
   },
+  // Score display
+  score: {
+    fontSize: 32,
+    lineHeight: 38,
+    fontFamily: "Poppins-SemiBold",
+  },
+  scoreLarge: {
+    fontSize: 40,
+    lineHeight: 46,
+    fontFamily: "Poppins-SemiBold",
+  },
 } as const;
 
 export type TypeVariant = keyof typeof TYPE;
@@ -175,6 +187,18 @@ export const BLUR = {
   card: 15,
   light: 10,
   heavy: 20,
+};
+
+// Component sizes
+export const SIZES = {
+  avatarSm: 48,
+  avatarMd: 72,
+  avatarLg: 100,
+  avatarXl: 140,
+  progressBarSm: 4,
+  progressBarMd: 5,
+  progressBarLg: 6,
+  progressBarXl: 8,
 };
 
 export const ELEVATION = {

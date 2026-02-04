@@ -10,7 +10,10 @@ import {
   View,
 } from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
-import { COLORS, RADII, SP } from "@/lib/tokens";
+import { Ionicons } from "@expo/vector-icons";
+import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
+import { BlurView } from "expo-blur";
+import { COLORS, RADII, SP, SHADOWS } from "@/lib/tokens";
 import PillNavButton from "@/components/ui/PillNavButton";
 import DayCompleteModal from "@/components/ui/DayCompleteModal";
 import { useProgramStore } from "@/store/program";
@@ -334,9 +337,16 @@ export default function ProgramDayScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             {showConfirmation ? (
-              <View style={styles.confirmationBox}>
-                <Text style={styles.confirmationText}>✓ Exercise marked complete!</Text>
-              </View>
+              <Animated.View
+                entering={FadeIn.duration(200)}
+                exiting={FadeOut.duration(150)}
+                style={styles.confirmationBox}
+              >
+                <View style={styles.confirmationIconWrap}>
+                  <Ionicons name="checkmark" size={18} color={COLORS.accent} />
+                </View>
+                <Text style={styles.confirmationText}>Exercise marked complete!</Text>
+              </Animated.View>
             ) : modalView === "action" ? (
               <>
                 <View style={styles.modalHeaderRow}>
@@ -458,66 +468,89 @@ export default function ProgramDayScreen() {
 
                   return (
                     <>
-                      <View style={styles.playerTopRow}>
+                      {/* Header row with back button on left */}
+                      <View style={styles.poseHeaderRow}>
                         <Pressable
                           onPress={() => setModalView("guide")}
                           style={({ pressed }) => [
-                            styles.playerCloseBtn,
-                            pressed ? styles.playerCloseBtnPressed : null,
+                            styles.poseBackBtn,
+                            pressed && styles.poseBackBtnPressed,
                           ]}
                           accessibilityRole="button"
                           accessibilityLabel="Back to guide"
                         >
-                          <Text style={styles.playerCloseText}>← Back</Text>
+                          <Ionicons name="arrow-back" size={18} color={COLORS.text} />
+                          <Text style={styles.poseBackText}>Back</Text>
                         </Pressable>
+                        <Text style={styles.poseTitle}>{selected?.name}</Text>
+                        <View style={styles.poseHeaderSpacer} />
                       </View>
 
-                      <View style={styles.guidePoseImageWrap}>
-                        <Image source={currentFrame} style={styles.image} resizeMode="contain" />
+                      {/* Image container with glass effect */}
+                      <View style={styles.poseImageContainer}>
+                        <BlurView intensity={20} tint="dark" style={styles.poseImageBlur}>
+                          <View style={styles.poseImageOverlay}>
+                            <Image source={currentFrame} style={styles.poseImage} resizeMode="contain" />
+                          </View>
+                        </BlurView>
                       </View>
 
+                      {/* Navigation row */}
                       <View style={styles.poseNavRow}>
                         <Pressable
                           onPress={canPrev ? () => setGuidePoseIdx((v) => Math.max(0, v - 1)) : undefined}
                           style={({ pressed }) => [
                             styles.poseNavBtn,
                             !canPrev && styles.poseNavBtnDisabled,
-                            pressed && canPrev ? styles.poseNavBtnPressed : null,
+                            pressed && canPrev && styles.poseNavBtnPressed,
                           ]}
                           accessibilityRole="button"
                           accessibilityLabel="Previous pose"
                         >
-                          <Text style={styles.poseNavBtnText}>{"<"}</Text>
+                          <Ionicons
+                            name="chevron-back"
+                            size={20}
+                            color={canPrev ? COLORS.text : COLORS.sub}
+                          />
                         </Pressable>
 
-                        <Text style={styles.poseCounter}>
-                          Pose {guidePoseIdx + 1}/{guideFrames.length}
-                        </Text>
+                        <View style={styles.poseCounterPill}>
+                          <Text style={styles.poseCounterText}>
+                            {guidePoseIdx + 1} / {guideFrames.length}
+                          </Text>
+                        </View>
 
                         <Pressable
                           onPress={canNext ? () => setGuidePoseIdx((v) => Math.min(lastIdx, v + 1)) : undefined}
                           style={({ pressed }) => [
                             styles.poseNavBtn,
                             !canNext && styles.poseNavBtnDisabled,
-                            pressed && canNext ? styles.poseNavBtnPressed : null,
+                            pressed && canNext && styles.poseNavBtnPressed,
                           ]}
                           accessibilityRole="button"
                           accessibilityLabel="Next pose"
                         >
-                          <Text style={styles.poseNavBtnText}>{">"}</Text>
+                          <Ionicons
+                            name="chevron-forward"
+                            size={20}
+                            color={canNext ? COLORS.text : COLORS.sub}
+                          />
                         </Pressable>
                       </View>
 
-                      <PillNavButton
-                        kind="solid"
-                        label="Done"
-                        onPress={() => {
-                          if (selected) {
-                            handleCompletion(selected.id);
-                          }
-                        }}
-                        disabled={submitting}
-                      />
+                      {/* Done button with accent glow */}
+                      <View style={styles.poseDoneWrapper}>
+                        <PillNavButton
+                          kind="solid"
+                          label="Done"
+                          onPress={() => {
+                            if (selected) {
+                              handleCompletion(selected.id);
+                            }
+                          }}
+                          disabled={submitting}
+                        />
+                      </View>
                     </>
                   );
                 })()}
@@ -751,75 +784,37 @@ const styles = StyleSheet.create({
   modalText: { color: COLORS.sub, fontSize: 13, lineHeight: 18, fontFamily: "Poppins-SemiBold" },
   modalActions: { width: "100%", flexDirection: "row", gap: SP[2] },
   confirmationBox: {
-    padding: SP[3],
-    backgroundColor: "rgba(34, 197, 94, 0.1)",
-    borderRadius: RADII.md,
-    borderColor: "#22c55e",
-    borderWidth: 1,
-  },
-  confirmationText: {
-    color: "#22c55e",
-    fontSize: 16,
-    fontWeight: "700",
-    textAlign: "center",
-    fontFamily: "Poppins-SemiBold",
-  },
-  image: { width: "100%", height: "100%", borderRadius: RADII.md },
-  playerTopRow: {
-    width: "100%",
-    flexDirection: "row",
-    justifyContent: "flex-end",
-  },
-  playerCloseBtn: {
-    paddingHorizontal: SP[3],
-    paddingVertical: SP[2],
-    borderRadius: RADII.pill,
-    borderWidth: 1,
-    borderColor: COLORS.cardBorder,
-    backgroundColor: "rgba(255,255,255,0.06)",
-  },
-  playerCloseBtnPressed: {
-    transform: [{ translateY: 1 }],
-  },
-  playerCloseText: {
-    color: COLORS.text,
-    fontSize: 13,
-    fontWeight: "700",
-    fontFamily: "Poppins-SemiBold",
-  },
-  poseNavRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: SP[3],
-  },
-  poseNavBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    padding: SP[4],
+    backgroundColor: COLORS.accentGlow,
+    borderRadius: RADII.lg,
+    borderColor: COLORS.accentBorder,
     borderWidth: 1,
-    borderColor: COLORS.cardBorder,
-    backgroundColor: "rgba(255,255,255,0.06)",
+  },
+  confirmationIconWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "rgba(180,243,77,0.25)",
+    borderWidth: 1,
+    borderColor: COLORS.accentBorder,
     alignItems: "center",
     justifyContent: "center",
   },
-  poseNavBtnPressed: {
-    transform: [{ translateY: 1 }],
-  },
-  poseNavBtnDisabled: {
-    opacity: 0.4,
-  },
-  poseNavBtnText: {
-    color: COLORS.text,
-    fontSize: 18,
-    fontWeight: "800",
+  confirmationText: {
+    color: COLORS.accent,
+    fontSize: 16,
     fontFamily: "Poppins-SemiBold",
   },
-  poseCounter: {
-    color: COLORS.sub,
-    fontSize: 13,
-    fontWeight: "700",
-    fontFamily: "Poppins-SemiBold",
+  image: { width: "100%", height: "100%", borderRadius: RADII.md },
+  poseNavRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: SP[4],
   },
 
   // Guide view styles
@@ -900,5 +895,104 @@ const styles = StyleSheet.create({
     borderRadius: RADII.md,
     alignItems: "center",
     justifyContent: "center",
+  },
+
+  // Redesigned pose viewer styles
+  poseHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    width: "100%",
+    marginBottom: SP[2],
+  },
+  poseBackBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SP[1],
+    paddingHorizontal: SP[3],
+    paddingVertical: SP[2],
+    borderRadius: RADII.pill,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+    backgroundColor: COLORS.whiteGlass,
+  },
+  poseBackBtnPressed: {
+    transform: [{ scale: 0.97 }],
+    opacity: 0.9,
+  },
+  poseBackText: {
+    color: COLORS.text,
+    fontSize: 14,
+    fontFamily: "Poppins-SemiBold",
+  },
+  poseTitle: {
+    color: COLORS.text,
+    fontSize: 16,
+    fontFamily: "Poppins-SemiBold",
+    flex: 1,
+    textAlign: "center",
+    marginHorizontal: SP[2],
+  },
+  poseHeaderSpacer: {
+    width: 80, // Match back button width for centering
+  },
+  poseImageContainer: {
+    width: "100%",
+    height: 300,
+    borderRadius: RADII.lg,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: COLORS.cardHairline,
+  },
+  poseImageBlur: {
+    flex: 1,
+    width: "100%",
+    height: "100%",
+  },
+  poseImageOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(18,18,18,0.5)",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: SP[3],
+  },
+  poseImage: {
+    width: "100%",
+    height: "100%",
+    borderRadius: RADII.md,
+  },
+  poseNavBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+    backgroundColor: COLORS.whiteGlass,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  poseNavBtnPressed: {
+    transform: [{ scale: 0.95 }],
+    backgroundColor: "rgba(255,255,255,0.1)",
+  },
+  poseNavBtnDisabled: {
+    opacity: 0.35,
+  },
+  poseCounterPill: {
+    paddingHorizontal: SP[4],
+    paddingVertical: SP[2],
+    borderRadius: RADII.pill,
+    backgroundColor: COLORS.whiteGlass,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+  },
+  poseCounterText: {
+    color: COLORS.text,
+    fontSize: 14,
+    fontFamily: "Poppins-SemiBold",
+  },
+  poseDoneWrapper: {
+    width: "100%",
+    ...SHADOWS.primaryBtn,
   },
 });

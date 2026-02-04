@@ -1,56 +1,29 @@
 // facely/components/scores/ScoresSummaryCard.tsx
-// Summary card with hero avatar + total score, then metric rings in grid
+// Redesigned summary card: profile photo overlapping top + 8 key metrics in compact grid (4x2)
 
 import React, { useEffect, useRef } from "react";
-import { View, StyleSheet, Animated, Easing, Platform, Image } from "react-native";
-import { BlurView } from "expo-blur";
-import Svg, { Circle, Defs, LinearGradient, Stop } from "react-native-svg";
+import { View, StyleSheet, Animated, Easing, Image, Dimensions } from "react-native";
 import Text from "@/components/ui/T";
+import { COLORS, SP, RADII, TYPE, SIZES } from "@/lib/tokens";
+import { useOnboarding } from "@/store/onboarding";
 
-const AnimatedCircle = Animated.createAnimatedComponent(Circle);
+// Get screen width for responsive calculations
+const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
-const POP = Platform.select({
-  ios: "Poppins-SemiBold",
-  android: "Poppins-SemiBold",
-  default: "Poppins-SemiBold",
-});
+// Responsive avatar size - scales with screen width but has min/max bounds
+// ~36% of screen width, bounded between 120px (small phones) and 160px (tablets)
+const AVATAR_SIZE = Math.min(Math.max(SCREEN_WIDTH * 0.36, 120), 160);
+const AVATAR_BORDER = 4;
+const AVATAR_TOTAL = AVATAR_SIZE + AVATAR_BORDER * 2;
 
-const POP_MEDIUM = Platform.select({
-  ios: "Poppins-Medium",
-  android: "Poppins-Medium",
-  default: "Poppins-Medium",
-});
-
-// Score color bands - using app's lime green accent for positive scores
-const ACCENT = "#B4F34D";
-const SCORE_COLOR_BANDS = [
-  { max: 39, color: "#EF4444", label: "Needs Work" },
-  { max: 54, color: "#F59E0B", label: "Developing" },
-  { max: 69, color: "#A3E635", label: "Good" },        // Lighter lime for "Good"
-  { max: 100, color: ACCENT, label: "Excellent" },     // Full accent for "Excellent"
-] as const;
-
+// Score color function - 5 tier system
 function getScoreColor(score: number): string {
   const s = Math.max(0, Math.min(100, score));
-  const band = SCORE_COLOR_BANDS.find(({ max }) => s <= max) ?? SCORE_COLOR_BANDS[3];
-  return band.color;
-}
-
-function getScoreLabel(score: number): string {
-  const s = Math.max(0, Math.min(100, score));
-  const band = SCORE_COLOR_BANDS.find(({ max }) => s <= max) ?? SCORE_COLOR_BANDS[3];
-  return band.label;
-}
-
-function lightenColor(hex: string, amount: number): string {
-  const normalized = hex.replace("#", "");
-  const parsed = parseInt(normalized, 16);
-  const r = (parsed >> 16) & 255;
-  const g = (parsed >> 8) & 255;
-  const b = parsed & 255;
-  const mix = (c: number) => Math.round(c + (255 - c) * amount);
-  const toHex = (c: number) => Math.max(0, Math.min(255, c)).toString(16).padStart(2, "0");
-  return `#${toHex(mix(r))}${toHex(mix(g))}${toHex(mix(b))}`;
+  if (s < 40) return COLORS.error;        // Red - needs work
+  if (s < 60) return COLORS.errorLight;   // Orange - below average
+  if (s < 80) return COLORS.warning;      // Yellow/Amber - average
+  if (s < 90) return COLORS.accent;       // Lime - great
+  return COLORS.success;                   // Bright green - elite
 }
 
 export type MetricScore = {
@@ -59,210 +32,99 @@ export type MetricScore = {
   score: number;
 };
 
-// ============================================================================
-// Hero Score Ring - Large ring with avatar inside
-// ============================================================================
-const HERO_SIZE = 140;
-const HERO_STROKE = 10;
-const AVATAR_SIZE = 100;
-
-type HeroScoreRingProps = {
-  score: number;
-  imageUri: string | null;
-  active: boolean;
+// Shorter labels for the compact summary card view
+const SHORT_LABELS: Record<string, string> = {
+  "Facial Symmetry": "Symmetry",
+  "Eye Symmetry": "Eyes",
+  "Nose Balance": "Nose",
+  "Skin Quality": "Skin quality",
 };
 
-function HeroScoreRing({ score, imageUri, active }: HeroScoreRingProps) {
-  const r = (HERO_SIZE - HERO_STROKE) / 2;
-  const c = 2 * Math.PI * r;
+// Gender-specific label for sexual dimorphism metric
+const GENDER_LABELS: Record<string, string> = {
+  male: "Masculinity",
+  female: "Femininity",
+};
 
-  const color = getScoreColor(score);
-  const colorLight = lightenColor(color, 0.25);
-  const label = getScoreLabel(score);
-
-  const progress = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    if (active) {
-      progress.setValue(0);
-      Animated.timing(progress, {
-        toValue: 1,
-        duration: 1000,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: false,
-      }).start();
-    }
-  }, [active]);
-
-  const dashOffset = progress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [c, c * (1 - Math.max(0, Math.min(100, score)) / 100)],
-  });
-
-  return (
-    <View style={styles.heroContainer}>
-      <View style={styles.heroRingWrapper}>
-        <Svg width={HERO_SIZE} height={HERO_SIZE}>
-          <Defs>
-            <LinearGradient id="heroGrad" x1="0" y1="0" x2="1" y2="1">
-              <Stop offset="0%" stopColor={colorLight} />
-              <Stop offset="100%" stopColor={color} />
-            </LinearGradient>
-          </Defs>
-
-          {/* Track */}
-          <Circle
-            cx={HERO_SIZE / 2}
-            cy={HERO_SIZE / 2}
-            r={r}
-            stroke="rgba(255,255,255,0.12)"
-            strokeWidth={HERO_STROKE}
-            fill="none"
-          />
-
-          {/* Progress */}
-          <AnimatedCircle
-            cx={HERO_SIZE / 2}
-            cy={HERO_SIZE / 2}
-            r={r}
-            stroke="url(#heroGrad)"
-            strokeWidth={HERO_STROKE}
-            fill="none"
-            strokeDasharray={`${c}`}
-            strokeDashoffset={dashOffset}
-            strokeLinecap="round"
-            rotation="-90"
-            originX={HERO_SIZE / 2}
-            originY={HERO_SIZE / 2}
-          />
-        </Svg>
-
-        {/* Avatar inside the ring */}
-        <View style={styles.avatarContainer}>
-          {imageUri ? (
-            <Image
-              source={{ uri: imageUri }}
-              style={styles.avatarImage}
-              resizeMode="cover"
-            />
-          ) : (
-            <View style={styles.avatarPlaceholder}>
-              <Text style={styles.avatarPlaceholderText}>?</Text>
-            </View>
-          )}
-        </View>
-      </View>
-
-      {/* Score below */}
-      <View style={styles.heroScoreRow}>
-        <Text style={[styles.heroScore, { color }]}>{Math.round(score)}</Text>
-        <Text style={styles.heroScorePercent}>%</Text>
-      </View>
-
-      {/* Label */}
-      <Text style={[styles.heroLabel, { color }]}>{label}</Text>
-    </View>
-  );
+function getShortLabel(label: string, gender?: string): string {
+  if (label === "Masculinity/Femininity") {
+    return GENDER_LABELS[gender || "male"] || "Masculinity";
+  }
+  return SHORT_LABELS[label] || label;
 }
 
 // ============================================================================
-// Mini Score Ring - Circular gauge for individual metrics
+// Animated Progress Bar
 // ============================================================================
-const MINI_SIZE = 72;
-const MINI_STROKE = 6;
-
-type MiniScoreRingProps = {
-  label: string;
+type ProgressBarProps = {
   score: number;
   delay: number;
   active: boolean;
 };
 
-function MiniScoreRing({ label, score, delay, active }: MiniScoreRingProps) {
-  const r = (MINI_SIZE - MINI_STROKE) / 2;
-  const c = 2 * Math.PI * r;
-
+function AnimatedProgressBar({ score, delay, active }: ProgressBarProps) {
+  const width = useRef(new Animated.Value(0)).current;
   const color = getScoreColor(score);
-  const colorLight = lightenColor(color, 0.25);
-
-  const progress = useRef(new Animated.Value(0)).current;
+  const clamped = Math.max(0, Math.min(100, score));
 
   useEffect(() => {
     if (active) {
-      progress.setValue(0);
-      Animated.timing(progress, {
-        toValue: 1,
+      width.setValue(0);
+      Animated.timing(width, {
+        toValue: clamped,
         duration: 800,
         delay,
         easing: Easing.out(Easing.cubic),
         useNativeDriver: false,
       }).start();
     }
-  }, [active, delay]);
+  }, [active, clamped, delay]);
 
-  const dashOffset = progress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [c, c * (1 - Math.max(0, Math.min(100, score)) / 100)],
+  const animatedWidth = width.interpolate({
+    inputRange: [0, 100],
+    outputRange: ["0%", "100%"],
   });
 
-  const gradientId = `miniGrad-${label.replace(/\s/g, "")}`;
+  return (
+    <View style={styles.progressTrack}>
+      <Animated.View
+        style={[
+          styles.progressFill,
+          {
+            width: animatedWidth,
+            backgroundColor: color,
+          },
+        ]}
+      />
+    </View>
+  );
+}
+
+// ============================================================================
+// Metric Cell - Single metric with label, number, progress bar
+// ============================================================================
+type MetricCellProps = {
+  label: string;
+  score: number;
+  delay: number;
+  active: boolean;
+  isLarge?: boolean;
+  gender?: string;
+};
+
+function MetricCell({ label, score, delay, active, isLarge = false, gender }: MetricCellProps) {
+  const clamped = Math.round(Math.max(0, Math.min(100, score)));
+  const displayLabel = getShortLabel(label, gender);
 
   return (
-    <View style={styles.miniRingContainer}>
-      <View style={styles.miniRingWrapper}>
-        <Svg width={MINI_SIZE} height={MINI_SIZE}>
-          <Defs>
-            <LinearGradient id={gradientId} x1="0" y1="0" x2="1" y2="1">
-              <Stop offset="0%" stopColor={colorLight} />
-              <Stop offset="100%" stopColor={color} />
-            </LinearGradient>
-          </Defs>
-
-          {/* Background circle */}
-          <Circle
-            cx={MINI_SIZE / 2}
-            cy={MINI_SIZE / 2}
-            r={MINI_SIZE / 2 - 2}
-            fill="rgba(255,255,255,0.06)"
-          />
-
-          {/* Track */}
-          <Circle
-            cx={MINI_SIZE / 2}
-            cy={MINI_SIZE / 2}
-            r={r}
-            stroke="rgba(255,255,255,0.12)"
-            strokeWidth={MINI_STROKE}
-            fill="none"
-          />
-
-          {/* Progress */}
-          <AnimatedCircle
-            cx={MINI_SIZE / 2}
-            cy={MINI_SIZE / 2}
-            r={r}
-            stroke={`url(#${gradientId})`}
-            strokeWidth={MINI_STROKE}
-            fill="none"
-            strokeDasharray={`${c}`}
-            strokeDashoffset={dashOffset}
-            strokeLinecap="round"
-            rotation="-90"
-            originX={MINI_SIZE / 2}
-            originY={MINI_SIZE / 2}
-          />
-        </Svg>
-
-        {/* Score text inside ring */}
-        <View style={styles.miniScoreTextContainer}>
-          <Text style={[styles.miniScoreText, { color }]}>{Math.round(score)}%</Text>
-        </View>
-      </View>
-
-      {/* Metric label below */}
-      <Text style={styles.miniMetricLabel} numberOfLines={2}>
-        {label}
+    <View style={styles.metricCell}>
+      <Text style={[styles.metricLabel, isLarge && styles.metricLabelLarge]}>
+        {displayLabel}
       </Text>
+      <Text style={[styles.metricScore, isLarge && styles.metricScoreLarge]}>
+        {clamped}
+      </Text>
+      <AnimatedProgressBar score={score} delay={delay} active={active} />
     </View>
   );
 }
@@ -278,6 +140,18 @@ type ScoresSummaryCardProps = {
   imageUri?: string | null;
 };
 
+// All 8 metrics displayed on summary card (4 rows x 2 columns)
+const SUMMARY_METRICS = [
+  "Overall",           // Row 1
+  "Facial Symmetry",
+  "Masculinity/Femininity", // Row 2
+  "Skin Quality",
+  "Jawline",           // Row 3
+  "Cheekbones",
+  "Eye Symmetry",      // Row 4
+  "Nose Balance",
+];
+
 export default function ScoresSummaryCard({
   metrics,
   totalScore,
@@ -285,156 +159,169 @@ export default function ScoresSummaryCard({
   active,
   imageUri,
 }: ScoresSummaryCardProps) {
+  const { data: onboardingData } = useOnboarding();
+  const gender = onboardingData?.gender;
+
+  // Add Overall to metrics list
+  const allMetrics: MetricScore[] = [
+    { key: "overall", label: "Overall", score: totalScore },
+    ...metrics,
+  ];
+
+  // Filter to only summary metrics and sort in defined order
+  const displayMetrics = allMetrics
+    .filter(m => SUMMARY_METRICS.includes(m.label))
+    .sort((a, b) => SUMMARY_METRICS.indexOf(a.label) - SUMMARY_METRICS.indexOf(b.label));
+
+  // Create pairs for the grid (2 columns, 4 rows)
+  const pairs: MetricScore[][] = [];
+  for (let i = 0; i < displayMetrics.length; i += 2) {
+    pairs.push(displayMetrics.slice(i, i + 2));
+  }
+
+  // Calculate how much the photo overflows the card top
+  const photoOverflow = AVATAR_TOTAL / 2;
+
   return (
-    <BlurView intensity={60} tint="dark" style={[styles.cardOuter, { width }]}>
-      <View style={styles.cardOverlay} pointerEvents="none" />
-
-      {/* Hero Section: Avatar + Total Score */}
-      <HeroScoreRing
-        score={totalScore}
-        imageUri={imageUri ?? null}
-        active={active}
-      />
-
-      {/* Divider */}
-      <View style={styles.divider} />
-
-      {/* Metrics Grid - 2 columns */}
-      <View style={styles.metricsGrid}>
-        {metrics.map((m, i) => (
-          <View key={m.key} style={styles.gridCell}>
-            <MiniScoreRing
-              label={m.label}
-              score={m.score}
-              delay={i * 60}
-              active={active}
+    <View style={styles.wrapper}>
+      {/* Profile Photo - positioned to overlap card top */}
+      <View style={styles.photoWrapper}>
+        <View style={styles.photoContainer}>
+          {imageUri ? (
+            <Image
+              source={{ uri: imageUri }}
+              style={styles.photo}
+              resizeMode="cover"
             />
-          </View>
-        ))}
+          ) : (
+            <View style={styles.photoPlaceholder}>
+              <Text style={styles.photoPlaceholderText}>?</Text>
+            </View>
+          )}
+        </View>
       </View>
-    </BlurView>
+
+      {/* Card with top padding to accommodate photo overlap */}
+      <View style={[styles.card, { width, paddingTop: photoOverflow + SP[3] }]}>
+        {/* Metrics Grid - 4 rows x 2 columns */}
+        <View style={styles.metricsContainer}>
+          {pairs.map((pair, rowIndex) => (
+            <View key={rowIndex} style={styles.metricsRow}>
+              {pair.map((metric, colIndex) => (
+                <MetricCell
+                  key={metric.key}
+                  label={metric.label}
+                  score={metric.score}
+                  delay={(rowIndex * 2 + colIndex) * 60}
+                  active={active}
+                  isLarge={rowIndex === 0}
+                  gender={gender}
+                />
+              ))}
+            </View>
+          ))}
+        </View>
+      </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  cardOuter: {
-    borderRadius: 24,
-    overflow: "hidden",
-    paddingTop: 24,
-    paddingBottom: 20,
-    paddingHorizontal: 16,
-    backgroundColor: "rgba(0,0,0,0.25)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
-  },
-  cardOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    borderRadius: 24,
-    backgroundColor: "rgba(255,255,255,0.04)",
+  // Outer wrapper to handle the overflow
+  wrapper: {
+    alignItems: "center",
   },
 
-  // Hero Section
-  heroContainer: {
-    alignItems: "center",
-    marginBottom: 16,
+  // Photo wrapper - positioned absolutely to overlap the card
+  photoWrapper: {
+    zIndex: 10,
+    marginBottom: -(AVATAR_TOTAL / 2), // Pull the card up to overlap
   },
-  heroRingWrapper: {
-    width: HERO_SIZE,
-    height: HERO_SIZE,
+
+  // Card container
+  card: {
+    backgroundColor: COLORS.bgBottom,
+    borderRadius: RADII.xl,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+    paddingBottom: SP[3],
+    paddingHorizontal: SP[4],
+  },
+
+  // Profile Photo with ring border
+  photoContainer: {
+    width: AVATAR_TOTAL,
+    height: AVATAR_TOTAL,
+    borderRadius: AVATAR_TOTAL / 2,
+    padding: AVATAR_BORDER,
+    backgroundColor: COLORS.bgBottom,
+    borderWidth: 2,
+    borderColor: COLORS.cardBorder,
     alignItems: "center",
     justifyContent: "center",
   },
-  avatarContainer: {
-    position: "absolute",
+  photo: {
     width: AVATAR_SIZE,
     height: AVATAR_SIZE,
     borderRadius: AVATAR_SIZE / 2,
-    overflow: "hidden",
-    backgroundColor: "#1A1A1A",
+    backgroundColor: COLORS.track,
   },
-  avatarImage: {
-    width: "100%",
-    height: "100%",
-  },
-  avatarPlaceholder: {
-    width: "100%",
-    height: "100%",
+  photoPlaceholder: {
+    width: AVATAR_SIZE,
+    height: AVATAR_SIZE,
+    borderRadius: AVATAR_SIZE / 2,
+    backgroundColor: COLORS.track,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#1A1A1A",
   },
-  avatarPlaceholderText: {
-    fontSize: 32,
-    color: "rgba(255,255,255,0.3)",
-    fontFamily: POP,
-  },
-  heroScoreRow: {
-    flexDirection: "row",
-    alignItems: "baseline",
-    marginTop: 12,
-  },
-  heroScore: {
-    fontSize: 48,
-    fontFamily: POP,
-    lineHeight: 52,
-  },
-  heroScorePercent: {
-    fontSize: 24,
-    color: "rgba(255,255,255,0.6)",
-    fontFamily: POP_MEDIUM,
-    marginLeft: 2,
-  },
-  heroLabel: {
-    fontSize: 16,
-    fontFamily: POP_MEDIUM,
-    marginTop: 2,
-  },
-
-  // Divider
-  divider: {
-    height: 1,
-    backgroundColor: "rgba(255,255,255,0.1)",
-    marginBottom: 16,
+  photoPlaceholderText: {
+    ...TYPE.h3,
+    color: COLORS.sub,
   },
 
   // Metrics Grid
-  metricsGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "space-between",
+  metricsContainer: {
+    gap: SP[3],
   },
-  gridCell: {
-    width: "48%",
-    marginBottom: 14,
-    alignItems: "center",
+  metricsRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: SP[3],
   },
 
-  // Mini Ring
-  miniRingContainer: {
-    alignItems: "center",
-    width: "100%",
+  // Metric Cell
+  metricCell: {
+    flex: 1,
   },
-  miniRingWrapper: {
-    width: MINI_SIZE,
-    height: MINI_SIZE,
-    alignItems: "center",
-    justifyContent: "center",
+  metricLabel: {
+    ...TYPE.small,
+    color: COLORS.sub,
+    marginBottom: SP[0],
   },
-  miniScoreTextContainer: {
-    position: "absolute",
-    alignItems: "center",
-    justifyContent: "center",
+  metricLabelLarge: {
+    ...TYPE.caption,
   },
-  miniScoreText: {
-    fontSize: 14,
-    fontFamily: POP,
+  metricScore: {
+    fontSize: 28,
+    lineHeight: 34,
+    fontFamily: "Poppins-SemiBold",
+    color: COLORS.text,
+    marginBottom: SP[1],
   },
-  miniMetricLabel: {
-    fontSize: 12,
-    color: "rgba(255,255,255,0.75)",
-    fontFamily: POP_MEDIUM,
-    textAlign: "center",
-    marginTop: 6,
-    maxWidth: 100,
+  metricScoreLarge: {
+    fontSize: 36,
+    lineHeight: 42,
+  },
+
+  // Progress Bar
+  progressTrack: {
+    height: SIZES.progressBarMd,
+    backgroundColor: COLORS.track,
+    borderRadius: RADII.circle,
+    overflow: "hidden",
+  },
+  progressFill: {
+    height: "100%",
+    borderRadius: RADII.circle,
   },
 });

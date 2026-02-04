@@ -1,8 +1,10 @@
+// app/(tabs)/history.tsx
+// History list screen - displays all historical scan results
+
 import React, { useCallback, useEffect, useState } from "react";
 import {
   View,
   FlatList,
-  ActivityIndicator,
   StyleSheet,
   RefreshControl,
   Pressable,
@@ -12,13 +14,12 @@ import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Animated, {
-  FadeInDown,
-  FadeIn,
-} from "react-native-reanimated";
+import Animated, { FadeInDown } from "react-native-reanimated";
 import { fetchScanHistory, type ScanHistoryItem } from "@/lib/api/history";
 import Text from "@/components/ui/T";
-import { COLORS, RADII } from "@/lib/tokens";
+import ScreenHeader from "@/components/layout/ScreenHeader";
+import StateView from "@/components/layout/StateView";
+import { COLORS, SP, RADII } from "@/lib/tokens";
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -37,7 +38,20 @@ function formatDate(value: string): string {
   }
 }
 
-function HistoryCard({ item, index }: { item: ScanHistoryItem; index: number }) {
+type HistoryCardProps = {
+  item: ScanHistoryItem;
+  index: number;
+};
+
+function HistoryCard({ item, index }: HistoryCardProps) {
+  const handleViewScores = () => {
+    router.push(`/history/score-card?scanId=${encodeURIComponent(item.id)}`);
+  };
+
+  const handleViewAnalysis = () => {
+    router.push(`/history/analysis-card?scanId=${encodeURIComponent(item.id)}`);
+  };
+
   return (
     <AnimatedPressable
       entering={FadeInDown.delay(index * 80).duration(400)}
@@ -56,16 +70,20 @@ function HistoryCard({ item, index }: { item: ScanHistoryItem; index: number }) 
             <View style={styles.dateDotOuter}>
               <View style={styles.dateDot} />
             </View>
-            <Text style={styles.date}>{formatDate(item.createdAt)}</Text>
+            <Text variant="bodySemiBold" color="text">
+              {formatDate(item.createdAt)}
+            </Text>
           </View>
 
-          {item.hasSideImage ? (
+          {item.hasSideImage && (
             <View style={styles.badgeRow}>
               <View style={styles.badge}>
-                <Text style={styles.badgeText}>Side Profile</Text>
+                <Text variant="smallSemiBold" style={styles.badgeText}>
+                  Side Profile
+                </Text>
               </View>
             </View>
-          ) : null}
+          )}
 
           <View style={styles.actionRow}>
             <Pressable
@@ -74,9 +92,11 @@ function HistoryCard({ item, index }: { item: ScanHistoryItem; index: number }) 
                 styles.ghostBtn,
                 pressed && styles.btnPressed,
               ]}
-              onPress={() => router.push(`/history/score-card?scanId=${encodeURIComponent(item.id)}`)}
+              onPress={handleViewScores}
             >
-              <Text style={[styles.actionText, styles.ghostText]}>View scores</Text>
+              <Text variant="captionSemiBold" color="text">
+                View scores
+              </Text>
             </Pressable>
             <Pressable
               style={({ pressed }) => [
@@ -84,9 +104,11 @@ function HistoryCard({ item, index }: { item: ScanHistoryItem; index: number }) 
                 styles.primaryBtn,
                 pressed && styles.btnPressed,
               ]}
-              onPress={() => router.push(`/history/analysis-card?scanId=${encodeURIComponent(item.id)}`)}
+              onPress={handleViewAnalysis}
             >
-              <Text style={styles.actionText}>View analysis</Text>
+              <Text variant="captionSemiBold" color="bgBottom">
+                View analysis
+              </Text>
             </Pressable>
           </View>
         </View>
@@ -131,39 +153,23 @@ export default function HistoryScreen() {
     []
   );
 
-  const renderEmpty = () => (
-    <Animated.View entering={FadeIn.delay(200)} style={styles.emptyState}>
-      <View style={styles.emptyIconWrap}>
-        <Text style={styles.emptyIcon}>📊</Text>
-      </View>
-      <Text style={styles.emptyTitle}>No scans yet</Text>
-      <Text style={styles.emptySubtitle}>
-        Run your first scan to see your history here
-      </Text>
-    </Animated.View>
-  );
-
   const renderContent = () => {
     if (loading) {
-      return (
-        <View style={styles.center}>
-          <ActivityIndicator color={COLORS.accent} size="large" />
-          <Text style={styles.stateText}>Loading history...</Text>
-        </View>
-      );
+      return <StateView loading loadingText="Loading history..." />;
     }
 
     if (error) {
+      return <StateView error={error} onRetry={load} />;
+    }
+
+    if (scans.length === 0) {
       return (
-        <View style={styles.center}>
-          <Text style={styles.errorText}>Error: {error}</Text>
-          <Pressable
-            style={({ pressed }) => [styles.retry, pressed && styles.btnPressed]}
-            onPress={load}
-          >
-            <Text style={styles.retryText}>Retry</Text>
-          </Pressable>
-        </View>
+        <StateView
+          empty
+          emptyIcon="📊"
+          emptyTitle="No scans yet"
+          emptySubtitle="Run your first scan to see your history here"
+        />
       );
     }
 
@@ -181,10 +187,9 @@ export default function HistoryScreen() {
           />
         }
         contentContainerStyle={[
-          scans.length ? styles.listContent : styles.listContentEmpty,
+          styles.listContent,
           { paddingBottom: insets.bottom + 100 },
         ]}
-        ListEmptyComponent={renderEmpty}
         showsVerticalScrollIndicator={false}
       />
     );
@@ -199,17 +204,14 @@ export default function HistoryScreen() {
         end={{ x: 0.5, y: 1 }}
       />
       <LinearGradient
-        colors={["rgba(180,243,77,0.03)", "transparent"]}
+        colors={[COLORS.accentGlow, "transparent"]}
         style={styles.topGlow}
         start={{ x: 0.5, y: 0 }}
         end={{ x: 0.5, y: 1 }}
       />
 
       <View style={[styles.container, { paddingTop: insets.top }]}>
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>History</Text>
-          <Text style={styles.headerSubtitle}>Your scan results</Text>
-        </View>
+        <ScreenHeader title="History" subtitle="Your scan results" />
         {renderContent()}
       </View>
     </View>
@@ -231,66 +233,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  header: {
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 20,
-  },
-  headerTitle: {
-    fontSize: 28,
-    lineHeight: 34,
-    color: COLORS.text,
-    fontFamily: Platform.select({
-      ios: "Poppins-SemiBold",
-      android: "Poppins-SemiBold",
-      default: "Poppins-SemiBold",
-    }),
-  },
-  headerSubtitle: {
-    fontSize: 14,
-    color: COLORS.sub,
-    marginTop: 4,
-    fontFamily: Platform.select({
-      ios: "Poppins-Medium",
-      android: "Poppins-Medium",
-      default: "Poppins-Medium",
-    }),
-  },
   listContent: {
-    paddingHorizontal: 16,
-    gap: 14,
-  },
-  listContentEmpty: {
-    flexGrow: 1,
-    paddingHorizontal: 16,
-  },
-  center: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 24,
-    gap: 16,
-  },
-  stateText: {
-    marginTop: 8,
-    fontSize: 15,
-    color: COLORS.sub,
-    textAlign: "center",
-    fontFamily: Platform.select({
-      ios: "Poppins-Medium",
-      android: "Poppins-Medium",
-      default: "Poppins-Medium",
-    }),
-  },
-  errorText: {
-    fontSize: 15,
-    color: "#FF6B6B",
-    textAlign: "center",
-    fontFamily: Platform.select({
-      ios: "Poppins-Medium",
-      android: "Poppins-Medium",
-      default: "Poppins-Medium",
-    }),
+    paddingHorizontal: SP[4],
+    gap: SP[3],
   },
 
   // Card styles
@@ -299,7 +244,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     ...(Platform.OS === "ios"
       ? {
-          shadowColor: "#000",
+          shadowColor: COLORS.shadow,
           shadowOpacity: 0.25,
           shadowRadius: 20,
           shadowOffset: { width: 0, height: 10 },
@@ -323,22 +268,22 @@ const styles = StyleSheet.create({
     right: 0,
     top: 0,
     height: 1,
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor: COLORS.whiteGlass,
   },
   cardInner: {
-    padding: 18,
-    gap: 12,
+    padding: SP[4],
+    gap: SP[3],
   },
   cardHeader: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+    gap: SP[3],
   },
   dateDotOuter: {
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: "rgba(180,243,77,0.12)",
+    backgroundColor: COLORS.accentGlow,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -348,45 +293,30 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     backgroundColor: COLORS.accent,
   },
-  date: {
-    fontSize: 16,
-    color: COLORS.text,
-    fontFamily: Platform.select({
-      ios: "Poppins-SemiBold",
-      android: "Poppins-SemiBold",
-      default: "Poppins-SemiBold",
-    }),
-  },
   badgeRow: {
     flexDirection: "row",
     justifyContent: "flex-start",
   },
   badge: {
-    backgroundColor: "rgba(180,243,77,0.12)",
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderRadius: 999,
-    borderColor: "rgba(180,243,77,0.3)",
+    backgroundColor: COLORS.accentGlow,
+    paddingHorizontal: SP[3],
+    paddingVertical: SP[1],
+    borderRadius: RADII.circle,
+    borderColor: COLORS.accentBorder,
     borderWidth: 1,
   },
   badgeText: {
-    fontSize: 12,
     color: COLORS.accent,
-    fontFamily: Platform.select({
-      ios: "Poppins-SemiBold",
-      android: "Poppins-SemiBold",
-      default: "Poppins-SemiBold",
-    }),
   },
   actionRow: {
     flexDirection: "row",
-    gap: 10,
-    marginTop: 4,
+    gap: SP[2],
+    marginTop: SP[1],
   },
   actionBtn: {
     flex: 1,
     borderRadius: RADII.md,
-    paddingVertical: 14,
+    paddingVertical: SP[3],
     alignItems: "center",
     borderWidth: 1,
   },
@@ -406,86 +336,8 @@ const styles = StyleSheet.create({
         }
       : {}),
   },
-  actionText: {
-    color: COLORS.bgBottom,
-    fontSize: 14,
-    fontFamily: Platform.select({
-      ios: "Poppins-SemiBold",
-      android: "Poppins-SemiBold",
-      default: "Poppins-SemiBold",
-    }),
-  },
-  ghostText: {
-    color: COLORS.text,
-  },
   btnPressed: {
     opacity: 0.85,
     transform: [{ scale: 0.98 }],
-  },
-
-  // Empty state
-  emptyState: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 40,
-    gap: 12,
-  },
-  emptyIconWrap: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: "rgba(180,243,77,0.08)",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 8,
-  },
-  emptyIcon: {
-    fontSize: 36,
-  },
-  emptyTitle: {
-    fontSize: 20,
-    color: COLORS.text,
-    fontFamily: Platform.select({
-      ios: "Poppins-SemiBold",
-      android: "Poppins-SemiBold",
-      default: "Poppins-SemiBold",
-    }),
-  },
-  emptySubtitle: {
-    fontSize: 14,
-    color: COLORS.sub,
-    textAlign: "center",
-    lineHeight: 20,
-    fontFamily: Platform.select({
-      ios: "Poppins-Medium",
-      android: "Poppins-Medium",
-      default: "Poppins-Medium",
-    }),
-  },
-
-  // Retry button
-  retry: {
-    backgroundColor: COLORS.accent,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: RADII.md,
-    ...(Platform.OS === "ios"
-      ? {
-          shadowColor: COLORS.accent,
-          shadowOpacity: 0.3,
-          shadowRadius: 12,
-          shadowOffset: { width: 0, height: 4 },
-        }
-      : { elevation: 6 }),
-  },
-  retryText: {
-    color: COLORS.bgBottom,
-    fontSize: 15,
-    fontFamily: Platform.select({
-      ios: "Poppins-SemiBold",
-      android: "Poppins-SemiBold",
-      default: "Poppins-SemiBold",
-    }),
   },
 });
