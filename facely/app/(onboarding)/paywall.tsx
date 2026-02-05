@@ -201,7 +201,14 @@ const PaywallScreen: React.FC = () => {
   const setOnboardingCompletedFromOnboarding = useAuthStore(
     (state) => state.setOnboardingCompletedFromOnboarding
   );
-  const subscriptionStore = useSubscriptionStore();
+
+  // Use individual selectors instead of getting entire store to avoid stale closures
+  const offerings = useSubscriptionStore((state) => state.offerings);
+  const setLoading = useSubscriptionStore((state) => state.setLoading);
+  const setOfferings = useSubscriptionStore((state) => state.setOfferings);
+  const setCurrentPackage = useSubscriptionStore((state) => state.setCurrentPackage);
+  const setRevenueCatEntitlement = useSubscriptionStore((state) => state.setRevenueCatEntitlement);
+  const activatePromoCode = useSubscriptionStore((state) => state.activatePromoCode);
 
   const screenFade = useSharedValue(0);
 
@@ -214,8 +221,8 @@ const PaywallScreen: React.FC = () => {
 
   // Fetch offerings on mount
   useEffect(() => {
-    const mapPackagesFromOfferings = (offerings: any) => {
-      const pkgs = offerings.current.availablePackages;
+    const mapPackagesFromOfferings = (offeringsData: any) => {
+      const pkgs = offeringsData.current.availablePackages;
       const mapped: typeof packages = {};
 
       pkgs.forEach((pkg: any) => {
@@ -230,23 +237,23 @@ const PaywallScreen: React.FC = () => {
 
     const fetchOfferings = async () => {
       // Guard: if offerings already exist in store, use them
-      if (subscriptionStore.offerings) {
+      if (offerings) {
         if (__DEV__) {
           console.log("[Paywall] Using cached offerings from store");
         }
-        const mapped = mapPackagesFromOfferings(subscriptionStore.offerings);
+        const mapped = mapPackagesFromOfferings(offerings);
         setPackages(mapped);
         return;
       }
 
       setIsLoading(true);
       try {
-        const offerings = await getOfferings();
-        if (offerings?.current) {
-          subscriptionStore.setOfferings(offerings);
+        const fetchedOfferings = await getOfferings();
+        if (fetchedOfferings?.current) {
+          setOfferings(fetchedOfferings);
 
           // Map packages by identifier
-          const mapped = mapPackagesFromOfferings(offerings);
+          const mapped = mapPackagesFromOfferings(fetchedOfferings);
           setPackages(mapped);
 
           if (__DEV__) {
@@ -327,7 +334,7 @@ const PaywallScreen: React.FC = () => {
 
   const onContinue = useCallback(async () => {
     setIsLoading(true);
-    subscriptionStore.setLoading(true);
+    setLoading(true);
 
     try {
       const selectedPackage = packages[selected];
@@ -340,7 +347,7 @@ const PaywallScreen: React.FC = () => {
         return;
       }
 
-      subscriptionStore.setCurrentPackage(selectedPackage);
+      setCurrentPackage(selectedPackage);
 
       // Attempt purchase
       const customerInfo = await purchasePackage(selectedPackage);
@@ -352,8 +359,11 @@ const PaywallScreen: React.FC = () => {
 
       // Check if user has entitlement (only updates RevenueCat state, never touches promo)
       const hasEntitlement = await checkSubscriptionStatus();
-      subscriptionStore.setRevenueCatEntitlement(hasEntitlement);
-      const hasAccess = hasEntitlement || subscriptionStore.promoActivated;
+      setRevenueCatEntitlement(hasEntitlement);
+
+      // Get fresh promoActivated value from store to avoid stale closure
+      const currentPromoActivated = useSubscriptionStore.getState().promoActivated;
+      const hasAccess = hasEntitlement || currentPromoActivated;
 
       if (hasAccess) {
         Alert.alert(
@@ -386,21 +396,24 @@ const PaywallScreen: React.FC = () => {
       );
     } finally {
       setIsLoading(false);
-      subscriptionStore.setLoading(false);
+      setLoading(false);
     }
-  }, [selected, packages, subscriptionStore, completeOnboardingAndNavigate]);
+  }, [selected, packages, setLoading, setCurrentPackage, setRevenueCatEntitlement, completeOnboardingAndNavigate]);
 
   const onRestorePurchases = useCallback(async () => {
     setIsLoading(true);
-    subscriptionStore.setLoading(true);
+    setLoading(true);
 
     try {
       await restorePurchases();
 
       // Check if user has entitlement (only updates RevenueCat state, never touches promo)
       const hasEntitlement = await checkSubscriptionStatus();
-      subscriptionStore.setRevenueCatEntitlement(hasEntitlement);
-      const hasAccess = hasEntitlement || subscriptionStore.promoActivated;
+      setRevenueCatEntitlement(hasEntitlement);
+
+      // Get fresh promoActivated value from store to avoid stale closure
+      const currentPromoActivated = useSubscriptionStore.getState().promoActivated;
+      const hasAccess = hasEntitlement || currentPromoActivated;
 
       if (hasAccess) {
         Alert.alert(
@@ -427,9 +440,9 @@ const PaywallScreen: React.FC = () => {
       );
     } finally {
       setIsLoading(false);
-      subscriptionStore.setLoading(false);
+      setLoading(false);
     }
-  }, [subscriptionStore, completeOnboardingAndNavigate]);
+  }, [setLoading, setRevenueCatEntitlement, completeOnboardingAndNavigate]);
 
   const onApplyPromoCode = useCallback(async () => {
     if (!promoCode.trim()) {
@@ -437,7 +450,7 @@ const PaywallScreen: React.FC = () => {
       return;
     }
 
-    const success = await subscriptionStore.activatePromoCode(promoCode);
+    const success = await activatePromoCode(promoCode);
 
     if (success) {
       Alert.alert(
@@ -451,10 +464,12 @@ const PaywallScreen: React.FC = () => {
         ]
       );
     } else {
-      const errorMessage = subscriptionStore.error || "The promo code you entered is not valid.";
+      // Get fresh error value from store
+      const currentError = useSubscriptionStore.getState().error;
+      const errorMessage = currentError || "The promo code you entered is not valid.";
       Alert.alert("Invalid Code", errorMessage);
     }
-  }, [promoCode, subscriptionStore, completeOnboardingAndNavigate]);
+  }, [promoCode, activatePromoCode, completeOnboardingAndNavigate]);
 
   const primaryScale = useSharedValue(1);
   const primaryGlow = useSharedValue(0);

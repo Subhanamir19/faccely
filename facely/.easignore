@@ -1,0 +1,17 @@
+node_modules/
+.git/
+.expo/
+dist/
+build/
+*.log
+*.tgz
+.env.local
+.env.*.local
+ios/
+android/
+*.mov
+*.avi
+__tests__/
+coverage/
+.turbo/
+.npm-cache/

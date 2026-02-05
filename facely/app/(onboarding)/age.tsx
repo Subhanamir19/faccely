@@ -1,9 +1,8 @@
 // app/(onboarding)/age.tsx
 // Age input screen with custom circular stepper
 import React, { useCallback, useEffect, useState } from "react";
-import { View, StyleSheet, Pressable, Platform, StatusBar } from "react-native";
+import { View, StyleSheet, Pressable, Platform, StatusBar, useWindowDimensions } from "react-native";
 import { router } from "expo-router";
-import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ChevronLeft, Plus, Minus } from "lucide-react-native";
@@ -22,16 +21,33 @@ import { COLORS, SP, RADII, getProgressForStep } from "@/lib/tokens";
 import { hapticLight, hapticSelection } from "@/lib/haptics";
 import { useOnboarding } from "@/store/onboarding";
 
+// Age constraints
+const MIN_AGE = 10;
+const MAX_AGE = 100;
+const DEFAULT_AGE = 25;
+
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
+// Circle size as percentage of screen width (clamped)
+const CIRCLE_SIZE_RATIO = 0.42;
+const CIRCLE_MIN = 140;
+const CIRCLE_MAX = 200;
 
 export default function AgeScreen() {
   const insets = useSafeAreaInsets();
+  const { width: screenWidth } = useWindowDimensions();
   const { data, setField } = useOnboarding();
   const [age, setAge] = useState<number>(
-    Number.isFinite(data.age) ? Number(data.age) : 25
+    Number.isFinite(data.age) ? Number(data.age) : DEFAULT_AGE
   );
 
   const progress = getProgressForStep("age");
+
+  // Responsive circle sizing
+  const circleSize = Math.min(CIRCLE_MAX, Math.max(CIRCLE_MIN, screenWidth * CIRCLE_SIZE_RATIO));
+  const glowSize = circleSize + 8;
+  const stepperBtnSize = Math.round(circleSize * 0.21);
+  const underlineWidth = Math.round(circleSize * 0.325);
 
   useEffect(() => {
     setField("age", age);
@@ -39,12 +55,12 @@ export default function AgeScreen() {
 
   const dec = useCallback(() => {
     hapticSelection();
-    setAge((a) => Math.max(10, a - 1));
+    setAge((a) => Math.max(MIN_AGE, a - 1));
   }, []);
 
   const inc = useCallback(() => {
     hapticSelection();
-    setAge((a) => Math.min(100, a + 1));
+    setAge((a) => Math.min(MAX_AGE, a + 1));
   }, []);
 
   const handleNext = useCallback(() => {
@@ -52,7 +68,7 @@ export default function AgeScreen() {
   }, []);
 
   const handleSkip = useCallback(() => {
-    setField("age", 25);
+    setField("age", DEFAULT_AGE);
     router.push("/(onboarding)/ethnicity");
   }, [setField]);
 
@@ -124,22 +140,32 @@ export default function AgeScreen() {
               <LinearGradient
                 pointerEvents="none"
                 colors={["transparent", `${COLORS.accent}0D`]}
-                style={styles.circleGlow}
+                style={[styles.circleGlow, { width: glowSize, height: glowSize, borderRadius: glowSize / 2 }]}
               />
-              <View style={styles.circleCore}>
-                <StepperButton onPress={inc} position="left">
-                  <Plus size={18} color={COLORS.text} strokeWidth={2.5} />
+              <View style={[styles.circleCore, { width: circleSize, height: circleSize, borderRadius: circleSize / 2 }]}>
+                <StepperButton
+                  onPress={dec}
+                  position="left"
+                  size={stepperBtnSize}
+                  accessibilityLabel="Decrease age"
+                >
+                  <Minus size={Math.round(stepperBtnSize * 0.53)} color={COLORS.text} strokeWidth={2.5} />
                 </StepperButton>
 
                 <View style={styles.ageCenter}>
-                  <T variant="h1" color="text" style={styles.ageText}>
+                  <T variant="scoreLarge" color="text">
                     {age}
                   </T>
-                  <View style={styles.underline} />
+                  <View style={[styles.underline, { width: underlineWidth }]} />
                 </View>
 
-                <StepperButton onPress={dec} position="right">
-                  <Minus size={18} color={COLORS.text} strokeWidth={2.5} />
+                <StepperButton
+                  onPress={inc}
+                  position="right"
+                  size={stepperBtnSize}
+                  accessibilityLabel="Increase age"
+                >
+                  <Plus size={Math.round(stepperBtnSize * 0.53)} color={COLORS.text} strokeWidth={2.5} />
                 </StepperButton>
               </View>
             </View>
@@ -174,10 +200,14 @@ function ProgressBar({ progress }: { progress: number }) {
 function StepperButton({
   onPress,
   position,
+  size,
+  accessibilityLabel,
   children,
 }: {
   onPress: () => void;
   position: "left" | "right";
+  size: number;
+  accessibilityLabel: string;
   children: React.ReactNode;
 }) {
   const scale = useSharedValue(1);
@@ -200,9 +230,17 @@ function StepperButton({
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
       hitSlop={16}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
       style={[
         styles.sideBtn,
         position === "left" ? styles.leftBtn : styles.rightBtn,
+        {
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          marginTop: -size / 2,
+        },
         animatedStyle,
       ]}
     >
@@ -255,7 +293,7 @@ const styles = StyleSheet.create({
     marginLeft: -SP[1],
     paddingVertical: SP[1],
     paddingRight: SP[2],
-    gap: 2,
+    gap: SP[1],
   },
 
   subtitle: {
@@ -271,16 +309,10 @@ const styles = StyleSheet.create({
   },
   circleGlow: {
     position: "absolute",
-    width: 168,
-    height: 168,
-    borderRadius: 84,
     opacity: 0.6,
   },
   circleCore: {
-    width: 160,
-    height: 160,
-    borderRadius: 80,
-    backgroundColor: "#0E1114",
+    backgroundColor: COLORS.bgTop,
     borderWidth: 1,
     borderColor: COLORS.cardBorder,
     alignItems: "center",
@@ -291,31 +323,22 @@ const styles = StyleSheet.create({
   ageCenter: {
     alignItems: "center",
   },
-  ageText: {
-    fontSize: 40,
-    letterSpacing: 0.5,
-  },
   underline: {
     height: 2,
     borderRadius: 2,
     backgroundColor: COLORS.accent,
     marginTop: SP[2],
-    width: 52,
   },
 
   // Stepper buttons
   sideBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.04)",
+    backgroundColor: COLORS.whiteGlass,
     borderWidth: 1,
     borderColor: COLORS.accentBorder,
     position: "absolute",
     top: "50%",
-    marginTop: -17,
     ...(Platform.OS === "ios"
       ? {
           shadowColor: COLORS.accent,
@@ -325,8 +348,8 @@ const styles = StyleSheet.create({
         }
       : {}),
   },
-  leftBtn: { left: 16 },
-  rightBtn: { right: 16 },
+  leftBtn: { left: SP[4] },
+  rightBtn: { right: SP[4] },
 
   // CTAs
   ctaContainer: {
