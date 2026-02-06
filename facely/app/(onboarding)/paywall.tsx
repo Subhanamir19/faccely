@@ -312,7 +312,7 @@ const PaywallScreen: React.FC = () => {
     setSelected(plan);
   };
 
-  const completeOnboardingAndNavigate = useCallback(async () => {
+  const completeOnboarding = useCallback(async () => {
     try {
       await finishOnboarding();
       setOnboardingCompletedFromOnboarding(true);
@@ -327,8 +327,6 @@ const PaywallScreen: React.FC = () => {
       if (__DEV__) {
         console.warn("[Paywall] Failed to persist onboarding completion", error);
       }
-    } finally {
-      router.replace("/(tabs)/take-picture");
     }
   }, [finishOnboarding, setOnboardingCompletedFromOnboarding]);
 
@@ -357,7 +355,13 @@ const PaywallScreen: React.FC = () => {
         return;
       }
 
-      // Check if user has entitlement (only updates RevenueCat state, never touches promo)
+      // Complete onboarding BEFORE updating subscription state.
+      // This prevents a race where IndexGate sees hasAccess=true but
+      // onboarding isn't marked complete, causing a navigation conflict.
+      await completeOnboarding();
+
+      // Now update subscription state — IndexGate will reactively navigate
+      // to /(tabs)/take-picture once it sees hasAccess=true + onboarding complete.
       const hasEntitlement = await checkSubscriptionStatus();
       setRevenueCatEntitlement(hasEntitlement);
 
@@ -365,29 +369,11 @@ const PaywallScreen: React.FC = () => {
       const currentPromoActivated = useSubscriptionStore.getState().promoActivated;
       const hasAccess = hasEntitlement || currentPromoActivated;
 
-      if (hasAccess) {
-        Alert.alert(
-          "Success!",
-          "Welcome to Sigma Max Pro! You now have access to all premium features.",
-          [
-            {
-              text: "Get Started",
-              onPress: () => void completeOnboardingAndNavigate(),
-            },
-          ]
-        );
-      } else {
-        Alert.alert(
-          "Purchase Completed",
-          "Your purchase was successful, but we couldn't verify your subscription. Please try restoring purchases.",
-          [
-            {
-              text: "OK",
-              onPress: () => void completeOnboardingAndNavigate(),
-            },
-          ]
-        );
+      if (!hasAccess) {
+        // Entitlement couldn't be verified — navigate manually as fallback
+        router.replace("/(tabs)/take-picture");
       }
+      // If hasAccess is true, IndexGate handles navigation automatically
     } catch (error: any) {
       console.error("[Paywall] Purchase error:", error);
       Alert.alert(
@@ -398,7 +384,7 @@ const PaywallScreen: React.FC = () => {
       setIsLoading(false);
       setLoading(false);
     }
-  }, [selected, packages, setLoading, setCurrentPackage, setRevenueCatEntitlement, completeOnboardingAndNavigate]);
+  }, [selected, packages, setLoading, setCurrentPackage, setRevenueCatEntitlement, completeOnboarding]);
 
   const onRestorePurchases = useCallback(async () => {
     setIsLoading(true);
@@ -409,23 +395,16 @@ const PaywallScreen: React.FC = () => {
 
       // Check if user has entitlement (only updates RevenueCat state, never touches promo)
       const hasEntitlement = await checkSubscriptionStatus();
-      setRevenueCatEntitlement(hasEntitlement);
 
       // Get fresh promoActivated value from store to avoid stale closure
       const currentPromoActivated = useSubscriptionStore.getState().promoActivated;
       const hasAccess = hasEntitlement || currentPromoActivated;
 
       if (hasAccess) {
-        Alert.alert(
-          "Purchases Restored!",
-          "Your subscription has been restored. Welcome back to Sigma Max Pro!",
-          [
-            {
-              text: "Continue",
-              onPress: () => void completeOnboardingAndNavigate(),
-            },
-          ]
-        );
+        // Complete onboarding before updating subscription state to avoid race
+        await completeOnboarding();
+        setRevenueCatEntitlement(hasEntitlement);
+        // IndexGate handles navigation automatically
       } else {
         Alert.alert(
           "No Purchases Found",
@@ -442,7 +421,7 @@ const PaywallScreen: React.FC = () => {
       setIsLoading(false);
       setLoading(false);
     }
-  }, [setLoading, setRevenueCatEntitlement, completeOnboardingAndNavigate]);
+  }, [setLoading, setRevenueCatEntitlement, completeOnboarding]);
 
   const onApplyPromoCode = useCallback(async () => {
     if (!promoCode.trim()) {
@@ -450,26 +429,19 @@ const PaywallScreen: React.FC = () => {
       return;
     }
 
+    // Complete onboarding before activating promo to avoid race
+    await completeOnboarding();
+
     const success = await activatePromoCode(promoCode);
 
-    if (success) {
-      Alert.alert(
-        "Promo Code Activated!",
-        "You've unlocked Sigma Max Pro! Enjoy all premium features.",
-        [
-          {
-            text: "Get Started",
-            onPress: () => void completeOnboardingAndNavigate(),
-          },
-        ]
-      );
-    } else {
+    if (!success) {
       // Get fresh error value from store
       const currentError = useSubscriptionStore.getState().error;
       const errorMessage = currentError || "The promo code you entered is not valid.";
       Alert.alert("Invalid Code", errorMessage);
     }
-  }, [promoCode, activatePromoCode, completeOnboardingAndNavigate]);
+    // If success, promoActivated=true in store → IndexGate navigates automatically
+  }, [promoCode, activatePromoCode, completeOnboarding]);
 
   const primaryScale = useSharedValue(1);
   const primaryGlow = useSharedValue(0);

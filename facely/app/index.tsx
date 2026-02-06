@@ -14,6 +14,7 @@ export default function IndexGate() {
   const initialized = useAuthStore((state) => state.initialized);
   const uid = useAuthStore((state) => state.uid);
   const { completed, hydrate, data: onboardingData } = useOnboarding();
+  const onboardingCompleted = useAuthStore((state) => state.onboardingCompleted);
   // Get both sources of access - promo OR RevenueCat entitlement grants access
   const revenueCatEntitlement = useSubscriptionStore((state) => state.revenueCatEntitlement);
   const promoActivated = useSubscriptionStore((state) => state.promoActivated);
@@ -129,6 +130,13 @@ export default function IndexGate() {
   // Authenticated but no subscription - go to paywall
   if (!hasAccess) {
     return <Redirect href="/(onboarding)/paywall" />;
+  }
+
+  // Has access but onboarding not yet marked complete (e.g. RevenueCat listener
+  // fired mid-purchase before paywall finished completeOnboarding) — wait for
+  // the paywall to finish writing onboarding state before navigating.
+  if (!onboardingCompleted) {
+    return <VideoSplash visible={true} />;
   }
 
   // Onboarding questions done, authenticated, and subscribed - go to main app
