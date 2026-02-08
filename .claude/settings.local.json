@@ -50,7 +50,8 @@
       "Bash(\"$LOCALAPPDATA/Android/Sdk/platform-tools/adb.exe\" shell am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d file:///sdcard/Download/test.jpg)",
       "Bash(find:*)",
       "Read(//c/SS/**)",
-      "Bash(Grep -r \"assets.*loading\\\\|assets.*video\" \"c:\\\\SS\\\\facely\\\\app\" --include=\"*.tsx\" --include=\"*.ts\")"
+      "Bash(Grep -r \"assets.*loading\\\\|assets.*video\" \"c:\\\\SS\\\\facely\\\\app\" --include=\"*.tsx\" --include=\"*.ts\")",
+      "Bash(node:*)"
     ]
   }
 }

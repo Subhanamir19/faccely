@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Dimensions,
   Pressable,
@@ -24,7 +24,7 @@ import Animated, {
   withTiming,
   withSequence,
 } from "react-native-reanimated";
-import { router } from "expo-router";
+import { CommonActions, useNavigation } from "@react-navigation/native";
 import { Check, Gift } from "lucide-react-native";
 import { useOnboarding } from "@/store/onboarding";
 import { useAuthStore } from "@/store/auth";
@@ -187,9 +187,11 @@ const PlanCard: React.FC<{
 };
 
 const PaywallScreen: React.FC = () => {
+  const navigation = useNavigation();
   const [selected, setSelected] = useState<PlanKey>("yearly");
   const [showPromoInput, setShowPromoInput] = useState(false);
   const [promoCode, setPromoCode] = useState("");
+  const isMountedRef = useRef(true);
   const [isLoading, setIsLoading] = useState(false);
   const [packages, setPackages] = useState<{
     weekly?: PurchasesPackage;
@@ -209,6 +211,10 @@ const PaywallScreen: React.FC = () => {
   const setCurrentPackage = useSubscriptionStore((state) => state.setCurrentPackage);
   const setRevenueCatEntitlement = useSubscriptionStore((state) => state.setRevenueCatEntitlement);
   const activatePromoCode = useSubscriptionStore((state) => state.activatePromoCode);
+
+  useEffect(() => {
+    return () => { isMountedRef.current = false; };
+  }, []);
 
   const screenFade = useSharedValue(0);
 
@@ -312,20 +318,52 @@ const PaywallScreen: React.FC = () => {
     setSelected(plan);
   };
 
+  // Reset the entire navigation state to /(tabs)/take-picture.
+  // IMPORTANT: useNavigation() returns the (onboarding) Stack navigator,
+  // NOT the root Stack. We must use getParent() to reach the root Stack
+  // which owns the "(tabs)" route. Dispatching on the wrong navigator
+  // crashes the app because "(tabs)" doesn't exist in the onboarding Stack.
+  const navigateToMainApp = useCallback(() => {
+    const rootNav = navigation.getParent();
+    if (rootNav) {
+      rootNav.dispatch(
+        CommonActions.reset({
+          index: 0,
+          routes: [{ name: "(tabs)" }],
+        })
+      );
+    } else {
+      // Fallback: if getParent() is somehow null, dispatch on current navigator.
+      // This shouldn't happen in practice given the navigation hierarchy.
+      if (__DEV__) {
+        console.warn("[Paywall] navigation.getParent() returned null, falling back");
+      }
+      navigation.dispatch(
+        CommonActions.reset({
+          index: 0,
+          routes: [{ name: "(tabs)" }],
+        })
+      );
+    }
+  }, [navigation]);
+
   const completeOnboarding = useCallback(async () => {
     try {
       await finishOnboarding();
-      setOnboardingCompletedFromOnboarding(true);
-      try {
-        await syncUserProfile(true);
-      } catch (syncError) {
-        if (__DEV__) {
-          console.warn("[Paywall] Failed to sync onboarding completion", syncError);
-        }
-      }
     } catch (error) {
       if (__DEV__) {
         console.warn("[Paywall] Failed to persist onboarding completion", error);
+      }
+    } finally {
+      // Always mark onboarding complete in auth store so IndexGate never
+      // gets stuck on VideoSplash, even if AsyncStorage write failed above.
+      setOnboardingCompletedFromOnboarding(true);
+    }
+    try {
+      await syncUserProfile(true);
+    } catch (syncError) {
+      if (__DEV__) {
+        console.warn("[Paywall] Failed to sync onboarding completion", syncError);
       }
     }
   }, [finishOnboarding, setOnboardingCompletedFromOnboarding]);
@@ -356,35 +394,31 @@ const PaywallScreen: React.FC = () => {
       }
 
       // Complete onboarding BEFORE updating subscription state.
-      // This prevents a race where IndexGate sees hasAccess=true but
-      // onboarding isn't marked complete, causing a navigation conflict.
+      // This prevents a race where the RevenueCat listener fires and
+      // IndexGate sees hasAccess=true but onboarding isn't marked complete.
       await completeOnboarding();
 
-      // Now update subscription state — IndexGate will reactively navigate
-      // to /(tabs)/take-picture once it sees hasAccess=true + onboarding complete.
+      // Update subscription state
       const hasEntitlement = await checkSubscriptionStatus();
       setRevenueCatEntitlement(hasEntitlement);
 
-      // Get fresh promoActivated value from store to avoid stale closure
-      const currentPromoActivated = useSubscriptionStore.getState().promoActivated;
-      const hasAccess = hasEntitlement || currentPromoActivated;
-
-      if (!hasAccess) {
-        // Entitlement couldn't be verified — navigate manually as fallback
-        router.replace("/(tabs)/take-picture");
-      }
-      // If hasAccess is true, IndexGate handles navigation automatically
+      // Reset navigation state directly to the main app tabs.
+      navigateToMainApp();
     } catch (error: any) {
       console.error("[Paywall] Purchase error:", error);
-      Alert.alert(
-        "Purchase Failed",
-        error.message || "An error occurred while processing your purchase. Please try again."
-      );
+      if (isMountedRef.current) {
+        Alert.alert(
+          "Purchase Failed",
+          error.message || "An error occurred while processing your purchase. Please try again."
+        );
+      }
     } finally {
-      setIsLoading(false);
-      setLoading(false);
+      if (isMountedRef.current) {
+        setIsLoading(false);
+        setLoading(false);
+      }
     }
-  }, [selected, packages, setLoading, setCurrentPackage, setRevenueCatEntitlement, completeOnboarding]);
+  }, [selected, packages, setLoading, setCurrentPackage, setRevenueCatEntitlement, completeOnboarding, navigateToMainApp]);
 
   const onRestorePurchases = useCallback(async () => {
     setIsLoading(true);
@@ -401,10 +435,9 @@ const PaywallScreen: React.FC = () => {
       const hasAccess = hasEntitlement || currentPromoActivated;
 
       if (hasAccess) {
-        // Complete onboarding before updating subscription state to avoid race
         await completeOnboarding();
         setRevenueCatEntitlement(hasEntitlement);
-        // IndexGate handles navigation automatically
+        navigateToMainApp();
       } else {
         Alert.alert(
           "No Purchases Found",
@@ -413,15 +446,19 @@ const PaywallScreen: React.FC = () => {
       }
     } catch (error: any) {
       console.error("[Paywall] Restore error:", error);
-      Alert.alert(
-        "Restore Failed",
-        error.message || "Failed to restore purchases. Please try again."
-      );
+      if (isMountedRef.current) {
+        Alert.alert(
+          "Restore Failed",
+          error.message || "Failed to restore purchases. Please try again."
+        );
+      }
     } finally {
-      setIsLoading(false);
-      setLoading(false);
+      if (isMountedRef.current) {
+        setIsLoading(false);
+        setLoading(false);
+      }
     }
-  }, [setLoading, setRevenueCatEntitlement, completeOnboarding]);
+  }, [setLoading, setRevenueCatEntitlement, completeOnboarding, navigateToMainApp]);
 
   const onApplyPromoCode = useCallback(async () => {
     if (!promoCode.trim()) {
@@ -429,19 +466,18 @@ const PaywallScreen: React.FC = () => {
       return;
     }
 
-    // Complete onboarding before activating promo to avoid race
-    await completeOnboarding();
-
     const success = await activatePromoCode(promoCode);
 
-    if (!success) {
+    if (success) {
+      await completeOnboarding();
+      navigateToMainApp();
+    } else {
       // Get fresh error value from store
       const currentError = useSubscriptionStore.getState().error;
       const errorMessage = currentError || "The promo code you entered is not valid.";
       Alert.alert("Invalid Code", errorMessage);
     }
-    // If success, promoActivated=true in store → IndexGate navigates automatically
-  }, [promoCode, activatePromoCode, completeOnboarding]);
+  }, [promoCode, activatePromoCode, completeOnboarding, navigateToMainApp]);
 
   const primaryScale = useSharedValue(1);
   const primaryGlow = useSharedValue(0);

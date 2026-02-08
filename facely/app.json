@@ -15,7 +15,9 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.sigmamax.app",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSCameraUsageDescription": "SigmaMax needs camera access to analyze your facial features and provide personalized recommendations.",
+        "NSPhotoLibraryUsageDescription": "SigmaMax needs photo library access to analyze photos of your face."
       }
     },
     "android": {
@@ -33,6 +35,18 @@
     "plugins": [
       "expo-router",
       "expo-secure-store",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "SigmaMax needs camera access to analyze your facial features and provide personalized recommendations."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "SigmaMax needs photo library access to analyze photos of your face."
+        }
+      ],
       [
         "expo-build-properties",
         {

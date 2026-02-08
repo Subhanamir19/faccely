@@ -21,8 +21,11 @@ export default function IndexGate() {
   const isRevenueCatInitialized = useSubscriptionStore((state) => state.isRevenueCatInitialized);
   const hasAccess = revenueCatEntitlement || promoActivated;
   const [onboardingHydrated, setOnboardingHydrated] = useState(false);
-  const [minSplashElapsed, setMinSplashElapsed] = useState(false);
+  // Skip the minimum splash delay if auth is already initialized (not a cold launch).
+  // This avoids a 2.5s delay when navigating back from paywall after purchase.
+  const [minSplashElapsed, setMinSplashElapsed] = useState(initialized);
   const [subscriptionChecked, setSubscriptionChecked] = useState(false);
+  const [subscriptionCheckTimedOut, setSubscriptionCheckTimedOut] = useState(false);
   const lastCheckedUid = useRef<string | null>(null);
 
   // Check if user has completed the onboarding questions (but may not have subscribed yet)
@@ -95,12 +98,37 @@ export default function IndexGate() {
     };
   }, [status, uid, isRevenueCatInitialized]);
 
+  // Safety timeout: if subscription check hasn't completed within 5 seconds
+  // (e.g. RevenueCat failed to initialize), stop blocking and fall through.
+  useEffect(() => {
+    if (subscriptionChecked) return;
+    const timer = setTimeout(() => {
+      if (!subscriptionChecked) {
+        if (__DEV__) {
+          console.warn("[IndexGate] Subscription check timed out after 5s");
+        }
+        setSubscriptionCheckTimedOut(true);
+      }
+    }, 15000);
+    return () => clearTimeout(timer);
+  }, [subscriptionChecked]);
+
   // Reset subscription checked state when user changes
   useEffect(() => {
     if (!uid || uid !== lastCheckedUid.current) {
       setSubscriptionChecked(false);
     }
   }, [uid]);
+
+  // Auto-heal: if user has access (paid/promo) but onboarding flag wasn't persisted
+  // (e.g. app killed mid-purchase), mark onboarding complete so they're not stuck.
+  // This is safe because hasCompletedQuestions (checked later) guarantees the data exists.
+  useEffect(() => {
+    if (hasAccess && !onboardingCompleted && onboardingHydrated) {
+      useOnboarding.getState().finish().catch(() => {});
+      useAuthStore.getState().setOnboardingCompletedFromOnboarding(true);
+    }
+  }, [hasAccess, onboardingCompleted, onboardingHydrated]);
 
   // Wait for auth to be initialized, onboarding hydrated, and minimum splash time
   const isLoading = !initialized || !onboardingHydrated || !minSplashElapsed;
@@ -121,9 +149,13 @@ export default function IndexGate() {
     return <Redirect href="/(auth)/login" />;
   }
 
-  // Wait for subscription status to be checked before routing to paywall or main app
-  // This prevents users with valid subscriptions from seeing the paywall briefly
-  if (!subscriptionChecked && isRevenueCatInitialized) {
+  // Wait for subscription status to be checked before routing to paywall or main app.
+  // This prevents users with valid subscriptions from seeing the paywall briefly.
+  // We must wait regardless of whether RevenueCat is initialized yet — otherwise
+  // an already-subscribed user could be sent to the paywall before the check runs.
+  // However, if RevenueCat never initializes (network issue, etc.), we fall through
+  // after the timeout so the user isn't stuck forever.
+  if (!subscriptionChecked && !subscriptionCheckTimedOut) {
     return <VideoSplash visible={true} />;
   }
 
@@ -132,13 +164,7 @@ export default function IndexGate() {
     return <Redirect href="/(onboarding)/paywall" />;
   }
 
-  // Has access but onboarding not yet marked complete (e.g. RevenueCat listener
-  // fired mid-purchase before paywall finished completeOnboarding) — wait for
-  // the paywall to finish writing onboarding state before navigating.
-  if (!onboardingCompleted) {
-    return <VideoSplash visible={true} />;
-  }
-
   // Onboarding questions done, authenticated, and subscribed - go to main app
+  // Note: if onboardingCompleted was false, the auto-heal effect above already fixed it
   return <Redirect href="/(tabs)/take-picture" />;
 }
