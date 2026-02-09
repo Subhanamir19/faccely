@@ -33,8 +33,8 @@ const TRACK = "rgba(255,255,255,0.18)";
 const TEXT_COLOR = "#F5F5F5";
 const TEXT_SECONDARY = "rgba(255,255,255,0.5)";
 
-// Loading messages - shuffled for engagement during analysis
-const LOADING_MESSAGES = [
+// Default loading messages for analysis
+const DEFAULT_MESSAGES = [
   "Analyzing facial structure",
   "Processing metrics",
   "Calculating scores",
@@ -46,6 +46,10 @@ const LOADING_MESSAGES = [
 
 export type CinematicLoaderProps = {
   loading?: boolean;
+  /** Override the cycling status messages */
+  messages?: string[];
+  /** Override the brand label (default: "SIGMA MAX") */
+  brandLabel?: string;
 };
 
 function polarToCartesian(radius: number, angleInDegrees: number) {
@@ -99,7 +103,12 @@ const OrbitTrack = React.memo(function OrbitTrack() {
   );
 });
 
-const CinematicLoader: React.FC<CinematicLoaderProps> = ({ loading = true }) => {
+const CinematicLoader: React.FC<CinematicLoaderProps> = ({
+  loading = true,
+  messages,
+  brandLabel = "SIGMA MAX",
+}) => {
+  const LOADING_MESSAGES = messages ?? DEFAULT_MESSAGES;
   const rotation = useSharedValue(0);
 
   // Text shuffle state
@@ -198,7 +207,7 @@ const CinematicLoader: React.FC<CinematicLoaderProps> = ({ loading = true }) => 
         </View>
 
         {/* Brand text */}
-        <Text style={styles.brand}>SIGMA MAX</Text>
+        <Text style={styles.brand}>{brandLabel}</Text>
 
         {/* Shuffling loading message */}
         <Animated.Text style={[styles.loadingText, textStyle]}>

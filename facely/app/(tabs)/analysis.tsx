@@ -16,6 +16,7 @@ import MetricCardShell from "@/components/layout/MetricCardShell";
 import MetricPagerFooter from "@/components/layout/MetricPagerFooter";
 import StateView from "@/components/layout/StateView";
 import { COLORS, SP, RADII } from "@/lib/tokens";
+import { sw, sh, ms } from "@/lib/responsive";
 import useMetricSizing from "@/components/layout/useMetricSizing.ts";
 
 import Text from "@/components/ui/T";
@@ -64,6 +65,20 @@ const SUBMETRICS: Record<MetricKey, [string, string, string, string]> = {
   sexual_dimorphism: ["Face Power", "Hormone Balance", "Contour Strength", "Softness Level"],
 };
 
+// ── Responsive constants ─────────────────────────────────────────
+const SCORE_BADGE_SIZE = ms(56, 0.6);
+const SCORE_FONT = ms(21, 0.5);
+const HEADER_PAD_H = sw(16);
+const HEADER_PAD_TOP = sh(4);
+const HEADER_PAD_BOTTOM = sh(8);
+const HEADER_GAP = sh(4);
+const TITLE_FONT = ms(20, 0.3);
+const POSITION_FONT = ms(11, 0.3);
+const POSITION_PAD_H = sw(10);
+const POSITION_PAD_V = sh(3);
+const GLOW_H = sh(260);
+const FOOTER_PAD_TOP = sh(4);
+
 // Score color tiers
 function getScoreColor(score: number): string {
   if (score <= 39) return COLORS.error;
@@ -108,9 +123,20 @@ function ScoreBadge({ score, label }: ScoreBadgeProps) {
 
   return (
     <Animated.View entering={FadeIn.delay(100)} style={styles.scoreBadgeContainer}>
-      <View style={[styles.scoreBadge, { borderColor: color, shadowColor: color }]}>
+      <View
+        style={[
+          styles.scoreBadge,
+          {
+            width: SCORE_BADGE_SIZE,
+            height: SCORE_BADGE_SIZE,
+            borderRadius: SCORE_BADGE_SIZE / 2,
+            borderColor: color,
+            shadowColor: color,
+          },
+        ]}
+      >
         <View style={[styles.scoreBadgeGlow, { backgroundColor: glow }]} />
-        <Text style={[styles.scoreBadgeValue, { color }]}>{displayScore}</Text>
+        <Text style={[styles.scoreBadgeValue, { color, fontSize: SCORE_FONT }]}>{displayScore}</Text>
       </View>
       <Text variant="smallSemiBold" style={styles.scoreBadgeLabel}>{label}</Text>
     </Animated.View>
@@ -132,9 +158,9 @@ function AnalysisHeader({ currentMetric, currentIndex, total, score }: AnalysisH
     <Animated.View entering={FadeInDown.duration(400)} style={styles.header}>
       <View style={styles.headerTop}>
         <View style={styles.headerTitleBlock}>
-          <Text variant="h3" color="text">{currentMetric}</Text>
+          <Text variant="h3" color="text" style={{ fontSize: TITLE_FONT }}>{currentMetric}</Text>
           <View style={styles.positionBadge}>
-            <Text variant="smallSemiBold" style={styles.positionText}>
+            <Text variant="smallSemiBold" style={[styles.positionText, { fontSize: POSITION_FONT }]}>
               {currentIndex + 1} of {total}
             </Text>
           </View>
@@ -188,7 +214,7 @@ export default function AnalysisScreen() {
       {/* Dynamic color glow at top based on current score */}
       <LinearGradient
         colors={[scoreGlow, "transparent"]}
-        style={styles.topGlow}
+        style={[styles.topGlow, { height: GLOW_H }]}
       />
 
       <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -285,7 +311,7 @@ export default function AnalysisScreen() {
             isFirst={isFirst}
             isLast={isLast}
             nextLabel={isLast ? "Tasks" : "Next"}
-            padX={SP[4]}
+            padX={sw(16)}
           />
         </View>
       </View>
@@ -306,7 +332,6 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    height: 280,
   },
   container: {
     flex: 1,
@@ -314,10 +339,10 @@ const styles = StyleSheet.create({
 
   // Header
   header: {
-    paddingHorizontal: SP[4],
-    paddingTop: SP[2],
-    paddingBottom: SP[3],
-    gap: SP[2],
+    paddingHorizontal: HEADER_PAD_H,
+    paddingTop: HEADER_PAD_TOP,
+    paddingBottom: HEADER_PAD_BOTTOM,
+    gap: HEADER_GAP,
   },
   headerTop: {
     flexDirection: "row",
@@ -326,12 +351,12 @@ const styles = StyleSheet.create({
   },
   headerTitleBlock: {
     flex: 1,
-    gap: SP[2],
+    gap: sh(4),
   },
   positionBadge: {
     backgroundColor: COLORS.whiteGlass,
-    paddingHorizontal: SP[3],
-    paddingVertical: SP[1],
+    paddingHorizontal: POSITION_PAD_H,
+    paddingVertical: POSITION_PAD_V,
     borderRadius: RADII.circle,
     alignSelf: "flex-start",
     borderWidth: 1,
@@ -344,12 +369,9 @@ const styles = StyleSheet.create({
   // Score badge
   scoreBadgeContainer: {
     alignItems: "center",
-    gap: SP[1],
+    gap: sh(2),
   },
   scoreBadge: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: COLORS.card,
@@ -358,8 +380,8 @@ const styles = StyleSheet.create({
     ...(Platform.OS === "ios"
       ? {
           shadowOpacity: 0.4,
-          shadowRadius: 12,
-          shadowOffset: { width: 0, height: 4 },
+          shadowRadius: ms(10),
+          shadowOffset: { width: 0, height: sh(3) },
         }
       : { elevation: 8 }),
   },
@@ -368,42 +390,42 @@ const styles = StyleSheet.create({
     opacity: 0.3,
   },
   scoreBadgeValue: {
-    fontSize: 24,
     fontFamily: "Poppins-SemiBold",
   },
   scoreBadgeLabel: {
     color: COLORS.sub,
+    fontSize: ms(11, 0.3),
   },
 
   // State containers
   stateContainer: {
-    paddingVertical: SP[4],
-    paddingHorizontal: SP[4],
+    paddingVertical: sh(16),
+    paddingHorizontal: sw(16),
   },
 
   // Empty banner
   emptyBanner: {
     flexDirection: "row",
     alignItems: "center",
-    gap: SP[3],
-    marginHorizontal: SP[4],
-    paddingHorizontal: SP[4],
-    paddingVertical: SP[3],
+    gap: sw(12),
+    marginHorizontal: sw(16),
+    paddingHorizontal: sw(16),
+    paddingVertical: sh(12),
     backgroundColor: COLORS.card,
     borderRadius: RADII.lg,
     borderWidth: 1,
     borderColor: COLORS.cardBorder,
   },
   emptyBannerIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: ms(36),
+    height: ms(36),
+    borderRadius: ms(18),
     backgroundColor: COLORS.accentGlow,
     alignItems: "center",
     justifyContent: "center",
   },
   emptyIcon: {
-    fontSize: 20,
+    fontSize: ms(18),
   },
   emptyBannerText: {
     flex: 1,
@@ -422,9 +444,9 @@ const styles = StyleSheet.create({
 
   // No data card
   noDataCard: {
-    marginTop: SP[3],
-    paddingHorizontal: SP[4],
-    paddingVertical: SP[3],
+    marginTop: sh(8),
+    paddingHorizontal: sw(16),
+    paddingVertical: sh(12),
     backgroundColor: COLORS.whiteGlass,
     borderRadius: RADII.md,
     borderWidth: 1,
@@ -436,6 +458,6 @@ const styles = StyleSheet.create({
 
   // Footer
   footer: {
-    paddingTop: SP[2],
+    paddingTop: FOOTER_PAD_TOP,
   },
 });

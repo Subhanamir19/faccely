@@ -2,7 +2,8 @@ import React from "react";
 import { View, StyleSheet } from "react-native";
 import Text from "@/components/ui/T";
 import PillNavButton from "@/components/ui/PillNavButton";
-import { COLORS, SP } from "@/lib/tokens";
+import { COLORS } from "@/lib/tokens";
+import { sw, sh, ms } from "@/lib/responsive";
 
 type Props = {
   index: number;
@@ -18,8 +19,12 @@ type Props = {
   padX?: number;
 };
 
-const DOT_SIZE = 6;
-const DOT_ACTIVE_W = 24;
+const DOT_SIZE = ms(5);
+const DOT_ACTIVE_W = sw(22);
+const DOT_GAP = sw(6);
+const FOOTER_GAP = sh(8);
+const NAV_GAP = sw(12);
+const FOOTER_PAD_B = sh(8);
 
 export default function MetricPagerFooter({
   index,
@@ -37,18 +42,22 @@ export default function MetricPagerFooter({
   return (
     <View style={[styles.footer, { paddingHorizontal: padX }]}>
       <View style={styles.pagerBlock}>
-        <View style={styles.dots}>
+        <View style={[styles.dots, { gap: DOT_GAP }]}>
           {Array.from({ length: total }).map((_, i) => (
             <View
               key={i}
-              style={[styles.dot, i === index && styles.dotActive]}
+              style={[
+                styles.dot,
+                { width: DOT_SIZE, height: DOT_SIZE, borderRadius: DOT_SIZE / 2 },
+                i === index && [styles.dotActive, { width: DOT_ACTIVE_W }],
+              ]}
             />
           ))}
         </View>
         {helperText ? <Text style={styles.helper}>{helperText}</Text> : null}
       </View>
 
-      <View style={styles.navRow}>
+      <View style={[styles.navRow, { gap: NAV_GAP }]}>
         <PillNavButton
           kind="ghost"
           label="Previous"
@@ -73,37 +82,31 @@ const styles = StyleSheet.create({
   footer: {
     width: "100%",
     alignItems: "center",
-    gap: SP[3],
-    paddingBottom: SP[3],
+    gap: FOOTER_GAP,
+    paddingBottom: FOOTER_PAD_B,
   },
   pagerBlock: {
     alignItems: "center",
-    gap: SP[1],
+    gap: sh(2),
   },
   dots: {
     flexDirection: "row",
     justifyContent: "center",
-    gap: SP[2],
   },
   dot: {
-    width: DOT_SIZE,
-    height: DOT_SIZE,
-    borderRadius: DOT_SIZE / 2,
     backgroundColor: "rgba(255,255,255,0.28)",
   },
   dotActive: {
     backgroundColor: COLORS.accent,
-    width: DOT_ACTIVE_W,
   },
   helper: {
     color: COLORS.sub,
-    fontSize: 12,
+    fontSize: ms(11),
     opacity: 0.85,
     textAlign: "center",
   },
   navRow: {
     flexDirection: "row",
-    gap: SP[3],
     width: "100%",
   },
 });

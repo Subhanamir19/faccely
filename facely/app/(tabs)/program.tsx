@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -15,8 +15,18 @@ import { Ionicons } from "@expo/vector-icons";
 import { ApiResponseError } from "@/lib/api/client";
 import Screen from "@/components/layout/Screen";
 import PillNavButton from "@/components/ui/PillNavButton";
-import { COLORS, RADII, SP } from "@/lib/tokens";
+import CinematicLoader from "@/components/ui/CinematicLoader";
+import { COLORS, RADII, SP, SHADOWS } from "@/lib/tokens";
 import { useProgramStore } from "@/store/program";
+
+const ROUTINE_LOADING_MESSAGES = [
+  "Preparing your daily routine",
+  "Using your latest analysis data",
+  "Selecting the right exercises",
+  "Calibrating intensity levels",
+  "Building your personalized plan",
+  "Almost ready",
+];
 
 type DayState = "today" | "past-complete" | "past-incomplete" | "future-locked";
 
@@ -413,6 +423,9 @@ export default function ProgramScreen() {
   const [screenError, setScreenError] = useState<string | null>(null);
   const [redirecting, setRedirecting] = useState(false);
   const [showCompletedLevels, setShowCompletedLevels] = useState(false);
+  const [startingDay, setStartingDay] = useState(false);
+  // Track which days already showed the cinematic intro this session
+  const seenDays = useRef(new Set<number>());
 
   // Available width for rows (screen - padding - card padding)
   const availableWidth = screenWidth - SP[4] * 2 - SP[3] * 2;
@@ -536,10 +549,48 @@ export default function ProgramScreen() {
   }, [dayData]);
 
   function handleDayPress(dayNumber: number) {
+    // Block navigation to future days
+    if (dayNumber > todayIndex + 1) return;
     router.push({
       pathname: "/program/[day]",
       params: { day: String(dayNumber) },
     });
+  }
+
+  const handleStartDay = useCallback(() => {
+    if (!program) return;
+    const dayNum = todayIndex + 1;
+
+    // Only show the cinematic intro the first time per day per session
+    if (seenDays.current.has(dayNum)) {
+      router.push({
+        pathname: "/program/[day]",
+        params: { day: String(dayNum) },
+      });
+      return;
+    }
+
+    seenDays.current.add(dayNum);
+    setStartingDay(true);
+
+    setTimeout(() => {
+      setStartingDay(false);
+      router.push({
+        pathname: "/program/[day]",
+        params: { day: String(dayNum) },
+      });
+    }, 2800);
+  }, [program, todayIndex]);
+
+  // Cinematic loader while preparing today's routine
+  if (startingDay) {
+    return (
+      <CinematicLoader
+        loading
+        messages={ROUTINE_LOADING_MESSAGES}
+        brandLabel="YOUR DAY"
+      />
+    );
   }
 
   if (redirecting) {
@@ -641,6 +692,22 @@ export default function ProgramScreen() {
                 <Text style={styles.statLabel}>Completed</Text>
               </View>
             </View>
+
+            {/* Start Your Day CTA */}
+            <Pressable
+              onPress={handleStartDay}
+              accessibilityRole="button"
+              accessibilityLabel="Start your day"
+              style={({ pressed }) => [
+                styles.startDayBtn,
+                pressed && styles.startDayBtnPressed,
+              ]}
+            >
+              <View style={styles.startDayInner}>
+                <Ionicons name="flash" size={20} color={COLORS.bgBottom} />
+                <Text style={styles.startDayText}>Start Your Day</Text>
+              </View>
+            </Pressable>
           </View>
 
           {/* Level Sections */}
@@ -831,6 +898,32 @@ const styles = StyleSheet.create({
     width: 1,
     height: 24,
     backgroundColor: COLORS.cardBorder,
+  },
+
+  // Start Your Day button
+  startDayBtn: {
+    borderRadius: RADII.pill,
+    overflow: "hidden",
+    backgroundColor: COLORS.accent,
+    ...SHADOWS.primaryBtn,
+  },
+  startDayBtnPressed: {
+    transform: [{ scale: 0.97 }],
+    opacity: 0.92,
+  },
+  startDayInner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: SP[2],
+    paddingVertical: SP[3],
+    paddingHorizontal: SP[5],
+  },
+  startDayText: {
+    color: COLORS.bgBottom,
+    fontSize: 17,
+    fontFamily: "Poppins-SemiBold",
+    letterSpacing: 0.3,
   },
 
   // Levels Container

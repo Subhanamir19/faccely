@@ -53,6 +53,13 @@ export const COLORS = {
   warning: "#F59E0B",
   success: "#22C55E",
 
+  // Verdict tier colors (best → worst)
+  verdictElite: "#7DFF6A",
+  verdictGreat: "#A8F059",
+  verdictGood: "#C8DA45",
+  verdictAverage: "#F5C842",
+  verdictPoor: "#F08C5A",
+
   // Sigma chat palette
   sigmaBg: "#000000",
   sigmaLime: "#B4F34D",

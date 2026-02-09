@@ -79,6 +79,8 @@ type ProgramState = {
   program: Program | null;
   programType: 1 | 2 | 3 | null;
   completions: Record<string, boolean>;
+  /** Day moods keyed by "programId:dayNumber" */
+  moods: Record<string, string>;
   todayIndex: number;
   loading: boolean;
   error: string | null;
@@ -87,6 +89,7 @@ type ProgramState = {
   fetchLatest: () => Promise<ProgramResponse | null>;
   generate: () => Promise<ProgramResponse>;
   toggleCompletion: (day: number, exerciseId: string) => Promise<void>;
+  setDayMood: (day: number, mood: string) => void;
   reset: () => void;
   refreshTodayIndex: () => void;
 };
@@ -97,6 +100,7 @@ export const useProgramStore = create<ProgramState>()(
       program: null,
       programType: null,
       completions: {},
+      moods: {},
       todayIndex: 0,
       loading: false,
       error: null,
@@ -166,11 +170,19 @@ export const useProgramStore = create<ProgramState>()(
         }
       },
 
+      setDayMood: (day, mood) => {
+        const program = get().program;
+        if (!program) return;
+        const key = `${program.programId}:${day}`;
+        set((prev) => ({ moods: { ...prev.moods, [key]: mood } }));
+      },
+
       reset: () =>
         set({
           program: null,
           programType: null,
           completions: {},
+          moods: {},
           todayIndex: 0,
           loading: false,
           error: null,
@@ -190,6 +202,7 @@ export const useProgramStore = create<ProgramState>()(
         program: state.program,
         programType: state.programType,
         completions: state.completions,
+        moods: state.moods,
       }),
       onRehydrateStorage: () => (state) => {
         if (!state?.program) return;

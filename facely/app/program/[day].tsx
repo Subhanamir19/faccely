@@ -16,6 +16,7 @@ import { BlurView } from "expo-blur";
 import { COLORS, RADII, SP, SHADOWS } from "@/lib/tokens";
 import PillNavButton from "@/components/ui/PillNavButton";
 import DayCompleteModal from "@/components/ui/DayCompleteModal";
+import MoodCheckModal from "@/components/ui/MoodCheckModal";
 import { useProgramStore } from "@/store/program";
 import { POSE_FRAMES, FALLBACK_FRAME } from "@/lib/programAssets";
 import { getExerciseGuide } from "@/lib/exerciseGuideData";
@@ -113,11 +114,13 @@ type ModalView = "action" | "guide" | "poses";
 export default function ProgramDayScreen() {
   const params = useLocalSearchParams<{ day?: string }>();
   const dayNumber = params?.day ? Number.parseInt(String(params.day), 10) : NaN;
-  const { program, programType, completions, toggleCompletion } = useProgramStore();
+  const { program, programType, completions, todayIndex, toggleCompletion, setDayMood } =
+    useProgramStore();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [showDayComplete, setShowDayComplete] = useState(false);
+  const [showMoodCheck, setShowMoodCheck] = useState(false);
   const [modalView, setModalView] = useState<ModalView>("action");
   const [guidePoseIdx, setGuidePoseIdx] = useState(0);
 
@@ -128,11 +131,28 @@ export default function ProgramDayScreen() {
 
   const selected = day?.exercises.find((ex) => ex.id === selectedId) ?? null;
 
+  const isFutureDay = program ? dayNumber > todayIndex + 1 : false;
+
   if (!program || !day || Number.isNaN(dayNumber)) {
     return (
       <SafeAreaView style={styles.safe}>
         <View style={styles.center}>
           <Text style={styles.empty}>No day found.</Text>
+          <BackPill onPress={() => router.back()} />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (isFutureDay) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <View style={styles.center}>
+          <Ionicons name="lock-closed" size={40} color={COLORS.sub} />
+          <Text style={styles.lockedTitle}>Day {dayNumber} is Locked</Text>
+          <Text style={styles.lockedSub}>
+            This day will unlock when the time comes.{"\n"}Keep going with your current routine!
+          </Text>
           <BackPill onPress={() => router.back()} />
         </View>
       </SafeAreaView>
@@ -566,7 +586,21 @@ export default function ProgramDayScreen() {
         autoDismissMs={0}
         dismissOnBackdropPress={false}
         particles
-        onClose={() => setShowDayComplete(false)}
+        onClose={() => {
+          setShowDayComplete(false);
+          // Show mood check after celebration
+          setTimeout(() => setShowMoodCheck(true), 200);
+        }}
+      />
+
+      <MoodCheckModal
+        visible={showMoodCheck}
+        dayNumber={safeDay.dayNumber}
+        onSelect={(mood) => {
+          setDayMood(safeDay.dayNumber, mood);
+          setShowMoodCheck(false);
+        }}
+        onSkip={() => setShowMoodCheck(false)}
       />
     </SafeAreaView>
   );
@@ -575,8 +609,22 @@ export default function ProgramDayScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: COLORS.bgBottom },
   container: { padding: SP[4], gap: SP[3], paddingBottom: SP[6] },
-  center: { flex: 1, alignItems: "center", justifyContent: "center", gap: SP[3] },
+  center: { flex: 1, alignItems: "center", justifyContent: "center", gap: SP[3], paddingHorizontal: SP[5] },
   empty: { color: COLORS.text, fontSize: 16, fontFamily: "Poppins-SemiBold" },
+  lockedTitle: {
+    color: COLORS.text,
+    fontSize: 22,
+    fontFamily: "Poppins-SemiBold",
+    textAlign: "center",
+    marginTop: SP[2],
+  },
+  lockedSub: {
+    color: COLORS.sub,
+    fontSize: 14,
+    fontFamily: "Poppins-SemiBold",
+    textAlign: "center",
+    lineHeight: 22,
+  },
   header: { flexDirection: "row", alignItems: "center", gap: SP[3] },
   title: { color: COLORS.text, fontSize: 24, fontFamily: "Poppins-SemiBold" },
   sub: { color: COLORS.sub, fontFamily: "Poppins-SemiBold" },
