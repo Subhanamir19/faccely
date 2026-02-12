@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Sigma Max",
-    "slug": "sigmamax",
+    "slug": "sigmamax-app",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -13,6 +13,7 @@
     },
     "ios": {
       "supportsTablet": true,
+      "buildNumber": "2",
       "bundleIdentifier": "com.sigmamax.app",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
@@ -27,7 +28,11 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -64,9 +69,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "897d04ae-b434-4398-8032-cb9cb1b1a918"
+        "projectId": "2260139b-8e0a-4bb6-a992-9c56af42e7d7"
       }
     },
-    "owner": "sigmamax"
+    "owner": "sigmamax2"
   }
 }
