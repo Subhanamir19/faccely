@@ -38,6 +38,10 @@ const EXERCISE_NAME_MAP: Record<string, string> = {
   "Nose touching with tongue": "nose-tongue-touch",
   "Fish face": "fish-face",
   "Sternocleidomastoid stretch": "sternocleidomastoid-stretch",
+  "Cheekbone knuckle massage": "cheekbone-knuckle-massage",
+  "Neck curls": "neck-curls",
+  "Resisted jaw openings": "resisted-jaw-openings",
+  "Chin tucks with head tilt": "chin-tucks-with-head-tilt",
 };
 
 /**

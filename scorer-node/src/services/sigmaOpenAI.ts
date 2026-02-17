@@ -56,39 +56,28 @@ function buildMessages(prompt: ComposedPrompt): ChatMessage[] {
   ];
 }
 
-/** Extract bullet-like suggestions from a "Next:" section in the text response */
+/** Extract follow-up suggestions from the last few lines of the response.
+ *  The new prompt tells the model to end with 2-3 short follow-up suggestions.
+ *  We look for bullet-like lines near the end of the text. */
 function extractSuggestedNextSteps(text: string): string[] | undefined {
-  const idx = text.toLowerCase().indexOf("next:");
-  if (idx < 0) return undefined;
+  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  if (lines.length === 0) return undefined;
 
-  // Take the tail after "Next:" and split into lines
-  const tail = text.slice(idx + "next:".length);
-  const lines = tail.split(/\r?\n/);
-
+  // Collect bullet-like lines from the end of the response
   const steps: string[] = [];
-  for (const raw of lines) {
-    const line = raw.trim();
-
-    // Stop if we hit another section header
-    if (/^(tldr|rationale|plan|safety)\s*:?\s*$/i.test(line)) break;
-
+  for (let i = lines.length - 1; i >= 0 && steps.length < 5; i--) {
+    const line = lines[i];
     // Accept bullets like "• text", "- text", "1) text", "1. text"
     const m = line.match(/^([•\-–—]|\d{1,2}[).])\s*(.+)$/);
     if (m && m[2]) {
       const clean = m[2].replace(/\s+/g, " ").trim();
-      if (clean.length > 0) steps.push(clean);
-      if (steps.length >= 5) break;
-      continue;
+      if (clean.length > 0 && clean.length <= 80) {
+        steps.unshift(clean);
+        continue;
+      }
     }
-
-    // Also accept short plain lines immediately after "Next:" if they look like options
-    if (line.length > 0 && line.length <= 80) {
-      steps.push(line);
-      if (steps.length >= 5) break;
-    } else if (line.length === 0 && steps.length > 0) {
-      // blank line after capturing some steps: likely end of list
-      break;
-    }
+    // Stop walking backward once we hit a non-bullet line
+    break;
   }
 
   return steps.length ? steps : undefined;

@@ -16,12 +16,13 @@ const AVATAR_SIZE = Math.min(Math.max(SCREEN_WIDTH * 0.36, 120), 160);
 const AVATAR_BORDER = 4;
 const AVATAR_TOTAL = AVATAR_SIZE + AVATAR_BORDER * 2;
 
-// Score color function - 5 tier system
+// Score color function - 6 tier system
 function getScoreColor(score: number): string {
   const s = Math.max(0, Math.min(100, score));
   if (s < 40) return COLORS.error;        // Red - needs work
   if (s < 60) return COLORS.errorLight;   // Orange - below average
-  if (s < 80) return COLORS.warning;      // Yellow/Amber - average
+  if (s < 70) return COLORS.warning;      // Yellow/Amber - average
+  if (s < 80) return "#C8DA45";           // Chartreuse - above average
   if (s < 90) return COLORS.accent;       // Lime - great
   return COLORS.success;                   // Bright green - elite
 }
@@ -51,6 +52,27 @@ function getShortLabel(label: string, gender?: string): string {
     return GENDER_LABELS[gender || "male"] || "Masculinity";
   }
   return SHORT_LABELS[label] || label;
+}
+
+// Tier anchors: 4 labels per metric mapped to score ranges
+const ANCHORS: Record<string, [string, string, string, string]> = {
+  "Overall":                 ["Weak",       "Decent",       "Strong",        "Top-tier"],
+  "Jawline":                 ["Undefined",  "Average",      "Sharp",         "Razor-sharp"],
+  "Cheekbones":              ["Recessed",   "Average",      "Defined",       "High-set"],
+  "Facial Symmetry":         ["Asymmetric", "Minor shift",  "Aligned",       "Mirror-like"],
+  "Eye Symmetry":            ["Uneven",     "Minor offset", "Balanced",      "Harmonious"],
+  "Skin Quality":            ["Damaged",    "Average",      "Healthy",       "Glass-like"],
+  "Nose Balance":            ["Misaligned", "Average",      "Proportioned",  "Ideal"],
+  "Masculinity/Femininity":  ["Faint",      "Average",      "Pronounced",    "Peak"],
+};
+
+function getTierLabel(label: string, score: number): string {
+  const anchors = ANCHORS[label] ?? ["Developing", "Emerging", "Strong", "Elite"];
+  const s = Math.max(0, Math.min(100, score));
+  if (s <= 30) return anchors[0];
+  if (s <= 60) return anchors[1];
+  if (s <= 80) return anchors[2];
+  return anchors[3];
 }
 
 // ============================================================================
@@ -115,15 +137,24 @@ type MetricCellProps = {
 function MetricCell({ label, score, delay, active, isLarge = false, gender }: MetricCellProps) {
   const clamped = Math.round(Math.max(0, Math.min(100, score)));
   const displayLabel = getShortLabel(label, gender);
+  const tierLabel = getTierLabel(label, score);
+  const tierColor = getScoreColor(score);
 
   return (
     <View style={styles.metricCell}>
       <Text style={[styles.metricLabel, isLarge && styles.metricLabelLarge]}>
         {displayLabel}
       </Text>
-      <Text style={[styles.metricScore, isLarge && styles.metricScoreLarge]}>
-        {clamped}
-      </Text>
+      <View style={styles.scoreRow}>
+        <Text style={[styles.metricScore, isLarge && styles.metricScoreLarge]}>
+          {clamped}
+        </Text>
+        <View style={styles.tierChip}>
+          <Text style={[styles.tierChipText, isLarge && styles.tierChipTextLarge]}>
+            {tierLabel}
+          </Text>
+        </View>
+      </View>
       <AnimatedProgressBar score={score} delay={delay} active={active} />
     </View>
   );
@@ -295,22 +326,43 @@ const styles = StyleSheet.create({
   },
   metricLabel: {
     ...TYPE.small,
-    color: COLORS.sub,
+    color: COLORS.text,
     marginBottom: SP[0],
   },
   metricLabelLarge: {
     ...TYPE.caption,
+  },
+  scoreRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: SP[1],
   },
   metricScore: {
     fontSize: 28,
     lineHeight: 34,
     fontFamily: "Poppins-SemiBold",
     color: COLORS.text,
-    marginBottom: SP[1],
   },
   metricScoreLarge: {
     fontSize: 36,
     lineHeight: 42,
+  },
+  tierChip: {
+    paddingHorizontal: SP[2],
+    paddingVertical: 3,
+    borderRadius: 100,
+    overflow: "hidden",
+    backgroundColor: "rgba(255,255,255,0.08)",
+  },
+  tierChipText: {
+    fontSize: 11,
+    fontFamily: "Poppins-SemiBold",
+    letterSpacing: 0.2,
+    color: COLORS.sub,
+  },
+  tierChipTextLarge: {
+    fontSize: 13,
   },
 
   // Progress Bar

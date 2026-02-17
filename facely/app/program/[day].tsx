@@ -1,6 +1,5 @@
 import React, { useMemo, useState } from "react";
 import {
-  Image,
   Modal,
   Pressable,
   SafeAreaView,
@@ -12,22 +11,16 @@ import {
 import { useLocalSearchParams, router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
-import { BlurView } from "expo-blur";
-import { COLORS, RADII, SP, SHADOWS } from "@/lib/tokens";
+import { COLORS, RADII, SP } from "@/lib/tokens";
 import PillNavButton from "@/components/ui/PillNavButton";
 import DayCompleteModal from "@/components/ui/DayCompleteModal";
 import MoodCheckModal from "@/components/ui/MoodCheckModal";
 import { useProgramStore } from "@/store/program";
-import { POSE_FRAMES, FALLBACK_FRAME } from "@/lib/programAssets";
-import { getExerciseGuide } from "@/lib/exerciseGuideData";
 
 function formatPhase(phase?: string) {
   if (phase === "foundation") return "Phase 1 - Foundation";
   if (phase === "development") return "Phase 2 - Development";
   if (phase === "peak") return "Phase 3 - Peak";
-  if (phase === "foundation") return "Phase 1 • Foundation";
-  if (phase === "development") return "Phase 2 • Development";
-  if (phase === "peak") return "Phase 3 • Peak";
   return "";
 }
 
@@ -109,7 +102,7 @@ function StartPill({ onPress }: { onPress: () => void }) {
 }
 
 // Modal view states
-type ModalView = "action" | "guide" | "poses";
+type ModalView = "action";
 
 export default function ProgramDayScreen() {
   const params = useLocalSearchParams<{ day?: string }>();
@@ -122,7 +115,6 @@ export default function ProgramDayScreen() {
   const [showDayComplete, setShowDayComplete] = useState(false);
   const [showMoodCheck, setShowMoodCheck] = useState(false);
   const [modalView, setModalView] = useState<ModalView>("action");
-  const [guidePoseIdx, setGuidePoseIdx] = useState(0);
 
   const day = useMemo(
     () => program?.days.find((d) => d.dayNumber === dayNumber),
@@ -206,151 +198,79 @@ export default function ProgramDayScreen() {
     }
   }
 
-  const USE_PREFERRED_TASKS_UI = true;
-
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView contentContainerStyle={styles.container}>
-        {USE_PREFERRED_TASKS_UI ? (
-          <>
-            <View style={styles.preferredHeaderRow}>
-              <BackPill onPress={() => router.back()} />
-              <View style={styles.preferredHeaderCenter}>
-                <Text style={styles.preferredDayTitle}>Day {safeDay.dayNumber}</Text>
-              </View>
-              <View style={styles.preferredHeaderRight}>
-                <Text style={styles.preferredTotalLabel}>{totalLabel}</Text>
-              </View>
-            </View>
-            <Text style={styles.preferredPhaseText}>{formatPhase(safeDay.phase)}</Text>
-            <Text style={styles.preferredFocusText} numberOfLines={1}>
-              Focus: {safeDay.focusAreas.join(", ")}{safeDay.isRecovery ? " - Recovery" : ""}
-            </Text>
-
-            <Banner text={getContextLineForDay(programType, safeDay.phase)} />
-
-            {safeDay.isRecovery ? (
-              <View style={styles.recoveryPill}>
-                <Text style={styles.recoveryText}>Active recovery - lighter intensity</Text>
-              </View>
-            ) : null}
-
-            <View style={styles.preferredSectionHeader}>
-              <Text style={styles.preferredSectionTitle}>Exercises</Text>
-              <Text style={styles.preferredSectionHint}>
-                {dayCompleted ? "All done" : "Tap a card or Start"}
-              </Text>
-            </View>
-
-            <View style={styles.preferredExerciseList}>
-              {safeDay.exercises.map((ex) => {
-                const key = `${safeProgram.programId}:${safeDay.dayNumber}:${ex.id}`;
-                const done = !!completions[key];
-                const meta = `${ex.role} - ${ex.intensity}`;
-                const summary = summarizeTargets(ex.targets);
-
-                return (
-                  <Pressable
-                    key={ex.id}
-                    onPress={() => {
-                      setSelectedId(ex.id);
-                      setModalView("action");
-                      setGuidePoseIdx(0);
-                    }}
-                    style={({ pressed }) => [
-                      styles.preferredExerciseCard,
-                      pressed ? styles.preferredExerciseCardPressed : null,
-                    ]}
-                  >
-                    <View style={styles.preferredExerciseRow}>
-                      <View style={styles.preferredExerciseLeft}>
-                        <Text style={styles.preferredExerciseTitle} numberOfLines={1}>
-                          {ex.name}
-                        </Text>
-                        <View style={styles.preferredMetaPill}>
-                          <Text style={styles.preferredMetaText}>{meta}</Text>
-                        </View>
-                        <Text style={styles.preferredSummary} numberOfLines={1}>
-                          {summary}
-                        </Text>
-                      </View>
-                      <View style={styles.preferredExerciseRight}>
-                        <StartPill
-                          onPress={() => {
-                            setSelectedId(ex.id);
-                            setModalView("action");
-                            setGuidePoseIdx(0);
-                          }}
-                        />
-                        <CompletionDot done={done} />
-                      </View>
-                    </View>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </>
-        ) : (
-          <>
-        <View style={styles.header}>
-          <PillNavButton kind="ghost" label="Back" onPress={() => router.back()} />
-          <View>
-            <Text style={styles.title}>Day {safeDay.dayNumber}</Text>
-            <Text style={styles.sub}>{formatPhase(safeDay.phase)}</Text>
-            <Text style={styles.sub}>
-              Focus: {safeDay.focusAreas.join(", ")} {safeDay.isRecovery ? "• Recovery" : ""}
-            </Text>
+        <View style={styles.preferredHeaderRow}>
+          <BackPill onPress={() => router.back()} />
+          <View style={styles.preferredHeaderCenter}>
+            <Text style={styles.preferredDayTitle}>Day {safeDay.dayNumber}</Text>
+          </View>
+          <View style={styles.preferredHeaderRight}>
+            <Text style={styles.preferredTotalLabel}>{totalLabel}</Text>
           </View>
         </View>
+        <Text style={styles.preferredPhaseText}>{formatPhase(safeDay.phase)}</Text>
+        <Text style={styles.preferredFocusText} numberOfLines={1}>
+          Focus: {safeDay.focusAreas.join(", ")}{safeDay.isRecovery ? " - Recovery" : ""}
+        </Text>
 
-        <View style={styles.contextBanner}>
-          <Text style={styles.contextText}>{getContextLineForDay(programType, safeDay.phase)}</Text>
-        </View>
+        <Banner text={getContextLineForDay(programType, safeDay.phase)} />
 
         {safeDay.isRecovery ? (
           <View style={styles.recoveryPill}>
-            <Text style={styles.recoveryText}>Active recovery • lighter intensity</Text>
+            <Text style={styles.recoveryText}>Active recovery - lighter intensity</Text>
           </View>
         ) : null}
 
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <Text style={styles.cardTitle}>Exercises</Text>
-            <Text style={styles.cardMeta}>
-              {dayCompleted ? "All done" : "Tap an exercise to start or complete"}
-            </Text>
-          </View>
+        <View style={styles.preferredSectionHeader}>
+          <Text style={styles.preferredSectionTitle}>Exercises</Text>
+          <Text style={styles.preferredSectionHint}>
+            {dayCompleted ? "All done" : "Tap a card or Start"}
+          </Text>
+        </View>
+
+        <View style={styles.preferredExerciseList}>
           {safeDay.exercises.map((ex) => {
             const key = `${safeProgram.programId}:${safeDay.dayNumber}:${ex.id}`;
             const done = !!completions[key];
+            const summary = summarizeTargets(ex.targets);
+
             return (
               <Pressable
                 key={ex.id}
+                onPress={() => {
+                  setSelectedId(ex.id);
+                  setModalView("action");
+                }}
                 style={({ pressed }) => [
-                  styles.exerciseRow,
-                  done && styles.exerciseDone,
-                  pressed && { opacity: 0.8 },
+                  styles.preferredExerciseCard,
+                  pressed ? styles.preferredExerciseCardPressed : null,
                 ]}
-                onPress={() => setSelectedId(ex.id)}
               >
-                <View style={styles.exerciseMeta}>
-                  <Text style={styles.exerciseName}>{ex.name}</Text>
-                  <Text style={styles.exerciseSub}>
-                    {ex.role} • {ex.intensity} • {ex.targets.join(", ")}
-                  </Text>
-                  <Text style={styles.protocol} numberOfLines={2}>
-                    {ex.protocol}
-                  </Text>
+                <View style={styles.preferredExerciseRow}>
+                  <View style={styles.preferredExerciseLeft}>
+                    <Text style={styles.preferredExerciseTitle} numberOfLines={1}>
+                      {ex.name}
+                    </Text>
+                    <Text style={styles.preferredSummary} numberOfLines={1}>
+                      {summary}
+                    </Text>
+                  </View>
+                  <View style={styles.preferredExerciseRight}>
+                    <StartPill
+                      onPress={() => {
+                        setSelectedId(ex.id);
+                        setModalView("action");
+                      }}
+                    />
+                    <CompletionDot done={done} />
+                  </View>
                 </View>
-                <Text style={done ? styles.doneBadge : styles.todoBadge}>
-                  {done ? "Done" : "Start"}
-                </Text>
               </Pressable>
             );
           })}
         </View>
-          </>
-        )}
       </ScrollView>
 
       <Modal visible={!!selected} transparent animationType="fade">
@@ -400,180 +320,20 @@ export default function ProgramDayScreen() {
                   <PillNavButton
                     kind="solid"
                     label="Guide"
-                    onPress={() => setModalView("guide")}
+                    onPress={() => {
+                      const id = selected?.id;
+                      setSelectedId(null);
+                      setModalView("action");
+                      if (id) {
+                        router.push({
+                          pathname: "/program/guide/[exerciseId]",
+                          params: { exerciseId: id },
+                        });
+                      }
+                    }}
                     disabled={submitting}
                   />
                 </View>
-              </>
-            ) : modalView === "guide" ? (
-              <>
-                {(() => {
-                  const guide = selected ? getExerciseGuide(selected.id) : null;
-                  if (!guide) {
-                    return (
-                      <>
-                        <Text style={styles.modalTitle}>{selected?.name}</Text>
-                        <Text style={styles.modalText}>No guide available for this exercise.</Text>
-                        <PillNavButton
-                          kind="ghost"
-                          label="Back"
-                          onPress={() => setModalView("action")}
-                        />
-                      </>
-                    );
-                  }
-                  return (
-                    <ScrollView style={styles.guideScrollView} showsVerticalScrollIndicator={false}>
-                      <Text style={styles.modalTitle}>{guide.name}</Text>
-
-                      <View style={styles.guideMetaRow}>
-                        <View style={styles.guideMetaItem}>
-                          <Text style={styles.guideMetaLabel}>Hold</Text>
-                          <Text style={styles.guideMetaValue}>{guide.holdTime}</Text>
-                        </View>
-                        <View style={styles.guideMetaItem}>
-                          <Text style={styles.guideMetaLabel}>Reps</Text>
-                          <Text style={styles.guideMetaValue}>{guide.reps}</Text>
-                        </View>
-                      </View>
-
-                      <View style={styles.guideMetaItem}>
-                        <Text style={styles.guideMetaLabel}>Frequency</Text>
-                        <Text style={styles.guideMetaValue}>{guide.frequency}</Text>
-                      </View>
-
-                      <Text style={styles.guideSectionTitle}>How to Perform</Text>
-                      {guide.howTo.map((step, idx) => (
-                        <View key={idx} style={styles.guideStepRow}>
-                          <Text style={styles.guideStepNumber}>{idx + 1}.</Text>
-                          <Text style={styles.guideStepText}>{step}</Text>
-                        </View>
-                      ))}
-
-                      <Text style={styles.guideSectionTitle}>Tips</Text>
-                      {guide.tips.map((tip, idx) => (
-                        <View key={idx} style={styles.guideStepRow}>
-                          <Text style={styles.guideTipBullet}>•</Text>
-                          <Text style={styles.guideStepText}>{tip}</Text>
-                        </View>
-                      ))}
-
-                      <View style={styles.guideButtonsRow}>
-                        <PillNavButton
-                          kind="ghost"
-                          label="Back"
-                          onPress={() => setModalView("action")}
-                        />
-                        <PillNavButton
-                          kind="solid"
-                          label="Poses"
-                          onPress={() => {
-                            setGuidePoseIdx(0);
-                            setModalView("poses");
-                          }}
-                        />
-                      </View>
-                    </ScrollView>
-                  );
-                })()}
-              </>
-            ) : modalView === "poses" ? (
-              <>
-                {(() => {
-                  const guideFrames = selected ? POSE_FRAMES[selected.id] ?? [FALLBACK_FRAME] : [FALLBACK_FRAME];
-                  const lastIdx = guideFrames.length - 1;
-                  const canPrev = guidePoseIdx > 0;
-                  const canNext = guidePoseIdx < lastIdx;
-                  const currentFrame = guideFrames[guidePoseIdx] ?? FALLBACK_FRAME;
-
-                  return (
-                    <>
-                      {/* Header row with back button on left */}
-                      <View style={styles.poseHeaderRow}>
-                        <Pressable
-                          onPress={() => setModalView("guide")}
-                          style={({ pressed }) => [
-                            styles.poseBackBtn,
-                            pressed && styles.poseBackBtnPressed,
-                          ]}
-                          accessibilityRole="button"
-                          accessibilityLabel="Back to guide"
-                        >
-                          <Ionicons name="arrow-back" size={18} color={COLORS.text} />
-                          <Text style={styles.poseBackText}>Back</Text>
-                        </Pressable>
-                        <Text style={styles.poseTitle}>{selected?.name}</Text>
-                        <View style={styles.poseHeaderSpacer} />
-                      </View>
-
-                      {/* Image container with glass effect */}
-                      <View style={styles.poseImageContainer}>
-                        <BlurView intensity={20} tint="dark" style={styles.poseImageBlur}>
-                          <View style={styles.poseImageOverlay}>
-                            <Image source={currentFrame} style={styles.poseImage} resizeMode="contain" />
-                          </View>
-                        </BlurView>
-                      </View>
-
-                      {/* Navigation row */}
-                      <View style={styles.poseNavRow}>
-                        <Pressable
-                          onPress={canPrev ? () => setGuidePoseIdx((v) => Math.max(0, v - 1)) : undefined}
-                          style={({ pressed }) => [
-                            styles.poseNavBtn,
-                            !canPrev && styles.poseNavBtnDisabled,
-                            pressed && canPrev && styles.poseNavBtnPressed,
-                          ]}
-                          accessibilityRole="button"
-                          accessibilityLabel="Previous pose"
-                        >
-                          <Ionicons
-                            name="chevron-back"
-                            size={20}
-                            color={canPrev ? COLORS.text : COLORS.sub}
-                          />
-                        </Pressable>
-
-                        <View style={styles.poseCounterPill}>
-                          <Text style={styles.poseCounterText}>
-                            {guidePoseIdx + 1} / {guideFrames.length}
-                          </Text>
-                        </View>
-
-                        <Pressable
-                          onPress={canNext ? () => setGuidePoseIdx((v) => Math.min(lastIdx, v + 1)) : undefined}
-                          style={({ pressed }) => [
-                            styles.poseNavBtn,
-                            !canNext && styles.poseNavBtnDisabled,
-                            pressed && canNext && styles.poseNavBtnPressed,
-                          ]}
-                          accessibilityRole="button"
-                          accessibilityLabel="Next pose"
-                        >
-                          <Ionicons
-                            name="chevron-forward"
-                            size={20}
-                            color={canNext ? COLORS.text : COLORS.sub}
-                          />
-                        </Pressable>
-                      </View>
-
-                      {/* Done button with accent glow */}
-                      <View style={styles.poseDoneWrapper}>
-                        <PillNavButton
-                          kind="solid"
-                          label="Done"
-                          onPress={() => {
-                            if (selected) {
-                              handleCompletion(selected.id);
-                            }
-                          }}
-                          disabled={submitting}
-                        />
-                      </View>
-                    </>
-                  );
-                })()}
               </>
             ) : null}
           </View>
@@ -625,10 +385,6 @@ const styles = StyleSheet.create({
     textAlign: "center",
     lineHeight: 22,
   },
-  header: { flexDirection: "row", alignItems: "center", gap: SP[3] },
-  title: { color: COLORS.text, fontSize: 24, fontFamily: "Poppins-SemiBold" },
-  sub: { color: COLORS.sub, fontFamily: "Poppins-SemiBold" },
-
   backPill: {
     height: 44,
     paddingHorizontal: SP[3],
@@ -749,49 +505,6 @@ const styles = StyleSheet.create({
     borderRadius: RADII.pill,
   },
   recoveryText: { color: COLORS.accent, fontWeight: "700", fontFamily: "Poppins-SemiBold" },
-  contextBanner: {
-    padding: SP[3],
-    backgroundColor: "rgba(180,243,77,0.08)",
-    borderColor: COLORS.accent,
-    borderWidth: 1,
-    borderRadius: RADII.md,
-  },
-  contextText: {
-    color: COLORS.accent,
-    fontSize: 14,
-    fontWeight: "600",
-    textAlign: "center",
-    fontFamily: "Poppins-SemiBold",
-  },
-  card: {
-    backgroundColor: COLORS.card,
-    borderColor: COLORS.cardBorder,
-    borderWidth: 1,
-    borderRadius: RADII.lg,
-    padding: SP[3],
-    gap: SP[2],
-  },
-  cardHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  cardTitle: { color: COLORS.text, fontSize: 18, fontWeight: "700", fontFamily: "Poppins-SemiBold" },
-  cardMeta: { color: COLORS.sub, fontSize: 12, fontFamily: "Poppins-SemiBold" },
-  exerciseRow: {
-    padding: SP[2],
-    borderRadius: RADII.md,
-    borderWidth: 1,
-    borderColor: COLORS.cardBorder,
-    backgroundColor: "rgba(255,255,255,0.02)",
-    gap: 4,
-  },
-  exerciseDone: {
-    borderColor: COLORS.accent,
-    backgroundColor: "rgba(180,243,77,0.12)",
-  },
-  exerciseMeta: { gap: 4 },
-  exerciseName: { color: COLORS.text, fontWeight: "700", fontFamily: "Poppins-SemiBold" },
-  exerciseSub: { color: COLORS.sub, fontSize: 12, fontFamily: "Poppins-SemiBold" },
-  protocol: { color: COLORS.sub, fontSize: 12, lineHeight: 16, fontFamily: "Poppins-SemiBold" },
-  doneBadge: { color: COLORS.accent, fontWeight: "700", fontFamily: "Poppins-SemiBold" },
-  todoBadge: { color: COLORS.sub, fontWeight: "700", fontFamily: "Poppins-SemiBold" },
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.65)",
@@ -856,191 +569,5 @@ const styles = StyleSheet.create({
     color: COLORS.accent,
     fontSize: 16,
     fontFamily: "Poppins-SemiBold",
-  },
-  image: { width: "100%", height: "100%", borderRadius: RADII.md },
-  poseNavRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: SP[4],
-  },
-
-  // Guide view styles
-  guideScrollView: {
-    maxHeight: 450,
-  },
-  guideMetaRow: {
-    flexDirection: "row",
-    gap: SP[3],
-    marginTop: SP[2],
-    marginBottom: SP[2],
-  },
-  guideMetaItem: {
-    flex: 1,
-    backgroundColor: "rgba(255,255,255,0.04)",
-    borderRadius: RADII.md,
-    padding: SP[2],
-    borderWidth: 1,
-    borderColor: COLORS.cardBorder,
-  },
-  guideMetaLabel: {
-    color: COLORS.sub,
-    fontSize: 11,
-    fontFamily: "Poppins-SemiBold",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-    marginBottom: 2,
-  },
-  guideMetaValue: {
-    color: COLORS.text,
-    fontSize: 13,
-    fontFamily: "Poppins-SemiBold",
-    lineHeight: 18,
-  },
-  guideSectionTitle: {
-    color: COLORS.text,
-    fontSize: 15,
-    fontWeight: "700",
-    fontFamily: "Poppins-SemiBold",
-    marginTop: SP[3],
-    marginBottom: SP[2],
-  },
-  guideStepRow: {
-    flexDirection: "row",
-    gap: SP[2],
-    marginBottom: SP[2],
-  },
-  guideStepNumber: {
-    color: COLORS.accent,
-    fontSize: 13,
-    fontWeight: "700",
-    fontFamily: "Poppins-SemiBold",
-    width: 18,
-  },
-  guideStepText: {
-    flex: 1,
-    color: COLORS.sub,
-    fontSize: 13,
-    lineHeight: 18,
-    fontFamily: "Poppins-SemiBold",
-  },
-  guideTipBullet: {
-    color: COLORS.accent,
-    fontSize: 13,
-    fontWeight: "700",
-    fontFamily: "Poppins-SemiBold",
-    width: 18,
-  },
-  guideButtonsRow: {
-    flexDirection: "row",
-    gap: SP[2],
-    marginTop: SP[3],
-  },
-  guidePoseImageWrap: {
-    width: "100%",
-    height: 280,
-    backgroundColor: "rgba(255,255,255,0.04)",
-    borderRadius: RADII.md,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  // Redesigned pose viewer styles
-  poseHeaderRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    width: "100%",
-    marginBottom: SP[2],
-  },
-  poseBackBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SP[1],
-    paddingHorizontal: SP[3],
-    paddingVertical: SP[2],
-    borderRadius: RADII.pill,
-    borderWidth: 1,
-    borderColor: COLORS.cardBorder,
-    backgroundColor: COLORS.whiteGlass,
-  },
-  poseBackBtnPressed: {
-    transform: [{ scale: 0.97 }],
-    opacity: 0.9,
-  },
-  poseBackText: {
-    color: COLORS.text,
-    fontSize: 14,
-    fontFamily: "Poppins-SemiBold",
-  },
-  poseTitle: {
-    color: COLORS.text,
-    fontSize: 16,
-    fontFamily: "Poppins-SemiBold",
-    flex: 1,
-    textAlign: "center",
-    marginHorizontal: SP[2],
-  },
-  poseHeaderSpacer: {
-    width: 80, // Match back button width for centering
-  },
-  poseImageContainer: {
-    width: "100%",
-    height: 300,
-    borderRadius: RADII.lg,
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: COLORS.cardHairline,
-  },
-  poseImageBlur: {
-    flex: 1,
-    width: "100%",
-    height: "100%",
-  },
-  poseImageOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(18,18,18,0.5)",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: SP[3],
-  },
-  poseImage: {
-    width: "100%",
-    height: "100%",
-    borderRadius: RADII.md,
-  },
-  poseNavBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: COLORS.cardBorder,
-    backgroundColor: COLORS.whiteGlass,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  poseNavBtnPressed: {
-    transform: [{ scale: 0.95 }],
-    backgroundColor: "rgba(255,255,255,0.1)",
-  },
-  poseNavBtnDisabled: {
-    opacity: 0.35,
-  },
-  poseCounterPill: {
-    paddingHorizontal: SP[4],
-    paddingVertical: SP[2],
-    borderRadius: RADII.pill,
-    backgroundColor: COLORS.whiteGlass,
-    borderWidth: 1,
-    borderColor: COLORS.cardBorder,
-  },
-  poseCounterText: {
-    color: COLORS.text,
-    fontSize: 14,
-    fontFamily: "Poppins-SemiBold",
-  },
-  poseDoneWrapper: {
-    width: "100%",
-    ...SHADOWS.primaryBtn,
   },
 });

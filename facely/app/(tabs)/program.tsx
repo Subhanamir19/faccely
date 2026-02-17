@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Image,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -162,6 +163,7 @@ function DayRow({
           const cx = getSlotX(slotForDayIndex(index));
           const isToday = day.state === "today";
           const isComplete = day.state === "past-complete";
+          const isIncomplete = day.state === "past-incomplete";
           const isLocked = day.state === "future-locked";
           const radius = circleSize / 2 - 2;
 
@@ -177,6 +179,16 @@ function DayRow({
                 />
               )}
 
+              {/* Outer glow for missed/incomplete */}
+              {isIncomplete && (
+                <Circle
+                  cx={cx}
+                  cy={circleY}
+                  r={radius + 3}
+                  fill="rgba(245, 158, 11, 0.15)"
+                />
+              )}
+
               {/* Main circle */}
               <Circle
                 cx={cx}
@@ -185,10 +197,11 @@ function DayRow({
                 fill={isComplete ? "url(#purpleGradient)" : "rgba(30,30,35,0.9)"}
                 stroke={
                   isComplete ? "#c026d3" :
+                  isIncomplete ? "#f59e0b" :
                   isToday ? "#9333ea" :
                   "rgba(255,255,255,0.2)"
                 }
-                strokeWidth={isToday ? 2.5 : 1.5}
+                strokeWidth={isToday ? 2.5 : isIncomplete ? 2 : 1.5}
                 strokeDasharray={isLocked ? "5,3" : undefined}
               />
             </React.Fragment>
@@ -215,6 +228,7 @@ function DayRow({
           const left = getSlotLeft(slotForDayIndex(index));
           const isToday = day.state === "today";
           const isComplete = day.state === "past-complete";
+          const isIncomplete = day.state === "past-incomplete";
           const isLocked = day.state === "future-locked";
 
           return (
@@ -240,6 +254,7 @@ function DayRow({
                   style={[
                     styles.dayNumber,
                     isComplete && styles.dayNumberComplete,
+                    isIncomplete && styles.dayNumberIncomplete,
                     isLocked && styles.dayNumberLocked,
                   ]}
                 >
@@ -424,6 +439,7 @@ export default function ProgramScreen() {
   const [redirecting, setRedirecting] = useState(false);
   const [showCompletedLevels, setShowCompletedLevels] = useState(false);
   const [startingDay, setStartingDay] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   // Track which days already showed the cinematic intro this session
   const seenDays = useRef(new Set<number>());
 
@@ -557,6 +573,14 @@ export default function ProgramScreen() {
     });
   }
 
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await fetchLatest();
+    } catch {}
+    setRefreshing(false);
+  }, [fetchLatest]);
+
   const handleStartDay = useCallback(() => {
     if (!program) return;
     const dayNum = todayIndex + 1;
@@ -579,7 +603,7 @@ export default function ProgramScreen() {
         pathname: "/program/[day]",
         params: { day: String(dayNum) },
       });
-    }, 2800);
+    }, 1200);
   }, [program, todayIndex]);
 
   // Cinematic loader while preparing today's routine
@@ -666,6 +690,14 @@ export default function ProgramScreen() {
         <ScrollView
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.scrollContent}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor={COLORS.accent}
+              colors={[COLORS.accent]}
+            />
+          }
         >
           {/* Header Section */}
           <View style={styles.header}>
@@ -683,7 +715,7 @@ export default function ProgramScreen() {
               </View>
               <View style={styles.statDivider} />
               <View style={styles.statItem}>
-                <Text style={styles.statValue}>{70 - todayIndex}</Text>
+                <Text style={styles.statValue}>{70 - totalCompletedDays}</Text>
                 <Text style={styles.statLabel}>Remaining</Text>
               </View>
               <View style={styles.statDivider} />
@@ -705,7 +737,7 @@ export default function ProgramScreen() {
             >
               <View style={styles.startDayInner}>
                 <Ionicons name="flash" size={20} color={COLORS.bgBottom} />
-                <Text style={styles.startDayText}>Start Your Day</Text>
+                <Text style={styles.startDayText}>Start Day {todayIndex + 1}</Text>
               </View>
             </Pressable>
           </View>
@@ -781,7 +813,7 @@ export default function ProgramScreen() {
                 level={nextLevel}
                 onDayPress={handleDayPress}
                 availableWidth={availableWidth}
-                expanded
+                expanded={!nextLevel.isLocked}
                 disableDays={nextLevel.isLocked}
                 lockedHint={
                   nextLevel.isLocked
@@ -1118,6 +1150,9 @@ const styles = StyleSheet.create({
   },
   dayNumberComplete: {
     color: "#ffffff",
+  },
+  dayNumberIncomplete: {
+    color: "#f59e0b",
   },
   dayNumberLocked: {
     color: "rgba(255,255,255,0.4)",

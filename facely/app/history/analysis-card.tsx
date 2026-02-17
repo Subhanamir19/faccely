@@ -270,7 +270,7 @@ export default function HistoryAnalysisCard() {
           {/* Remarks section */}
           <View style={styles.remarksSection}>
             <Text variant="captionSemiBold" style={styles.remarksTitle}>
-              AI Analysis
+              Analysis
             </Text>
             <View style={styles.remarksList}>
               {item.lines.slice(0, 4).map((line, idx) => (

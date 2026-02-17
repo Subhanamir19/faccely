@@ -62,6 +62,22 @@ export const POSE_FRAMES: Record<string, any[]> = {
     require("../aligned_exercises/Fish face-Pose1.jpeg"),
     require("../aligned_exercises/Fish face-Pose2.jpeg"),
   ],
+  "cheekbone-knuckle-massage": [
+    require("../aligned_exercises/Cheekbone knuckle massage-Pose1.jpeg"),
+    require("../aligned_exercises/Cheekbone knuckle massage-Pose2.jpeg"),
+  ],
+  "neck-curls": [
+    require("../aligned_exercises/Neck curls-Pose1.jpeg"),
+    require("../aligned_exercises/Neck curls-Pose2.jpeg"),
+  ],
+  "resisted-jaw-openings": [
+    require("../aligned_exercises/Resisted jaw openings-Pose1.jpeg"),
+    require("../aligned_exercises/Resisted jaw openings-Pose2.jpeg"),
+  ],
+  "chin-tucks-with-head-tilt": [
+    require("../aligned_exercises/Chin tucks with head tilt-Pose1.jpeg"),
+    require("../aligned_exercises/Chin tucks with head tilt-Pose2.jpeg"),
+  ],
 };
 
 export const FALLBACK_FRAME = require("../assets/analysis-images/facial_symmetry.jpg");

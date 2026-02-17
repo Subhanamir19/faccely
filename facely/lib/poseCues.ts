@@ -168,6 +168,46 @@ export const POSE_CUES: Record<string, PoseCue[]> = {
       cue: "With head still slightly up, open your mouth wide in a slow \"chew\" motion (controlled, not forced).",
     },
   ],
+  "cheekbone-knuckle-massage": [
+    {
+      poseNumber: 1,
+      cue: "Make loose fists and place knuckles beside your nose at cheekbone level, ready to sweep outward.",
+    },
+    {
+      poseNumber: 2,
+      cue: "Sweep knuckles firmly along the cheekbones toward the ears in a smooth upward stroke.",
+    },
+  ],
+  "neck-curls": [
+    {
+      poseNumber: 1,
+      cue: "Lay on your back with head hanging off the edge, neck extended, tongue pressed to palate.",
+    },
+    {
+      poseNumber: 2,
+      cue: "Curl chin toward chest creating maximum double chins — squeeze the under-chin area, not the neck.",
+    },
+  ],
+  "resisted-jaw-openings": [
+    {
+      poseNumber: 1,
+      cue: "Hands in prayer position, thumbs under chin, index fingers on nose — mouth closed, ready to resist.",
+    },
+    {
+      poseNumber: 2,
+      cue: "Slowly open your jaw against thumb resistance, squeezing the superhyoid muscles under the chin.",
+    },
+  ],
+  "chin-tucks-with-head-tilt": [
+    {
+      poseNumber: 1,
+      cue: "Stand tall with spine straight, head neutral, shoulders back — identify your stronger side.",
+    },
+    {
+      poseNumber: 2,
+      cue: "Tilt head 15-20° toward your weaker side, then tuck chin straight back (not down) to create a double chin.",
+    },
+  ],
 };
 
 /**

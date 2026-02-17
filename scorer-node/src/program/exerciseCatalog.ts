@@ -172,6 +172,42 @@ export const EXERCISES: ExerciseDef[] = [
     protocol: "Suck in cheeks, hold 2s, smile lightly while held, release. 12 reps.",
     poseFrames: ["Fish face-Pose1.jpeg", "Fish face-Pose2.jpeg"],
   }),
+  buildExercise({
+    id: "cheekbone-knuckle-massage",
+    name: "Cheekbone knuckle massage",
+    role: "support",
+    intensity: "low",
+    targets: ["cheekbones"],
+    protocol: "Use knuckles to massage along cheekbones with firm upward strokes from nose to ears, 30s continuous.",
+    poseFrames: ["Cheekbone knuckle massage-Pose1.jpeg", "Cheekbone knuckle massage-Pose2.jpeg"],
+  }),
+  buildExercise({
+    id: "neck-curls",
+    name: "Neck curls",
+    role: "primary",
+    intensity: "high",
+    targets: ["jawline"],
+    protocol: "Supine with head off edge, tongue on palate, curl chin toward chest creating double chins, hold 2s, extend back. 2 sets of 10 reps.",
+    poseFrames: ["Neck curls-Pose1.jpeg", "Neck curls-Pose2.jpeg"],
+  }),
+  buildExercise({
+    id: "resisted-jaw-openings",
+    name: "Resisted jaw openings",
+    role: "primary",
+    intensity: "medium",
+    targets: ["jawline"],
+    protocol: "Thumbs under chin, index fingers on nose, slowly open jaw against thumb resistance, squeeze superhyoid muscles. 2 sets of 20 reps.",
+    poseFrames: ["Resisted jaw openings-Pose1.jpeg", "Resisted jaw openings-Pose2.jpeg"],
+  }),
+  buildExercise({
+    id: "chin-tucks-with-head-tilt",
+    name: "Chin tucks with head tilt",
+    role: "primary",
+    intensity: "medium",
+    targets: ["jawline"],
+    protocol: "Tilt head 15-20° away from overdeveloped side, pull chin straight back (not down), hold 10s, release. 15 reps, 3 sets.",
+    poseFrames: ["Chin tucks with head tilt-Pose1.jpeg", "Chin tucks with head tilt-Pose2.jpeg"],
+  }),
 ];
 
 export const EXERCISES_BY_ROLE = {
@@ -186,7 +222,7 @@ export function byTargets(area: TargetArea, role?: ExerciseDef["role"]): Exercis
   return EXERCISES.filter((e) => e.targets.includes(area) && (!role || e.role === role));
 }
 
-export const HIGH_INTENSITY_IDS = new Set(["jaw-resistance", "cps", "upward-chewing"]);
+export const HIGH_INTENSITY_IDS = new Set(["jaw-resistance", "cps", "upward-chewing", "neck-curls"]);
 export const MEDIUM_INTENSITY_IDS = new Set([
   "chin-tucks",
   "hunter-eyes",
@@ -196,4 +232,6 @@ export const MEDIUM_INTENSITY_IDS = new Set([
   "alternating-cheek-puffs",
   "nose-tongue-touch",
   "neck-lift",
+  "resisted-jaw-openings",
+  "chin-tucks-with-head-tilt",
 ]);
