@@ -1,1173 +1,696 @@
-import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
+// app/(tabs)/program.tsx
+// "Tasks" tab — daily adaptive exercise selection
+
+import React, { useEffect, useState, useCallback } from "react";
 import {
-  ActivityIndicator,
   Image,
   Pressable,
-  RefreshControl,
+  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
-  useWindowDimensions,
   View,
 } from "react-native";
 import { router } from "expo-router";
-import Svg, { Circle, Line, Defs, LinearGradient, Stop } from "react-native-svg";
-import { Ionicons } from "@expo/vector-icons";
-import { ApiResponseError } from "@/lib/api/client";
-import Screen from "@/components/layout/Screen";
-import PillNavButton from "@/components/ui/PillNavButton";
-import CinematicLoader from "@/components/ui/CinematicLoader";
-import { COLORS, RADII, SP, SHADOWS } from "@/lib/tokens";
-import { useProgramStore } from "@/store/program";
+import Animated, {
+  FadeInDown,
+  FadeOut,
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+  withSequence,
+  withTiming,
+  withRepeat,
+  Easing,
+  FadeIn,
+  LinearTransition,
+} from "react-native-reanimated";
+import { COLORS, RADII, SP } from "@/lib/tokens";
+import DayCompleteModal from "@/components/ui/DayCompleteModal";
+import MoodCheckModal from "@/components/ui/MoodCheckModal";
+import { useTasksStore, type DailyTask } from "@/store/tasks";
+import { getExerciseIcon } from "@/lib/exerciseIcons";
 
-const ROUTINE_LOADING_MESSAGES = [
-  "Preparing your daily routine",
-  "Using your latest analysis data",
-  "Selecting the right exercises",
-  "Calibrating intensity levels",
-  "Building your personalized plan",
-  "Almost ready",
-];
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
-type DayState = "today" | "past-complete" | "past-incomplete" | "future-locked";
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
-const LEVEL_NAMES = [
-  "Awakening",
-  "Foundation",
-  "Momentum",
-  "Strength",
-  "Mastery",
-  "Refinement",
-  "Elevation",
-  "Transcendence",
-  "Dominance",
-  "Apex",
-];
-
-const DAYS_PER_LEVEL = 7;
-const TOTAL_LEVELS = 10;
-
-// Circle sizes
-const MAX_CIRCLE_SIZE = 42;
-const MIN_CIRCLE_SIZE = 34;
-const MIN_GAP = 8;
-const TROPHY_SCALE = 0.9;
-const LINE_HEIGHT = 2;
-
-type DayData = {
-  dayNumber: number;
-  dayInLevel: number;
-  state: DayState;
-  isRecovery: boolean;
-  completedCount: number;
-  total: number;
-  disabled: boolean;
-};
-
-type LevelData = {
-  levelNumber: number;
-  levelName: string;
-  days: DayData[];
-  completedDays: number;
-  totalDays: number;
-  isCurrentLevel: boolean;
-  isLocked: boolean;
-  isPast: boolean;
-};
-
-type DayRowProps = {
-  days: DayData[];
-  showTrophy?: boolean;
-  isLevelComplete?: boolean;
-  direction?: "ltr" | "rtl";
-  disabledOverride?: boolean;
-  onDayPress: (dayNumber: number) => void;
-  availableWidth: number;
-};
-
-function DayRow({
-  days,
-  showTrophy,
-  isLevelComplete,
-  direction = "ltr",
-  disabledOverride,
-  onDayPress,
-  availableWidth,
-}: DayRowProps) {
-  const slotCount = 4;
-
-  let circleSize = MAX_CIRCLE_SIZE;
-  let gap = Math.floor((availableWidth - slotCount * circleSize) / (slotCount + 1));
-  if (gap < MIN_GAP) {
-    circleSize = Math.floor((availableWidth - MIN_GAP * (slotCount + 1)) / slotCount);
-    circleSize = Math.max(MIN_CIRCLE_SIZE, Math.min(MAX_CIRCLE_SIZE, circleSize));
-    gap = Math.floor((availableWidth - slotCount * circleSize) / (slotCount + 1));
-  }
-  gap = Math.max(4, gap);
-
-  const trophySize = Math.max(24, Math.round(circleSize * TROPHY_SCALE));
-  const startSlot = direction === "rtl" ? slotCount - 1 : 0;
-  const trophySlot = direction === "rtl" ? 0 : slotCount - 1;
-
-  const getSlotX = (slot: number) => gap + slot * (circleSize + gap) + circleSize / 2;
-  const getSlotLeft = (slot: number) => gap + slot * (circleSize + gap);
-  const slotForDayIndex = (index: number) => (direction === "rtl" ? slotCount - 1 - index : index);
-
-  // Find where completed section ends
-  const lastCompletedIndex = days.findIndex(d => d.state !== "past-complete");
-  const completedCount = lastCompletedIndex === -1 ? days.length : lastCompletedIndex;
-
-  const svgHeight = circleSize;
-  const circleY = circleSize / 2;
-  const endSlot = showTrophy ? trophySlot : slotForDayIndex(days.length - 1);
-
-  return (
-    <View style={styles.dayRowContainer}>
-      <Svg width={availableWidth} height={svgHeight}>
-        <Defs>
-          <LinearGradient id="purpleGradient" x1="0" y1="0" x2="1" y2="0">
-            <Stop offset="0" stopColor="#9333ea" stopOpacity="1" />
-            <Stop offset="1" stopColor="#c026d3" stopOpacity="1" />
-          </LinearGradient>
-        </Defs>
-
-        {/* Background dashed line connecting all items */}
-        <Line
-          x1={getSlotX(startSlot)}
-          y1={circleY}
-          x2={getSlotX(endSlot)}
-          y2={circleY}
-          stroke="rgba(255,255,255,0.2)"
-          strokeWidth={LINE_HEIGHT}
-          strokeDasharray="8,4"
-        />
-
-        {/* Completed solid line */}
-        {(showTrophy && isLevelComplete) || completedCount > 1 ? (
-          <Line
-            x1={getSlotX(startSlot)}
-            y1={circleY}
-            x2={
-              showTrophy && isLevelComplete
-                ? getSlotX(trophySlot)
-                : getSlotX(slotForDayIndex(completedCount - 1))
-            }
-            y2={circleY}
-            stroke="url(#purpleGradient)"
-            strokeWidth={LINE_HEIGHT}
-          />
-        ) : null}
-
-        {/* Day Circles */}
-        {days.map((day, index) => {
-          const cx = getSlotX(slotForDayIndex(index));
-          const isToday = day.state === "today";
-          const isComplete = day.state === "past-complete";
-          const isIncomplete = day.state === "past-incomplete";
-          const isLocked = day.state === "future-locked";
-          const radius = circleSize / 2 - 2;
-
-          return (
-            <React.Fragment key={day.dayNumber}>
-              {/* Outer glow for completed */}
-              {isComplete && (
-                <Circle
-                  cx={cx}
-                  cy={circleY}
-                  r={radius + 3}
-                  fill="rgba(147, 51, 234, 0.25)"
-                />
-              )}
-
-              {/* Outer glow for missed/incomplete */}
-              {isIncomplete && (
-                <Circle
-                  cx={cx}
-                  cy={circleY}
-                  r={radius + 3}
-                  fill="rgba(245, 158, 11, 0.15)"
-                />
-              )}
-
-              {/* Main circle */}
-              <Circle
-                cx={cx}
-                cy={circleY}
-                r={radius}
-                fill={isComplete ? "url(#purpleGradient)" : "rgba(30,30,35,0.9)"}
-                stroke={
-                  isComplete ? "#c026d3" :
-                  isIncomplete ? "#f59e0b" :
-                  isToday ? "#9333ea" :
-                  "rgba(255,255,255,0.2)"
-                }
-                strokeWidth={isToday ? 2.5 : isIncomplete ? 2 : 1.5}
-                strokeDasharray={isLocked ? "5,3" : undefined}
-              />
-            </React.Fragment>
-          );
-        })}
-
-        {/* Trophy Circle (only in second row) */}
-        {showTrophy && (
-          <Circle
-            cx={getSlotX(trophySlot)}
-            cy={circleY}
-            r={trophySize / 2 - 2}
-            fill={isLevelComplete ? "rgba(251, 191, 36, 0.2)" : "rgba(30,30,35,0.9)"}
-            stroke={isLevelComplete ? "#fbbf24" : "rgba(255,255,255,0.2)"}
-            strokeWidth={1.5}
-            strokeDasharray={isLevelComplete ? undefined : "5,3"}
-          />
-        )}
-      </Svg>
-
-      {/* Pressable overlays and labels */}
-      <View style={[styles.dayOverlayRow, { width: availableWidth }]}>
-        {days.map((day, index) => {
-          const left = getSlotLeft(slotForDayIndex(index));
-          const isToday = day.state === "today";
-          const isComplete = day.state === "past-complete";
-          const isIncomplete = day.state === "past-incomplete";
-          const isLocked = day.state === "future-locked";
-
-          return (
-            <Pressable
-              key={day.dayNumber}
-              onPress={() => !day.disabled && !disabledOverride && onDayPress(day.dayNumber)}
-              disabled={day.disabled || disabledOverride}
-              style={[
-                styles.dayPressable,
-                {
-                  left,
-                  top: 0,
-                  width: circleSize,
-                  height: circleSize,
-                },
-              ]}
-            >
-              {/* Day label or fire emoji inside circle */}
-              {isToday ? (
-                <Text style={styles.fireEmoji}>🔥</Text>
-              ) : (
-                <Text
-                  style={[
-                    styles.dayNumber,
-                    isComplete && styles.dayNumberComplete,
-                    isIncomplete && styles.dayNumberIncomplete,
-                    isLocked && styles.dayNumberLocked,
-                  ]}
-                >
-                  Day {day.dayInLevel}
-                </Text>
-              )}
-            </Pressable>
-          );
-        })}
-
-        {/* Trophy (only in second row) */}
-        {showTrophy && (
-          <View
-            style={[
-              styles.trophyPressable,
-              {
-                left: getSlotLeft(trophySlot) + (circleSize - trophySize) / 2,
-                top: (circleSize - trophySize) / 2,
-                width: trophySize,
-                height: trophySize,
-              },
-            ]}
-          >
-            <Text style={[styles.trophyEmoji, !isLevelComplete && styles.trophyLocked]}>
-              🏆
-            </Text>
-          </View>
-        )}
-      </View>
-    </View>
-  );
+function formatDateHeader(): string {
+  const now = new Date();
+  const months = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+  ];
+  return `Today, ${months[now.getMonth()]} ${now.getDate()}`;
 }
 
-type LevelSectionProps = {
-  level: LevelData;
-  onDayPress: (dayNumber: number) => void;
-  availableWidth: number;
-  expanded?: boolean;
-  disableDays?: boolean;
-  lockedHint?: string | null;
-  showHeaderImage?: boolean;
-};
-
-function LevelSection({
-  level,
-  onDayPress,
-  availableWidth,
-  expanded = true,
-  disableDays,
-  lockedHint,
-  showHeaderImage,
-}: LevelSectionProps) {
-  const progress = level.totalDays > 0 ? level.completedDays / level.totalDays : 0;
-  const isAllComplete = level.completedDays === level.totalDays && level.totalDays > 0;
-  const daysDisabled = Boolean(disableDays || level.isLocked);
-
-  // Split days: Row 1 = days 1-4, Row 2 = days 5-7
-  const row1Days = level.days.slice(0, 4);
-  const row2Days = level.days.slice(4, 7);
-
-  return (
-    <View
-      style={[
-        styles.levelSection,
-        !expanded && styles.levelSectionCollapsed,
-        level.isCurrentLevel && styles.levelSectionCurrent,
-        level.isLocked && styles.levelSectionLocked,
-        isAllComplete && styles.levelSectionComplete,
-      ]}
-    >
-      {/* Header Image for Level 1 */}
-      {showHeaderImage && level.levelNumber === 1 ? (
-        <Image
-          source={require("@/assets/program-header.png")}
-          style={styles.levelHeaderImage}
-          resizeMode="cover"
-        />
-      ) : null}
-
-      {/* Level Header */}
-      <View style={styles.levelHeader}>
-        <View style={styles.levelTitleRow}>
-          <Text style={[styles.levelTitle, level.isLocked && styles.levelTitleLocked]}>
-            Level {level.levelNumber}
-          </Text>
-          {level.isLocked && !isAllComplete ? (
-            <Ionicons name="lock-closed" size={16} color={COLORS.sub} />
-          ) : null}
-          {isAllComplete ? <Ionicons name="checkmark-circle" size={16} color="#22c55e" /> : null}
-        </View>
-        <Text style={styles.levelProgress}>{level.completedDays}/{level.totalDays}</Text>
-      </View>
-
-      {/* Progress Bar */}
-      <View style={styles.levelProgressBar}>
-        <View
-          style={[
-            styles.levelProgressFill,
-            { width: `${progress * 100}%` },
-            isAllComplete && styles.levelProgressFillComplete,
-          ]}
-        />
-      </View>
-
-      {!expanded ? (
-        <>
-          <Text style={styles.levelNameCollapsed}>{level.levelName}</Text>
-          {lockedHint ? <Text style={styles.levelLockedHint}>{lockedHint}</Text> : null}
-        </>
-      ) : (
-        <>
-          {lockedHint ? <Text style={styles.levelLockedHint}>{lockedHint}</Text> : null}
-
-          {/* Row 1: Days 1-4 */}
-          <DayRow
-            days={row1Days}
-            onDayPress={onDayPress}
-            availableWidth={availableWidth}
-            disabledOverride={daysDisabled}
-          />
-
-          {/* Vertical connector between row 1 and row 2 */}
-          {(() => {
-            const slotCount = 4;
-            let circleSize = MAX_CIRCLE_SIZE;
-            let gap = Math.floor((availableWidth - slotCount * circleSize) / (slotCount + 1));
-            if (gap < MIN_GAP) {
-              circleSize = Math.floor((availableWidth - MIN_GAP * (slotCount + 1)) / slotCount);
-              circleSize = Math.max(MIN_CIRCLE_SIZE, Math.min(MAX_CIRCLE_SIZE, circleSize));
-              gap = Math.floor((availableWidth - slotCount * circleSize) / (slotCount + 1));
-            }
-            gap = Math.max(4, gap);
-            // Day 4 is at slot index 3 (rightmost in row 1)
-            const connectorX = gap + 3 * (circleSize + gap) + circleSize / 2;
-            return (
-              <Svg width={availableWidth} height={16} style={styles.verticalConnector}>
-                <Line
-                  x1={connectorX}
-                  y1={0}
-                  x2={connectorX}
-                  y2={16}
-                  stroke="rgba(255,255,255,0.2)"
-                  strokeWidth={2}
-                  strokeDasharray="4,3"
-                />
-              </Svg>
-            );
-          })()}
-
-          {/* Row 2: Days 5-7 + Trophy */}
-          <DayRow
-            days={row2Days}
-            showTrophy
-            isLevelComplete={isAllComplete}
-            direction="rtl"
-            onDayPress={onDayPress}
-            availableWidth={availableWidth}
-            disabledOverride={daysDisabled}
-          />
-
-          {/* Level name subtitle */}
-          <Text style={styles.levelSubtitle}>{level.levelName}</Text>
-        </>
-      )}
-    </View>
-  );
+function summarizeTargets(targets: string[]): string {
+  if (!targets.length) return "Improve facial control.";
+  const labels = targets.map((t) => (t === "all" ? "all areas" : t));
+  return `Improve ${labels.join(", ")}.`;
 }
 
-function getContextLine(programType: 1 | 2 | 3 | null): string {
-  if (programType === 1) return "Jawline & structural development";
-  if (programType === 2) return "Eye symmetry & midface optimization";
-  if (programType === 3) return "Skin clarity & facial refinement";
-  return "Personalized facial training";
-}
+// ---------------------------------------------------------------------------
+// Loading screen
+// ---------------------------------------------------------------------------
 
-export default function ProgramScreen() {
-  const { width: screenWidth } = useWindowDimensions();
-  const { program, programType, completions, todayIndex, fetchLatest, generate, error } =
-    useProgramStore();
-  const [booting, setBooting] = useState(true);
-  const [screenError, setScreenError] = useState<string | null>(null);
-  const [redirecting, setRedirecting] = useState(false);
-  const [showCompletedLevels, setShowCompletedLevels] = useState(false);
-  const [startingDay, setStartingDay] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
-  // Track which days already showed the cinematic intro this session
-  const seenDays = useRef(new Set<number>());
-
-  // Available width for rows (screen - padding - card padding)
-  const availableWidth = screenWidth - SP[4] * 2 - SP[3] * 2;
+function TasksLoadingScreen() {
+  const dot1 = useSharedValue(0.3);
+  const dot2 = useSharedValue(0.3);
+  const dot3 = useSharedValue(0.3);
 
   useEffect(() => {
-    void bootstrap();
+    const cfg = { damping: 12, stiffness: 120 };
+    dot1.value = withRepeat(
+      withSequence(withSpring(1, cfg), withSpring(0.3, cfg)),
+      -1, false
+    );
+    setTimeout(() => {
+      dot2.value = withRepeat(
+        withSequence(withSpring(1, cfg), withSpring(0.3, cfg)),
+        -1, false
+      );
+    }, 200);
+    setTimeout(() => {
+      dot3.value = withRepeat(
+        withSequence(withSpring(1, cfg), withSpring(0.3, cfg)),
+        -1, false
+      );
+    }, 400);
   }, []);
 
-  async function bootstrap(forceGenerate = false) {
-    setScreenError(null);
-    setBooting(true);
-    try {
-      if (forceGenerate) {
-        await generate();
-        return;
-      }
-      await fetchLatest();
-    } catch (err: any) {
-      if (err instanceof ApiResponseError && err.status === 404) {
-        const code = (err.body as any)?.error;
-        if (code === "no_history_scores") {
-          setRedirecting(true);
-          router.replace("/(tabs)/take-picture");
-          return;
-        }
-        try {
-          await generate();
-          return;
-        } catch (genErr: any) {
-          if (genErr instanceof ApiResponseError && genErr.status === 404) {
-            const genCode = (genErr.body as any)?.error;
-            if (genCode === "no_history_scores") {
-              setRedirecting(true);
-              router.replace("/(tabs)/take-picture");
-              return;
-            }
-          }
-          setScreenError(genErr instanceof Error ? genErr.message : "Program generation failed");
-        }
-      } else {
-        setScreenError(err instanceof Error ? err.message : "Program fetch failed");
-      }
-    } finally {
-      setBooting(false);
-    }
-  }
-
-  const days = program?.days ?? [];
-
-  // Build day data with state information
-  const dayData = useMemo(
-    () =>
-      days.map((d) => {
-        const total = d.exercises.length;
-        const completedCount = d.exercises.reduce((acc, ex) => {
-          const key = `${program?.programId}:${d.dayNumber}:${ex.id}`;
-          return acc + (completions[key] ? 1 : 0);
-        }, 0);
-
-        const isToday = program ? d.dayNumber === todayIndex + 1 : false;
-        const isPast = program ? d.dayNumber < todayIndex + 1 : false;
-        const isFuture = program ? d.dayNumber > todayIndex + 1 : false;
-
-        let state: DayState = "future-locked";
-        if (isToday) {
-          state = "today";
-        } else if (isPast) {
-          state = completedCount === total ? "past-complete" : "past-incomplete";
-        }
-
-        return {
-          ...d,
-          completedCount,
-          total,
-          state,
-          disabled: isFuture,
-        };
-      }),
-    [days, completions, program, todayIndex]
-  );
-
-  // Group days into 10 levels of 7 days each
-  const levelData: LevelData[] = useMemo(() => {
-    const levels: LevelData[] = [];
-    let allPreviousLevelsComplete = true;
-
-    for (let i = 0; i < TOTAL_LEVELS; i++) {
-      const startDay = i * DAYS_PER_LEVEL + 1;
-      const endDay = (i + 1) * DAYS_PER_LEVEL;
-
-      const levelDays = dayData
-        .filter((d) => d.dayNumber >= startDay && d.dayNumber <= endDay)
-        .map((d) => ({
-          ...d,
-          dayInLevel: d.dayNumber - startDay + 1,
-        }));
-
-      const completedDays = levelDays.filter((d) => d.total > 0 && d.completedCount === d.total).length;
-      const isAllComplete = completedDays === DAYS_PER_LEVEL;
-      const isLocked = !allPreviousLevelsComplete;
-      const isCurrentLevel = allPreviousLevelsComplete && !isAllComplete;
-      const isPast = isAllComplete;
-
-      levels.push({
-        levelNumber: i + 1,
-        levelName: LEVEL_NAMES[i],
-        days: levelDays,
-        completedDays,
-        totalDays: DAYS_PER_LEVEL,
-        isCurrentLevel,
-        isLocked,
-        isPast,
-      });
-
-      if (!isAllComplete) {
-        allPreviousLevelsComplete = false;
-      }
-    }
-
-    return levels;
-  }, [dayData]);
-
-  function handleDayPress(dayNumber: number) {
-    // Block navigation to future days
-    if (dayNumber > todayIndex + 1) return;
-    router.push({
-      pathname: "/program/[day]",
-      params: { day: String(dayNumber) },
-    });
-  }
-
-  const handleRefresh = useCallback(async () => {
-    setRefreshing(true);
-    try {
-      await fetchLatest();
-    } catch {}
-    setRefreshing(false);
-  }, [fetchLatest]);
-
-  const handleStartDay = useCallback(() => {
-    if (!program) return;
-    const dayNum = todayIndex + 1;
-
-    // Only show the cinematic intro the first time per day per session
-    if (seenDays.current.has(dayNum)) {
-      router.push({
-        pathname: "/program/[day]",
-        params: { day: String(dayNum) },
-      });
-      return;
-    }
-
-    seenDays.current.add(dayNum);
-    setStartingDay(true);
-
-    setTimeout(() => {
-      setStartingDay(false);
-      router.push({
-        pathname: "/program/[day]",
-        params: { day: String(dayNum) },
-      });
-    }, 1200);
-  }, [program, todayIndex]);
-
-  // Cinematic loader while preparing today's routine
-  if (startingDay) {
-    return (
-      <CinematicLoader
-        loading
-        messages={ROUTINE_LOADING_MESSAGES}
-        brandLabel="YOUR DAY"
-      />
-    );
-  }
-
-  if (redirecting) {
-    return (
-      <Screen>
-        <View style={styles.center}>
-          <ActivityIndicator color={COLORS.accent} />
-          <Text style={styles.stateText}>Redirecting to face analysis...</Text>
-        </View>
-      </Screen>
-    );
-  }
-
-  if (booting) {
-    return (
-      <Screen>
-        <View style={styles.center}>
-          <ActivityIndicator color={COLORS.accent} />
-          <Text style={styles.stateText}>Loading program...</Text>
-        </View>
-      </Screen>
-    );
-  }
-
-  const needsAnalysis = screenError?.includes("no_history") || error?.includes("no_history");
-
-  const emptyState = (
-    <View style={styles.center}>
-      {needsAnalysis ? (
-        <>
-          <Text style={styles.emptyTitle}>No Program Yet</Text>
-          <Text style={styles.stateText}>
-            Run your first face analysis to unlock your personalized 70-day program.
-          </Text>
-          <PillNavButton
-            kind="solid"
-            label="Start Analysis"
-            onPress={() => router.push("/(tabs)/analysis")}
-          />
-        </>
-      ) : (
-        <>
-          <Text style={styles.stateText}>
-            {screenError ?? error ?? "No program found. Generate one from your latest analysis."}
-          </Text>
-          <PillNavButton kind="solid" label="Generate program" onPress={() => bootstrap(true)} />
-        </>
-      )}
-    </View>
-  );
-
-  // Calculate overall progress
-  const totalCompletedDays = levelData.reduce((acc, l) => acc + l.completedDays, 0);
-  const overallProgress = Math.round((totalCompletedDays / 70) * 100);
-  const currentLevel = levelData.find((l) => l.isCurrentLevel) ?? levelData[TOTAL_LEVELS - 1];
-  const currentLevelIndex = Math.max(
-    0,
-    levelData.findIndex((l) => l.levelNumber === currentLevel?.levelNumber)
-  );
-  const nextLevel = levelData[currentLevelIndex + 1] ?? null;
-  const completedLevels = levelData
-    .slice(0, currentLevelIndex)
-    .filter((l) => l.completedDays === l.totalDays && l.totalDays > 0);
-  const lockedLevels = levelData.slice(currentLevelIndex + (nextLevel ? 2 : 1));
+  const d1Style = useAnimatedStyle(() => ({ opacity: dot1.value, transform: [{ scale: dot1.value }] }));
+  const d2Style = useAnimatedStyle(() => ({ opacity: dot2.value, transform: [{ scale: dot2.value }] }));
+  const d3Style = useAnimatedStyle(() => ({ opacity: dot3.value, transform: [{ scale: dot3.value }] }));
 
   return (
-    <Screen
-      scroll={false}
-    >
-      {!program ? (
-        emptyState
-      ) : (
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.scrollContent}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={handleRefresh}
-              tintColor={COLORS.accent}
-              colors={[COLORS.accent]}
-            />
-          }
-        >
-          {/* Header Section */}
-          <View style={styles.header}>
-            <View style={styles.headerTop}>
-              <Text style={styles.title}>70-Day Program</Text>
-              <View style={styles.overallProgressBadge}>
-                <Text style={styles.overallProgressText}>{overallProgress}%</Text>
-              </View>
-            </View>
-            <Text style={styles.sub}>{getContextLine(programType)}</Text>
-            <View style={styles.statsRow}>
-              <View style={styles.statItem}>
-                <Text style={styles.statValue}>Day {todayIndex + 1}</Text>
-                <Text style={styles.statLabel}>Current</Text>
-              </View>
-              <View style={styles.statDivider} />
-              <View style={styles.statItem}>
-                <Text style={styles.statValue}>{70 - totalCompletedDays}</Text>
-                <Text style={styles.statLabel}>Remaining</Text>
-              </View>
-              <View style={styles.statDivider} />
-              <View style={styles.statItem}>
-                <Text style={styles.statValue}>{totalCompletedDays}</Text>
-                <Text style={styles.statLabel}>Completed</Text>
-              </View>
-            </View>
-
-            {/* Start Your Day CTA */}
-            <Pressable
-              onPress={handleStartDay}
-              accessibilityRole="button"
-              accessibilityLabel="Start your day"
-              style={({ pressed }) => [
-                styles.startDayBtn,
-                pressed && styles.startDayBtnPressed,
-              ]}
-            >
-              <View style={styles.startDayInner}>
-                <Ionicons name="flash" size={20} color={COLORS.bgBottom} />
-                <Text style={styles.startDayText}>Start Day {todayIndex + 1}</Text>
-              </View>
-            </Pressable>
-          </View>
-
-          {/* Level Sections */}
-          <View style={styles.levelsContainer}>
-            {completedLevels.length > 0 ? (
-              <View style={styles.completedPanel}>
-                <Pressable
-                  onPress={() => setShowCompletedLevels((v) => !v)}
-                  accessibilityRole="button"
-                  accessibilityLabel="Toggle completed levels"
-                  style={({ pressed }) => [
-                    styles.completedHeaderRow,
-                    pressed ? styles.completedHeaderRowPressed : null,
-                  ]}
-                >
-                  <View style={styles.completedHeaderLeft}>
-                    <Text style={styles.completedHeaderTitle}>Completed levels</Text>
-                    <Text style={styles.completedHeaderSub}>
-                      {completedLevels.length} finished
-                    </Text>
-                  </View>
-                  <Ionicons
-                    name={showCompletedLevels ? "chevron-up" : "chevron-down"}
-                    size={18}
-                    color={COLORS.sub}
-                  />
-                </Pressable>
-
-                {showCompletedLevels ? (
-                  <View style={styles.completedList}>
-                    {completedLevels.map((level) => {
-                      const startDay = (level.levelNumber - 1) * DAYS_PER_LEVEL + 1;
-                      return (
-                        <Pressable
-                          key={level.levelNumber}
-                          onPress={() => handleDayPress(startDay)}
-                          accessibilityRole="button"
-                          accessibilityLabel={`Review level ${level.levelNumber}`}
-                          style={({ pressed }) => [
-                            styles.completedRow,
-                            pressed ? styles.completedRowPressed : null,
-                          ]}
-                        >
-                          <View style={styles.completedRowLeft}>
-                            <Text style={styles.completedRowTitle}>Level {level.levelNumber}</Text>
-                            <Text style={styles.completedRowSub}>{level.levelName}</Text>
-                          </View>
-                          <Ionicons name="chevron-forward" size={18} color={COLORS.sub} />
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                ) : null}
-              </View>
-            ) : null}
-
-            {currentLevel ? (
-              <LevelSection
-                key={currentLevel.levelNumber}
-                level={currentLevel}
-                onDayPress={handleDayPress}
-                availableWidth={availableWidth}
-                expanded
-                showHeaderImage
-              />
-            ) : null}
-
-            {nextLevel ? (
-              <LevelSection
-                key={nextLevel.levelNumber}
-                level={nextLevel}
-                onDayPress={handleDayPress}
-                availableWidth={availableWidth}
-                expanded={!nextLevel.isLocked}
-                disableDays={nextLevel.isLocked}
-                lockedHint={
-                  nextLevel.isLocked
-                    ? `Complete Level ${currentLevel.levelNumber} to unlock this stage.`
-                    : null
-                }
-              />
-            ) : null}
-
-            {lockedLevels.map((level) => (
-              <LevelSection
-                key={level.levelNumber}
-                level={level}
-                onDayPress={handleDayPress}
-                availableWidth={availableWidth}
-                expanded={false}
-                disableDays
-                lockedHint={`Complete Level ${Math.max(1, level.levelNumber - 1)} to unlock this stage.`}
-              />
-            ))}
-          </View>
-        </ScrollView>
-      )}
-    </Screen>
+    <SafeAreaView style={styles.safe}>
+      <Animated.View
+        entering={FadeIn.duration(300)}
+        exiting={FadeOut.duration(250)}
+        style={styles.loadingWrap}
+      >
+        <Text style={styles.loadingTitle}>Loading your tasks</Text>
+        <View style={styles.dotsRow}>
+          <Animated.View style={[styles.loadingDot, d1Style]} />
+          <Animated.View style={[styles.loadingDot, d2Style]} />
+          <Animated.View style={[styles.loadingDot, d3Style]} />
+        </View>
+        <Text style={styles.loadingSubtext}>Personalising for today</Text>
+      </Animated.View>
+    </SafeAreaView>
   );
 }
 
+// ---------------------------------------------------------------------------
+// Sub-components
+// ---------------------------------------------------------------------------
+
+function StreakBadge({ streak }: { streak: number }) {
+  if (streak <= 0) return null;
+  return (
+    <View style={styles.streakBadge}>
+      <Text style={styles.streakIcon}>🔥</Text>
+      <Text style={styles.streakText}>{streak} day{streak !== 1 ? "s" : ""}</Text>
+    </View>
+  );
+}
+
+function FocusBanner({ text }: { text: string }) {
+  return (
+    <View style={styles.banner}>
+      <View style={styles.bannerIcon}>
+        <Text style={styles.bannerIconText}>✓</Text>
+      </View>
+      <Text style={styles.bannerText} numberOfLines={2}>
+        Focusing on {text} today
+      </Text>
+    </View>
+  );
+}
+
+/* ── Animated progress bar ── */
+function ProgressBar({ total, completed }: { total: number; completed: number }) {
+  const progress = total > 0 ? completed / total : 0;
+  const widthAnim = useSharedValue(0);
+
+  useEffect(() => {
+    widthAnim.value = withSpring(progress, { damping: 18, stiffness: 120 });
+  }, [progress]);
+
+  const barStyle = useAnimatedStyle(() => ({
+    width: `${widthAnim.value * 100}%`,
+  }));
+
+  return (
+    <View style={styles.progressTrack}>
+      <Animated.View style={[styles.progressFill, barStyle]} />
+    </View>
+  );
+}
+
+/* ── Animated toggle circle ── */
+function ToggleDot({
+  status,
+  onToggle,
+}: {
+  status: DailyTask["status"];
+  onToggle: () => void;
+}) {
+  const scale = useSharedValue(1);
+
+  const animStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  const handlePress = () => {
+    // Bounce: shrink → overshoot → settle
+    scale.value = withSequence(
+      withTiming(0.6, { duration: 80, easing: Easing.out(Easing.cubic) }),
+      withSpring(1, { damping: 8, stiffness: 300 }),
+    );
+    onToggle();
+  };
+
+  const isCompleted = status === "completed";
+  const isSkipped = status === "skipped";
+
+  return (
+    <AnimatedPressable onPress={handlePress} hitSlop={8} style={animStyle}>
+      {isCompleted ? (
+        <Animated.View
+          entering={FadeIn.duration(200)}
+          style={[styles.statusDot, styles.statusDotDone]}
+        >
+          <Text style={styles.statusDotText}>✓</Text>
+        </Animated.View>
+      ) : isSkipped ? (
+        <View style={[styles.statusDot, styles.statusDotSkipped]}>
+          <Text style={styles.statusDotSkippedText}>—</Text>
+        </View>
+      ) : (
+        <View style={[styles.statusDot, styles.statusDotPending]} />
+      )}
+    </AnimatedPressable>
+  );
+}
+
+/* ── Animated Guide pill with spring press ── */
+function GuidePill({ onPress }: { onPress: () => void }) {
+  const scale = useSharedValue(1);
+
+  const animStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  const handlePressIn = () => {
+    scale.value = withSpring(0.92, { damping: 15, stiffness: 300 });
+  };
+  const handlePressOut = () => {
+    scale.value = withSpring(1, { damping: 12, stiffness: 200 });
+  };
+
+  return (
+    <AnimatedPressable
+      onPress={onPress}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+      accessibilityRole="button"
+      accessibilityLabel="Open exercise guide"
+      style={[styles.startPill, animStyle]}
+    >
+      <Text style={styles.startPillText}>Guide</Text>
+    </AnimatedPressable>
+  );
+}
+
+/* ── Animated task card with spring press ── */
+function TaskCard({
+  task,
+  onGuide,
+  onToggle,
+}: {
+  task: DailyTask;
+  onGuide: () => void;
+  onToggle: () => void;
+}) {
+  const isSkipped = task.status === "skipped";
+  const isCompleted = task.status === "completed";
+  const isDimmed = isSkipped;
+
+  const cardScale = useSharedValue(1);
+
+  const cardAnimStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: cardScale.value }],
+  }));
+
+  const handlePressIn = () => {
+    if (!isDimmed) {
+      cardScale.value = withSpring(0.97, { damping: 15, stiffness: 300 });
+    }
+  };
+  const handlePressOut = () => {
+    cardScale.value = withSpring(1, { damping: 12, stiffness: 200 });
+  };
+
+  return (
+    <AnimatedPressable
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+      onPress={onGuide}
+      disabled={isSkipped}
+      style={[
+        styles.taskCard,
+        isDimmed && styles.taskCardDimmed,
+        isCompleted && styles.taskCardCompleted,
+        cardAnimStyle,
+      ]}
+    >
+      <Animated.View layout={LinearTransition.springify()} style={styles.taskRow}>
+        <View style={[styles.exerciseIconWrap, isDimmed && styles.exerciseIconDimmed]}>
+          <Image
+            source={getExerciseIcon(task.exerciseId)}
+            style={styles.exerciseIconImg}
+          />
+        </View>
+        <View style={styles.taskLeft}>
+          <Text
+            style={[styles.taskTitle, isDimmed && styles.taskTitleDimmed]}
+            numberOfLines={1}
+          >
+            {task.name}
+          </Text>
+          <Text
+            style={[styles.taskSummary, isDimmed && styles.taskSummaryDimmed]}
+            numberOfLines={1}
+          >
+            {summarizeTargets(task.targets)}
+          </Text>
+        </View>
+        <View style={styles.taskRight}>
+          {!isSkipped ? (
+            <GuidePill onPress={onGuide} />
+          ) : null}
+          <ToggleDot
+            status={task.status}
+            onToggle={onToggle}
+          />
+        </View>
+      </Animated.View>
+      {isSkipped ? (
+        <View style={styles.skippedLabel}>
+          <Text style={styles.skippedLabelText}>Skipped</Text>
+        </View>
+      ) : null}
+    </AnimatedPressable>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main screen
+// ---------------------------------------------------------------------------
+
+export default function TasksScreen() {
+  const {
+    today,
+    currentStreak,
+    loading,
+    initToday,
+    completeTask,
+    uncompleteTask,
+    setMood,
+  } = useTasksStore();
+
+  const [showDayComplete, setShowDayComplete] = useState(false);
+  const [showMoodCheck, setShowMoodCheck] = useState(false);
+
+  // Initialize tasks on mount
+  useEffect(() => {
+    initToday();
+  }, []);
+
+  // Midnight UTC check — refresh tasks when date changes
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = new Date();
+      const utcDate = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-${String(now.getUTCDate()).padStart(2, "0")}`;
+      if (today?.date !== utcDate) {
+        initToday();
+      }
+    }, 60_000);
+    return () => clearInterval(interval);
+  }, [today?.date, initToday]);
+
+  // Toggle task completion via the circle
+  const handleToggle = useCallback((task: DailyTask) => {
+    if (task.status === "completed") {
+      uncompleteTask(task.exerciseId);
+    } else {
+      // Only show day-complete modal the very first time today
+      const alreadyCounted = today?.completedOnce;
+
+      const otherPending = today?.tasks.filter(
+        (t) => t.exerciseId !== task.exerciseId && t.status === "pending"
+      );
+      const willCompleteDay = !otherPending?.length;
+
+      completeTask(task.exerciseId);
+
+      if (willCompleteDay && !alreadyCounted) {
+        setTimeout(() => setShowDayComplete(true), 150);
+      }
+    }
+  }, [today, completeTask, uncompleteTask]);
+
+  // Loading state
+  if (loading || !today) {
+    return <TasksLoadingScreen />;
+  }
+
+  const allDone = today.allComplete;
+  const pendingCount = today.tasks.filter((t) => t.status === "pending").length;
+  const completedCount = today.tasks.filter((t) => t.status === "completed").length;
+
+  return (
+    <SafeAreaView style={styles.safe}>
+      <ScrollView contentContainerStyle={styles.container}>
+        {/* Header */}
+        <Animated.View entering={FadeInDown.duration(300).delay(50)} style={styles.headerRow}>
+          <View>
+            <Text style={styles.dateTitle}>{formatDateHeader()}</Text>
+            <Text style={styles.subtitle}>
+              {allDone
+                ? "All tasks complete!"
+                : `${pendingCount} task${pendingCount !== 1 ? "s" : ""} remaining`}
+            </Text>
+          </View>
+          <StreakBadge streak={currentStreak} />
+        </Animated.View>
+
+        {/* Progress bar */}
+        <Animated.View entering={FadeInDown.duration(300).delay(80)}>
+          <ProgressBar total={today.tasks.length} completed={completedCount} />
+        </Animated.View>
+
+        {/* Focus banner */}
+        {today.focusSummary ? (
+          <Animated.View entering={FadeInDown.duration(300).delay(100)}>
+            <FocusBanner text={today.focusSummary} />
+          </Animated.View>
+        ) : null}
+
+        {/* Section header */}
+        <Animated.View entering={FadeInDown.duration(300).delay(150)} style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Your Tasks</Text>
+          <Text style={styles.sectionHint}>
+            {allDone ? "All done" : "Tap a card to start"}
+          </Text>
+        </Animated.View>
+
+        {/* Task cards */}
+        <View style={styles.taskList}>
+          {today.tasks.map((task, idx) => (
+            <Animated.View
+              key={task.exerciseId}
+              entering={FadeInDown.duration(350).delay(200 + idx * 60)}
+              layout={LinearTransition.springify()}
+            >
+              <TaskCard
+                task={task}
+                onGuide={() => {
+                  router.push({
+                    pathname: "/program/guide/[exerciseId]",
+                    params: { exerciseId: task.exerciseId },
+                  });
+                }}
+                onToggle={() => handleToggle(task)}
+              />
+            </Animated.View>
+          ))}
+        </View>
+      </ScrollView>
+
+      {/* Day Complete Modal */}
+      <DayCompleteModal
+        visible={showDayComplete}
+        dayNumber={currentStreak + 1}
+        streak={currentStreak + 1}
+        autoDismissMs={0}
+        dismissOnBackdropPress={false}
+        particles
+        onClose={() => {
+          setShowDayComplete(false);
+          setTimeout(() => setShowMoodCheck(true), 200);
+        }}
+      />
+
+      {/* Mood Check Modal */}
+      <MoodCheckModal
+        visible={showMoodCheck}
+        dayNumber={1}
+        onSelect={(mood) => {
+          setMood(mood);
+          setShowMoodCheck(false);
+        }}
+        onSkip={() => setShowMoodCheck(false)}
+      />
+    </SafeAreaView>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Styles
+// ---------------------------------------------------------------------------
+
 const styles = StyleSheet.create({
-  // Layout
-  scrollContent: {
-    paddingBottom: SP[6],
-  },
-  center: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: SP[3],
-  },
-  stateText: {
-    color: COLORS.sub,
-    textAlign: "center",
-    paddingHorizontal: SP[4],
-    lineHeight: 22,
-  },
-  emptyTitle: {
+  safe: { flex: 1, backgroundColor: COLORS.bgBottom },
+  container: { padding: SP[4], gap: SP[3], paddingBottom: SP[6] },
+  loadingWrap: { flex: 1, alignItems: "center", justifyContent: "center", gap: SP[3] },
+  loadingTitle: {
     color: COLORS.text,
     fontSize: 22,
-    fontWeight: "700",
-    textAlign: "center",
+    fontFamily: "Poppins-SemiBold",
   },
-  footerRow: {
-    gap: SP[2],
+  loadingSubtext: {
+    color: COLORS.sub,
+    fontSize: 13,
+    fontFamily: "Poppins-SemiBold",
+    marginTop: SP[1],
+  },
+  dotsRow: {
+    flexDirection: "row",
+    gap: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  loadingDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: COLORS.accent,
   },
 
   // Header
-  header: {
-    gap: SP[3],
-    marginBottom: SP[4],
-  },
-  headerTop: {
+  headerRow: {
     flexDirection: "row",
+    alignItems: "flex-start",
     justifyContent: "space-between",
-    alignItems: "center",
   },
-  title: {
+  dateTitle: {
     color: COLORS.text,
     fontSize: 26,
     fontFamily: "Poppins-SemiBold",
-    letterSpacing: -0.5,
   },
-  overallProgressBadge: {
-    backgroundColor: COLORS.accent,
+  subtitle: {
+    color: COLORS.sub,
+    fontSize: 13,
+    fontFamily: "Poppins-SemiBold",
+    marginTop: 2,
+  },
+
+  // Streak badge
+  streakBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
     paddingHorizontal: SP[3],
     paddingVertical: SP[1],
     borderRadius: RADII.pill,
+    backgroundColor: "rgba(255,170,50,0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(255,170,50,0.3)",
   },
-  overallProgressText: {
-    color: COLORS.bgBottom,
-    fontSize: 14,
+  streakIcon: { fontSize: 16 },
+  streakText: {
+    color: "#FFAA32",
+    fontSize: 13,
     fontFamily: "Poppins-SemiBold",
   },
-  sub: {
-    color: COLORS.sub,
-    fontSize: 14,
-    fontFamily: "Poppins-SemiBold",
+
+  // Progress bar
+  progressTrack: {
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    overflow: "hidden",
   },
-  statsRow: {
+  progressFill: {
+    height: "100%",
+    borderRadius: 2,
+    backgroundColor: COLORS.accent,
+  },
+
+  // Focus banner
+  banner: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: COLORS.card,
-    borderRadius: RADII.lg,
-    borderWidth: 1,
-    borderColor: COLORS.cardBorder,
+    gap: SP[3],
     padding: SP[3],
+    backgroundColor: "rgba(180,243,77,0.08)",
+    borderColor: "rgba(180,243,77,0.35)",
+    borderWidth: 1,
+    borderRadius: RADII.lg,
   },
-  statItem: {
-    flex: 1,
+  bannerIcon: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: "rgba(180,243,77,0.22)",
     alignItems: "center",
-    gap: 2,
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(180,243,77,0.35)",
   },
-  statValue: {
+  bannerIconText: { color: COLORS.accent, fontSize: 14, fontFamily: "Poppins-SemiBold" },
+  bannerText: { flex: 1, color: COLORS.accent, fontSize: 13, fontFamily: "Poppins-SemiBold", lineHeight: 18 },
+
+  // Section header
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: SP[1],
+  },
+  sectionTitle: {
     color: COLORS.text,
     fontSize: 18,
     fontFamily: "Poppins-SemiBold",
+    flex: 1,
   },
-  statLabel: {
+  sectionHint: {
     color: COLORS.sub,
-    fontSize: 11,
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
+    fontSize: 12,
     fontFamily: "Poppins-SemiBold",
   },
-  statDivider: {
-    width: 1,
-    height: 24,
-    backgroundColor: COLORS.cardBorder,
-  },
 
-  // Start Your Day button
-  startDayBtn: {
-    borderRadius: RADII.pill,
-    overflow: "hidden",
-    backgroundColor: COLORS.accent,
-    ...SHADOWS.primaryBtn,
+  // Task cards
+  taskList: { gap: SP[3] },
+  taskCard: {
+    backgroundColor: "#B4F34D",
+    borderWidth: 1,
+    borderColor: "rgba(180,243,77,0.6)",
+    borderRadius: RADII.lg,
+    padding: SP[4],
+    shadowColor: "#B4F34D",
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 6,
   },
-  startDayBtnPressed: {
-    transform: [{ scale: 0.97 }],
-    opacity: 0.92,
+  taskCardDimmed: {
+    opacity: 0.45,
   },
-  startDayInner: {
+  taskCardCompleted: {
+    backgroundColor: "rgba(180,243,77,0.35)",
+    borderColor: "rgba(180,243,77,0.25)",
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  taskRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: SP[2],
-    paddingVertical: SP[3],
-    paddingHorizontal: SP[5],
-  },
-  startDayText: {
-    color: COLORS.bgBottom,
-    fontSize: 17,
-    fontFamily: "Poppins-SemiBold",
-    letterSpacing: 0.3,
-  },
-
-  // Levels Container
-  levelsContainer: {
     gap: SP[3],
   },
-
-  // Completed Levels Panel
-  completedPanel: {
-    backgroundColor: COLORS.card,
-    borderRadius: RADII.lg,
-    borderWidth: 1,
-    borderColor: COLORS.cardBorder,
+  exerciseIconWrap: {
+    width: 52,
+    height: 52,
+    borderRadius: 14,
+    backgroundColor: "rgba(11,11,11,0.1)",
+    alignItems: "center",
+    justifyContent: "center",
     overflow: "hidden",
   },
-  completedHeaderRow: {
-    paddingHorizontal: SP[3],
-    paddingVertical: SP[3],
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
+  exerciseIconDimmed: { opacity: 0.5 },
+  exerciseIconImg: {
+    width: 52,
+    height: 52,
+    resizeMode: "cover",
   },
-  completedHeaderRowPressed: { opacity: 0.9 },
-  completedHeaderLeft: { gap: 2 },
-  completedHeaderTitle: {
-    color: COLORS.text,
-    fontSize: 15,
-    fontFamily: "Poppins-SemiBold",
-  },
-  completedHeaderSub: {
-    color: COLORS.sub,
-    fontSize: 12,
-    fontFamily: "Poppins-SemiBold",
-  },
-  completedList: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: COLORS.cardBorder,
-  },
-  completedRow: {
-    paddingHorizontal: SP[3],
-    paddingVertical: SP[3],
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: COLORS.cardBorder,
-  },
-  completedRowPressed: { opacity: 0.9 },
-  completedRowLeft: { gap: 2 },
-  completedRowTitle: {
-    color: COLORS.text,
-    fontSize: 14,
-    fontFamily: "Poppins-SemiBold",
-  },
-  completedRowSub: {
-    color: COLORS.sub,
-    fontSize: 12,
-    fontFamily: "Poppins-SemiBold",
-  },
-
-  // Level Section
-  levelSection: {
-    backgroundColor: COLORS.card,
-    borderRadius: RADII.lg,
-    borderWidth: 1,
-    borderColor: COLORS.cardBorder,
-    padding: SP[3],
-    gap: SP[2],
-  },
-  levelSectionCollapsed: {
-    gap: SP[2],
-    paddingVertical: SP[3],
-  },
-  levelSectionCurrent: {
-    borderColor: "#9333ea",
-    borderWidth: 2,
-    shadowColor: "#9333ea",
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-  },
-  levelSectionLocked: {
-    opacity: 0.5,
-  },
-  levelSectionComplete: {
-    borderColor: "#22c55e",
-    backgroundColor: "rgba(34, 197, 94, 0.05)",
-  },
-  levelHeaderImage: {
-    width: "100%",
-    height: 120,
-    borderRadius: RADII.lg,
-    marginBottom: SP[2],
-  },
-
-  // Level Header
-  levelHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  levelTitleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SP[2],
-  },
-  levelTitle: {
-    color: COLORS.text,
-    fontSize: 18,
-    fontFamily: "Poppins-SemiBold",
-  },
-  levelTitleLocked: {
-    color: COLORS.sub,
-  },
-  checkEmoji: {
+  taskLeft: { flex: 1, gap: 4 },
+  taskTitle: {
+    color: "#0B0B0B",
     fontSize: 16,
-    color: "#22c55e",
-  },
-  levelProgress: {
-    color: COLORS.sub,
-    fontSize: 14,
     fontFamily: "Poppins-SemiBold",
   },
-  levelSubtitle: {
-    color: COLORS.sub,
-    fontSize: 12,
-    textAlign: "center",
-    marginTop: SP[1],
+  taskTitleDimmed: { color: COLORS.sub },
+  taskSummary: {
+    color: "rgba(11,11,11,0.6)",
+    fontSize: 13,
+    lineHeight: 18,
     fontFamily: "Poppins-SemiBold",
   },
-  levelNameCollapsed: {
-    color: COLORS.sub,
-    fontSize: 12,
-    fontFamily: "Poppins-SemiBold",
+  taskSummaryDimmed: { color: "rgba(255,255,255,0.3)" },
+  taskRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SP[2],
   },
-  levelLockedHint: {
+  skippedLabel: {
+    marginTop: 6,
+    alignSelf: "flex-start",
+  },
+  skippedLabelText: {
     color: COLORS.sub,
-    fontSize: 12,
-    lineHeight: 16,
+    fontSize: 11,
     fontFamily: "Poppins-SemiBold",
+    fontStyle: "italic",
   },
 
-  // Level Progress Bar
-  levelProgressBar: {
-    height: 4,
-    backgroundColor: COLORS.track,
-    borderRadius: RADII.circle,
-    overflow: "hidden",
-  },
-  levelProgressFill: {
-    height: "100%",
-    backgroundColor: "#9333ea",
-    borderRadius: RADII.circle,
-  },
-  levelProgressFillComplete: {
-    backgroundColor: "#22c55e",
-  },
-
-  // Vertical connector between rows
-  verticalConnector: {
-    marginTop: -SP[1],
-    marginBottom: -SP[1],
-  },
-
-  // Day Row
-  dayRowContainer: {
-    position: "relative",
-    marginTop: SP[1],
-  },
-  dayOverlayRow: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    height: "100%",
-  },
-  dayPressable: {
-    position: "absolute",
+  // Status dot
+  statusDot: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
   },
+  statusDotPending: {
+    borderWidth: 2,
+    borderColor: "rgba(11,11,11,0.25)",
+  },
+  statusDotDone: {
+    borderWidth: 2,
+    borderColor: "#0B0B0B",
+    backgroundColor: "#0B0B0B",
+  },
+  statusDotSkipped: {
+    borderWidth: 2,
+    borderColor: "rgba(255,255,255,0.15)",
+    backgroundColor: "rgba(255,255,255,0.06)",
+  },
+  statusDotText: { color: "#B4F34D", fontSize: 14, fontFamily: "Poppins-SemiBold" },
+  statusDotSkippedText: { color: COLORS.sub, fontSize: 14, fontFamily: "Poppins-SemiBold" },
 
-  // Fire emoji (for today's day)
-  fireEmoji: {
-    fontSize: 18,
-  },
-
-  // Day number inside circle
-  dayNumber: {
-    color: COLORS.text,
-    fontSize: 12,
-    fontFamily: "Poppins-SemiBold",
-  },
-  dayNumberComplete: {
-    color: "#ffffff",
-  },
-  dayNumberIncomplete: {
-    color: "#f59e0b",
-  },
-  dayNumberLocked: {
-    color: "rgba(255,255,255,0.4)",
-  },
-
-  // Trophy
-  trophyPressable: {
-    position: "absolute",
+  // Guide pill
+  startPill: {
+    minWidth: 76,
+    height: 34,
+    paddingHorizontal: SP[3],
+    borderRadius: RADII.pill,
+    backgroundColor: "#0B0B0B",
     alignItems: "center",
     justifyContent: "center",
   },
-  trophyEmoji: {
-    fontSize: 18,
-  },
-  trophyLocked: {
-    opacity: 0.3,
-  },
+  startPillText: { color: "#FFFFFF", fontSize: 14, fontFamily: "Poppins-SemiBold" },
 });

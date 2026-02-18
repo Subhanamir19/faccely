@@ -100,3 +100,30 @@ export async function updateProgramCompletion(
     schema: ProgramResponseSchema,
   });
 }
+
+/**
+ * Best-effort sync of task completion to backend.
+ * Non-blocking — the client-side tasks store is authoritative.
+ */
+export async function syncTaskCompletion(
+  exerciseId: string,
+  completed: boolean,
+  date: string
+): Promise<void> {
+  try {
+    const authHeaders = await buildAuthHeadersAsync({ includeLegacy: true });
+    await requestJSON(`${PROGRAMS_BASE}/task-completions`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders,
+      },
+      body: JSON.stringify({ exerciseId, completed, date }),
+      timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS,
+      context: "Task completion sync",
+    });
+  } catch (err) {
+    // Non-blocking: log but don't throw
+    console.warn("[tasks] Sync failed (non-blocking):", err);
+  }
+}

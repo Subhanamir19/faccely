@@ -40,6 +40,7 @@ const VIDEO_SOURCE = require("@/assets/tasks-complete.mp4");
 type DayCompleteModalProps = {
   visible: boolean;
   dayNumber: number;
+  streak?: number;
   onClose: () => void;
   autoDismissMs?: number;
   dismissOnBackdropPress?: boolean;
@@ -157,6 +158,7 @@ function TypewriterText({
 const DayCompleteModal: React.FC<DayCompleteModalProps> = ({
   visible,
   dayNumber,
+  streak,
   onClose,
   autoDismissMs = 0,
   dismissOnBackdropPress = false,
@@ -340,7 +342,10 @@ const DayCompleteModal: React.FC<DayCompleteModalProps> = ({
 
           {/* Day complete title */}
           <Animated.View style={[styles.titleContainer, titleStyle]}>
-            <Text style={styles.titleText}>Day {dayNumber} Complete</Text>
+            <Text style={styles.titleText}>All Tasks Complete!</Text>
+            {streak != null && streak > 1 ? (
+              <Text style={styles.streakText}>🔥 {streak} day streak!</Text>
+            ) : null}
           </Animated.View>
 
           {/* Typewriter motivational text */}
@@ -475,6 +480,12 @@ const styles = StyleSheet.create({
     color: COLORS.accent,
     fontFamily: "Poppins-SemiBold",
     letterSpacing: 1,
+  },
+  streakText: {
+    fontSize: 18,
+    color: "#FFAA32",
+    fontFamily: "Poppins-SemiBold",
+    marginTop: 4,
   },
   messageContainer: {
     minHeight: 70,

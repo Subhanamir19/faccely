@@ -275,8 +275,8 @@ const styles = StyleSheet.create({
     borderRadius: RADII.xl,
     borderWidth: 1,
     borderColor: COLORS.cardBorder,
-    paddingBottom: SP[3],
-    paddingHorizontal: SP[4],
+    paddingBottom: SP[4],
+    paddingHorizontal: SCREEN_WIDTH * 0.05,
   },
 
   // Profile Photo with ring border
@@ -312,12 +312,12 @@ const styles = StyleSheet.create({
 
   // Metrics Grid
   metricsContainer: {
-    gap: SP[3],
+    gap: SP[4],
   },
   metricsRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    gap: SP[3],
+    gap: SP[4],
   },
 
   // Metric Cell
@@ -336,17 +336,17 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: SP[1],
+    marginBottom: SP[2],
   },
   metricScore: {
-    fontSize: 28,
-    lineHeight: 34,
+    fontSize: Math.max(30, SCREEN_WIDTH * 0.08),
+    lineHeight: Math.max(36, SCREEN_WIDTH * 0.095),
     fontFamily: "Poppins-SemiBold",
     color: COLORS.text,
   },
   metricScoreLarge: {
-    fontSize: 36,
-    lineHeight: 42,
+    fontSize: Math.max(38, SCREEN_WIDTH * 0.1),
+    lineHeight: Math.max(44, SCREEN_WIDTH * 0.115),
   },
   tierChip: {
     paddingHorizontal: SP[2],
@@ -367,7 +367,7 @@ const styles = StyleSheet.create({
 
   // Progress Bar
   progressTrack: {
-    height: SIZES.progressBarMd,
+    height: SIZES.progressBarLg,
     backgroundColor: COLORS.track,
     borderRadius: RADII.circle,
     overflow: "hidden",

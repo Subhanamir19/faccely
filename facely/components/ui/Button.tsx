@@ -1,5 +1,5 @@
 // components/ui/Button.tsx
-// Unified button component with variants and haptic feedback
+// Unified button component with 3D chunky Duolingo-style press effect
 import React, { useCallback } from "react";
 import {
   Pressable,
@@ -47,6 +47,9 @@ const SIZE_CONFIG = {
   lg: { height: 64, paddingHorizontal: SP[8], borderRadius: RADII.circle, fontSize: "button" as const },
 };
 
+// 3D chunky depth — thicker for larger buttons
+const DEPTH_CONFIG = { sm: 4, md: 5, lg: 6 };
+
 export default function Button({
   label,
   onPress,
@@ -61,23 +64,24 @@ export default function Button({
   style,
   ...rest
 }: ButtonProps) {
-  const scale = useSharedValue(1);
+  const pressed = useSharedValue(0); // 0 = up, 1 = sunk
   const sizeConfig = SIZE_CONFIG[size];
+  const depth = DEPTH_CONFIG[size];
 
   const handlePressIn = useCallback(() => {
-    scale.value = withTiming(0.97, {
-      duration: 80,
+    pressed.value = withTiming(1, {
+      duration: 60,
       easing: Easing.out(Easing.cubic),
     });
-  }, [scale]);
+  }, [pressed]);
 
   const handlePressOut = useCallback(() => {
-    scale.value = withSpring(1, {
-      damping: 12,
-      stiffness: 200,
-      mass: 0.8,
+    pressed.value = withSpring(0, {
+      damping: 14,
+      stiffness: 260,
+      mass: 0.6,
     });
-  }, [scale]);
+  }, [pressed]);
 
   const handlePress = useCallback(() => {
     if (disabled || loading) return;
@@ -87,8 +91,9 @@ export default function Button({
     onPress();
   }, [disabled, loading, haptic, variant, onPress]);
 
+  // Animate only translateY — the face sinks into the base
   const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
+    transform: [{ translateY: pressed.value * (depth - 1) }],
   }));
 
   const isPrimary = variant === "primary";
@@ -97,7 +102,7 @@ export default function Button({
   const isText = variant === "text";
   const isDisabled = disabled || loading;
 
-  // Determine colors based on variant and state
+  // Button face color
   const getBgColor = () => {
     if (isDisabled) {
       if (isPrimary || isSecondary) return COLORS.btnDisabledBg;
@@ -120,8 +125,17 @@ export default function Button({
     return "transparent";
   };
 
+  // 3D base color — the dark "shadow" visible beneath the button face
+  const getBaseColor = () => {
+    if (isDisabled || isText) return "transparent";
+    if (isPrimary) return "#6B9A1E"; // dark olive-lime
+    if (isSecondary) return "#0A0A0A";
+    if (isGhost) return "#1A1A1A";
+    return "transparent";
+  };
+
   const getShadowStyle = (): ViewStyle => {
-    if (isDisabled || isGhost || isText) return {};
+    if (isDisabled || isText) return {};
     if (isPrimary) {
       return Platform.OS === "android"
         ? { elevation: ELEVATION.primaryBtnAndroid }
@@ -132,6 +146,7 @@ export default function Button({
 
   const iconColor = getTextColor();
   const iconSize = size === "sm" ? 16 : 18;
+  const has3D = !isDisabled && !isText;
 
   const renderContent = () => {
     if (loading) {
@@ -171,33 +186,44 @@ export default function Button({
     );
   };
 
+  // Outer base = dark 3D shadow, inner = the actual button face
   return (
-    <AnimatedPressable
-      onPress={handlePress}
-      onPressIn={handlePressIn}
-      onPressOut={handlePressOut}
-      disabled={isDisabled}
-      accessibilityRole="button"
-      accessibilityState={{ disabled: isDisabled }}
+    <View
       style={[
-        styles.base,
         {
-          height: sizeConfig.height,
-          paddingHorizontal: sizeConfig.paddingHorizontal,
           borderRadius: sizeConfig.borderRadius,
-          backgroundColor: getBgColor(),
-          borderWidth: isGhost || isSecondary ? 2 : 0,
-          borderColor: getBorderColor(),
+          backgroundColor: getBaseColor(),
+          paddingBottom: has3D ? depth : 0,
           alignSelf: fullWidth ? "stretch" : "center",
         },
         getShadowStyle(),
-        animatedStyle,
         style,
       ]}
-      {...rest}
     >
-      {renderContent()}
-    </AnimatedPressable>
+      <AnimatedPressable
+        onPress={handlePress}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        disabled={isDisabled}
+        accessibilityRole="button"
+        accessibilityState={{ disabled: isDisabled }}
+        style={[
+          styles.base,
+          {
+            height: sizeConfig.height,
+            paddingHorizontal: sizeConfig.paddingHorizontal,
+            borderRadius: sizeConfig.borderRadius,
+            backgroundColor: getBgColor(),
+            borderWidth: isGhost || isSecondary ? 2 : 0,
+            borderColor: getBorderColor(),
+          },
+          animatedStyle,
+        ]}
+        {...rest}
+      >
+        {renderContent()}
+      </AnimatedPressable>
+    </View>
   );
 }
 

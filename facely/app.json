@@ -13,7 +13,7 @@
     },
     "ios": {
       "supportsTablet": false,
-      "buildNumber": "4",
+      "buildNumber": "5",
       "bundleIdentifier": "com.sigmamax.app",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,

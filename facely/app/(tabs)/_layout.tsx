@@ -2,13 +2,12 @@
 import React from "react";
 import { Tabs } from "expo-router";
 import { Platform } from "react-native";
-import { Camera, ListChecks, MessageSquare, User } from "lucide-react-native";
-import { COLORS } from "@/lib/tokens";
+import { Scan, CircleCheckBig, MessageCircle, UserRound } from "lucide-react-native";
 
-const ACTIVE = COLORS.accent;
-const INACTIVE = "rgba(255,255,255,0.55)";
+const ACTIVE = "#FFFFFF";
+const INACTIVE = "rgba(255,255,255,0.40)";
 const BG = "#0B0B0B";
-const BORDER = "rgba(255,255,255,0.08)";
+const BORDER = "rgba(255,255,255,0.06)";
 
 export default function TabsLayout() {
   return (
@@ -35,30 +34,39 @@ export default function TabsLayout() {
         },
       }}
     >
-      {/* Visible tab #1: Analysis → starts at take-picture */}
+      {/* Tab 1: scan */}
       <Tabs.Screen
         name="take-picture"
         options={{
-          title: "Analysis",
-          tabBarIcon: ({ color, size }) => <Camera color={color} size={size ?? 22} />,
+          title: "scan",
+          tabBarIcon: ({ color, size }) => <Scan color={color} size={size ?? 22} />,
         }}
       />
 
-      {/* Visible tab #3: Sigma (chatbot) */}
-      <Tabs.Screen
-        name="sigma"
-        options={{
-          title: "Sigma",
-          tabBarIcon: ({ color, size }) => <MessageSquare color={color} size={size ?? 22} />,
-        }}
-      />
-
-      {/* Program tab */}
+      {/* Tab 2: daily */}
       <Tabs.Screen
         name="program"
         options={{
-          title: "Program",
-          tabBarIcon: ({ color, size }) => <ListChecks color={color} size={size ?? 22} />,
+          title: "daily",
+          tabBarIcon: ({ color, size }) => <CircleCheckBig color={color} size={size ?? 22} />,
+        }}
+      />
+
+      {/* Tab 3: coach */}
+      <Tabs.Screen
+        name="sigma"
+        options={{
+          title: "coach",
+          tabBarIcon: ({ color, size }) => <MessageCircle color={color} size={size ?? 22} />,
+        }}
+      />
+
+      {/* Tab 4: profile */}
+      <Tabs.Screen
+        name="profile"
+        options={{
+          title: "profile",
+          tabBarIcon: ({ color, size }) => <UserRound color={color} size={size ?? 22} />,
         }}
       />
 
@@ -69,16 +77,6 @@ export default function TabsLayout() {
       <Tabs.Screen name="routine" options={{ href: null }} />
       <Tabs.Screen name="score" options={{ href: null }} />
       <Tabs.Screen name="analysis" options={{ href: null }} />
-
-      {/* Visible tab: Profile */}
-      <Tabs.Screen
-        name="profile"
-        options={{
-          title: "Profile",
-          tabBarLabel: "Profile",
-          tabBarIcon: ({ color, size }) => <User color={color} size={size ?? 22} />,
-        }}
-      />
     </Tabs>
   );
 }

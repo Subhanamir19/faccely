@@ -20,14 +20,14 @@ import * as FileSystem from "expo-file-system";
 import { router } from "expo-router";
 import Svg, { Line, Circle, Rect, Path } from "react-native-svg";
 import { LinearGradient } from "expo-linear-gradient";
-import { useScores } from "../../store/scores";
-import useMetricSizing from "@/components/layout/useMetricSizing";
+import * as Haptics from "expo-haptics";
 
 // NEW: shared pre-upload compressor (JPEG, max 1080px)
 import { ensureJpegCompressed } from "../../lib/api/media";
 
 /* ============================== TOKENS ============================== */
 const ACCENT = "#B4F34D"; // Sigma Max lime
+const ACCENT_LIGHT = "#CCFF6B"; // lighter lime for gradient top
 const TEXT = "#FFFFFF";
 const TEXT_DIM = "rgba(255,255,255,0.72)";
 const CARD_BORDER = "rgba(255,255,255,0.08)";
@@ -78,39 +78,46 @@ function LimeButton({
   disabled?: boolean;
   style?: any;
 }) {
+  const DEPTH = 5;
+  if (disabled) {
+    return (
+      <Pressable
+        onPress={onPress}
+        disabled
+        style={[{ alignSelf: "center", width: "86%", borderRadius: 26, paddingVertical: 16, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.10)" }, style]}
+      >
+        <Text style={{ color: TEXT_DIM, fontSize: 16, fontFamily: "Poppins-SemiBold" }}>{title}</Text>
+      </Pressable>
+    );
+  }
   return (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled}
-      style={({ pressed }) => [
-        {
-          alignSelf: "center",
-          width: "86%",
+    <View style={[{ alignSelf: "center", width: "86%", borderRadius: 26, backgroundColor: "#6B9A1E", paddingBottom: DEPTH }, style]}>
+      <Pressable
+        onPress={onPress}
+        style={({ pressed }) => ({
           borderRadius: 26,
           paddingVertical: 16,
           alignItems: "center",
           justifyContent: "center",
-          backgroundColor: disabled ? "rgba(255,255,255,0.10)" : ACCENT,
-          transform: [{ translateY: pressed ? 1 : 0 }],
-        },
-        style,
-      ]}
-    >
-      <Text
-        style={{
-          color: disabled ? TEXT_DIM : BG,
-
-          fontSize: 16,
-          fontFamily: Platform.select({
-            ios: "Poppins-SemiBold",
-            android: "Poppins-SemiBold",
-            default: "Poppins-SemiBold",
-          }),
-        }}
+          backgroundColor: ACCENT,
+          transform: [{ translateY: pressed ? DEPTH - 1 : 0 }],
+        })}
       >
-        {title}
-      </Text>
-    </Pressable>
+        <Text
+          style={{
+            color: BG,
+            fontSize: 16,
+            fontFamily: Platform.select({
+              ios: "Poppins-SemiBold",
+              android: "Poppins-SemiBold",
+              default: "Poppins-SemiBold",
+            }),
+          }}
+        >
+          {title}
+        </Text>
+      </Pressable>
+    </View>
   );
 }
 
@@ -201,8 +208,6 @@ function SideGuides({ w, h }: { w: number; h: number }) {
 
 /* ============================== SCREEN ============================== */
 export default function TakePicture() {
-  const scoresStore = useScores() as any;
-
   const [perm, requestPerm] = useCameraPermissions();
   const permissionDenied = perm?.granted === false;
 
@@ -217,24 +222,6 @@ export default function TakePicture() {
   const cameraRef = useRef<CameraView>(null);
 
   const window = useWindowDimensions();
-  const sizing = useMetricSizing();
-
-  const isShortScreen = window.height < 760;
-
-  const cardWidth = sizing.cardWidth;
-  const CARD_BASE_WIDTH = 1032;
-  const cardScale = cardWidth / CARD_BASE_WIDTH;
-
-  // taller card on short screens so text + button can coexist
-  const cardHeight =
-    cardWidth * (isShortScreen ? 1.36 : 1.24);
-
-  // slightly narrower CTA, scaled height/radius
-  const ctaWidth = Math.min(cardWidth * 0.74, 420);
-  const ctaHeight = Math.max(50, 88 * cardScale);
-  const ctaRadius = Math.max(24, 44 * cardScale);
-
-  const gridCell = Math.max(60, 80 * cardScale);
 
   const headingFontSize = window.width >= 420 ? 34 : window.width >= 360 ? 30 : 28;
 
@@ -309,10 +296,7 @@ export default function TakePicture() {
     setSideUri(null);
     setPose("frontal");
     setStep("capture");
-  };
-
-  const goToAnalysis = () => {
-    router.push("/(tabs)/analysis");
+    setChooserOpen(true); // Skip frontal guide — go straight to camera/gallery picker
   };
 
   const goToHistory = () => {
@@ -381,56 +365,6 @@ export default function TakePicture() {
     }
   };
 
-  const renderGridOverlay = () => {
-    const verticalCount = Math.floor(cardWidth / gridCell);
-    const horizontalCount = Math.floor(cardHeight / gridCell);
-    const verticalLines = Array.from({ length: Math.max(0, verticalCount - 1) });
-    const horizontalLines = Array.from({ length: Math.max(0, horizontalCount - 1) });
-
-    return (
-      <View
-        pointerEvents="none"
-        style={{
-          ...StyleSheet.absoluteFillObject,
-          opacity: 0.1,
-        }}
-      >
-        {verticalLines.map((_, i) => {
-          const left = ((i + 1) * gridCell) / cardWidth;
-          return (
-            <View
-              key={`v-${i}`}
-              style={{
-                position: "absolute",
-                top: 0,
-                bottom: 0,
-                left: `${left * 100}%`,
-                width: 2,
-                backgroundColor: "#FFFFFF",
-              }}
-            />
-          );
-        })}
-        {horizontalLines.map((_, i) => {
-          const top = ((i + 1) * gridCell) / cardHeight;
-          return (
-            <View
-              key={`h-${i}`}
-              style={{
-                position: "absolute",
-                left: 0,
-                right: 0,
-                top: `${top * 100}%`,
-                height: 2,
-                backgroundColor: "#FFFFFF",
-              }}
-            />
-          );
-        })}
-      </View>
-    );
-  };
-
   const renderIntro = () => (
     <View style={{ flex: 1, backgroundColor: BG }}>
       <StatusBar barStyle="light-content" />
@@ -460,252 +394,170 @@ export default function TakePicture() {
             >
               Face scan
             </Text>
-            <Pressable onPress={goToAnalysis} hitSlop={16}>
-              <Text
-                style={{
-                  color: "#FFFFFF",
-                fontFamily: Platform.select({
-                  ios: "Poppins-SemiBold",
-                  android: "Poppins-SemiBold",
-                  default: "Poppins-SemiBold",
-                }),
-                fontSize: headingFontSize,
-                lineHeight: headingFontSize + 6,
-                letterSpacing: -0.3,
-              }}
-            >
-              Analysis
-            </Text>
-          </Pressable>
-          </View>
-
-          <Pressable onPress={goToHistory} hitSlop={12} style={{ alignSelf: "flex-end", marginRight: 24, marginTop: 8 }}>
-            <Text
-              style={{
-                color: TEXT,
-                fontFamily: Platform.select({
-                  ios: "Poppins-Regular",
-                  android: "Poppins-Regular",
-                  default: "Poppins-Regular",
-                }),
-                fontSize: 14,
-              }}
-            >
-              History
-            </Text>
-          </Pressable>
-
-          <View style={{ flex: 1, alignItems: "center" }}>
             <View
               style={{
-                marginTop: 18,
-                width: cardWidth,
-                height: cardHeight,
-                borderRadius: 36,
-                backgroundColor: "#121212",
-                overflow: "hidden",
-                paddingHorizontal: 24,
-                paddingVertical: 22 * cardScale,
+                borderRadius: 14,
+                backgroundColor: "#000000",
+                paddingBottom: 4,
+                shadowColor: ACCENT,
+                shadowOpacity: 0.15,
+                shadowRadius: 10,
+                shadowOffset: { width: 0, height: 2 },
+                elevation: 6,
               }}
             >
-              <LinearGradient
-                colors={["#151515", "#0A0A0A"]}
-                start={{ x: 0.2, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={StyleSheet.absoluteFill}
-              />
-              {renderGridOverlay()}
-
-              <View style={{ gap: 10, marginTop: 10 }}>
-                <Text
-                  style={{
-                    color: "#FFFFFF",
-                    textAlign: "left",
-                    fontFamily: Platform.select({
-                      ios: "Poppins-SemiBold",
-                      android: "Poppins-SemiBold",
-                      default: "Poppins-SemiBold",
-                    }),
-                    fontSize: Math.max(26, 34 * cardScale),
-                    lineHeight: Math.max(32, 40 * cardScale),
-                    letterSpacing: -0.36,
-                  }}
-                >
-                  Get ready for a guided face scan
-                </Text>
-                <Text
-                  style={{
-                    color: TEXT_DIM,
-                    fontFamily: Platform.select({
-                      ios: "Poppins-Regular",
-                      android: "Poppins-Regular",
-                      default: "Poppins-Regular",
-                    }),
-                    fontSize: 14,
-                    lineHeight: 19,
-                  }}
-                >
-                  We’ll walk you through two quick photos—first frontal, then your side profile.
-                </Text>
-              </View>
-
-              <View
-                style={{
-                  marginTop: 24,
-                  flexDirection: "row",
-                  gap: 12,
-                }}
-              >
-                <View
-                  style={{
-                    flex: 1,
-                    borderRadius: 20,
-                    paddingVertical: 12,
-                    paddingHorizontal: 18,
-                    backgroundColor: "rgba(19,19,19,0.72)",
-                    borderWidth: 1,
-                    borderColor: "rgba(255,255,255,0.08)",
-                  }}
-                >
-                  <Text
-                    style={{
-                      color: TEXT_DIM,
-                      fontSize: 12,
-                      textTransform: "uppercase",
-                      letterSpacing: 1,
-                      fontFamily: Platform.select({
-                        ios: "Poppins-SemiBold",
-                        android: "Poppins-SemiBold",
-                        default: "Poppins-SemiBold",
-                      }),
-                    }}
-                  >
-                    Step 1
-                  </Text>
-                  <Text
-                    style={{
-                      color: "#FFFFFF",
-                      marginTop: 6,
-                      fontSize: 18,
-                      fontFamily: Platform.select({
-                        ios: "Poppins-SemiBold",
-                        android: "Poppins-SemiBold",
-                        default: "Poppins-SemiBold",
-                      }),
-                    }}
-                  >
-                    Frontal photo
-                  </Text>
-                  <Text
-                    style={{
-                      color: TEXT_DIM,
-                      marginTop: 8,
-                    fontSize: 13,
-                    lineHeight: 17,
-                    fontFamily: Platform.select({
-                      ios: "Poppins-Regular",
-                      android: "Poppins-Regular",
-                      default: "Poppins-Regular",
-                    }),
-                  }}
-                >
-                  Center your face within the guide for the sharpest read.
-                </Text>
-              </View>
-                <View
-                  style={{
-                    flex: 1,
-                    borderRadius: 20,
-                    paddingVertical: 12,
-                    paddingHorizontal: 18,
-                    backgroundColor: "rgba(19,19,19,0.48)",
-                    borderWidth: 1,
-                    borderColor: "rgba(255,255,255,0.04)",
-                  }}
-                >
-                  <Text
-                    style={{
-                      color: TEXT_DIM,
-                      fontSize: 12,
-                      textTransform: "uppercase",
-                      letterSpacing: 1,
-                      fontFamily: Platform.select({
-                        ios: "Poppins-SemiBold",
-                        android: "Poppins-SemiBold",
-                        default: "Poppins-SemiBold",
-                      }),
-                    }}
-                  >
-                    Step 2
-                  </Text>
-                  <Text
-                    style={{
-                      color: "#FFFFFF",
-                      marginTop: 6,
-                      fontSize: 18,
-                      fontFamily: Platform.select({
-                        ios: "Poppins-SemiBold",
-                        android: "Poppins-SemiBold",
-                        default: "Poppins-SemiBold",
-                      }),
-                    }}
-                  >
-                    Side profile
-                  </Text>
-                  <Text
-                    style={{
-                      color: TEXT_DIM,
-                      marginTop: 8,
-                    fontSize: 13,
-                    lineHeight: 17,
-                    fontFamily: Platform.select({
-                      ios: "Poppins-Regular",
-                      android: "Poppins-Regular",
-                      default: "Poppins-Regular",
-                    }),
-                    }}
-                  >
-                    Turn your head slightly right so we can analyze your profile.
-                  </Text>
-                </View>
-              </View>
-
               <Pressable
-                onPress={beginScan}
-                hitSlop={8}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  goToHistory();
+                }}
+                hitSlop={12}
                 style={({ pressed }) => ({
-                  position: "absolute",
-                  left: (cardWidth - ctaWidth) / 2,
-                  right: (cardWidth - ctaWidth) / 2,
-                  bottom: 48 * cardScale,
-                  height: ctaHeight,
-                  borderRadius: ctaRadius,
-                  backgroundColor: "#B4F34D",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  transform: [{ scale: pressed ? 0.98 : 1 }],
-                  shadowColor: "#000",
-                  shadowOpacity: 0.45,
-                  shadowRadius: 24,
-                  shadowOffset: { width: 0, height: 12 },
-                  elevation: 10,
+                  borderRadius: 14,
+                  backgroundColor: "#1A1A1A",
+                  borderWidth: 1.5,
+                  borderColor: "#2A2A2A",
+                  paddingHorizontal: 16,
+                  paddingVertical: 7,
+                  transform: [{ translateY: pressed ? 3 : 0 }],
                 })}
               >
                 <Text
                   style={{
-                    color: BG,
+                    color: ACCENT,
                     fontFamily: Platform.select({
                       ios: "Poppins-SemiBold",
                       android: "Poppins-SemiBold",
                       default: "Poppins-SemiBold",
                     }),
-                    fontSize: Math.max(17, 22 * cardScale),
-                    lineHeight: Math.max(22, 28 * cardScale),
+                    fontSize: headingFontSize - 12,
+                    lineHeight: headingFontSize - 6,
+                    textShadowColor: "rgba(180,243,77,0.3)",
+                    textShadowRadius: 8,
+                    textShadowOffset: { width: 0, height: 0 },
                   }}
                 >
-                  Begin scan
+                  History
                 </Text>
               </Pressable>
+            </View>
+          </View>
+
+          <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 20 }}>
+            <View
+              style={{
+                width: "100%",
+                maxWidth: 400,
+                borderRadius: 24,
+                overflow: "hidden",
+                backgroundColor: "#000000",
+              }}
+            >
+              {/* Face image — upper portion of card */}
+              <View style={{ width: "100%", aspectRatio: 0.85, backgroundColor: "#000", overflow: "hidden" }}>
+                <Image
+                  source={require("../../assets/scanimage.jpeg")}
+                  style={{ width: "100%", height: "100%" }}
+                  resizeMode="cover"
+                />
+              </View>
+              {/* Gradient blending image into dark bottom zone — sits outside the image container */}
+              <LinearGradient
+                colors={["transparent", "rgba(0,0,0,0.75)", "#000000"]}
+                locations={[0, 0.5, 1]}
+                style={{
+                  position: "absolute",
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  height: "55%",
+                }}
+                pointerEvents="none"
+              />
+
+              {/* Bottom content: text + CTA */}
+              <View
+                style={{
+                  paddingHorizontal: 20,
+                  paddingBottom: 24,
+                  alignItems: "center",
+                  marginTop: -16,
+                }}
+              >
+                <Text
+                  style={{
+                    color: "#FFFFFF",
+                    textAlign: "center",
+                    fontFamily: Platform.select({
+                      ios: "Poppins-SemiBold",
+                      android: "Poppins-SemiBold",
+                      default: "Poppins-SemiBold",
+                    }),
+                    fontSize: 24,
+                    lineHeight: 32,
+                    letterSpacing: -0.3,
+                    marginBottom: 18,
+                  }}
+                >
+                  Get your accurate{"\n"}facial analysis
+                </Text>
+
+                <View
+                  style={{
+                    width: "88%",
+                    borderRadius: 28,
+                    backgroundColor: "#6B9A1E",
+                    paddingBottom: 6,
+                    shadowColor: ACCENT,
+                    shadowOpacity: 0.5,
+                    shadowRadius: 24,
+                    shadowOffset: { width: 0, height: 10 },
+                    elevation: 12,
+                  }}
+                >
+                  <Pressable
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                      beginScan();
+                    }}
+                    hitSlop={8}
+                    style={({ pressed }) => ({
+                      height: 56,
+                      borderRadius: 28,
+                      overflow: "hidden",
+                      transform: [{ translateY: pressed ? 5 : 0 }],
+                    })}
+                  >
+                    <LinearGradient
+                      colors={[ACCENT_LIGHT, ACCENT]}
+                      locations={[0, 1]}
+                      start={{ x: 0.5, y: 0 }}
+                      end={{ x: 0.5, y: 1 }}
+                      style={{
+                        flex: 1,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        borderRadius: 28,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          color: BG,
+                          fontFamily: Platform.select({
+                            ios: "Poppins-SemiBold",
+                            android: "Poppins-SemiBold",
+                            default: "Poppins-SemiBold",
+                          }),
+                          fontSize: 18,
+                          lineHeight: 22,
+                        }}
+                      >
+                        Begin scan
+                      </Text>
+                    </LinearGradient>
+                  </Pressable>
+                </View>
+              </View>
             </View>
           </View>
         </View>

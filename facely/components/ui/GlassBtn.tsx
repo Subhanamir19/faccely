@@ -7,6 +7,10 @@ import { COLORS } from "@/lib/tokens";
 
 type Variant = "glass" | "primary";
 
+const R = 28;
+const ACCENT = COLORS.accent;
+const DEPTH = 5;
+
 export default function GlassBtn({
   label,
   icon,
@@ -24,110 +28,71 @@ export default function GlassBtn({
 }) {
   const isPrimary = variant === "primary";
 
-  // Wrapper shadow: lime glow for primary, neutral soft for glass
-  const shadowStyle =
-    isPrimary && !disabled
-      ? styles.shadowPrimary
-      : styles.shadowGlass;
+  if (disabled && isPrimary) {
+    // Disabled primary: flat, no 3D
+    return (
+      <View style={[styles.pressable, { marginHorizontal: 6 }]}>
+        <View style={[styles.primaryDisabledBase, { height }]}>
+          <T style={styles.primaryDisabledText}>{label}</T>
+          {icon ? <Ionicons name={icon as any} size={18} color="#7A7A7A" style={styles.iconLeft} /> : null}
+        </View>
+      </View>
+    );
+  }
 
-  const wrapStyle = [
-    styles.shadowWrap,
-    shadowStyle,
-    isPrimary ? styles.shadowWrapPrimary : styles.shadowWrapGlass,
-  ];
+  const baseColor = isPrimary ? "#6B9A1E" : "#1A1A1A";
 
   return (
-    <Pressable onPress={onPress} disabled={disabled} style={styles.pressable}>
-      {({ pressed }) => (
-        <View style={wrapStyle}>
-          {isPrimary ? (
-            disabled ? (
-              // Disabled primary: flat slate pill, no gradient, no glow
-              <View
-                style={[
-                  styles.primaryDisabledBase,
-                  { height },
-                  pressed && styles.pressed,
-                ]}
-              >
-                <T style={styles.primaryDisabledText}>{label}</T>
-                {icon ? (
-                  <Ionicons
-                    name={icon as any}
-                    size={18}
-                    color="#7A7A7A"
-                    style={styles.iconLeftDisabled}
-                  />
-                ) : null}
-              </View>
-            ) : (
-              // Active primary: solid accent pill with glow
-              <View
-                style={[styles.primaryBase, { height }, pressed && styles.pressed]}
-              >
-                <T style={styles.primaryText}>{label}</T>
-                {icon ? (
-                  <Ionicons
-                    name={icon as any}
-                    size={18}
-                    color="#0B0B0B"
-                    style={styles.iconLeftPrimary}
-                  />
-                ) : null}
-              </View>
-            )
-          ) : (
-            // Glass variant for "Skip": transparent fill, 2px outline, no blur
+    <View style={[styles.pressable, { marginHorizontal: 6 }]}>
+      {/* 3D base — dark shadow layer */}
+      <View
+        style={[
+          {
+            borderRadius: R,
+            backgroundColor: baseColor,
+            paddingBottom: DEPTH,
+          },
+          isPrimary && !disabled ? styles.shadowPrimary : styles.shadowGlass,
+        ]}
+      >
+        <Pressable onPress={onPress} disabled={disabled}>
+          {({ pressed }) => (
             <View
               style={[
-                styles.glassBase,
-                { height },
+                isPrimary ? styles.primaryBase : styles.glassBase,
+                {
+                  height,
+                  transform: [{ translateY: pressed ? DEPTH - 1 : 0 }],
+                },
                 disabled && styles.glassDisabled,
-                pressed && styles.pressed,
               ]}
             >
               {icon ? (
                 <Ionicons
                   name={icon as any}
                   size={18}
-                  color="#EDEDED"
-                  style={styles.iconLeftGlass}
+                  color={isPrimary ? "#0B0B0B" : "#EDEDED"}
+                  style={styles.iconLeft}
                 />
               ) : null}
-              <T style={styles.glassText}>{label}</T>
+              <T style={isPrimary ? styles.primaryText : styles.glassText}>{label}</T>
             </View>
           )}
-        </View>
-      )}
-    </Pressable>
+        </Pressable>
+      </View>
+    </View>
   );
 }
-
-const R = 28;
-const ACCENT = COLORS.accent;
 
 const styles = StyleSheet.create({
   pressable: {
     flex: 1,
     alignSelf: "stretch",
   },
-  shadowWrap: {
-    borderRadius: R,
-    marginHorizontal: 6,
-  },
-  shadowWrapPrimary: {
-    overflow: "visible",
-  },
-  shadowWrapGlass: {
-    overflow: "hidden",
-  },
 
-  // Spec: 0 8 24 rgba(180,243,77,0.18)
   shadowPrimary: {
     ...(Platform.OS === "android"
-      ? {
-          elevation: 12,
-        }
+      ? { elevation: 12 }
       : {
           shadowColor: ACCENT,
           shadowOpacity: 0.35,
@@ -135,8 +100,6 @@ const styles = StyleSheet.create({
           shadowOffset: { width: 0, height: 8 },
         }),
   },
-
-  // Neutral soft shadow under glass buttons (very subtle)
   shadowGlass: {
     ...(Platform.OS === "android"
       ? { elevation: 0 }
@@ -148,7 +111,6 @@ const styles = StyleSheet.create({
         }),
   },
 
-  // Primary (active)
   primaryBase: {
     borderRadius: R,
     alignItems: "center",
@@ -164,14 +126,7 @@ const styles = StyleSheet.create({
       default: "Poppins-SemiBold",
     }),
   },
-  iconLeftPrimary: {
-    position: "absolute",
-    left: 16,
-    top: "50%",
-    marginTop: -9,
-  },
 
-  // Primary (disabled)
   primaryDisabledBase: {
     borderRadius: R,
     alignItems: "center",
@@ -187,20 +142,13 @@ const styles = StyleSheet.create({
       default: "Poppins-SemiBold",
     }),
   },
-  iconLeftDisabled: {
-    position: "absolute",
-    left: 16,
-    top: "50%",
-    marginTop: -9,
-  },
 
-  // Glass (transparent outline button)
   glassBase: {
     borderRadius: R,
-    backgroundColor: "transparent",
+    backgroundColor: "#1E1E1E",
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 2,
+    borderWidth: 1.5,
     borderColor: "#2D2D2D",
   },
   glassDisabled: { opacity: 0.6 },
@@ -213,8 +161,6 @@ const styles = StyleSheet.create({
       default: "Poppins-SemiBold",
     }),
   },
-  iconLeftGlass: { position: "absolute", left: 16 },
 
-  // Pressed state
-  pressed: { transform: [{ translateY: 1 }] },
+  iconLeft: { position: "absolute", left: 16 },
 });

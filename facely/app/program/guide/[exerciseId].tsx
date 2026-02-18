@@ -124,6 +124,20 @@ export default function ExerciseGuideScreen() {
 
   return (
     <View style={styles.root}>
+      {/* Close (X) button — outside ScrollView so it's always visible */}
+      <Pressable
+        onPress={() => router.back()}
+        style={({ pressed }) => [
+          styles.closeBtn,
+          { top: insets.top + SP[2] + SP[3] },
+          pressed && styles.closeBtnPressed,
+        ]}
+        accessibilityRole="button"
+        accessibilityLabel="Close"
+      >
+        <Ionicons name="close" size={20} color="#FFFFFF" />
+      </Pressable>
+
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: SP[10] + insets.bottom }}
@@ -147,20 +161,6 @@ export default function ExerciseGuideScreen() {
 
           {/* Pagination dots */}
           <PaginationDots count={frames.length} activeIndex={activeSlide} />
-
-          {/* Close (X) button */}
-          <Pressable
-            onPress={() => router.back()}
-            style={({ pressed }) => [
-              styles.closeBtn,
-              { top: SP[3] },
-              pressed && styles.closeBtnPressed,
-            ]}
-            accessibilityRole="button"
-            accessibilityLabel="Close"
-          >
-            <Ionicons name="close" size={20} color="#FFFFFF" />
-          </Pressable>
         </View>
 
         {/* ── Content area ── */}
@@ -234,11 +234,14 @@ const styles = StyleSheet.create({
   /* close button */
   closeBtn: {
     position: "absolute",
-    right: SP[3],
+    right: SP[3] + HERO_MARGIN,
+    zIndex: 10,
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: "rgba(100,100,100,0.60)",
+    backgroundColor: "rgba(0,0,0,0.6)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.2)",
     alignItems: "center",
     justifyContent: "center",
   },

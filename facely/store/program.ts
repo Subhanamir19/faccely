@@ -1,3 +1,6 @@
+// DEPRECATED: This store is replaced by store/tasks.ts.
+// Kept temporarily for data migration reference. Safe to delete.
+
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
