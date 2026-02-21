@@ -1,25 +1,19 @@
 // components/onboarding/OptionsList.tsx
-// Reusable radio option list for onboarding screens
 import React from "react";
 import {
   View,
   StyleSheet,
   Pressable,
-  Platform,
   ScrollView,
   AccessibilityState,
 } from "react-native";
 import Animated, {
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
-  withSpring,
   Easing,
   FadeInDown,
 } from "react-native-reanimated";
 
 import T from "@/components/ui/T";
-import { COLORS, RADII, SP, SHADOWS } from "@/lib/tokens";
+import { COLORS, RADII, SP } from "@/lib/tokens";
 import { hapticSelection } from "@/lib/haptics";
 
 export type Option = {
@@ -37,96 +31,86 @@ type OptionsListProps = {
   onSelectMulti?: (keys: string[]) => void;
   scrollEnabled?: boolean;
   maxHeight?: number;
-  /** Whether to allow deselecting (for single select) */
   allowDeselect?: boolean;
 };
 
-const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+// Identical constants to GlassBtn
+const R = RADII.lg;
+const DEPTH = 5;
+const ACTIVE_BASE  = "#2D4A09";
+const INACTIVE_BASE = "#0A0A0A";
 
 function OptionItem({
   item,
   isActive,
   onPress,
   index,
+  multiSelect = false,
 }: {
   item: Option;
   isActive: boolean;
   onPress: () => void;
   index: number;
+  multiSelect?: boolean;
 }) {
-  const scale = useSharedValue(1);
-  const borderProgress = useSharedValue(isActive ? 1 : 0);
-
-  React.useEffect(() => {
-    borderProgress.value = withTiming(isActive ? 1 : 0, {
-      duration: 200,
-      easing: Easing.out(Easing.cubic),
-    });
-  }, [isActive, borderProgress]);
-
-  const handlePressIn = () => {
-    scale.value = withTiming(0.98, { duration: 80 });
-  };
-
-  const handlePressOut = () => {
-    scale.value = withSpring(1, { damping: 15, stiffness: 200 });
-  };
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-    borderColor: isActive ? COLORS.accent : COLORS.optionBorder,
-    backgroundColor: isActive ? COLORS.optionBgActive : COLORS.optionBg,
-  }));
-
-  const glowStyle = useAnimatedStyle(() => ({
-    opacity: borderProgress.value * 0.16,
-  }));
-
   return (
     <Animated.View
-      entering={FadeInDown.delay(index * 50).duration(300).easing(Easing.out(Easing.cubic))}
+      entering={FadeInDown.delay(index * 50)
+        .duration(300)
+        .easing(Easing.out(Easing.cubic))}
     >
-      <AnimatedPressable
-        onPress={onPress}
-        onPressIn={handlePressIn}
-        onPressOut={handlePressOut}
-        accessibilityRole="radio"
-        accessibilityState={{ selected: isActive } as AccessibilityState}
-        style={[styles.option, animatedStyle]}
+      {/*
+        Structure is identical to GlassBtn:
+          outer View  → base colour + paddingBottom pocket
+          Pressable   → touch handler, render-prop gives `pressed`
+          inner View  → plain static styles, translateY on pressed
+        No Reanimated on the face → RN's own borderRadius clipping works correctly
+      */}
+      <View
+        style={[
+          styles.base,
+          { backgroundColor: isActive ? ACTIVE_BASE : INACTIVE_BASE },
+        ]}
       >
-        {/* Inner bevel effect */}
-        <View style={styles.optionInner} pointerEvents="none" />
+        <Pressable
+          onPress={onPress}
+          accessibilityRole={multiSelect ? "checkbox" : "radio"}
+          accessibilityState={{ selected: isActive } as AccessibilityState}
+        >
+          {({ pressed }) => (
+            <View
+              style={[
+                styles.face,
+                isActive ? styles.faceActive : styles.faceInactive,
+                { transform: [{ translateY: pressed ? DEPTH - 1 : 0 }] },
+              ]}
+            >
+              {/* Indicator — always rendered so left padding is justified */}
+              <View style={styles.dotWrap}>
+                <View style={[styles.dotOuter, !isActive && styles.dotOuterInactive]}>
+                  {isActive && <View style={styles.dotInner} />}
+                </View>
+              </View>
 
-        {/* Radio dot (only when selected) */}
-        {isActive && (
-          <View style={styles.dotWrap}>
-            <View style={styles.dotOuter}>
-              <View style={styles.dotInner} />
+              {/* Text */}
+              <View style={styles.content}>
+                <T
+                  variant="captionSemiBold"
+                  color={isActive ? "optionTextActive" : "optionText"}
+                  numberOfLines={2}
+                >
+                  {item.label}
+                </T>
+                {item.description && (
+                  <T variant="small" color="sub" style={styles.description}>
+                    {item.description}
+                  </T>
+                )}
+              </View>
             </View>
-          </View>
-        )}
-
-        {/* Content */}
-        <View style={styles.optionContent}>
-          <T
-            variant="captionSemiBold"
-            color={isActive ? "optionTextActive" : "optionText"}
-            numberOfLines={2}
-          >
-            {item.label}
-          </T>
-          {item.description && (
-            <T variant="small" color="sub" style={styles.optionDescription}>
-              {item.description}
-            </T>
           )}
-        </View>
-
-        {/* Glow effect on iOS */}
-        {Platform.OS === "ios" && (
-          <Animated.View style={[styles.optionGlow, glowStyle]} pointerEvents="none" />
-        )}
-      </AnimatedPressable>
+        </Pressable>
+      </View>
     </Animated.View>
   );
 }
@@ -144,7 +128,6 @@ export default function OptionsList({
 }: OptionsListProps) {
   const handleSelect = (key: string) => {
     hapticSelection();
-
     if (multiSelect && onSelectMulti) {
       if (selectedMulti.includes(key)) {
         onSelectMulti(selectedMulti.filter((k) => k !== key));
@@ -160,12 +143,8 @@ export default function OptionsList({
     }
   };
 
-  const isSelected = (key: string) => {
-    if (multiSelect) {
-      return selectedMulti.includes(key);
-    }
-    return selected === key;
-  };
+  const isSelected = (key: string) =>
+    multiSelect ? selectedMulti.includes(key) : selected === key;
 
   const renderItems = () =>
     options.map((item, index) => (
@@ -176,16 +155,16 @@ export default function OptionsList({
           isActive={isSelected(item.key)}
           onPress={() => handleSelect(item.key)}
           index={index}
+          multiSelect={multiSelect}
         />
       </React.Fragment>
     ));
 
-  // Use ScrollView only when scrollEnabled is true and maxHeight is set
   if (scrollEnabled && maxHeight) {
     return (
       <ScrollView
         style={{ maxHeight }}
-        contentContainerStyle={styles.listContainer}
+        contentContainerStyle={styles.listScrollable}
         showsVerticalScrollIndicator={false}
         nestedScrollEnabled
       >
@@ -194,22 +173,29 @@ export default function OptionsList({
     );
   }
 
-  // Default: plain View (no virtualization issues)
-  return <View style={styles.listContainer}>{renderItems()}</View>;
+  return <View style={styles.list}>{renderItems()}</View>;
 }
 
 const styles = StyleSheet.create({
-  listContainer: {
-    paddingTop: SP[2],
+  list: { paddingTop: SP[2] },
+  listScrollable: { paddingTop: SP[2], paddingBottom: DEPTH },
+
+  separator: { height: SP[3] },
+
+  // 3D base — same role as the outer View in GlassBtn
+  base: {
+    borderRadius: R,
+    paddingBottom: DEPTH,
   },
-  separator: {
-    height: SP[3],
-  },
-  option: {
-    position: "relative",
+
+  // Button face — plain View, no Reanimated on colours.
+  // overflow:"hidden" is required on Android: without it a View's borderColor
+  // does NOT clip to borderRadius, causing the border to bleed past the corners
+  // as a hard rectangle. Static colours (not Reanimated) are safe with this.
+  face: {
     width: "100%",
     minHeight: 56,
-    borderRadius: RADII.lg,
+    borderRadius: R,
     borderWidth: 1.5,
     justifyContent: "center",
     paddingLeft: 52,
@@ -217,23 +203,18 @@ const styles = StyleSheet.create({
     paddingVertical: SP[3],
     overflow: "hidden",
   },
-  optionInner: {
-    ...StyleSheet.absoluteFillObject,
-    borderRadius: RADII.lg,
-    borderWidth: 1,
-    borderColor: "rgba(0,0,0,0.35)",
+  faceActive: {
+    borderColor: COLORS.accent,
+    backgroundColor: COLORS.optionBgActive,
   },
-  optionContent: {
-    flex: 1,
+  faceInactive: {
+    borderColor: COLORS.optionBorder,
+    backgroundColor: COLORS.optionBg,
   },
-  optionDescription: {
-    marginTop: SP[1],
-  },
-  optionGlow: {
-    ...StyleSheet.absoluteFillObject,
-    borderRadius: RADII.lg,
-    ...SHADOWS.glowAccent,
-  },
+
+  content: { flex: 1 },
+  description: { marginTop: SP[1] },
+
   dotWrap: {
     position: "absolute",
     left: SP[5],
@@ -249,6 +230,9 @@ const styles = StyleSheet.create({
     borderColor: COLORS.accent,
     alignItems: "center",
     justifyContent: "center",
+  },
+  dotOuterInactive: {
+    borderColor: COLORS.optionBorder,
   },
   dotInner: {
     width: 10,

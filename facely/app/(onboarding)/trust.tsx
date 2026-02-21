@@ -23,7 +23,7 @@ import Animated, {
 } from "react-native-reanimated";
 
 import T from "@/components/ui/T";
-import Button from "@/components/ui/Button";
+import LimeButton from "@/components/ui/LimeButton";
 import { COLORS, SP, RADII, getProgressForStep } from "@/lib/tokens";
 import { hapticLight, hapticSuccess } from "@/lib/haptics";
 
@@ -208,7 +208,7 @@ export default function TrustAccuracyScreen() {
         </View>
 
         {/* CTA */}
-        <Button label="Continue" onPress={handleContinue} variant="primary" size="lg" />
+        <LimeButton label="Continue" onPress={handleContinue} />
       </View>
     </View>
   );

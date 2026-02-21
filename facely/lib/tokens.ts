@@ -244,7 +244,7 @@ export const SHADOWS = {
 // Onboarding flow configuration
 export const ONBOARDING_FLOW = {
   steps: [
-    { key: "welcome", label: "Welcome" },
+    { key: "informatory", label: "Informatory" },
     { key: "use-case", label: "Use Case" },
     { key: "experience", label: "Experience" },
     { key: "goals", label: "Goals" },
@@ -253,16 +253,20 @@ export const ONBOARDING_FLOW = {
     { key: "gender", label: "Gender" },
     { key: "edge", label: "Edge" },
     { key: "trust", label: "Trust" },
+    { key: "scan", label: "Scan" },
+    { key: "building-plan", label: "Building Plan" },
+    { key: "reviews", label: "Reviews" },
+    { key: "transformation", label: "Transformation" },
     { key: "paywall", label: "Paywall" },
   ],
-  // Total steps excluding welcome and paywall for progress calculation
-  totalProgressSteps: 8,
+  // Total question steps: use-case (1) through scan (9)
+  totalProgressSteps: 9,
 } as const;
 
 export function getProgressForStep(stepKey: string): number {
   const idx = ONBOARDING_FLOW.steps.findIndex((s) => s.key === stepKey);
-  if (idx <= 0) return 0; // welcome has no progress
-  if (stepKey === "paywall") return 1; // paywall is 100%
-  // Exclude welcome (idx 0) and paywall from calculation
-  return idx / ONBOARDING_FLOW.totalProgressSteps;
+  if (idx <= 0) return 0; // informatory has no progress
+  // Post-scan screens and paywall always show full progress
+  if (["paywall", "building-plan", "reviews", "transformation"].includes(stepKey)) return 1;
+  return Math.min(1, idx / ONBOARDING_FLOW.totalProgressSteps);
 }

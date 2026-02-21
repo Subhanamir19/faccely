@@ -3,6 +3,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { produce } from "immer";
 import { Routine } from "@/lib/api/routine";
+import { logger } from '@/lib/logger';
 
 /* ----------------------------- Helpers ----------------------------- */
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -15,21 +16,21 @@ function toUtcMidnightMs(date: Date): number {
 
 function computeTodayIndex(startDate: string | undefined, totalDays: number): number {
   if (!startDate) {
-    console.warn("[ROUTINE_STORE] missing createdAt; defaulting to day 0");
+    logger.warn("[ROUTINE_STORE] missing createdAt; defaulting to day 0");
     return 0;
   }
 
   try {
     const start = new Date(startDate);
     if (Number.isNaN(start.getTime())) {
-      console.warn("[ROUTINE_STORE] invalid createdAt; defaulting to day 0", startDate);
+      logger.warn("[ROUTINE_STORE] invalid createdAt; defaulting to day 0", startDate);
       return 0;
     }
 
     const now = new Date();
     const rawDiff = now.getTime() - start.getTime();
     if (!skewWarnLogged && Math.abs(rawDiff) > HALF_DAY_MS) {
-      console.warn("[ROUTINE_STORE] device/server time skew detected", {
+      logger.warn("[ROUTINE_STORE] device/server time skew detected", {
         createdAt: start.toISOString(),
         now: now.toISOString(),
       });
@@ -44,7 +45,7 @@ function computeTodayIndex(startDate: string | undefined, totalDays: number): nu
     const maxIndex = Math.max(totalDays - 1, 0);
     return Math.min(Math.max(diffDays, 0), maxIndex);
   } catch {
-    console.warn("[ROUTINE_STORE] failed to parse createdAt; defaulting to day 0");
+    logger.warn("[ROUTINE_STORE] failed to parse createdAt; defaulting to day 0");
     return 0;
   }
 }
@@ -92,7 +93,7 @@ export const useRoutineStore = create<RoutineStore>()(
           })
         );
 
-        console.log("[ROUTINE_STORE] hydrated", {
+        logger.log("[ROUTINE_STORE] hydrated", {
           days: totalDays,
           todayIndex,
           startDate,
@@ -105,7 +106,7 @@ export const useRoutineStore = create<RoutineStore>()(
 
         const isReadOnly = dayIndex < get().todayIndex;
         if (isReadOnly) {
-          console.warn("[ROUTINE_STORE] read-only day, ignoring toggle");
+          logger.warn("[ROUTINE_STORE] read-only day, ignoring toggle");
           return;
         }
 
@@ -129,7 +130,7 @@ export const useRoutineStore = create<RoutineStore>()(
         const newIndex = computeTodayIndex(startSource, r.days.length);
         if (newIndex !== get().todayIndex) {
           set({ todayIndex: newIndex });
-          console.log("[ROUTINE_STORE] rolled to next day:", newIndex);
+          logger.log("[ROUTINE_STORE] rolled to next day:", newIndex);
         }
       },
 
@@ -140,7 +141,7 @@ export const useRoutineStore = create<RoutineStore>()(
           })
         );
         get().refreshDayIndex();
-        console.log("[ROUTINE_STORE] dev set start date:", iso);
+        logger.log("[ROUTINE_STORE] dev set start date:", iso);
       },
 
       completionPercent() {
@@ -177,7 +178,7 @@ export const useRoutineStore = create<RoutineStore>()(
             next.completionMap = {};
             return next as RoutineStore;
           } catch (err) {
-            console.error("[ROUTINE_STORE] migrate failed", err);
+            logger.error("[ROUTINE_STORE] migrate failed", err);
             return { routine: null, todayIndex: 0, completionMap: {} } as RoutineStore;
           }
         }
@@ -189,11 +190,11 @@ export const useRoutineStore = create<RoutineStore>()(
         const startSource = state.routine.startDate ?? state.routine.createdAt;
         const idx = computeTodayIndex(startSource, state.routine.days.length);
         state.todayIndex = idx;
-        console.log("[ROUTINE_STORE] rehydrated", { todayIndex: idx });
+        logger.log("[ROUTINE_STORE] rehydrated", { todayIndex: idx });
         try {
           useRoutineStore.getState().refreshDayIndex();
         } catch (err) {
-          console.warn("[ROUTINE_STORE] refresh after rehydrate failed", err);
+          logger.warn("[ROUTINE_STORE] refresh after rehydrate failed", err);
         }
       },
     }

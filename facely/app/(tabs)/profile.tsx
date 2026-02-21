@@ -27,6 +27,7 @@ import { useRecommendations } from "@/store/recommendations";
 import { useSubscriptionStore } from "@/store/subscription";
 import { persistAvatarFromUri } from "@/lib/media/avatar";
 import { restorePurchases, checkSubscriptionStatus, logoutUser as logoutRevenueCatUser } from "@/lib/revenuecat";
+import { logger } from '@/lib/logger';
 
 async function resetLocalUserData() {
   try {
@@ -145,9 +146,7 @@ export default function ProfileScreen() {
       try {
         await logoutRevenueCatUser();
       } catch (rcErr) {
-        if (__DEV__) {
-          console.warn("[Profile] RevenueCat logout failed:", rcErr);
-        }
+        logger.warn("[Profile] RevenueCat logout failed:", rcErr);
       }
       await resetLocalUserData();
       await supabase.auth.signOut();
@@ -186,9 +185,7 @@ export default function ProfileScreen() {
       try {
         await logoutRevenueCatUser();
       } catch (rcErr) {
-        if (__DEV__) {
-          console.warn("[Profile] RevenueCat logout failed:", rcErr);
-        }
+        logger.warn("[Profile] RevenueCat logout failed:", rcErr);
       }
       await resetLocalUserData();
       try {

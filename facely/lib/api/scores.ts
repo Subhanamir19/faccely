@@ -14,6 +14,7 @@ import {
   type UploadInput,
 } from "./media";
 import { buildAuthHeadersAsync } from "./authHeaders";
+import { logger } from '@/lib/logger';
 
 /* -------------------------------------------------------------------------- */
 /*   Types                                                                    */
@@ -101,7 +102,7 @@ export function normalizeScores(raw: Partial<Scores> | null | undefined): Scores
   }
 
   if (missingOrInvalid.length > 0) {
-    console.warn("[scores] normalizeScores missing/invalid metrics:", {
+    logger.warn("[scores] normalizeScores missing/invalid metrics:", {
       missingOrInvalid,
       raw,
     });
@@ -109,7 +110,7 @@ export function normalizeScores(raw: Partial<Scores> | null | undefined): Scores
 
   const values = METRIC_KEYS.map((key) => sanitized[key] as number);
   if (values.every((v) => v === 0)) {
-    console.error("[scores] EMPTY_SCORES_GUARD", {
+    logger.error("[scores] EMPTY_SCORES_GUARD", {
       raw,
       sanitized,
       missingOrInvalid,
@@ -134,7 +135,7 @@ export async function pingHealth(): Promise<boolean> {
     });
     return r.ok;
   } catch (e) {
-    console.warn("[scores] pingHealth failed:", (e as any)?.message);
+    logger.warn("[scores] pingHealth failed:", (e as any)?.message);
     return false;
   }
 }
@@ -155,7 +156,7 @@ async function analyzePairMultipart(front: InputFile, side: InputFile): Promise<
 
   const url = `${API_BASE}/analyze/pair`;
   const start = Date.now();
-  console.log("[scores] POST", url, { front: frontPart.name, side: sidePart.name });
+  logger.log("[scores] POST", url, { front: frontPart.name, side: sidePart.name });
 
   let res: Response;
   try {
@@ -172,23 +173,23 @@ async function analyzePairMultipart(front: InputFile, side: InputFile): Promise<
       800
     );
   } catch (e: any) {
-    console.error("[scores] /analyze/pair network error:", e?.message || e);
+    logger.error("[scores] /analyze/pair network error:", e?.message || e);
     throw new Error("NETWORK_LAYER_FAIL");
   } finally {
     const duration = Date.now() - start;
-    console.log(`[scores] /analyze/pair duration: ${duration} ms`);
+    logger.log(`[scores] /analyze/pair duration: ${duration} ms`);
   }
 
   if (!res.ok) {
     const body = await res.text().catch(() => "");
-    console.error("[scores] /analyze/pair fail http", res.status, body);
+    logger.error("[scores] /analyze/pair fail http", res.status, body);
     throw new Error(`HTTP ${res.status} ${body}`);
   }
 
   const raw = await res.json().catch(() => null);
-  console.log("[scores] /analyze/pair raw:", raw);
+  logger.log("[scores] /analyze/pair raw:", raw);
   if (!raw) throw new Error("Invalid JSON from server");
-  console.log("[scores] /analyze/pair ok");
+  logger.log("[scores] /analyze/pair ok");
   const scores = normalizeScores(raw);
   const scanId = (raw as any)?.scanId;
   return attachUploadMeta(scores, { front: frontPart, side: sidePart, scanId });
@@ -204,7 +205,7 @@ async function analyzePairBytes(front: InputFile, side: InputFile): Promise<Scor
     resolveExistingPath(typeof side === "string" ? side : side.uri),
   ]);
 
-  console.log("[scores] POST /analyze/pair-bytes starting...", API_BASE, {
+  logger.log("[scores] POST /analyze/pair-bytes starting...", API_BASE, {
     frontPath,
     sidePath,
   });
@@ -239,14 +240,14 @@ async function analyzePairBytes(front: InputFile, side: InputFile): Promise<Scor
   const duration = Date.now() - start;
   if (!res.ok) {
     const body = await res.text().catch(() => "");
-    console.error("[scores] /analyze/pair-bytes fail http", res.status, body);
+    logger.error("[scores] /analyze/pair-bytes fail http", res.status, body);
     throw new Error(`HTTP ${res.status} ${body}`);
   }
 
   const raw = await res.json().catch(() => null);
-  console.log("[scores] /analyze/pair-bytes raw:", raw);
+  logger.log("[scores] /analyze/pair-bytes raw:", raw);
   if (!raw) throw new Error("Invalid JSON from server");
-  console.log(`[scores] /analyze/pair-bytes ok (${duration} ms)`);
+  logger.log(`[scores] /analyze/pair-bytes ok (${duration} ms)`);
   const meta = {
     front: { uri: frontPath, name: "front.jpg", type: "image/jpeg" },
     side: { uri: sidePath, name: "side.jpg", type: "image/jpeg" },
@@ -265,14 +266,14 @@ export async function analyzePair(front: InputFile, side: InputFile): Promise<Sc
     return await analyzePairMultipart(front, side);
   } catch (err: any) {
     if (err?.message === "NETWORK_LAYER_FAIL") {
-      console.warn("[scores] falling back to /analyze/pair-bytes");
+      logger.warn("[scores] falling back to /analyze/pair-bytes");
       return await analyzePairBytes(front, side);
     }
     if ((err as any)?.code === "FILE_GONE") {
-      console.error("[scores] file missing:", (err as any).details);
+      logger.error("[scores] file missing:", (err as any).details);
       throw err;
     }
-    console.error("[scores] analyzePair unrecoverable error:", err);
+    logger.error("[scores] analyzePair unrecoverable error:", err);
     throw err;
   }
 }
@@ -289,7 +290,7 @@ export async function analyzeImage(input: InputFile): Promise<Scores> {
 
   const url = `${API_BASE}/analyze`;
   const start = Date.now();
-  console.log("[scores] POST", url, { path: part.uri });
+  logger.log("[scores] POST", url, { path: part.uri });
 
   let res: Response;
   try {
@@ -306,23 +307,23 @@ export async function analyzeImage(input: InputFile): Promise<Scores> {
       800
     );
   } catch (e: any) {
-    console.error("[scores] /analyze network error:", e?.message || e);
+    logger.error("[scores] /analyze network error:", e?.message || e);
     throw new Error("NETWORK_LAYER_FAIL");
   } finally {
     const duration = Date.now() - start;
-    console.log(`[scores] /analyze duration: ${duration} ms`);
+    logger.log(`[scores] /analyze duration: ${duration} ms`);
   }
 
   if (!res.ok) {
     const body = await res.text().catch(() => "");
-    console.error("[scores] /analyze fail http", res.status, body);
+    logger.error("[scores] /analyze fail http", res.status, body);
     throw new Error(`HTTP ${res.status} ${body}`);
   }
 
   const raw = await res.json().catch(() => null);
-  console.log("[scores] /analyze raw:", raw);
+  logger.log("[scores] /analyze raw:", raw);
   if (!raw) throw new Error("Invalid JSON from server");
-  console.log("[scores] /analyze ok");
+  logger.log("[scores] /analyze ok");
   const scores = normalizeScores(raw);
   const scanId = (raw as any)?.scanId;
   return attachUploadMeta(scores, { single: part, scanId });

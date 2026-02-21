@@ -138,9 +138,9 @@ export default function IndexGate() {
     return <VideoSplash visible={true} />;
   }
 
-  // If onboarding questions not completed, go to onboarding first (no auth required yet)
+  // If onboarding questions not completed, show the intro screen first
   if (!hasCompletedQuestions) {
-    return <Redirect href="/(onboarding)/use-case" />;
+    return <Redirect href="/(onboarding)/intro" />;
   }
 
   // Questions done - now require auth before paywall

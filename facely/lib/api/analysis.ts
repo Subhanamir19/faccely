@@ -10,6 +10,7 @@ import {
 import type { Scores } from "./scores";
 import { prepareUploadPart, type UploadInput } from "./media";
 import { buildAuthHeadersAsync } from "./authHeaders";
+import { logger } from '@/lib/logger';
 
 export type Explanations = Record<string, string[]>;
 
@@ -72,8 +73,7 @@ async function parseExplanations(
     return normalizeExplanations(parsed);
   } catch (err) {
     const detail = err instanceof z.ZodError ? err.message : String(err);
-    // eslint-disable-next-line no-console
-    console.warn("[analysis] invalid payload", detail, raw);
+    logger.warn("[analysis] invalid payload", detail, raw);
     throw new ApiResponseError(res.status, `${context}: invalid_payload - ${detail}`, raw);
   }
 }

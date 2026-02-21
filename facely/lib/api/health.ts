@@ -1,5 +1,6 @@
 import { API_BASE, API_BASE_REASON } from "./config";
 import { fetchWithTimeout, toUserFacingError } from "./client";
+import { logger } from '@/lib/logger';
 
 function healthUrl(): string {
   return `${API_BASE.replace(/\/+$/, "")}/health`;
@@ -43,8 +44,7 @@ export async function pingHealth(timeoutMs = 15000): Promise<boolean> {
     const first = await once(timeoutMs);
     if (first.reachable) return true;
 
-    // eslint-disable-next-line no-console
-    console.warn(
+    logger.warn(
       `[health] first attempt failed: ${first.detail || "unknown"} (status=${first.status ?? "n/a"}) url=${url} reason=${API_BASE_REASON}`
     );
 
@@ -64,8 +64,7 @@ export async function pingHealth(timeoutMs = 15000): Promise<boolean> {
     );
 
     const friendly = toUserFacingError(err, `Health check failed for ${API_BASE}`);
-    // eslint-disable-next-line no-console
-    console.error(
+    logger.error(
       "[health] ping failed:",
       friendly.message,
       "| url=",
@@ -78,8 +77,7 @@ export async function pingHealth(timeoutMs = 15000): Promise<boolean> {
     throw friendly;
   } catch (err) {
     const friendly = toUserFacingError(err, `Health check failed for ${API_BASE}`);
-    // eslint-disable-next-line no-console
-    console.error("[health] ping failed:", friendly.message, "| url=", url, "| reason=", API_BASE_REASON);
+    logger.error("[health] ping failed:", friendly.message, "| url=", url, "| reason=", API_BASE_REASON);
     throw friendly;
   }
 }

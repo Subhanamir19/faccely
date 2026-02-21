@@ -26,6 +26,7 @@ import Animated, {
 
 import T from "@/components/ui/T";
 import Button from "@/components/ui/Button";
+import LimeButton from "@/components/ui/LimeButton";
 import OnboardingCard, { ONBOARDING_CARD_WIDTH } from "./OnboardingCard";
 import { COLORS, SP, RADII, getProgressForStep } from "@/lib/tokens";
 import { hapticLight } from "@/lib/haptics";
@@ -148,11 +149,9 @@ export default function OnboardingScreen({
 
       {/* CTAs */}
       <View style={styles.ctaContainer}>
-        <Button
+        <LimeButton
           label={primaryLabel}
           onPress={onPrimary}
-          variant="primary"
-          size="md"
           disabled={primaryDisabled}
           loading={primaryLoading}
         />

@@ -16,7 +16,7 @@ type State = {
   // canonical flag
   completed: boolean;
 
-  // compatibility alias (some files might read `done`)
+  // compatibility alias (some files might read )
   done: boolean;
 
   hydrate: () => Promise<void>;
@@ -60,5 +60,4 @@ export const useOnboarding = create<State>((set, get) => ({
   },
 }));
 
-// compatibility alias if some code imports `useOnboardingStore`
-export const useOnboardingStore = useOnboarding;
+// compatibility alias if some code imports export const useOnboardingStore = useOnboarding;

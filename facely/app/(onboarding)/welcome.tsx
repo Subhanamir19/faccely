@@ -4,7 +4,6 @@ import {
   AccessibilityInfo,
   Image,
   Platform,
-  Pressable,
   StyleSheet,
   Text,
   View,
@@ -19,13 +18,13 @@ import Animated, {
   withDelay,
   withRepeat,
   withSequence,
-  withSpring,
   withTiming,
 } from "react-native-reanimated";
 
 import Screen from "@/components/layout/Screen";
 import { COLORS, SP } from "@/lib/tokens";
 import T from "@/components/ui/T";
+import LimeButton from "@/components/ui/LimeButton";
 
 const ACCENT = COLORS.accent;
 const TAGLINE = "rgba(255,255,255,0.92)";
@@ -57,8 +56,6 @@ export default function WelcomeIntroScreen() {
   const subOpacity = useSharedValue(reducedMotion ? 1 : 0);
   const ctaOpacity = useSharedValue(reducedMotion ? 1 : 0);
   const ctaTranslate = useSharedValue(reducedMotion ? 0 : CTA_OFFSET);
-  const ctaScale = useSharedValue(1);
-
   const announcedRef = useRef(false);
 
   useEffect(() => {
@@ -154,14 +151,6 @@ export default function WelcomeIntroScreen() {
     router.push("/(onboarding)/use-case");
   }, []);
 
-  const handlePressIn = useCallback(() => {
-    ctaScale.value = withTiming(0.98, { duration: 80, easing: Easing.linear });
-  }, [ctaScale]);
-
-  const handlePressOut = useCallback(() => {
-    ctaScale.value = withSpring(1, { damping: 12, stiffness: 220 });
-  }, [ctaScale]);
-
   const emblemStyle = useAnimatedStyle(() => ({
     transform: [{ scale: emblemScale.value }],
   }));
@@ -177,10 +166,7 @@ export default function WelcomeIntroScreen() {
 
   const ctaStyle = useAnimatedStyle(() => ({
     opacity: ctaOpacity.value,
-    transform: [
-      { translateY: ctaTranslate.value },
-      { scale: ctaScale.value },
-    ],
+    transform: [{ translateY: ctaTranslate.value }],
   }));
 
   return (
@@ -189,18 +175,7 @@ export default function WelcomeIntroScreen() {
       contentContainerStyle={styles.contentContainer}
       footer={
         <Animated.View style={[styles.ctaContainer, ctaStyle]}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Begin onboarding"
-            accessibilityHint="Navigates to age selection"
-            hitSlop={8}
-            onPress={handleBegin}
-            onPressIn={handlePressIn}
-            onPressOut={handlePressOut}
-            style={styles.ctaButton}
-          >
-            <T style={styles.ctaLabel}>Begin</T>
-          </Pressable>
+          <LimeButton label="Begin" onPress={handleBegin} />
         </Animated.View>
       }
     >
@@ -374,24 +349,5 @@ const styles = StyleSheet.create({
     marginTop: SP[6] * 2,
     marginBottom: SP[4],
     width: "100%",
-  },
-  ctaButton: {
-    height: 64,
-    borderRadius: 999,
-    backgroundColor: ACCENT,
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: ACCENT,
-    shadowOpacity: 0.35,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 12,
-    width: "100%",
-  },
-  ctaLabel: {
-    fontSize: 18,
-    lineHeight: 22,
-    color: COLORS.bgBottom,
-    textAlign: "center",
   },
 });

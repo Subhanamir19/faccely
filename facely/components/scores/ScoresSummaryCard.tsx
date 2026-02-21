@@ -54,25 +54,30 @@ function getShortLabel(label: string, gender?: string): string {
   return SHORT_LABELS[label] || label;
 }
 
-// Tier anchors: 4 labels per metric mapped to score ranges
-const ANCHORS: Record<string, [string, string, string, string]> = {
-  "Overall":                 ["Weak",       "Decent",       "Strong",        "Top-tier"],
-  "Jawline":                 ["Undefined",  "Average",      "Sharp",         "Razor-sharp"],
-  "Cheekbones":              ["Recessed",   "Average",      "Defined",       "High-set"],
-  "Facial Symmetry":         ["Asymmetric", "Minor shift",  "Aligned",       "Mirror-like"],
-  "Eye Symmetry":            ["Uneven",     "Minor offset", "Balanced",      "Harmonious"],
-  "Skin Quality":            ["Damaged",    "Average",      "Healthy",       "Glass-like"],
-  "Nose Balance":            ["Misaligned", "Average",      "Proportioned",  "Ideal"],
-  "Masculinity/Femininity":  ["Faint",      "Average",      "Pronounced",    "Peak"],
+// Tier anchors: 8 labels per metric mapped to score ranges
+// Ranges: 0-25 | 26-40 | 41-50 | 51-60 | 61-70 | 71-80 | 81-89 | 90-100
+const ANCHORS: Record<string, [string, string, string, string, string, string, string, string]> = {
+  "Overall":                 ["Weak",        "Below Avg",    "Developing",  "Decent",      "Mediocre",    "Strong",       "Elite",        "Top-tier"],
+  "Jawline":                 ["Undefined",   "Soft",         "Mild",        "Average",     "Basic",       "Sharp",        "Chiseled",     "Razor-sharp"],
+  "Cheekbones":              ["Recessed",    "Flat",         "Mild",        "Average",     "Modest",      "Prominent",    "High-set",     "Sculpted"],
+  "Facial Symmetry":         ["Asymmetric",  "Off-center",   "Uneven",      "Minor shift", "Passable",    "Balanced",     "Near-perfect", "Mirror-like"],
+  "Eye Symmetry":            ["Uneven",      "Misaligned",   "Slight off",  "Minor offset","Ordinary",    "Aligned",      "Harmonious",   "Perfect"],
+  "Skin Quality":            ["Damaged",     "Rough",        "Dull",        "Average",     "Fair",        "Clear",        "Radiant",      "Glass-like"],
+  "Nose Balance":            ["Misaligned",  "Off-center",   "Unbalanced",  "Average",     "Plain",       "Proportioned", "Refined",      "Ideal"],
+  "Masculinity/Femininity":  ["Faint",       "Subtle",       "Mild",        "Average",     "Common",      "Pronounced",   "Strong",       "Peak"],
 };
 
 function getTierLabel(label: string, score: number): string {
-  const anchors = ANCHORS[label] ?? ["Developing", "Emerging", "Strong", "Elite"];
+  const anchors = ANCHORS[label] ?? ["Weak", "Below Avg", "Developing", "Decent", "Good", "Strong", "Elite", "Top-tier"];
   const s = Math.max(0, Math.min(100, score));
-  if (s <= 30) return anchors[0];
-  if (s <= 60) return anchors[1];
-  if (s <= 80) return anchors[2];
-  return anchors[3];
+  if (s <= 25) return anchors[0];
+  if (s <= 40) return anchors[1];
+  if (s <= 50) return anchors[2];
+  if (s <= 60) return anchors[3];
+  if (s <= 70) return anchors[4];
+  if (s <= 80) return anchors[5];
+  if (s <= 89) return anchors[6];
+  return anchors[7];
 }
 
 // ============================================================================
@@ -354,6 +359,7 @@ const styles = StyleSheet.create({
     borderRadius: 100,
     overflow: "hidden",
     backgroundColor: "rgba(255,255,255,0.08)",
+    flexShrink: 0,
   },
   tierChipText: {
     fontSize: 11,

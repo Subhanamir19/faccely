@@ -9,6 +9,7 @@ import {
   summarizeFocusAreas,
   type TaskPick,
 } from "@/lib/taskSelection";
+import { logger } from '@/lib/logger';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -172,7 +173,7 @@ export const useTasksStore = create<TasksState>()(
           const scoresStore = require("./scores").useScores.getState();
           scores = scoresStore.scores ?? null;
         } catch (e) {
-          console.warn("[tasks] Could not read scores store:", e);
+          logger.warn("[tasks] Could not read scores store:", e);
         }
 
         try {
@@ -181,7 +182,7 @@ export const useTasksStore = create<TasksState>()(
           goals = data?.goals ?? null;
           experience = data?.looksmaxxingExperience ?? null;
         } catch (e) {
-          console.warn("[tasks] Could not read onboarding store:", e);
+          logger.warn("[tasks] Could not read onboarding store:", e);
         }
 
         const recentExerciseIds = getRecentExerciseIds(history);

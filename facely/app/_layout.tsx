@@ -12,6 +12,8 @@ import { AuthProvider } from "@/providers/AuthProvider";
 import { useAuthStore } from "@/store/auth";
 import { initializeRevenueCat, addCustomerInfoUpdateListener } from "@/lib/revenuecat";
 import { useSubscriptionStore } from "@/store/subscription";
+import { logger } from '@/lib/logger';
+import ErrorBoundary from "@/components/ErrorBoundary";
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -41,10 +43,9 @@ export default function RootLayout() {
   }, []);
 
   useEffect(() => {
-    if (!__DEV__) return;
     if (!authInitialized || !idToken) return;
     // Only log token presence, never the actual value
-    console.log("[Auth] Token present:", idToken ? `${idToken.slice(0, 10)}...` : "none");
+    logger.log("[Auth] Token present:", idToken ? `${idToken.slice(0, 10)}...` : "none");
   }, [authInitialized, idToken]);
 
   // Initialize RevenueCat after auth is ready and set up customer info listener
@@ -62,12 +63,10 @@ export default function RootLayout() {
         // This handles real-time subscription changes (renewals, expiry, refunds)
         if (useSubscriptionStore.getState().isRevenueCatInitialized) {
           unsubscribeListener = addCustomerInfoUpdateListener();
-          if (__DEV__) {
-            console.log("[Layout] RevenueCat customer info listener added");
-          }
+          logger.log("[Layout] RevenueCat customer info listener added");
         }
       } catch (error) {
-        console.error("[App] Failed to initialize RevenueCat:", error);
+        logger.error("[App] Failed to initialize RevenueCat:", error);
       }
     };
 
@@ -77,28 +76,28 @@ export default function RootLayout() {
     return () => {
       if (unsubscribeListener) {
         unsubscribeListener();
-        if (__DEV__) {
-          console.log("[Layout] RevenueCat customer info listener removed");
-        }
+        logger.log("[Layout] RevenueCat customer info listener removed");
       }
     };
   }, [authInitialized]);
 
   return (
-    <AuthProvider>
-      {fontsLoaded || fontError ? (
-        <View style={{ flex: 1 }}>
-          <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="index" />
-            <Stack.Screen name="(auth)" />
-            <Stack.Screen name="(onboarding)" />
-            <Stack.Screen name="(tabs)" />
-            <Stack.Screen name="loading" />
-            <Stack.Screen name="reset-onboarding" />
-          </Stack>
-          <LoadingOverlay />
-        </View>
-      ) : null}
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        {fontsLoaded || fontError ? (
+          <View style={{ flex: 1 }}>
+            <Stack screenOptions={{ headerShown: false }}>
+              <Stack.Screen name="index" />
+              <Stack.Screen name="(auth)" />
+              <Stack.Screen name="(onboarding)" />
+              <Stack.Screen name="(tabs)" />
+              <Stack.Screen name="loading" />
+              <Stack.Screen name="reset-onboarding" />
+            </Stack>
+            <LoadingOverlay />
+          </View>
+        ) : null}
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }

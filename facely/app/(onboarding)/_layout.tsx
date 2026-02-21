@@ -4,8 +4,10 @@ export default function OnboardingLayout() {
   return (
     <Stack
       screenOptions={{ headerShown: false, animation: "fade" }}
-      initialRouteName="welcome"
+      initialRouteName="intro"
     >
+      <Stack.Screen name="intro" />
+      <Stack.Screen name="transformation" />
       <Stack.Screen name="welcome" />
       <Stack.Screen name="use-case" />
       <Stack.Screen name="experience" />

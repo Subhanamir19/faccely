@@ -18,12 +18,13 @@ import { CameraView, useCameraPermissions } from "expo-camera";
 import * as ImagePicker from "expo-image-picker";
 import * as FileSystem from "expo-file-system";
 import { router } from "expo-router";
-import Svg, { Line, Circle, Rect, Path } from "react-native-svg";
+import Svg, { Line, Circle, Rect, Path, Ellipse } from "react-native-svg";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 
 // NEW: shared pre-upload compressor (JPEG, max 1080px)
 import { ensureJpegCompressed } from "../../lib/api/media";
+import { logger } from '@/lib/logger';
 
 /* ============================== TOKENS ============================== */
 const ACCENT = "#B4F34D"; // Sigma Max lime
@@ -240,7 +241,7 @@ export default function TakePicture() {
         setStep("review");
       }
     } catch (e) {
-      console.error("[PIC] normalize failed", e);
+      logger.error("[PIC] normalize failed", e);
       Alert.alert("File error", "Could not use the selected photo.");
     }
   };
@@ -304,9 +305,9 @@ export default function TakePicture() {
   };
 
   const useBoth = async () => {
-    console.log("[PIC] Proceed tapped", { frontalUri, sideUri });
+    logger.log("[PIC] Proceed tapped", { frontalUri, sideUri });
     if (!canContinue) {
-      console.warn("[PIC] blocked: canContinue=false", { frontalUri, sideUri, submitting });
+      logger.warn("[PIC] blocked: canContinue=false", { frontalUri, sideUri, submitting });
       return;
     }
 
@@ -323,7 +324,7 @@ export default function TakePicture() {
       ]);
 
       if (!frontInfo.exists || !sideInfo.exists) {
-        console.warn("[PIC] missing file(s)", {
+        logger.warn("[PIC] missing file(s)", {
           frontExists: frontInfo.exists,
           sideExists: sideInfo.exists,
           fResolved,
@@ -358,7 +359,7 @@ export default function TakePicture() {
         },
       });
     } catch (err) {
-      console.error("[PIC] proceed failed", err);
+      logger.error("[PIC] proceed failed", err);
       Alert.alert("Couldn't proceed", toUserFacingMessage(err));
     } finally {
       setSubmitting(false);

@@ -207,6 +207,8 @@ export default function Button({
         disabled={isDisabled}
         accessibilityRole="button"
         accessibilityState={{ disabled: isDisabled }}
+        android_ripple={null}
+        focusable={false}
         style={[
           styles.base,
           {

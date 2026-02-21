@@ -7,6 +7,7 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { PurchasesOfferings, PurchasesPackage } from "react-native-purchases";
 import { validatePromoCode } from "@/lib/api/promo";
+import { logger } from '@/lib/logger';
 
 const STORAGE_KEY = "sigma_subscription_v2"; // Bumped version for new fields
 
@@ -55,15 +56,13 @@ export const useSubscriptionStore = create<SubscriptionState>()(
 
       setRevenueCatEntitlement: (entitled: boolean) => {
         const now = Date.now();
-        if (__DEV__) {
-          const { promoActivated } = get();
-          console.log("[Subscription] RevenueCat entitlement update:", {
-            revenueCat: entitled,
-            promo: promoActivated,
-            effectiveAccess: entitled || promoActivated,
-            verifiedAt: new Date(now).toISOString(),
-          });
-        }
+        const { promoActivated } = get();
+        logger.log("[Subscription] RevenueCat entitlement update:", {
+          revenueCat: entitled,
+          promo: promoActivated,
+          effectiveAccess: entitled || promoActivated,
+          verifiedAt: new Date(now).toISOString(),
+        });
         // Update timestamp whenever we verify with RevenueCat
         set({ revenueCatEntitlement: entitled, lastVerifiedAt: now });
       },
@@ -84,9 +83,7 @@ export const useSubscriptionStore = create<SubscriptionState>()(
           const result = await validatePromoCode(code);
           if (result.valid) {
             set({ promoActivated: true, error: null, isLoading: false });
-            if (__DEV__) {
-              console.log("[Subscription] Promo code activated via server");
-            }
+            logger.log("[Subscription] Promo code activated via server");
             return true;
           }
           set({ error: result.message || "Invalid promo code", isLoading: false });
@@ -113,8 +110,8 @@ export const useSubscriptionStore = create<SubscriptionState>()(
         const elapsed = Date.now() - lastVerifiedAt;
         const isWithinGracePeriod = elapsed < OFFLINE_GRACE_PERIOD_MS;
 
-        if (__DEV__ && !isWithinGracePeriod) {
-          console.log("[Subscription] Cached entitlement expired:", {
+        if (!isWithinGracePeriod) {
+          logger.log("[Subscription] Cached entitlement expired:", {
             lastVerified: new Date(lastVerifiedAt).toISOString(),
             elapsedDays: Math.floor(elapsed / (24 * 60 * 60 * 1000)),
             gracePeriodDays: OFFLINE_GRACE_PERIOD_MS / (24 * 60 * 60 * 1000),

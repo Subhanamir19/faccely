@@ -52,7 +52,8 @@
       "Read(//c/SS/**)",
       "Bash(Grep -r \"assets.*loading\\\\|assets.*video\" \"c:\\\\SS\\\\facely\\\\app\" --include=\"*.tsx\" --include=\"*.ts\")",
       "Bash(node:*)",
-      "Bash(env:*)"
+      "Bash(env:*)",
+      "WebFetch(domain:expo.dev)"
     ]
   }
 }

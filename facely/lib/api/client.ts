@@ -1,5 +1,6 @@
 // facely/lib/api/client.ts
 import { z } from "zod";
+import { logger } from '@/lib/logger';
 // Centralised helpers for talking to the scorer API.
 // Keeps timeout/error handling consistent and observable.
 
@@ -96,22 +97,17 @@ export async function fetchWithTimeout(
     const res = await fetch(input, { ...rest, signal: timeoutSignal });
     const duration = Date.now() - start;
 
-    if (__DEV__) {
-      // eslint-disable-next-line no-console
-      console.log(`[net] ${method} ${url} → ${res.status} (${duration} ms)`);
-    }
+    logger.log(`[net] ${method} ${url} → ${res.status} (${duration} ms)`);
 
     return res;
   } catch (err) {
     const duration = Date.now() - start;
     if (didTimeout()) {
-      // eslint-disable-next-line no-console
-      console.error(`[net] ${method} ${url} timed out after ${timeoutMs} ms`);
+      logger.error(`[net] ${method} ${url} timed out after ${timeoutMs} ms`);
       throw new RequestTimeoutError(timeoutMs);
     }
 
-    // eslint-disable-next-line no-console
-    console.error(`[net] ${method} ${url} failed after ${duration} ms:`, err);
+    logger.error(`[net] ${method} ${url} failed after ${duration} ms:`, err);
     throw err;
   } finally {
     cleanup();
@@ -152,10 +148,7 @@ export async function fetchWithRetry(
       lastErr = e;
       if (i < attempts - 1 && isRetryableNetworkError(e)) {
         const sleep = backoffMs * Math.pow(2, i) + Math.floor(Math.random() * 200);
-        if (__DEV__) {
-          // eslint-disable-next-line no-console
-          console.log(`[net] retrying (${i + 1}/${attempts - 1}) in ${sleep}ms`);
-        }
+        logger.log(`[net] retrying (${i + 1}/${attempts - 1}) in ${sleep}ms`);
         await new Promise((r) => setTimeout(r, sleep));
         continue;
       }

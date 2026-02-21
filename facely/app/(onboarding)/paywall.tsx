@@ -10,7 +10,6 @@ import {
   View,
   Platform,
   Alert,
-  ActivityIndicator,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import Animated, {
@@ -20,7 +19,6 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withDelay,
-  withRepeat,
   withTiming,
   withSequence,
 } from "react-native-reanimated";
@@ -37,8 +35,10 @@ import {
   checkSubscriptionStatus,
 } from "@/lib/revenuecat";
 import { COLORS, RADII, SP, TYPE } from "@/lib/tokens";
-import { hapticMedium, hapticLight } from "@/lib/haptics";
+import { hapticLight } from "@/lib/haptics";
+import LimeButton from "@/components/ui/LimeButton";
 import { PurchasesPackage } from "react-native-purchases";
+import { logger } from '@/lib/logger';
 
 const { width } = Dimensions.get("window");
 
@@ -244,9 +244,7 @@ const PaywallScreen: React.FC = () => {
     const fetchOfferings = async () => {
       // Guard: if offerings already exist in store, use them
       if (offerings) {
-        if (__DEV__) {
-          console.log("[Paywall] Using cached offerings from store");
-        }
+        logger.log("[Paywall] Using cached offerings from store");
         const mapped = mapPackagesFromOfferings(offerings);
         setPackages(mapped);
         return;
@@ -262,12 +260,10 @@ const PaywallScreen: React.FC = () => {
           const mapped = mapPackagesFromOfferings(fetchedOfferings);
           setPackages(mapped);
 
-          if (__DEV__) {
-            console.log("[Paywall] Available packages:", Object.keys(mapped));
-          }
+          logger.log("[Paywall] Available packages:", Object.keys(mapped));
         }
       } catch (error) {
-        console.error("[Paywall] Failed to fetch offerings:", error);
+        logger.error("[Paywall] Failed to fetch offerings:", error);
         Alert.alert(
           "Connection Error",
           "Failed to load subscription options. Please check your connection and try again."
@@ -335,9 +331,7 @@ const PaywallScreen: React.FC = () => {
     } else {
       // Fallback: if getParent() is somehow null, dispatch on current navigator.
       // This shouldn't happen in practice given the navigation hierarchy.
-      if (__DEV__) {
-        console.warn("[Paywall] navigation.getParent() returned null, falling back");
-      }
+      logger.warn("[Paywall] navigation.getParent() returned null, falling back");
       navigation.dispatch(
         CommonActions.reset({
           index: 0,
@@ -351,9 +345,7 @@ const PaywallScreen: React.FC = () => {
     try {
       await finishOnboarding();
     } catch (error) {
-      if (__DEV__) {
-        console.warn("[Paywall] Failed to persist onboarding completion", error);
-      }
+      logger.warn("[Paywall] Failed to persist onboarding completion", error);
     } finally {
       // Always mark onboarding complete in auth store so IndexGate never
       // gets stuck on VideoSplash, even if AsyncStorage write failed above.
@@ -362,9 +354,7 @@ const PaywallScreen: React.FC = () => {
     try {
       await syncUserProfile(true);
     } catch (syncError) {
-      if (__DEV__) {
-        console.warn("[Paywall] Failed to sync onboarding completion", syncError);
-      }
+      logger.warn("[Paywall] Failed to sync onboarding completion", syncError);
     }
   }, [finishOnboarding, setOnboardingCompletedFromOnboarding]);
 
@@ -405,7 +395,7 @@ const PaywallScreen: React.FC = () => {
       // Reset navigation state directly to the main app tabs.
       navigateToMainApp();
     } catch (error: any) {
-      console.error("[Paywall] Purchase error:", error);
+      logger.error("[Paywall] Purchase error:", error);
       if (isMountedRef.current) {
         Alert.alert(
           "Purchase Failed",
@@ -445,7 +435,7 @@ const PaywallScreen: React.FC = () => {
         );
       }
     } catch (error: any) {
-      console.error("[Paywall] Restore error:", error);
+      logger.error("[Paywall] Restore error:", error);
       if (isMountedRef.current) {
         Alert.alert(
           "Restore Failed",
@@ -478,49 +468,6 @@ const PaywallScreen: React.FC = () => {
       Alert.alert("Invalid Code", errorMessage);
     }
   }, [promoCode, activatePromoCode, completeOnboarding, navigateToMainApp]);
-
-  const primaryScale = useSharedValue(1);
-  const primaryGlow = useSharedValue(0);
-
-  const primaryButtonStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: primaryScale.value }],
-  }));
-
-  const primaryGlowStyle = useAnimatedStyle(() => {
-    if (Platform.OS === "android") {
-      return {};
-    }
-
-    return {
-      shadowOpacity: 0.35 + primaryGlow.value * 0.1,
-    };
-  });
-
-  const onPrimaryPressIn = () => {
-    hapticMedium();
-    primaryScale.value = withTiming(0.96, {
-      duration: 120,
-      easing: Easing.out(Easing.cubic),
-    });
-  };
-
-  const onPrimaryPressOut = () => {
-    primaryScale.value = withTiming(1, {
-      duration: 220,
-      easing: Easing.out(Easing.back(1.2)),
-    });
-  };
-
-  useEffect(() => {
-    primaryGlow.value = withRepeat(
-      withTiming(1, {
-        duration: 3000,
-        easing: Easing.inOut(Easing.sin),
-      }),
-      -1,
-      true,
-    );
-  }, [primaryGlow]);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -591,19 +538,14 @@ const PaywallScreen: React.FC = () => {
             </View>
 
             {/* PRIMARY BUTTON */}
-            <AnimatedPressable
-              style={[styles.primaryButton, primaryGlowStyle, primaryButtonStyle]}
-              onPress={onContinue}
-              onPressIn={onPrimaryPressIn}
-              onPressOut={onPrimaryPressOut}
-              disabled={isLoading}
-            >
-              {isLoading ? (
-                <ActivityIndicator color="#0B0B0B" />
-              ) : (
-                <Text style={styles.primaryButtonText}>Start Subscription</Text>
-              )}
-            </AnimatedPressable>
+            <View style={styles.primaryButtonWrap}>
+              <LimeButton
+                label="Start Subscription"
+                onPress={onContinue}
+                loading={isLoading}
+                disabled={isLoading}
+              />
+            </View>
 
             {/* RESTORE PURCHASES */}
             <Pressable style={styles.restoreButton} onPress={onRestorePurchases} disabled={isLoading}>
@@ -841,29 +783,9 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     color: COLORS.text,
   },
-  primaryButton: {
+  primaryButtonWrap: {
     width: CONTENT_WIDTH,
-    height: 56,
-    borderRadius: RADII.pill,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: COLORS.accent,
-    overflow: "visible",
-    ...(Platform.OS === "android"
-      ? { elevation: 12 }
-      : {
-          shadowColor: COLORS.accent,
-          shadowOpacity: 0.35,
-          shadowRadius: 24,
-          shadowOffset: { width: 0, height: 8 },
-        }),
     marginTop: 32,
-  },
-  primaryButtonText: {
-    fontFamily: "Poppins-SemiBold",
-    fontSize: 16,
-    lineHeight: 20,
-    color: "#0B0B0B",
   },
   restoreButton: {
     marginTop: 16,
