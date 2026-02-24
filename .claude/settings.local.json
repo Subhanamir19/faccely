@@ -53,7 +53,21 @@
       "Bash(Grep -r \"assets.*loading\\\\|assets.*video\" \"c:\\\\SS\\\\facely\\\\app\" --include=\"*.tsx\" --include=\"*.ts\")",
       "Bash(node:*)",
       "Bash(env:*)",
-      "WebFetch(domain:expo.dev)"
+      "WebFetch(domain:expo.dev)",
+      "Bash(npx --no acorn --ecma2020 --module \"app/\\(onboarding\\)/transformation.tsx\")",
+      "Bash(python3:*)",
+      "Bash(echo \"no .metro dir\" ls /tmp/metro-*)",
+      "Bash(echo \"no /tmp metro cache\" ls \"$TEMP\")",
+      "Bash(while read hash msg)",
+      "Bash(do if git show \"$hash:package.json\")",
+      "Bash(then echo \"FOUND in: $hash $msg\" break else echo \"not in: $hash $msg\" fi done)",
+      "Bash(then)",
+      "Bash(echo:*)",
+      "Bash(break)",
+      "Bash(else)",
+      "Bash(fi)",
+      "Bash(done)",
+      "Bash(grep:*)"
     ]
   }
 }

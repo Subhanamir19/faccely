@@ -295,7 +295,7 @@ export default function LoadingScreen() {
 
     if (!completed) {
       setIsLoading(false);
-      router.replace("/(onboarding)/welcome");
+      router.replace("/(onboarding)/hook");
       return () => {
         cancelled = true;
       };

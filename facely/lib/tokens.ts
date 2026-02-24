@@ -254,6 +254,7 @@ export const ONBOARDING_FLOW = {
     { key: "edge", label: "Edge" },
     { key: "trust", label: "Trust" },
     { key: "scan", label: "Scan" },
+    { key: "score-teaser", label: "Score Teaser" },
     { key: "building-plan", label: "Building Plan" },
     { key: "reviews", label: "Reviews" },
     { key: "transformation", label: "Transformation" },
@@ -267,6 +268,6 @@ export function getProgressForStep(stepKey: string): number {
   const idx = ONBOARDING_FLOW.steps.findIndex((s) => s.key === stepKey);
   if (idx <= 0) return 0; // informatory has no progress
   // Post-scan screens and paywall always show full progress
-  if (["paywall", "building-plan", "reviews", "transformation"].includes(stepKey)) return 1;
+  if (["paywall", "building-plan", "reviews", "transformation", "score-teaser", "goals", "time-commitment"].includes(stepKey)) return 1;
   return Math.min(1, idx / ONBOARDING_FLOW.totalProgressSteps);
 }

@@ -4,8 +4,9 @@ export default function OnboardingLayout() {
   return (
     <Stack
       screenOptions={{ headerShown: false, animation: "fade" }}
-      initialRouteName="intro"
+      initialRouteName="hook"
     >
+      <Stack.Screen name="hook" />
       <Stack.Screen name="intro" />
       <Stack.Screen name="transformation" />
       <Stack.Screen name="welcome" />
@@ -15,8 +16,12 @@ export default function OnboardingLayout() {
       <Stack.Screen name="age" />
       <Stack.Screen name="ethnicity" />
       <Stack.Screen name="gender" />
+      <Stack.Screen name="scan" />
       <Stack.Screen name="edge" />
       <Stack.Screen name="trust" />
+      <Stack.Screen name="score-teaser" />
+      <Stack.Screen name="time-commitment" />
+      <Stack.Screen name="building-plan" />
       <Stack.Screen name="paywall" />
     </Stack>
   );

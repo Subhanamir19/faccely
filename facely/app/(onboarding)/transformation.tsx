@@ -7,6 +7,7 @@ import {
   StyleSheet,
   StatusBar,
   SafeAreaView,
+  ScrollView,
   Platform,
   PanResponder,
   Dimensions,
@@ -28,6 +29,32 @@ const BG       = "#0B0B0B";
 
 const BEFORE_IMG = require("@/assets/before.jpeg");
 const AFTER_IMG  = require("@/assets/after.jpeg");
+
+const METRICS = [
+  { icon: "face-man-outline", label: "Jawline",     a: 44, b: 80 },
+  { icon: "swap-horizontal",  label: "Symmetry",    a: 56, b: 88 },
+  { icon: "ruler",            label: "Proportions", a: 49, b: 84 },
+  { icon: "eye-outline",      label: "Eyes",        a: 51, b: 82 },
+  { icon: "rhombus-outline",  label: "Cheekbones",  a: 47, b: 83 },
+  { icon: "heart-outline",    label: "Lips",        a: 53, b: 85 },
+];
+
+function MetricCard(props: { icon: string; label: string; a: number; b: number }) {
+  const iconName: any = props.icon;
+  return (
+    <View style={styles.metricCard}>
+      <View style={styles.metricIconWrap}>
+        <MaterialCommunityIcons name={iconName} size={20} color={COLORS.accent} />
+      </View>
+      <Text style={styles.metricLabel}>{props.label}</Text>
+      <View style={styles.metricScoreRow}>
+        <Text style={styles.metricA}>{props.a}</Text>
+        <Text style={styles.metricArrow}>  {">"}  </Text>
+        <Text style={styles.metricB}>{props.b}</Text>
+      </View>
+    </View>
+  );
+}
 
 /* ─── score badge ────────────────────────────────────────────── */
 function ScoreBadge({ side, score }: { side: "before" | "after"; score: number }) {
@@ -94,8 +121,8 @@ export default function TransformationScreen() {
           </Text>
         </View>
 
-        {/* ── Slider + testimonial centred together; button pinned bottom ── */}
-        <View style={styles.contentCenter}>
+        <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+
 
           {/* Before / After Slider */}
           <View style={styles.sliderContainer} {...pan.panHandlers}>
@@ -138,7 +165,15 @@ export default function TransformationScreen() {
             </View>
           </View>
 
-        </View>{/* end contentCenter */}
+          <View style={styles.metricsSection}>
+            <Text style={styles.metricsTitle}>How Ibrahim's Face Improved</Text>
+            <Text style={styles.metricsSub}>Score changes across key areas</Text>
+            <View style={styles.metricsGrid}>
+              {METRICS.map(function(m) { return <MetricCard key={m.label} icon={m.icon} label={m.label} a={m.a} b={m.b} />; })}
+            </View>
+          </View>
+
+        </ScrollView>
 
         {/* Button — pinned to very bottom */}
         <View style={styles.footer}>
@@ -191,12 +226,6 @@ const styles = StyleSheet.create({
     lineHeight: 23,
   },
 
-  // ── slider ────────────────────────────────────────────────────
-  contentCenter: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
   sliderContainer: {
     width: CARD_W,
     height: IMG_H,
@@ -314,6 +343,72 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   stars: { flexDirection: "row", gap: 2 },
+
+  scroll: { flex: 1 },
+  scrollContent: { paddingBottom: 8 },
+
+  metricsSection: { marginTop: 20 },
+  metricsTitle: {
+    color: "#FFFFFF",
+    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
+    fontSize: 20,
+    lineHeight: 26,
+    letterSpacing: -0.3,
+    marginBottom: 4,
+  },
+  metricsSub: {
+    color: COLORS.sub,
+    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 14,
+  },
+  metricsGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+  },
+  metricCard: {
+    width: (CARD_W - 10) / 2,
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.07)",
+    borderRadius: RADII.md,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+  },
+  metricIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: "rgba(180,243,77,0.10)",
+    borderWidth: 1,
+    borderColor: "rgba(180,243,77,0.18)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 10,
+  },
+  metricLabel: {
+    color: COLORS.sub,
+    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
+    fontSize: 13,
+    lineHeight: 18,
+    marginBottom: 4,
+  },
+  metricScoreRow: { flexDirection: "row", alignItems: "center" },
+  metricA: {
+    color: "rgba(255,255,255,0.40)",
+    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
+    fontSize: 16,
+    lineHeight: 20,
+  },
+  metricArrow: { color: "rgba(255,255,255,0.25)", fontSize: 13 },
+  metricB: {
+    color: COLORS.accent,
+    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
+    fontSize: 18,
+    lineHeight: 22,
+  },
 
   // footer
   footer: { paddingTop: SP[3], paddingBottom: SP[4] },

@@ -7,13 +7,13 @@ import { OnboardingScreen, OptionsList, Option } from "@/components/onboarding";
 import { useOnboarding } from "@/store/onboarding";
 
 const OPTIONS: Option[] = [
-  { key: "Asian", label: "Asian" },
-  { key: "African", label: "African" },
-  { key: "Caucasian", label: "Caucasian" },
-  { key: "Hispanic / Latino", label: "Hispanic / Latino" },
-  { key: "Middle Eastern", label: "Middle Eastern" },
-  { key: "Mixed / Other", label: "Mixed / Other" },
-  { key: "Prefer not to say", label: "Prefer not to say" },
+  { key: "Asian", label: "🌏 Asian" },
+  { key: "African", label: "🌍 African" },
+  { key: "Caucasian", label: "🏛️ Caucasian" },
+  { key: "Hispanic / Latino", label: "🌎 Hispanic / Latino" },
+  { key: "Middle Eastern", label: "🌙 Middle Eastern" },
+  { key: "Mixed / Other", label: "🌐 Mixed / Other" },
+  { key: "Prefer not to say", label: "🤐 Prefer not to say" },
 ];
 
 export default function EthnicityScreen() {

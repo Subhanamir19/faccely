@@ -9,32 +9,32 @@ import { useOnboarding } from "@/store/onboarding";
 const GOAL_OPTIONS: Option[] = [
   {
     key: "jawline",
-    label: "Sharper Jawline",
+    label: "💎 Sharper Jawline",
     description: "Improve jaw definition and mandible structure",
   },
   {
     key: "cheekbones",
-    label: "Higher Cheekbones",
+    label: "✨ Higher Cheekbones",
     description: "Enhance midface projection and hollows",
   },
   {
     key: "symmetry",
-    label: "Better Facial Symmetry",
+    label: "⚖️ Better Facial Symmetry",
     description: "Balance both sides of your face",
   },
   {
     key: "skin",
-    label: "Clearer Skin",
+    label: "💧 Clearer Skin",
     description: "Improve skin texture and clarity",
   },
   {
     key: "eyes",
-    label: "Eye Area Improvement",
+    label: "👁️ Eye Area Improvement",
     description: "Enhance eye shape and under-eye area",
   },
   {
     key: "overall",
-    label: "Overall Attractiveness",
+    label: "🏆 Overall Attractiveness",
     description: "General improvements across all features",
   },
 ];
@@ -51,20 +51,19 @@ export default function GoalsScreen() {
 
   const handleNext = useCallback(() => {
     setField("goals", selected);
-    router.push("/(onboarding)/age");
+    router.push("/(onboarding)/time-commitment");
   }, [selected, setField]);
 
   const handleSkip = useCallback(() => {
-    // Store default goal when skipping
     setField("goals", ["overall"]);
-    router.push("/(onboarding)/age");
+    router.push("/(onboarding)/time-commitment");
   }, [setField]);
 
   return (
     <OnboardingScreen
       stepKey="goals"
-      title="What do you want to improve?"
-      subtitle="Select all that apply — we'll personalize your experience"
+      title="What facial parts do you want to improve?"
+      subtitle="Select all that apply — we'll build your routine around these"
       onPrimary={handleNext}
       primaryDisabled={selected.length === 0}
       primaryLabel="Continue"

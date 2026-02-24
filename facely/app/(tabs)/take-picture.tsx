@@ -207,6 +207,48 @@ function SideGuides({ w, h }: { w: number; h: number }) {
   );
 }
 
+/* ============================== FACE MESH ============================== */
+function FaceMeshOverlay({ cx, cy, rx, ry }: { cx: number; cy: number; rx: number; ry: number }) {
+  const ROWS = 12;
+  const COLS = 8;
+
+  type Pt = { x: number; y: number } | null;
+  const grid: Pt[][] = [];
+
+  for (let r = 0; r <= ROWS; r++) {
+    grid[r] = [];
+    for (let c = 0; c <= COLS; c++) {
+      const nx = (c / COLS) * 2 - 1;
+      const ny = (r / ROWS) * 2 - 1;
+      grid[r][c] = nx * nx + ny * ny <= 0.95
+        ? { x: cx + nx * rx, y: cy + ny * ry }
+        : null;
+    }
+  }
+
+  const lines: { x1: number; y1: number; x2: number; y2: number }[] = [];
+  for (let r = 0; r <= ROWS; r++) {
+    for (let c = 0; c <= COLS; c++) {
+      const p = grid[r]?.[c];
+      if (!p) continue;
+      const pr = grid[r]?.[c + 1];
+      if (pr) lines.push({ x1: p.x, y1: p.y, x2: pr.x, y2: pr.y });
+      const pb = grid[r + 1]?.[c];
+      if (pb) lines.push({ x1: p.x, y1: p.y, x2: pb.x, y2: pb.y });
+      const pd = grid[r + 1]?.[c + 1];
+      if (pd) lines.push({ x1: p.x, y1: p.y, x2: pd.x, y2: pd.y });
+    }
+  }
+
+  return (
+    <>
+      {lines.map((l, i) => (
+        <Line key={i} x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2} stroke="rgba(255,255,255,0.22)" strokeWidth={0.7} />
+      ))}
+    </>
+  );
+}
+
 /* ============================== SCREEN ============================== */
 export default function TakePicture() {
   const [perm, requestPerm] = useCameraPermissions();
@@ -254,6 +296,7 @@ export default function TakePicture() {
 
   const pickFromGallery = async () => {
     setChooserOpen(false);
+    setCameraOpen(false);
     const res = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       quality: 1,
@@ -297,7 +340,7 @@ export default function TakePicture() {
     setSideUri(null);
     setPose("frontal");
     setStep("capture");
-    setChooserOpen(true); // Skip frontal guide — go straight to camera/gallery picker
+    void startCamera();
   };
 
   const goToHistory = () => {
@@ -629,7 +672,7 @@ export default function TakePicture() {
             Align your face with the guides. Good lighting, neutral expression.
           </Text>
 
-          <LimeButton title="Capture Photo" onPress={() => setChooserOpen(true)} style={{ marginTop: 18 }} />
+          <LimeButton title="Capture Photo" onPress={() => void startCamera()} style={{ marginTop: 18 }} />
 
           {/* dots */}
           <View style={{ flexDirection: "row", gap: 6, marginTop: 12 }}>
@@ -811,33 +854,116 @@ export default function TakePicture() {
             </View>
           ) : (
             <>
-              <CameraView ref={cameraRef} active={true} facing="front" style={{ flex: 1 }} />
+              <CameraView ref={cameraRef} active={true} facing="front" style={StyleSheet.absoluteFill} />
+
+              {/* Mesh + oval ring overlay */}
+              <Svg pointerEvents="none" style={StyleSheet.absoluteFill} width={window.width} height={window.height}>
+                <FaceMeshOverlay
+                  cx={window.width / 2}
+                  cy={window.height * 0.42}
+                  rx={window.width * 0.33}
+                  ry={window.height * 0.27}
+                />
+                <Ellipse
+                  cx={window.width / 2}
+                  cy={window.height * 0.42}
+                  rx={window.width * 0.33}
+                  ry={window.height * 0.27}
+                  stroke="#4DD9FF"
+                  strokeWidth={3}
+                  fill="none"
+                />
+              </Svg>
+
+              {/* Hold Steady card — top */}
               <View
+                pointerEvents="none"
                 style={{
                   position: "absolute",
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  padding: 20,
-                  backgroundColor: "rgba(0,0,0,0.35)",
-                  flexDirection: "row",
-                  justifyContent: "center",
+                  top: 52,
+                  left: 20,
+                  right: 20,
+                  backgroundColor: "rgba(38,34,28,0.86)",
+                  borderRadius: 20,
+                  paddingHorizontal: 20,
+                  paddingVertical: 18,
+                  alignItems: "center",
                 }}
               >
+                {/* Scan brackets */}
+                <View style={{ width: 38, height: 38, marginBottom: 10, position: "relative" }}>
+                  <View style={{ position: "absolute", top: 0, left: 0, width: 12, height: 12, borderTopWidth: 2.5, borderLeftWidth: 2.5, borderColor: "#fff" }} />
+                  <View style={{ position: "absolute", top: 0, right: 0, width: 12, height: 12, borderTopWidth: 2.5, borderRightWidth: 2.5, borderColor: "#fff" }} />
+                  <View style={{ position: "absolute", bottom: 0, left: 0, width: 12, height: 12, borderBottomWidth: 2.5, borderLeftWidth: 2.5, borderColor: "#fff" }} />
+                  <View style={{ position: "absolute", bottom: 0, right: 0, width: 12, height: 12, borderBottomWidth: 2.5, borderRightWidth: 2.5, borderColor: "#fff" }} />
+                </View>
+                <Text style={{ color: "#fff", fontSize: 22, fontFamily: "Poppins-SemiBold", marginBottom: 4 }}>
+                  {pose === "frontal" ? "Hold Steady" : "Turn to your side"}
+                </Text>
+                <Text style={{ color: "rgba(255,255,255,0.72)", fontSize: 13, fontFamily: "Poppins-Regular", textAlign: "center", marginBottom: 14 }}>
+                  {pose === "frontal" ? "Keep your face centered and still" : "Align your profile with the oval"}
+                </Text>
+                {/* Progress bars */}
+                <View style={{ flexDirection: "row", gap: 8, width: "82%" }}>
+                  {[0, 1, 2, 3].map((i) => (
+                    <View key={i} style={{ flex: 1, height: 5, borderRadius: 3, backgroundColor: "#4CAF50" }} />
+                  ))}
+                </View>
+              </View>
+
+              {/* Bottom controls */}
+              <View style={{ position: "absolute", bottom: 0, left: 0, right: 0, paddingBottom: 44, alignItems: "center", gap: 20 }}>
+
+                {/* Capture button */}
                 <Pressable
                   onPress={capture}
-                  style={{
-                    width: 82,
-                    height: 82,
-                    borderRadius: 41,
-                    backgroundColor: "#fff",
+                  style={({ pressed }) => ({
+                    width: 80,
+                    height: 80,
+                    borderRadius: 40,
+                    borderWidth: 4,
+                    borderColor: "rgba(255,255,255,0.45)",
                     alignItems: "center",
                     justifyContent: "center",
-                    borderWidth: 4,
-                    borderColor: "rgba(255,255,255,0.6)",
-                  }}
+                    backgroundColor: "#fff",
+                    transform: [{ scale: pressed ? 0.93 : 1 }],
+                  })}
                 >
-                  <View style={{ width: 66, height: 66, borderRadius: 33, backgroundColor: "#fff" }} />
+                  <View style={{ width: 62, height: 62, borderRadius: 31, backgroundColor: "#fff" }} />
+                </Pressable>
+
+                {/* Gallery picker */}
+                <Pressable
+                  onPress={pickFromGallery}
+                  style={({ pressed }) => ({
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 10,
+                    backgroundColor: "rgba(255,255,255,0.08)",
+                    borderWidth: 1,
+                    borderColor: "rgba(255,255,255,0.18)",
+                    borderRadius: 22,
+                    paddingHorizontal: 22,
+                    paddingVertical: 11,
+                    opacity: pressed ? 0.65 : 1,
+                  })}
+                >
+                  {/* Photo grid icon */}
+                  <View style={{ width: 18, height: 18, flexDirection: "row", flexWrap: "wrap", gap: 2 }}>
+                    {[0, 1, 2, 3].map((i) => (
+                      <View key={i} style={{ width: 7, height: 7, borderRadius: 1.5, backgroundColor: "rgba(255,255,255,0.7)" }} />
+                    ))}
+                  </View>
+                  <Text style={{ color: "rgba(255,255,255,0.85)", fontSize: 14, fontFamily: "Poppins-Regular", letterSpacing: 0.2 }}>
+                    Choose from Library
+                  </Text>
+                </Pressable>
+
+                {/* Skip */}
+                <Pressable onPress={() => setCameraOpen(false)}>
+                  <Text style={{ color: "rgba(255,255,255,0.35)", fontSize: 13, fontFamily: "Poppins-Regular" }}>
+                    Skip for now
+                  </Text>
                 </Pressable>
               </View>
             </>

@@ -7,9 +7,8 @@ import { OnboardingScreen, OptionsList, Option } from "@/components/onboarding";
 import { useOnboarding } from "@/store/onboarding";
 
 const OPTIONS: Option[] = [
-  { key: "Female", label: "Female" },
-  { key: "Male", label: "Male" },
-  { key: "Other", label: "Other" },
+  { key: "Female", label: "👩 Female" },
+  { key: "Male", label: "👨 Male" },
 ];
 
 export default function GenderScreen() {
@@ -25,12 +24,12 @@ export default function GenderScreen() {
 
   const handleNext = useCallback(() => {
     if (!selected) return;
-    router.push("/(onboarding)/edge");
+    router.push("/(onboarding)/scan");
   }, [selected]);
 
   const handleSkip = useCallback(() => {
     // Don't store default for gender - it's optional
-    router.push("/(onboarding)/edge");
+    router.push("/(onboarding)/scan");
   }, []);
 
   return (
