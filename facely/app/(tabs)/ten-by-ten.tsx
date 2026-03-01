@@ -6,6 +6,7 @@
 import React, { useCallback, useState } from "react";
 import {
   Image,
+  Modal,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -28,7 +29,7 @@ import Animated, {
   withTiming,
   Easing as REasing,
 } from "react-native-reanimated";
-import { Sparkles, RefreshCw, Share2, Camera, Images } from "lucide-react-native";
+import { Sparkles, RefreshCw, Share2, Camera, Images, X, Maximize2 } from "lucide-react-native";
 import { router } from "expo-router";
 import { COLORS, RADII, SP } from "@/lib/tokens";
 import { useScores } from "@/store/scores";
@@ -114,6 +115,9 @@ export default function TenByTenScreen() {
 
   // User-selected photo (overrides scan photo if set)
   const [selectedImageUri, setSelectedImageUri] = useState<string | null>(null);
+
+  // Full-screen viewer
+  const [fullscreenVisible, setFullscreenVisible] = useState(false);
 
   // Effective source: user pick → scan photo → null
   const sourceUri = selectedImageUri ?? scanImageUri ?? null;
@@ -295,7 +299,10 @@ export default function TenByTenScreen() {
             {/* After */}
             <View style={styles.photoCol}>
               <Text style={styles.photoLabel}>After</Text>
-              <View style={styles.photoFrame}>
+              <Pressable
+                onPress={() => effectiveGeneratedUri && setFullscreenVisible(true)}
+                style={styles.photoFrame}
+              >
                 {effectiveGeneratedUri ? (
                   <Image
                     source={{ uri: effectiveGeneratedUri }}
@@ -312,12 +319,13 @@ export default function TenByTenScreen() {
                 )}
                 {effectiveGeneratedUri && (
                   <View style={[styles.photoOverlay, styles.photoOverlayAccent]}>
+                    <Maximize2 size={10} color="#0B0B0B" strokeWidth={2.5} style={{ marginRight: 4 }} />
                     <Text style={[styles.photoOverlayText, { color: "#0B0B0B" }]}>
-                      Your potential
+                      Tap to expand
                     </Text>
                   </View>
                 )}
-              </View>
+              </Pressable>
             </View>
           </Animated.View>
         )}
@@ -373,6 +381,46 @@ export default function TenByTenScreen() {
           Results are approximate and not medically accurate.
         </Animated.Text>
       </ScrollView>
+
+      {/* Full-screen image viewer */}
+      <Modal
+        visible={fullscreenVisible}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={() => setFullscreenVisible(false)}
+      >
+        <View style={styles.fsBackdrop}>
+          {effectiveGeneratedUri && (
+            <Image
+              source={{ uri: effectiveGeneratedUri }}
+              style={styles.fsImage}
+              resizeMode="contain"
+            />
+          )}
+
+          {/* Close button */}
+          <Pressable
+            onPress={() => setFullscreenVisible(false)}
+            style={({ pressed }) => [styles.fsClose, pressed && { opacity: 0.7 }]}
+          >
+            <X size={20} color="#FFFFFF" strokeWidth={2.5} />
+          </Pressable>
+
+          {/* Share / Save button */}
+          <Pressable
+            onPress={async () => {
+              if (!effectiveGeneratedUri) return;
+              try { await Share.share({ url: effectiveGeneratedUri, title: "My 10/10 Self" }); }
+              catch { /* cancelled */ }
+            }}
+            style={({ pressed }) => [styles.fsShare, pressed && { opacity: 0.7 }]}
+          >
+            <Share2 size={18} color="#0B0B0B" strokeWidth={2} />
+            <Text style={styles.fsShareText}>Save / Share</Text>
+          </Pressable>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -580,7 +628,9 @@ const styles = StyleSheet.create({
     right: 0,
     paddingVertical: SP[2],
     backgroundColor: "rgba(0,0,0,0.5)",
+    flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
   },
   photoOverlayAccent: {
     backgroundColor: COLORS.accent,
@@ -694,6 +744,47 @@ const styles = StyleSheet.create({
     fontFamily: "Poppins-Regular",
     textAlign: "center",
     lineHeight: 16,
+  },
+
+  // Full-screen viewer
+  fsBackdrop: {
+    flex: 1,
+    backgroundColor: "#000000",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  fsImage: {
+    width: "100%",
+    height: "100%",
+  },
+  fsClose: {
+    position: "absolute",
+    top: 56,
+    right: 20,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.15)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  fsShare: {
+    position: "absolute",
+    bottom: 48,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SP[2],
+    paddingVertical: SP[3],
+    paddingHorizontal: SP[6],
+    borderRadius: 26,
+    backgroundColor: COLORS.accent,
+  },
+  fsShareText: {
+    color: "#0B0B0B",
+    fontSize: 15,
+    fontFamily: "Poppins-SemiBold",
   },
 
   // Gates
