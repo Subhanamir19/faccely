@@ -1,9 +1,10 @@
 // app/(tabs)/program.tsx
 // "Tasks" tab — daily adaptive exercise selection
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import {
   Image,
+  Modal,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -25,13 +26,44 @@ import Animated, {
   FadeIn,
   LinearTransition,
 } from "react-native-reanimated";
+import { Calendar, ChevronLeft, ChevronRight } from "lucide-react-native";
 import { COLORS, RADII, SP } from "@/lib/tokens";
 import DayCompleteModal from "@/components/ui/DayCompleteModal";
 import MoodCheckModal from "@/components/ui/MoodCheckModal";
-import { useTasksStore, type DailyTask } from "@/store/tasks";
+import { useTasksStore, type DailyTask, type DayRecord } from "@/store/tasks";
 import { getExerciseIcon } from "@/lib/exerciseIcons";
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
+// Tracks which UTC date the intro splash was last shown.
+// Module-level so it persists across tab switches within the same app session.
+let lastIntroDate: string | null = null;
+
+// Emoji map for protocol add-on tasks (non facial-exercise)
+const PROTOCOL_EMOJIS: Record<string, string> = {
+  // Skincare
+  "cold-water-splash":   "💧",
+  "gua-sha":             "💆",
+  "facial-icing":        "🧊",
+  "oil-cleanser":        "🫧",
+  "bentonite-clay-mask": "🌿",
+  "turmeric-mask":       "🟡",
+  // Lifestyle
+  "sprint-session":      "🏃",
+  "nasal-breathing":     "👃",
+  "cold-shower":         "🚿",
+  "sunlight-exposure":   "☀️",
+  "mewing":              "🦷",
+  "back-sleeping":       "😴",
+  // Dietary
+  "lemon-electrolytes":  "🍋",
+  "egg-yolk-banana":     "🍳",
+  "black-raisins":       "🫐",
+  "raw-banana":          "🍌",
+  "beef-liver":          "🥩",
+  "red-meat":            "🥩",
+  "unsalted-cheese":     "🧀",
+};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -92,15 +124,183 @@ function TasksLoadingScreen() {
         exiting={FadeOut.duration(250)}
         style={styles.loadingWrap}
       >
-        <Text style={styles.loadingTitle}>Loading your tasks</Text>
+        <Text style={styles.loadingTitle}>Today's Routine</Text>
         <View style={styles.dotsRow}>
           <Animated.View style={[styles.loadingDot, d1Style]} />
           <Animated.View style={[styles.loadingDot, d2Style]} />
           <Animated.View style={[styles.loadingDot, d3Style]} />
         </View>
-        <Text style={styles.loadingSubtext}>Personalising for today</Text>
+        <Text style={styles.loadingSubtext}>Building around your progress</Text>
       </Animated.View>
     </SafeAreaView>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Calendar
+// ---------------------------------------------------------------------------
+
+const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+const WEEK_LABELS = ["S", "M", "T", "W", "T", "F", "S"];
+
+function CalendarButton({ onPress }: { onPress: () => void }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.calBtn, pressed && { opacity: 0.6 }]}
+      hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+    >
+      {/* pointerEvents="none" prevents the SVG icon from swallowing the touch */}
+      <View pointerEvents="none">
+        <Calendar size={18} color={COLORS.text} strokeWidth={2} />
+      </View>
+    </Pressable>
+  );
+}
+
+function CommitmentCalendar({
+  visible,
+  onClose,
+  history,
+  today,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  history: DayRecord[];
+  today: DayRecord | null;
+}) {
+  const [viewDate, setViewDate] = useState(() => {
+    const now = new Date();
+    return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  });
+
+  useEffect(() => {
+    if (visible) {
+      const now = new Date();
+      setViewDate(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)));
+    }
+  }, [visible]);
+
+  const year = viewDate.getUTCFullYear();
+  const month = viewDate.getUTCMonth();
+
+  const committedDates = new Set<string>();
+  const trackedDates = new Set<string>();
+  for (const record of history) {
+    trackedDates.add(record.date);
+    if (record.allComplete) committedDates.add(record.date);
+  }
+  if (today) {
+    trackedDates.add(today.date);
+    if (today.allComplete) committedDates.add(today.date);
+  }
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+
+  const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  const firstDow = new Date(Date.UTC(year, month, 1)).getUTCDay();
+  const cells: (number | null)[] = [];
+  for (let i = 0; i < firstDow; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+  while (cells.length % 7 !== 0) cells.push(null);
+
+  const goPrev = () =>
+    setViewDate((d) => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - 1, 1)));
+  const goNext = () =>
+    setViewDate((d) => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1)));
+
+  const committedThisMonth = Array.from(committedDates).filter((d) => {
+    const [y, m] = d.split("-").map(Number);
+    return y === year && m - 1 === month;
+  }).length;
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="none"
+      onRequestClose={onClose}
+    >
+      {/* Outer Pressable = backdrop dismiss */}
+      <Pressable style={styles.calOverlay} onPress={onClose}>
+        {/* Inner Pressable absorbs taps so they don't reach the backdrop */}
+        <Pressable style={styles.calSheet}>
+          {/* Month navigation */}
+          <View style={styles.calHeader}>
+            <Pressable onPress={goPrev} style={styles.calNavBtn} hitSlop={8}>
+              <ChevronLeft size={18} color={COLORS.text} strokeWidth={2} />
+            </Pressable>
+            <View style={styles.calMonthWrap}>
+              <Text style={styles.calMonthTitle}>
+                {MONTH_NAMES[month]} {year}
+              </Text>
+              <Text style={styles.calMonthSub}>
+                {committedThisMonth} day{committedThisMonth !== 1 ? "s" : ""} committed
+              </Text>
+            </View>
+            <Pressable onPress={goNext} style={styles.calNavBtn} hitSlop={8}>
+              <ChevronRight size={18} color={COLORS.text} strokeWidth={2} />
+            </Pressable>
+          </View>
+
+          {/* Week labels */}
+          <View style={styles.calWeekRow}>
+            {WEEK_LABELS.map((d, i) => (
+              <Text key={i} style={styles.calWeekLabel}>{d}</Text>
+            ))}
+          </View>
+
+          {/* Day grid */}
+          <View style={styles.calGrid}>
+            {cells.map((day, i) => {
+              if (!day) return <View key={i} style={styles.calCell} />;
+              const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+              const isToday = dateStr === todayStr;
+              const isCommitted = committedDates.has(dateStr);
+              const isTracked = trackedDates.has(dateStr);
+              const isMissed = isTracked && !isCommitted && dateStr < todayStr;
+              return (
+                <View key={i} style={styles.calCell}>
+                  <View style={[
+                    styles.calDayInner,
+                    isCommitted && styles.calDayInnerCommitted,
+                    isToday && !isCommitted && styles.calDayInnerToday,
+                  ]}>
+                    <Text style={[
+                      styles.calDayNum,
+                      isCommitted && styles.calDayNumCommitted,
+                      isToday && !isCommitted && styles.calDayNumToday,
+                      isMissed && styles.calDayNumMissed,
+                    ]}>
+                      {day}
+                    </Text>
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+
+          {/* Legend */}
+          <View style={styles.calLegend}>
+            <View style={styles.calLegendItem}>
+              <View style={[styles.calLegendDot, { backgroundColor: COLORS.accent }]} />
+              <Text style={styles.calLegendText}>Committed</Text>
+            </View>
+            <View style={styles.calLegendItem}>
+              <View style={[styles.calLegendDot, {
+                backgroundColor: "transparent",
+                borderWidth: 1.5,
+                borderColor: COLORS.accent,
+              }]} />
+              <Text style={styles.calLegendText}>Today</Text>
+            </View>
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
   );
 }
 
@@ -270,10 +470,16 @@ function TaskCard({
     >
       <Animated.View layout={LinearTransition.springify()} style={styles.taskRow}>
         <View style={[styles.exerciseIconWrap, isDimmed && styles.exerciseIconDimmed]}>
-          <Image
-            source={getExerciseIcon(task.exerciseId)}
-            style={styles.exerciseIconImg}
-          />
+          {task.protocolType && task.protocolType !== "facial_exercise" ? (
+            <Text style={styles.protocolEmoji}>
+              {PROTOCOL_EMOJIS[task.exerciseId] ?? "✨"}
+            </Text>
+          ) : (
+            <Image
+              source={getExerciseIcon(task.exerciseId)}
+              style={styles.exerciseIconImg}
+            />
+          )}
         </View>
         <View style={styles.taskLeft}>
           <Text
@@ -315,6 +521,7 @@ function TaskCard({
 export default function TasksScreen() {
   const {
     today,
+    history,
     currentStreak,
     loading,
     initToday,
@@ -325,11 +532,37 @@ export default function TasksScreen() {
 
   const [showDayComplete, setShowDayComplete] = useState(false);
   const [showMoodCheck, setShowMoodCheck] = useState(false);
+  const [showCalendar, setShowCalendar] = useState(false);
+
+  // Intro splash — shown once per day on first tab open.
+  const todayDateStr = new Date().toISOString().slice(0, 10);
+  const [introVisible, setIntroVisible] = useState(lastIntroDate !== todayDateStr);
+  const introTimerDoneRef = useRef(false); // true after minimum 1800ms
 
   // Initialize tasks on mount
   useEffect(() => {
     initToday();
   }, []);
+
+  // Minimum intro display: 1800ms. After timer fires, dismiss if loading is done.
+  useEffect(() => {
+    if (!introVisible) return;
+    const timer = setTimeout(() => {
+      introTimerDoneRef.current = true;
+      if (!useTasksStore.getState().loading) {
+        lastIntroDate = todayDateStr;
+        setIntroVisible(false);
+      }
+    }, 1800);
+    return () => clearTimeout(timer);
+  }, []); // intentionally runs once per mount
+
+  // When loading finishes, dismiss intro if the minimum timer has already elapsed.
+  useEffect(() => {
+    if (!introVisible || !introTimerDoneRef.current || loading) return;
+    lastIntroDate = todayDateStr;
+    setIntroVisible(false);
+  }, [loading, introVisible]);
 
   // Midnight UTC check — refresh tasks when date changes
   useEffect(() => {
@@ -364,72 +597,103 @@ export default function TasksScreen() {
     }
   }, [today, completeTask, uncompleteTask]);
 
-  // Loading state
-  if (loading || !today) {
+  // Show intro splash until both timer and data are ready
+  if (introVisible || loading || !today) {
     return <TasksLoadingScreen />;
   }
 
   const allDone = today.allComplete;
   const pendingCount = today.tasks.filter((t) => t.status === "pending").length;
   const completedCount = today.tasks.filter((t) => t.status === "completed").length;
+  const exerciseTasks = today.tasks.filter((t) => t.protocolType === "facial_exercise");
+  const protocolTasks = today.tasks.filter((t) => t.protocolType !== "facial_exercise");
 
   return (
     <SafeAreaView style={styles.safe}>
-      <ScrollView contentContainerStyle={styles.container}>
-        {/* Header */}
-        <Animated.View entering={FadeInDown.duration(300).delay(50)} style={styles.headerRow}>
+      {/* Header lives outside ScrollView — guaranteed clean press events */}
+      <View style={styles.headerWrapper}>
+        <View style={styles.headerRow}>
           <View>
             <Text style={styles.dateTitle}>{formatDateHeader()}</Text>
             <Text style={styles.subtitle}>
               {allDone
-                ? "All tasks complete!"
+                ? "All done for today"
                 : `${pendingCount} task${pendingCount !== 1 ? "s" : ""} remaining`}
             </Text>
           </View>
-          <StreakBadge streak={currentStreak} />
-        </Animated.View>
-
-        {/* Progress bar */}
-        <Animated.View entering={FadeInDown.duration(300).delay(80)}>
-          <ProgressBar total={today.tasks.length} completed={completedCount} />
-        </Animated.View>
-
-        {/* Focus banner */}
-        {today.focusSummary ? (
-          <Animated.View entering={FadeInDown.duration(300).delay(100)}>
-            <FocusBanner text={today.focusSummary} />
-          </Animated.View>
-        ) : null}
-
-        {/* Section header */}
-        <Animated.View entering={FadeInDown.duration(300).delay(150)} style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Your Tasks</Text>
-          <Text style={styles.sectionHint}>
-            {allDone ? "All done" : "Tap a card to start"}
-          </Text>
-        </Animated.View>
-
-        {/* Task cards */}
-        <View style={styles.taskList}>
-          {today.tasks.map((task, idx) => (
-            <Animated.View
-              key={task.exerciseId}
-              entering={FadeInDown.duration(350).delay(200 + idx * 60)}
-              layout={LinearTransition.springify()}
-            >
-              <TaskCard
-                task={task}
-                onGuide={() => {
-                  router.push({
-                    pathname: "/program/guide/[exerciseId]",
-                    params: { exerciseId: task.exerciseId },
-                  });
-                }}
-                onToggle={() => handleToggle(task)}
-              />
-            </Animated.View>
-          ))}
+          <View style={styles.headerRight}>
+            <StreakBadge streak={currentStreak} />
+            <CalendarButton onPress={() => setShowCalendar(true)} />
+          </View>
         </View>
+        <ProgressBar total={today.tasks.length} completed={completedCount} />
+        {today.focusSummary ? <FocusBanner text={today.focusSummary} /> : null}
+      </View>
+
+      <ScrollView contentContainerStyle={styles.container}>
+        {/* Exercises section */}
+        {exerciseTasks.length > 0 && (
+          <>
+            <Animated.View entering={FadeInDown.duration(300).delay(150)} style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Exercises</Text>
+              <Text style={styles.sectionHint}>
+                {exerciseTasks.every((t) => t.status !== "pending") ? "Done" : `${exerciseTasks.filter((t) => t.status === "pending").length} left`}
+              </Text>
+            </Animated.View>
+            <View style={styles.taskList}>
+              {exerciseTasks.map((task, idx) => (
+                <Animated.View
+                  key={task.exerciseId}
+                  entering={FadeInDown.duration(350).delay(200 + idx * 60)}
+                  layout={LinearTransition.springify()}
+                >
+                  <TaskCard
+                    task={task}
+                    onGuide={() => {
+                      router.push({
+                        pathname: "/program/guide/[exerciseId]",
+                        params: { exerciseId: task.exerciseId },
+                      });
+                    }}
+                    onToggle={() => handleToggle(task)}
+                  />
+                </Animated.View>
+              ))}
+            </View>
+          </>
+        )}
+
+        {/* Protocols section */}
+        {protocolTasks.length > 0 && (
+          <>
+            <Animated.View entering={FadeInDown.duration(300).delay(350)} style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Protocols</Text>
+              <Text style={styles.sectionHint}>
+                {protocolTasks.every((t) => t.status !== "pending") ? "Done" : `${protocolTasks.filter((t) => t.status === "pending").length} left`}
+              </Text>
+            </Animated.View>
+            <View style={styles.taskList}>
+              {protocolTasks.map((task, idx) => (
+                <Animated.View
+                  key={task.exerciseId}
+                  entering={FadeInDown.duration(350).delay(400 + idx * 60)}
+                  layout={LinearTransition.springify()}
+                >
+                  <TaskCard
+                    task={task}
+                    onGuide={() => {
+                      router.push({
+                        pathname: "/program/guide/[exerciseId]",
+                        params: { exerciseId: task.exerciseId },
+                      });
+                    }}
+                    onToggle={() => handleToggle(task)}
+                  />
+                </Animated.View>
+              ))}
+            </View>
+          </>
+        )}
       </ScrollView>
 
       {/* Day Complete Modal */}
@@ -456,6 +720,14 @@ export default function TasksScreen() {
         }}
         onSkip={() => setShowMoodCheck(false)}
       />
+
+      {/* Calendar — Modal renders above everything */}
+      <CommitmentCalendar
+        visible={showCalendar}
+        onClose={() => setShowCalendar(false)}
+        history={history}
+        today={today}
+      />
     </SafeAreaView>
   );
 }
@@ -466,7 +738,7 @@ export default function TasksScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: COLORS.bgBottom },
-  container: { padding: SP[4], gap: SP[3], paddingBottom: SP[6] },
+  container: { paddingHorizontal: SP[4], paddingTop: SP[1], paddingBottom: SP[6], gap: SP[3] },
   loadingWrap: { flex: 1, alignItems: "center", justifyContent: "center", gap: SP[3] },
   loadingTitle: {
     color: COLORS.text,
@@ -492,7 +764,13 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.accent,
   },
 
-  // Header
+  // Header (outside ScrollView — no scroll interference)
+  headerWrapper: {
+    paddingHorizontal: SP[4],
+    paddingTop: SP[3],
+    paddingBottom: SP[3],
+    gap: SP[3],
+  },
   headerRow: {
     flexDirection: "row",
     alignItems: "flex-start",
@@ -627,6 +905,10 @@ const styles = StyleSheet.create({
     height: 52,
     resizeMode: "cover",
   },
+  protocolEmoji: {
+    fontSize: 26,
+    lineHeight: 32,
+  },
   taskLeft: { flex: 1, gap: 4 },
   taskTitle: {
     color: "#0B0B0B",
@@ -693,4 +975,152 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   startPillText: { color: "#FFFFFF", fontSize: 14, fontFamily: "Poppins-SemiBold" },
+
+  // Header right cluster
+  headerRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SP[2],
+  },
+
+  // Calendar button (top-right)
+  calBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: RADII.circle,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  // Calendar overlay — full-screen backdrop inside Modal
+  calOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.75)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  calSheet: {
+    width: "88%",
+    backgroundColor: "#161616",
+    borderRadius: RADII.xl,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+    padding: SP[5],
+  },
+
+  // Calendar header (month nav)
+  calHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: SP[4],
+  },
+  calNavBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: RADII.circle,
+    backgroundColor: COLORS.whiteGlass,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  calMonthWrap: {
+    alignItems: "center",
+    gap: 2,
+  },
+  calMonthTitle: {
+    color: COLORS.text,
+    fontSize: 16,
+    fontFamily: "Poppins-SemiBold",
+  },
+  calMonthSub: {
+    color: COLORS.sub,
+    fontSize: 11,
+    fontFamily: "Poppins-SemiBold",
+  },
+
+  // Week day labels row
+  calWeekRow: {
+    flexDirection: "row",
+    marginBottom: SP[2],
+  },
+  calWeekLabel: {
+    flex: 1,
+    textAlign: "center",
+    color: COLORS.sub,
+    fontSize: 11,
+    fontFamily: "Poppins-SemiBold",
+  },
+
+  // Day grid
+  calGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+  },
+  calCell: {
+    width: "14.2857%",
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 2,
+  },
+  calDayInner: {
+    width: 32,
+    height: 32,
+    borderRadius: RADII.circle,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  calDayInnerCommitted: {
+    backgroundColor: COLORS.accent,
+  },
+  calDayInnerToday: {
+    borderWidth: 1.5,
+    borderColor: COLORS.accent,
+  },
+  calDayNum: {
+    fontSize: 13,
+    fontFamily: "Poppins-SemiBold",
+    color: COLORS.text,
+  },
+  calDayNumCommitted: {
+    color: "#0B0B0B",
+  },
+  calDayNumToday: {
+    color: COLORS.accent,
+  },
+  calDayNumMissed: {
+    color: COLORS.sub,
+    opacity: 0.5,
+  },
+
+  // Legend
+  calLegend: {
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: SP[5],
+    marginTop: SP[4],
+    paddingTop: SP[3],
+    borderTopWidth: 1,
+    borderTopColor: COLORS.cardBorder,
+  },
+  calLegendItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  calLegendDot: {
+    width: 12,
+    height: 12,
+    borderRadius: RADII.circle,
+  },
+  calLegendText: {
+    color: COLORS.sub,
+    fontSize: 11,
+    fontFamily: "Poppins-SemiBold",
+  },
 });

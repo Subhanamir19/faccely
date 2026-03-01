@@ -377,10 +377,17 @@ export default function TakePicture() {
         return;
       }
 
-      const [fNormTemp, sNormTemp] = await Promise.all([
-        ensureJpegCompressed(fResolved),
-        ensureJpegCompressed(sResolved),
-      ]);
+      let fNormTemp, sNormTemp;
+      try {
+        [fNormTemp, sNormTemp] = await Promise.all([
+          ensureJpegCompressed(fResolved),
+          ensureJpegCompressed(sResolved),
+        ]);
+      } catch {
+        throw new Error(
+          "Couldn't load one of your photos. Please retake or pick a different image."
+        );
+      }
       const [fNorm, sNorm] = await Promise.all([
         persistCompressedResult(fNormTemp),
         persistCompressedResult(sNormTemp),

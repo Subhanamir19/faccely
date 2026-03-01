@@ -179,7 +179,7 @@ export default function TransformationScreen() {
         <View style={styles.footer}>
           <LimeButton
             label="Begin My Ascension"
-            onPress={() => router.replace("/(onboarding)/use-case")}
+            onPress={() => router.replace("/(onboarding)/goals")}
           />
         </View>
 

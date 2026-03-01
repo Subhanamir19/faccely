@@ -59,7 +59,8 @@
             "newArchEnabled": true
           }
         }
-      ]
+      ],
+      "expo-web-browser"
     ],
     "scheme": "sigmamax",
     "assetBundlePatterns": [

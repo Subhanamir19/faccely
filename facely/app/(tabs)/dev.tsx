@@ -1,207 +1,322 @@
 // app/(tabs)/dev.tsx
-// DEV ONLY — preview onboarding flow without paywall/login.
-// Remove this tab from _layout.tsx before shipping to production.
-import React from "react";
+// Developer tooling screen — only reachable in __DEV__ builds.
+
+import React, { useState, useEffect, useCallback } from "react";
 import {
-  View,
+  SafeAreaView,
   ScrollView,
-  Pressable,
+  View,
+  TouchableOpacity,
   StyleSheet,
-  StatusBar,
-  Platform,
+  Alert,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { LinearGradient } from "expo-linear-gradient";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
-
 import T from "@/components/ui/T";
+import GlassCard from "@/components/ui/GlassCard";
 import { COLORS, SP, RADII } from "@/lib/tokens";
-import { useOnboarding } from "@/store/onboarding";
+import { ConsentModalInner } from "@/hooks/useAdvancedAnalysisConsent";
 
-const SCREENS: { label: string; route: string }[] = [
-  { label: "hook",            route: "/(onboarding)/hook" },
-  { label: "intro",           route: "/(onboarding)/intro" },
-  { label: "transformation",  route: "/(onboarding)/transformation" },
-  { label: "use-case",        route: "/(onboarding)/use-case" },
-  { label: "experience",      route: "/(onboarding)/experience" },
-  { label: "age",             route: "/(onboarding)/age" },
-  { label: "ethnicity",       route: "/(onboarding)/ethnicity" },
-  { label: "gender",          route: "/(onboarding)/gender" },
-  { label: "scan",            route: "/(onboarding)/scan" },
-  { label: "trust",           route: "/(onboarding)/trust" },
-  { label: "score-teaser",    route: "/(onboarding)/score-teaser" },
-  { label: "goals",           route: "/(onboarding)/goals" },
-  { label: "time-commitment", route: "/(onboarding)/time-commitment" },
-  { label: "building-plan",  route: "/(onboarding)/building-plan" },
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+const CONSENT_KEY = "advanced_analysis_consent";
+
+const ONBOARDING_SCREENS: { label: string; route: string }[] = [
+  { label: "Splash",           route: "/(onboarding)/splash" },
+  { label: "Transformation",   route: "/(onboarding)/transformation" },
+  { label: "Goals",            route: "/(onboarding)/goals" },
+  { label: "Use Case",         route: "/(onboarding)/use-case" },
+  { label: "Gender",           route: "/(onboarding)/gender" },
+  { label: "Age",              route: "/(onboarding)/age" },
+  { label: "Ethnicity",        route: "/(onboarding)/ethnicity" },
+  { label: "Edge",             route: "/(onboarding)/edge" },
+  { label: "Face Scan",        route: "/(onboarding)/face-scan" },
+  { label: "Trust",            route: "/(onboarding)/trust" },
+  { label: "Score Teaser",     route: "/(onboarding)/score-teaser" },
+  { label: "Improve Areas",    route: "/(onboarding)/improve-areas" },
+  { label: "Time Dedication",  route: "/(onboarding)/time-dedication" },
+  { label: "Routine Animation",route: "/(onboarding)/routine-animation" },
+  { label: "Paywall",          route: "/(onboarding)/paywall" },
 ];
 
-export default function DevScreen() {
-  const insets = useSafeAreaInsets();
-  const { resetForDevPreview, setDevPreview, devPreview } = useOnboarding();
-
-  const startFullPreview = async () => {
-    // Clears form data only — keeps completed=true so auth is unaffected
-    await resetForDevPreview();
-    setDevPreview(true);
-    router.push("/(onboarding)/hook");
-  };
-
-  const jumpTo = (route: string) => {
-    setDevPreview(true);
-    router.push(route as any);
-  };
-
+// ---------------------------------------------------------------------------
+// Small reusable row button
+// ---------------------------------------------------------------------------
+function DevButton({
+  label,
+  onPress,
+  accent,
+}: {
+  label: string;
+  onPress: () => void;
+  accent?: boolean;
+}) {
   return (
-    <View style={styles.screen}>
-      <StatusBar barStyle="light-content" />
-      <LinearGradient
-        colors={[COLORS.bgTop, COLORS.bgBottom]}
-        style={StyleSheet.absoluteFill}
-        start={{ x: 0.5, y: 0 }}
-        end={{ x: 0.5, y: 1 }}
-      />
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.7}
+      style={[styles.devBtn, accent && styles.devBtnAccent]}
+    >
+      <T style={[styles.devBtnText, accent && styles.devBtnTextAccent]}>{label}</T>
+    </TouchableOpacity>
+  );
+}
 
-      <ScrollView
-        contentContainerStyle={[
-          styles.scroll,
-          { paddingTop: insets.top + SP[6], paddingBottom: insets.bottom + SP[8] },
-        ]}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Header */}
-        <T variant="h3" color="text">🛠 Dev Preview</T>
-        <T variant="caption" color="sub" style={{ marginTop: SP[1], marginBottom: SP[6] }}>
-          Runs onboarding without paywall or login.{"\n"}Remove this tab before shipping.
-        </T>
-
-        {/* Status pill */}
-        <View style={[styles.pill, { backgroundColor: devPreview ? "rgba(180,243,77,0.12)" : "rgba(255,255,255,0.06)" }]}>
-          <View style={[styles.dot, { backgroundColor: devPreview ? COLORS.accent : "rgba(255,255,255,0.25)" }]} />
-          <T variant="captionSemiBold" color={devPreview ? "accent" : "sub"}>
-            devPreview {devPreview ? "ON" : "OFF"}
-          </T>
-        </View>
-
-        {/* Primary CTA */}
-        <Pressable
-          onPress={startFullPreview}
-          style={({ pressed }) => [styles.primaryBtn, { opacity: pressed ? 0.85 : 1 }]}
-        >
-          <T style={styles.primaryBtnText}>▶  Preview Full Flow</T>
-          <T variant="caption" style={styles.primaryBtnSub}>Resets data → starts from hook</T>
-        </Pressable>
-
-        {/* Divider */}
-        <View style={styles.dividerRow}>
-          <View style={styles.dividerLine} />
-          <T variant="caption" color="sub" style={{ marginHorizontal: SP[3] }}>or jump to screen</T>
-          <View style={styles.dividerLine} />
-        </View>
-
-        {/* Quick-jump list */}
-        <View style={styles.jumpList}>
-          {SCREENS.map((s, i) => (
-            <Pressable
-              key={s.route}
-              onPress={() => jumpTo(s.route)}
-              style={({ pressed }) => [
-                styles.jumpRow,
-                i < SCREENS.length - 1 && styles.jumpRowBorder,
-                { opacity: pressed ? 0.7 : 1 },
-              ]}
-            >
-              <T variant="captionSemiBold" color="sub" style={styles.jumpIndex}>
-                {String(i + 1).padStart(2, "0")}
-              </T>
-              <T variant="bodySemiBold" color="text">{s.label}</T>
-              <T variant="caption" color="sub" style={styles.jumpArrow}>›</T>
-            </Pressable>
-          ))}
-        </View>
-      </ScrollView>
+// ---------------------------------------------------------------------------
+// Section header
+// ---------------------------------------------------------------------------
+function SectionHeader({ title, subtitle }: { title: string; subtitle?: string }) {
+  return (
+    <View style={styles.sectionHeader}>
+      <T style={styles.sectionTitle}>{title}</T>
+      {subtitle ? <T style={styles.sectionSubtitle}>{subtitle}</T> : null}
     </View>
   );
 }
 
+// ---------------------------------------------------------------------------
+// Screen
+// ---------------------------------------------------------------------------
+export default function DevScreen() {
+  const [consentValue, setConsentValue] = useState<string | null | "…">("…");
+  const [previewVisible, setPreviewVisible] = useState(false);
+
+  const refreshConsent = useCallback(async () => {
+    const val = await AsyncStorage.getItem(CONSENT_KEY);
+    setConsentValue(val);
+  }, []);
+
+  useEffect(() => {
+    void refreshConsent();
+  }, [refreshConsent]);
+
+  const handleResetConsent = async () => {
+    await AsyncStorage.removeItem(CONSENT_KEY);
+    await refreshConsent();
+    Alert.alert("Reset", "Consent cleared — gate will fire on next Advanced Analysis tap.");
+  };
+
+  const consentStatus =
+    consentValue === "…"
+      ? "Loading…"
+      : consentValue
+      ? `Granted · ${consentValue}`
+      : "Not granted";
+
+  const consentColor =
+    consentValue === "…" ? COLORS.sub : consentValue ? COLORS.success : COLORS.sub;
+
+  return (
+    <SafeAreaView style={styles.safe}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      >
+        <T style={styles.screenTitle}>Dev Tools</T>
+
+        {/* ── Onboarding ─────────────────────────────────────────────── */}
+        <GlassCard style={styles.card}>
+          <SectionHeader
+            title="Onboarding"
+            subtitle="Jump to any screen or run the full sequence"
+          />
+
+          {/* Full sequence launcher */}
+          <DevButton
+            label="▶  Run Full Sequence (from Intro)"
+            accent
+            onPress={() => router.push("/(onboarding)/splash")}
+          />
+
+          {/* Divider */}
+          <View style={styles.divider} />
+
+          {/* Individual screens */}
+          <T style={styles.subLabel}>Individual screens</T>
+          <View style={styles.screenGrid}>
+            {ONBOARDING_SCREENS.map(({ label, route }) => (
+              <TouchableOpacity
+                key={route}
+                style={styles.screenChip}
+                onPress={() => router.push(route as any)}
+                activeOpacity={0.7}
+              >
+                <T style={styles.screenChipText}>{label}</T>
+                <T style={styles.screenChipArrow}>→</T>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </GlassCard>
+
+        {/* ── Consent Modal ──────────────────────────────────────────── */}
+        <GlassCard style={styles.card}>
+          <SectionHeader
+            title="Consent Modal"
+            subtitle="Advanced Analysis gate"
+          />
+
+          <View style={styles.statusRow}>
+            <T style={styles.statusLabel}>Storage value</T>
+            <T style={[styles.statusValue, { color: consentColor }]} numberOfLines={1}>
+              {consentStatus}
+            </T>
+          </View>
+
+          <View style={styles.row}>
+            <DevButton
+              label="Preview Modal"
+              accent
+              onPress={() => setPreviewVisible(true)}
+            />
+            <DevButton label="Reset Consent" onPress={handleResetConsent} />
+          </View>
+        </GlassCard>
+      </ScrollView>
+
+      {/* Consent preview modal — no storage interaction */}
+      <ConsentModalInner
+        visible={previewVisible}
+        onAgree={() => {
+          setPreviewVisible(false);
+          Alert.alert("Preview only", '"I Agree" tapped — nothing was saved.');
+        }}
+        onCancel={() => setPreviewVisible(false)}
+      />
+    </SafeAreaView>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Styles
+// ---------------------------------------------------------------------------
 const styles = StyleSheet.create({
-  screen: {
+  safe: {
     flex: 1,
-    backgroundColor: COLORS.bgTop,
+    backgroundColor: COLORS.bgBottom,
   },
-  scroll: {
-    paddingHorizontal: SP[6],
+  content: {
+    paddingHorizontal: SP[4],
+    paddingTop: SP[5],
+    paddingBottom: SP[12],
+    gap: SP[4],
   },
-
-  pill: {
-    flexDirection: "row",
-    alignItems: "center",
-    alignSelf: "flex-start",
-    gap: SP[2],
-    paddingHorizontal: SP[3],
-    paddingVertical: SP[2],
-    borderRadius: RADII.circle,
-    marginBottom: SP[5],
-  },
-  dot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
+  screenTitle: {
+    fontSize: 26,
+    color: COLORS.text,
+    letterSpacing: -0.5,
+    marginBottom: SP[1],
   },
 
-  primaryBtn: {
-    backgroundColor: COLORS.accent,
-    borderRadius: RADII.lg,
-    paddingVertical: SP[4],
-    paddingHorizontal: SP[5],
-    marginBottom: SP[6],
-  },
-  primaryBtnText: {
-    color: COLORS.bgTop,
-    fontSize: 16,
-    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
-  },
-  primaryBtnSub: {
-    color: "rgba(0,0,0,0.5)",
-    marginTop: SP[1],
-  },
-
-  dividerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: SP[4],
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: COLORS.divider,
-  },
-
-  jumpList: {
-    borderRadius: RADII.card,
-    overflow: "hidden",
-    backgroundColor: COLORS.card,
-    borderWidth: 1,
-    borderColor: COLORS.cardBorder,
-  },
-  jumpRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: SP[5],
+  // Card
+  card: {
+    paddingHorizontal: SP[4],
     paddingVertical: SP[4],
     gap: SP[3],
   },
-  jumpRowBorder: {
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.divider,
+
+  // Section header
+  sectionHeader: {
+    gap: SP[1],
+    marginBottom: SP[1],
   },
-  jumpIndex: {
-    width: 24,
-    opacity: 0.4,
+  sectionTitle: {
+    fontSize: 16,
+    color: COLORS.text,
+    letterSpacing: -0.2,
+  },
+  sectionSubtitle: {
+    fontSize: 12,
+    color: COLORS.sub,
     fontFamily: "Poppins-Regular",
   },
-  jumpArrow: {
-    marginLeft: "auto",
-    fontSize: 18,
-    lineHeight: 22,
+
+  // Divider
+  divider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: COLORS.divider,
+    marginVertical: SP[1],
+  },
+
+  subLabel: {
+    fontSize: 12,
+    color: COLORS.muted,
+    fontFamily: "Poppins-Regular",
+  },
+
+  // Screen grid
+  screenGrid: {
+    gap: SP[2],
+  },
+  screenChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: SP[4],
+    paddingVertical: SP[3],
+    borderRadius: RADII.md,
+    backgroundColor: COLORS.whiteGlass,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: COLORS.cardBorder,
+  },
+  screenChipText: {
+    fontSize: 14,
+    color: COLORS.dim,
+  },
+  screenChipArrow: {
+    fontSize: 14,
+    color: COLORS.sub,
+  },
+
+  // Dev buttons
+  devBtn: {
+    flex: 1,
+    paddingVertical: SP[3],
+    paddingHorizontal: SP[4],
+    borderRadius: RADII.md,
+    backgroundColor: COLORS.whiteGlass,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: COLORS.cardBorder,
+    alignItems: "center",
+  },
+  devBtnAccent: {
+    backgroundColor: COLORS.accentGlow,
+    borderColor: COLORS.accentBorder,
+  },
+  devBtnText: {
+    fontSize: 14,
+    color: COLORS.dim,
+  },
+  devBtnTextAccent: {
+    color: COLORS.accent,
+  },
+
+  // Consent status
+  statusRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: SP[2],
+    paddingHorizontal: SP[3],
+    borderRadius: RADII.sm,
+    backgroundColor: COLORS.whiteGlass,
+  },
+  statusLabel: {
+    fontSize: 12,
+    color: COLORS.sub,
+    fontFamily: "Poppins-Regular",
+  },
+  statusValue: {
+    fontSize: 12,
+    color: COLORS.sub,
+    flex: 1,
+    textAlign: "right",
+    fontFamily: "Poppins-Regular",
+  },
+
+  // Row of two buttons
+  row: {
+    flexDirection: "row",
+    gap: SP[3],
   },
 });

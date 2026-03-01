@@ -7,13 +7,13 @@ import { OnboardingScreen, OptionsList, Option } from "@/components/onboarding";
 import { useOnboarding } from "@/store/onboarding";
 
 const OPTIONS: Option[] = [
-  { key: "Asian", label: "🌏 Asian" },
-  { key: "African", label: "🌍 African" },
-  { key: "Caucasian", label: "🏛️ Caucasian" },
-  { key: "Hispanic / Latino", label: "🌎 Hispanic / Latino" },
-  { key: "Middle Eastern", label: "🌙 Middle Eastern" },
-  { key: "Mixed / Other", label: "🌐 Mixed / Other" },
-  { key: "Prefer not to say", label: "🤐 Prefer not to say" },
+  { key: "Asian",              label: "Asian",              emoji: "🌏" },
+  { key: "African",            label: "African",            emoji: "🌍" },
+  { key: "Caucasian",          label: "Caucasian",          emoji: "🌎" },
+  { key: "Hispanic / Latino",  label: "Hispanic / Latino",  emoji: "🌮" },
+  { key: "Middle Eastern",     label: "Middle Eastern",     emoji: "🌙" },
+  { key: "Mixed / Other",      label: "Mixed / Other",      emoji: "🌐" },
+  { key: "Prefer not to say",  label: "Prefer not to say",  emoji: "🔒" },
 ];
 
 export default function EthnicityScreen() {
@@ -29,12 +29,12 @@ export default function EthnicityScreen() {
 
   const handleNext = useCallback(() => {
     if (!selected) return;
-    router.push("/(onboarding)/gender");
+    router.push("/(onboarding)/edge");
   }, [selected]);
 
   const handleSkip = useCallback(() => {
     setField("ethnicity", "Prefer not to say");
-    router.push("/(onboarding)/gender");
+    router.push("/(onboarding)/edge");
   }, [setField]);
 
   return (

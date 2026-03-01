@@ -4,11 +4,8 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
-import {
-  selectDailyTasks,
-  summarizeFocusAreas,
-  type TaskPick,
-} from "@/lib/taskSelection";
+import { buildDailyRoutine, type RoutineTaskPick } from "@/lib/taskBuilder";
+import { summarizeFocusAreas } from "@/lib/taskSelection";
 import { logger } from '@/lib/logger';
 
 // ---------------------------------------------------------------------------
@@ -17,7 +14,7 @@ import { logger } from '@/lib/logger';
 
 export type TaskStatus = "pending" | "completed" | "skipped";
 
-export type DailyTask = TaskPick & {
+export type DailyTask = RoutineTaskPick & {
   status: TaskStatus;
 };
 
@@ -141,15 +138,12 @@ export const useTasksStore = create<TasksState>()(
         const state = get();
         const currentDate = getUtcDateString();
 
-        // Already initialized for today — patch completedOnce if missing from old data
+        // Already initialized for today — return early.
+        // (v3 migration wipes today when upgrading from old formats, so this
+        //  only fires when the user is already on the new architecture.)
         if (state.today?.date === currentDate) {
           if (state.today.completedOnce === undefined) {
-            set({
-              today: {
-                ...state.today,
-                completedOnce: state.today.allComplete,
-              },
-            });
+            set({ today: { ...state.today, completedOnce: state.today.allComplete } });
           }
           return;
         }
@@ -169,7 +163,6 @@ export const useTasksStore = create<TasksState>()(
         let experience: string | null = null;
 
         try {
-          // Access other stores via their getState (works outside React)
           const scoresStore = require("./scores").useScores.getState();
           scores = scoresStore.scores ?? null;
         } catch (e) {
@@ -190,7 +183,15 @@ export const useTasksStore = create<TasksState>()(
         const consecutiveMissed = getConsecutiveMissed(history);
         const isNewUser = history.length === 0;
 
-        const picks = selectDailyTasks({
+        let skinScore: number | null = null;
+        try {
+          const scoresStore = require("./scores").useScores.getState();
+          skinScore = scoresStore.scores?.skin_quality ?? null;
+        } catch (e) {
+          logger.warn("[tasks] Could not read skin score:", e);
+        }
+
+        const picks = buildDailyRoutine({
           scores,
           goals,
           experience,
@@ -198,6 +199,7 @@ export const useTasksStore = create<TasksState>()(
           currentStreak,
           consecutiveMissed,
           isNewUser,
+          skinScore,
         });
 
         const tasks: DailyTask[] = picks.map((pick) => ({
@@ -295,7 +297,7 @@ export const useTasksStore = create<TasksState>()(
     }),
     {
       name: "sigma_tasks_v1",
-      version: 1,
+      version: 3,
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({
         today: state.today,
@@ -315,6 +317,32 @@ export const useTasksStore = create<TasksState>()(
               }
             }
           }
+        }
+        // v1 → v2: add session, protocolType, overloadTier, overloadLabel to existing tasks
+        if (version <= 1 && persisted) {
+          const patchTasksV2 = (tasks: any[]) =>
+            Array.isArray(tasks)
+              ? tasks.map((t: any) => ({
+                  ...t,
+                  session: t.session ?? "morning",
+                  protocolType: t.protocolType ?? "facial_exercise",
+                  overloadTier: t.overloadTier ?? 0,
+                  overloadLabel: t.overloadLabel ?? "Base",
+                }))
+              : tasks;
+          if (persisted.today?.tasks) {
+            persisted.today.tasks = patchTasksV2(persisted.today.tasks);
+          }
+          if (Array.isArray(persisted.history)) {
+            for (const record of persisted.history) {
+              if (record.tasks) record.tasks = patchTasksV2(record.tasks);
+            }
+          }
+        }
+        // v2 → v3: removed session/morning/evening architecture.
+        // Wipe today so initToday regenerates with the new Exercises/Protocols format.
+        if (version <= 2 && persisted) {
+          persisted.today = null;
         }
         return persisted as any;
       },

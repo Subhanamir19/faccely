@@ -6,8 +6,6 @@ import {
   StyleSheet,
   Image,
   Alert,
-  Linking,
-  Platform,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
@@ -76,7 +74,6 @@ export default function ProfileScreen() {
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [restoringPurchases, setRestoringPurchases] = useState(false);
   const [isHydrating, setIsHydrating] = useState(true);
-
   useEffect(() => {
     let cancelled = false;
     const run = async () => {
@@ -235,22 +232,6 @@ export default function ProfileScreen() {
     }
   };
 
-  const handleManageSubscription = async () => {
-    try {
-      if (Platform.OS === "ios") {
-        await Linking.openURL("https://apps.apple.com/account/subscriptions");
-      } else if (Platform.OS === "android") {
-        await Linking.openURL(
-          "https://play.google.com/store/account/subscriptions"
-        );
-      }
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "Failed to open subscription management.";
-      Alert.alert("Error", message);
-    }
-  };
-
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView
@@ -328,18 +309,9 @@ export default function ProfileScreen() {
                 disabled={restoringPurchases || isHydrating}
               />
             </View>
-            {hasAccess && !promoActivated && (
-              <View style={styles.subscriptionBtn}>
-                <GlassBtn
-                  label="Manage Subscription"
-                  variant="primary"
-                  onPress={handleManageSubscription}
-                  disabled={isHydrating}
-                />
-              </View>
-            )}
           </View>
         </GlassCard>
+
 
         <View style={styles.dangerZone}>
           <GlassCard style={styles.dangerCard}>

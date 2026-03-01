@@ -15,6 +15,7 @@ import path from "path";
 import sigmaRouter from "./routes/sigma.js";
 import jobsRouter from "./routes/jobs.js";           // ← add this
 import promoRouter from "./routes/promo.js";
+import generateRouter, { setGenerateOpenAIClient } from "./routes/generate.js";
 import { historyRouter } from "./routes/history.js";
 import { usersRouter } from "./routes/users.js";
 import { idempotency } from "./middleware/idempotency.js";
@@ -84,6 +85,7 @@ const openai = new OpenAI({
 
 setRoutineOpenAIClient(openai);
 setProtocolsOpenAIClient(openai);
+setGenerateOpenAIClient(openai);
 
 
 // --- one-time schema sanity check (shows up in Railway logs) ---
@@ -604,6 +606,7 @@ app.use("/programs", requestTimeout(30_000), verifyAuth, programsRouter);
 app.use("/routine/async", verifyAuth, routineAsyncRouter);
 
 app.use("/sigma", requestTimeout(30_000), verifyAuth, sigmaRouter);
+app.use("/generate", requestTimeout(120_000), verifyAuth, generateRouter);
 app.use("/jobs", verifyAuth, jobsRouter);                    // ← add this line
 app.use("/promo", verifyAuth, promoRouter);
 

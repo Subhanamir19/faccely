@@ -96,9 +96,11 @@ export default function ExerciseGuideScreen() {
   const [activeSlide, setActiveSlide] = useState(0);
 
   const guide = exerciseId ? getExerciseGuide(exerciseId) : null;
-  const frames = exerciseId
-    ? POSE_FRAMES[exerciseId] ?? [FALLBACK_FRAME]
-    : [FALLBACK_FRAME];
+  // Only show the hero carousel for facial exercises that have pose frames.
+  // Protocol/dietary guides have no relevant images — hide the carousel entirely.
+  const rawFrames = exerciseId ? POSE_FRAMES[exerciseId] : undefined;
+  const hasFrames = !!rawFrames;
+  const frames = rawFrames ?? [FALLBACK_FRAME];
 
   const onCarouselScroll = useRef(
     (e: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -129,7 +131,7 @@ export default function ExerciseGuideScreen() {
         onPress={() => router.back()}
         style={({ pressed }) => [
           styles.closeBtn,
-          { top: insets.top + SP[2] + SP[3] },
+          { top: insets.top + SP[2] + (hasFrames ? SP[3] : 0) },
           pressed && styles.closeBtnPressed,
         ]}
         accessibilityRole="button"
@@ -142,31 +144,33 @@ export default function ExerciseGuideScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: SP[10] + insets.bottom }}
       >
-        {/* ── Hero photo carousel ── */}
-        <View style={[styles.heroWrap, { marginTop: insets.top + SP[2] }]}>
-          <ScrollView
-            horizontal
-            pagingEnabled
-            showsHorizontalScrollIndicator={false}
-            bounces={false}
-            onMomentumScrollEnd={onCarouselScroll}
-            style={styles.heroList}
-          >
-            {frames.map((frame, i) => (
-              <View key={i} style={styles.heroSlide}>
-                <Image source={frame} style={styles.heroImage} resizeMode="contain" />
-              </View>
-            ))}
-          </ScrollView>
+        {/* ── Hero photo carousel — facial exercises only ── */}
+        {hasFrames && (
+          <View style={[styles.heroWrap, { marginTop: insets.top + SP[2] }]}>
+            <ScrollView
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              bounces={false}
+              onMomentumScrollEnd={onCarouselScroll}
+              style={styles.heroList}
+            >
+              {frames.map((frame, i) => (
+                <View key={i} style={styles.heroSlide}>
+                  <Image source={frame} style={styles.heroImage} resizeMode="contain" />
+                </View>
+              ))}
+            </ScrollView>
 
-          {/* Pagination dots */}
-          <PaginationDots count={frames.length} activeIndex={activeSlide} />
-        </View>
+            {/* Pagination dots */}
+            <PaginationDots count={frames.length} activeIndex={activeSlide} />
+          </View>
+        )}
 
         {/* ── Content area ── */}
         <Animated.View
           entering={FadeInDown.duration(350).easing(Easing.out(Easing.cubic))}
-          style={styles.content}
+          style={[styles.content, !hasFrames && { paddingTop: insets.top + SP[6] }]}
         >
           {/* Exercise name */}
           <Text style={styles.exerciseName}>{guide.name}</Text>

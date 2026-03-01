@@ -19,6 +19,7 @@ import PillNavButton from "@/components/ui/PillNavButton";
 import Text from "@/components/ui/T";
 import { COLORS, SP } from "@/lib/tokens";
 import { useScores } from "../../store/scores";
+import { useAdvancedAnalysisConsent } from "@/hooks/useAdvancedAnalysisConsent";
 
 // ---------------------------------------------------------------------------
 // Types & defaults
@@ -74,6 +75,7 @@ export default function ScoreScreen() {
   const insets = useSafeAreaInsets();
   const { imageUri, sideImageUri, scores, explLoading } = useScores();
   const sizing = useMetricSizing();
+  const { checkAndPromptConsent, ConsentModal } = useAdvancedAnalysisConsent();
 
   // Build metrics from API scores or use defaults
   const metrics = useMemo<MetricScore[]>(() => {
@@ -103,11 +105,14 @@ export default function ScoreScreen() {
       );
       return;
     }
+    const canProceed = await checkAndPromptConsent();
+    if (!canProceed) return;
     router.push({ pathname: "/loading", params: { mode: "advanced", phase: "analysis" } });
   };
 
   return (
     <View style={styles.screen}>
+      <ConsentModal />
       {/* Background */}
       <ImageBackground
         source={require("../../assets/bg/score-bg.jpg")}

@@ -7,9 +7,9 @@ import { OnboardingScreen, OptionsList, Option } from "@/components/onboarding";
 import { useOnboarding } from "@/store/onboarding";
 
 const OPTIONS: Option[] = [
-  { key: "scores", label: "For getting facial scores" },
-  { key: "analysis", label: "For getting facial analysis" },
-  { key: "routine", label: "For the routine" },
+  { key: "scores",   label: "For getting facial scores",   emoji: "📊" },
+  { key: "analysis", label: "For getting facial analysis", emoji: "🔬" },
+  { key: "routine",  label: "For the routine",             emoji: "🏆" },
 ];
 
 export default function UseCaseScreen() {
@@ -25,12 +25,12 @@ export default function UseCaseScreen() {
 
   const handleNext = useCallback(() => {
     if (!selected) return;
-    router.push("/(onboarding)/experience");
+    router.push("/(onboarding)/gender");
   }, [selected]);
 
   const handleSkip = useCallback(() => {
     setField("useCase", "scores");
-    router.push("/(onboarding)/experience");
+    router.push("/(onboarding)/gender");
   }, [setField]);
 
   return (

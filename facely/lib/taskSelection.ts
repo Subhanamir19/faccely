@@ -11,7 +11,7 @@ import { EXERCISE_GUIDES } from "./exerciseGuideData";
 
 export type ScoreField = keyof Scores;
 
-export type TargetArea = "jawline" | "cheekbones" | "eyes" | "nose" | "all";
+export type TargetArea = "jawline" | "cheekbones" | "eyes" | "nose" | "skin" | "all";
 
 export type Intensity = "high" | "medium" | "low";
 

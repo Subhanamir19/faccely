@@ -2,7 +2,7 @@
 import React from "react";
 import { Tabs } from "expo-router";
 import { Platform } from "react-native";
-import { Scan, CircleCheckBig, UserRound, FlaskConical } from "lucide-react-native";
+import { Scan, CircleCheckBig, Sparkles, UserRound } from "lucide-react-native";
 
 const ACTIVE = "#FFFFFF";
 const INACTIVE = "rgba(255,255,255,0.40)";
@@ -52,7 +52,16 @@ export default function TabsLayout() {
         }}
       />
 
-      {/* Tab 3: profile */}
+      {/* Tab 3: 10/10 AI enhancement */}
+      <Tabs.Screen
+        name="ten-by-ten"
+        options={{
+          title: "10/10",
+          tabBarIcon: ({ color, size }) => <Sparkles color={color} size={size ?? 22} />,
+        }}
+      />
+
+      {/* Tab 4: profile */}
       <Tabs.Screen
         name="profile"
         options={{
@@ -61,17 +70,13 @@ export default function TabsLayout() {
         }}
       />
 
-      {/* DEV ONLY — remove before shipping */}
-      <Tabs.Screen
-        name="dev"
-        options={{
-          title: "dev",
-          tabBarIcon: ({ color, size }) => <FlaskConical color={color} size={size ?? 22} />,
-        }}
-      />
+      {/* coach — hidden from tab bar */}
+      <Tabs.Screen name="sigma" options={{ href: null }} />
+
+      {/* dev tab — hidden */}
+      <Tabs.Screen name="dev" options={{ href: null }} />
 
       {/* Keep routes but hide them from the tab bar */}
-      <Tabs.Screen name="sigma" options={{ href: null }} />
       <Tabs.Screen name="history" options={{ href: null }} />
       <Tabs.Screen name="protocols" options={{ href: null }} />
       <Tabs.Screen name="_protocols" options={{ href: null }} />

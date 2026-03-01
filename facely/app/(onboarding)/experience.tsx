@@ -7,12 +7,12 @@ import { OnboardingScreen, OptionsList, Option } from "@/components/onboarding";
 import { useOnboarding } from "@/store/onboarding";
 
 const OPTIONS: Option[] = [
-  { key: "new", label: "🌱 Completely new — never tried one" },
-  { key: "tried", label: "👀 Tried one or two — didn't stick" },
-  { key: "few", label: "📱 Used a few — inconsistent results" },
-  { key: "regular", label: "💪 Regular user — I know the basics" },
-  { key: "skeptical", label: "🤨 Skeptical — I don't trust most apps" },
-  { key: "bad", label: "😤 Had a bad experience — too complicated / felt scammy" },
+  { key: "new",       label: "Completely new — never tried one",                     emoji: "🌱" },
+  { key: "tried",     label: "Tried one or two — didn't stick",                      emoji: "👀" },
+  { key: "few",       label: "Used a few — inconsistent results",                    emoji: "📈" },
+  { key: "regular",   label: "Regular user — I know the basics",                     emoji: "⚡" },
+  { key: "skeptical", label: "Skeptical — I don't trust most apps",                  emoji: "🤔" },
+  { key: "bad",       label: "Had a bad experience — too complicated / felt scammy", emoji: "😤" },
 ];
 
 export default function ExperienceScreen() {
@@ -28,13 +28,13 @@ export default function ExperienceScreen() {
 
   const handleNext = useCallback(() => {
     if (!selected) return;
-    router.push("/(onboarding)/age");
+    router.push("/(onboarding)/goals");
   }, [selected]);
 
   const handleSkip = useCallback(() => {
     // Store a default value when skipping
     setField("looksmaxxingExperience", "new");
-    router.push("/(onboarding)/age");
+    router.push("/(onboarding)/goals");
   }, [setField]);
 
   return (

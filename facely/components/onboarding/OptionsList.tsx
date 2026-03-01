@@ -20,6 +20,7 @@ export type Option = {
   key: string;
   label: string;
   description?: string;
+  emoji?: string;
 };
 
 type OptionsListProps = {
@@ -85,11 +86,15 @@ function OptionItem({
                 { transform: [{ translateY: pressed ? DEPTH - 1 : 0 }] },
               ]}
             >
-              {/* Indicator — always rendered so left padding is justified */}
+              {/* Indicator — emoji replaces dot when provided */}
               <View style={styles.dotWrap}>
-                <View style={[styles.dotOuter, !isActive && styles.dotOuterInactive]}>
-                  {isActive && <View style={styles.dotInner} />}
-                </View>
+                {item.emoji ? (
+                  <T style={styles.emoji}>{item.emoji}</T>
+                ) : (
+                  <View style={[styles.dotOuter, !isActive && styles.dotOuterInactive]}>
+                    {isActive && <View style={styles.dotInner} />}
+                  </View>
+                )}
               </View>
 
               {/* Text */}
@@ -239,6 +244,10 @@ const styles = StyleSheet.create({
     height: 10,
     borderRadius: 5,
     backgroundColor: COLORS.accent,
+  },
+  emoji: {
+    fontSize: 20,
+    lineHeight: 24,
   },
 });
 
