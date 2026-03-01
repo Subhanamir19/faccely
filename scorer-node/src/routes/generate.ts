@@ -105,7 +105,7 @@ router.post("/ten-by-ten", upload.single("image"), async (req, res) => {
       size: "1024x1024",
     } as any); // cast: response_format not needed for gpt-image-1 (always returns b64)
 
-    const b64 = response.data[0]?.b64_json;
+    const b64 = response.data?.[0]?.b64_json;
     if (!b64) {
       console.error("[/generate/ten-by-ten] OpenAI returned no b64_json", response);
       return res.status(502).json({ error: "no_image_returned" });
