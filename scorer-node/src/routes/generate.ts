@@ -51,17 +51,15 @@ function buildPrompt(meta: { gender?: string; ethnicity?: string; age?: string }
   const ageNote = meta.age ? `, approximately ${meta.age} years old` : "";
 
   return (
-    `Photo edit only — do not change the person's identity. ` +
-    `This is a ${genderNote}${ethnicityNote}${ageNote}. ` +
-    `Apply subtle, realistic facial structure improvements as if achieved through ideal genetics and lifestyle: ` +
-    `(1) refine and slightly sharpen the jawline and chin definition without over-sculpting, ` +
-    `(2) lift the outer corners of the eyes very slightly for a mild positive canthal tilt, keeping them completely natural, ` +
-    `(3) add very subtle cheekbone prominence and slight forward midface projection, ` +
-    `(4) improve skin clarity — reduce blemishes and even tone while keeping real skin texture, pores, and natural imperfections. ` +
-    `CRITICAL requirements: preserve the exact original lighting, background, shadows, and color temperature of the photo — do NOT add studio lighting, golden tint, or any color grading. ` +
-    `Keep natural skin texture with visible pores — absolutely no plastic, waxy, or over-smoothed skin. ` +
-    `The output must look like a real candid iPhone photo of the same person, not a retouched portrait or AI render. ` +
-    `All changes must be so subtle that the person would be recognized instantly — same face, slightly better version of themselves.`
+    `Enhance this ${genderNote}${ethnicityNote}${ageNote} to their ideal facial potential. ` +
+    `Make the following improvements while strictly preserving their identity, skin tone, eye color, and hair: ` +
+    `(1) sharpen and define the jawline and chin for a chiseled, well-structured look, ` +
+    `(2) create hunter eyes with a positive canthal tilt and well-defined orbital rims, ` +
+    `(3) improve forward maxilla projection and cheekbone prominence, ` +
+    `(4) clear and even the skin — remove blemishes and redness, but preserve real skin texture, visible pores, and natural micro-imperfections. ` +
+    `The result must be photorealistic and clearly the same person — just their best version. ` +
+    `CRITICAL: preserve the exact original photo lighting, color temperature, and background — absolutely no warm golden tint, no color grading, no studio lighting added. ` +
+    `The skin must look like real human skin, not digital — no plastic sheen, no waxy smoothness, no airbrushed finish.`
   );
 }
 
