@@ -7,6 +7,7 @@ import {
   Alert,
   Pressable,
   Modal,
+  ScrollView,
   StatusBar,
   SafeAreaView,
   ImageBackground,
@@ -21,6 +22,8 @@ import { router } from "expo-router";
 import Svg, { Line, Circle, Rect, Path, Ellipse } from "react-native-svg";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
+import { Sparkles } from "lucide-react-native";
+import { useTenByTen } from "@/store/tenByTen";
 
 // NEW: shared pre-upload compressor (JPEG, max 1080px)
 import { ensureJpegCompressed } from "../../lib/api/media";
@@ -265,6 +268,14 @@ export default function TakePicture() {
   const cameraRef = useRef<CameraView>(null);
 
   const window = useWindowDimensions();
+  const [activePage, setActivePage] = useState(0);
+  const { generatedUri, generatedAt } = useTenByTen();
+  const [genImgValid, setGenImgValid] = useState(false);
+
+  React.useEffect(() => {
+    if (!generatedUri) { setGenImgValid(false); return; }
+    FileSystem.getInfoAsync(generatedUri).then((info) => setGenImgValid(info.exists));
+  }, [generatedUri]);
 
   const headingFontSize = window.width >= 420 ? 34 : window.width >= 360 ? 30 : 28;
 
@@ -494,121 +505,109 @@ export default function TakePicture() {
             </View>
           </View>
 
-          <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 20 }}>
-            <View
-              style={{
-                width: "100%",
-                maxWidth: 400,
-                borderRadius: 24,
-                overflow: "hidden",
-                backgroundColor: "#000000",
+          {/* ── Swipeable card carousel ───────────────────────── */}
+          <View style={{ flex: 1 }}>
+            <ScrollView
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ alignItems: "center" }}
+              onMomentumScrollEnd={(e) => {
+                const page = Math.round(e.nativeEvent.contentOffset.x / window.width);
+                setActivePage(page);
               }}
             >
-              {/* Face image — upper portion of card */}
-              <View style={{ width: "100%", aspectRatio: 0.85, backgroundColor: "#000", overflow: "hidden" }}>
-                <Image
-                  source={require("../../assets/scanimage.jpeg")}
-                  style={{ width: "100%", height: "100%" }}
-                  resizeMode="cover"
-                />
-              </View>
-              {/* Gradient blending image into dark bottom zone — sits outside the image container */}
-              <LinearGradient
-                colors={["transparent", "rgba(0,0,0,0.75)", "#000000"]}
-                locations={[0, 0.5, 1]}
-                style={{
-                  position: "absolute",
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  height: "55%",
-                }}
-                pointerEvents="none"
-              />
 
-              {/* Bottom content: text + CTA */}
-              <View
-                style={{
-                  paddingHorizontal: 20,
-                  paddingBottom: 24,
-                  alignItems: "center",
-                  marginTop: -16,
-                }}
-              >
-                <Text
-                  style={{
-                    color: "#FFFFFF",
-                    textAlign: "center",
-                    fontFamily: Platform.select({
-                      ios: "Poppins-SemiBold",
-                      android: "Poppins-SemiBold",
-                      default: "Poppins-SemiBold",
-                    }),
-                    fontSize: 24,
-                    lineHeight: 32,
-                    letterSpacing: -0.3,
-                    marginBottom: 18,
-                  }}
-                >
-                  Get your accurate{"\n"}facial analysis
-                </Text>
-
-                <View
-                  style={{
-                    width: "88%",
-                    borderRadius: 28,
-                    backgroundColor: "#6B9A1E",
-                    paddingBottom: 6,
-                    shadowColor: ACCENT,
-                    shadowOpacity: 0.5,
-                    shadowRadius: 24,
-                    shadowOffset: { width: 0, height: 10 },
-                    elevation: 12,
-                  }}
-                >
-                  <Pressable
-                    onPress={() => {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                      beginScan();
-                    }}
-                    hitSlop={8}
-                    style={({ pressed }) => ({
-                      height: 56,
-                      borderRadius: 28,
-                      overflow: "hidden",
-                      transform: [{ translateY: pressed ? 5 : 0 }],
-                    })}
-                  >
-                    <LinearGradient
-                      colors={[ACCENT_LIGHT, ACCENT]}
-                      locations={[0, 1]}
-                      start={{ x: 0.5, y: 0 }}
-                      end={{ x: 0.5, y: 1 }}
-                      style={{
-                        flex: 1,
-                        alignItems: "center",
-                        justifyContent: "center",
-                        borderRadius: 28,
-                      }}
-                    >
-                      <Text
-                        style={{
-                          color: BG,
-                          fontFamily: Platform.select({
-                            ios: "Poppins-SemiBold",
-                            android: "Poppins-SemiBold",
-                            default: "Poppins-SemiBold",
-                          }),
-                          fontSize: 18,
-                          lineHeight: 22,
-                        }}
-                      >
-                        Begin scan
-                      </Text>
-                    </LinearGradient>
-                  </Pressable>
+              {/* ── Card 1: Scan ───────────────────────────────── */}
+              <View style={{ width: window.width, paddingHorizontal: 20, alignItems: "center" }}>
+                <View style={{ width: "100%", maxWidth: 400, borderRadius: 24, overflow: "hidden", backgroundColor: "#000000" }}>
+                  <View style={{ width: "100%", aspectRatio: 0.85, backgroundColor: "#000", overflow: "hidden" }}>
+                    <Image source={require("../../assets/scanimage.jpeg")} style={{ width: "100%", height: "100%" }} resizeMode="cover" />
+                  </View>
+                  <LinearGradient colors={["transparent", "rgba(0,0,0,0.75)", "#000000"]} locations={[0, 0.5, 1]} style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: "55%" }} pointerEvents="none" />
+                  <View style={{ paddingHorizontal: 20, paddingBottom: 24, alignItems: "center", marginTop: -16 }}>
+                    <Text style={{ color: "#FFFFFF", textAlign: "center", fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }), fontSize: 24, lineHeight: 32, letterSpacing: -0.3, marginBottom: 18 }}>
+                      Get your accurate{"\n"}facial analysis
+                    </Text>
+                    <View style={{ width: "88%", borderRadius: 28, backgroundColor: "#6B9A1E", paddingBottom: 6, shadowColor: ACCENT, shadowOpacity: 0.5, shadowRadius: 24, shadowOffset: { width: 0, height: 10 }, elevation: 12 }}>
+                      <Pressable onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); beginScan(); }} hitSlop={8} style={({ pressed }) => ({ height: 56, borderRadius: 28, overflow: "hidden", transform: [{ translateY: pressed ? 5 : 0 }] })}>
+                        <LinearGradient colors={[ACCENT_LIGHT, ACCENT]} locations={[0, 1]} start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }} style={{ flex: 1, alignItems: "center", justifyContent: "center", borderRadius: 28 }}>
+                          <Text style={{ color: BG, fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }), fontSize: 18, lineHeight: 22 }}>Begin scan</Text>
+                        </LinearGradient>
+                      </Pressable>
+                    </View>
+                  </View>
                 </View>
               </View>
+
+              {/* ── Card 2: 10/10 ──────────────────────────────── */}
+              <View style={{ width: window.width, paddingHorizontal: 20, alignItems: "center" }}>
+                <View style={{ width: "100%", maxWidth: 400, borderRadius: 24, overflow: "hidden", backgroundColor: "#050508" }}>
+                  {genImgValid && generatedUri ? (
+                    /* State B — has generated image */
+                    <>
+                      <View style={{ width: "100%", aspectRatio: 0.85, backgroundColor: "#000", overflow: "hidden" }}>
+                        <Image source={{ uri: generatedUri }} style={{ width: "100%", height: "100%" }} resizeMode="cover" />
+                      </View>
+                      <LinearGradient colors={["transparent", "rgba(0,0,0,0.82)", "#000000"]} locations={[0, 0.4, 1]} style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: "65%" }} pointerEvents="none" />
+                      <View style={{ paddingHorizontal: 20, paddingBottom: 24, alignItems: "center", marginTop: -54 }}>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 5, marginBottom: 3 }}>
+                          <Sparkles size={11} color={ACCENT} strokeWidth={2} />
+                          <Text style={{ color: ACCENT, fontSize: 10, fontFamily: "Poppins-SemiBold", letterSpacing: 0.8, textTransform: "uppercase" }}>Your 10/10 Self</Text>
+                        </View>
+                        {generatedAt ? (
+                          <Text style={{ color: "rgba(255,255,255,0.42)", fontSize: 11, fontFamily: "Poppins-Regular", marginBottom: 14 }}>
+                            Generated {new Date(generatedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                          </Text>
+                        ) : null}
+                        <View style={{ width: "88%", borderRadius: 28, backgroundColor: "#6B9A1E", paddingBottom: 6, shadowColor: ACCENT, shadowOpacity: 0.4, shadowRadius: 20, shadowOffset: { width: 0, height: 8 }, elevation: 10 }}>
+                          <Pressable onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push("/(tabs)/profile"); }} style={({ pressed }) => ({ height: 50, borderRadius: 28, overflow: "hidden", transform: [{ translateY: pressed ? 5 : 0 }] })}>
+                            <LinearGradient colors={[ACCENT_LIGHT, ACCENT]} locations={[0, 1]} start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }} style={{ flex: 1, alignItems: "center", justifyContent: "center", borderRadius: 28 }}>
+                              <Text style={{ color: BG, fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }), fontSize: 16, lineHeight: 20 }}>View in Profile →</Text>
+                            </LinearGradient>
+                          </Pressable>
+                        </View>
+                        <Pressable onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push("/(tabs)/ten-by-ten"); }} style={{ marginTop: 10 }}>
+                          <Text style={{ color: "rgba(255,255,255,0.38)", fontSize: 13, fontFamily: "Poppins-SemiBold" }}>↻  Regenerate</Text>
+                        </Pressable>
+                      </View>
+                    </>
+                  ) : (
+                    /* State A — no generation yet */
+                    <>
+                      <View style={{ width: "100%", aspectRatio: 0.85, backgroundColor: "#050508", alignItems: "center", justifyContent: "center" }}>
+                        <LinearGradient colors={["rgba(180,243,77,0.10)", "transparent"]} style={StyleSheet.absoluteFillObject} />
+                        <View style={{ width: 84, height: 84, borderRadius: 42, backgroundColor: "rgba(180,243,77,0.08)", borderWidth: 1, borderColor: "rgba(180,243,77,0.20)", alignItems: "center", justifyContent: "center" }}>
+                          <Sparkles size={38} color={ACCENT} strokeWidth={1.5} />
+                        </View>
+                        <Text style={{ color: "rgba(180,243,77,0.45)", fontSize: 11, fontFamily: "Poppins-SemiBold", marginTop: 18, letterSpacing: 1, textTransform: "uppercase" }}>AI Enhancement</Text>
+                      </View>
+                      <LinearGradient colors={["transparent", "rgba(5,5,8,0.85)", "#050508"]} locations={[0, 0.5, 1]} style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: "55%" }} pointerEvents="none" />
+                      <View style={{ paddingHorizontal: 20, paddingBottom: 24, alignItems: "center", marginTop: -16 }}>
+                        <Text style={{ color: "#FFFFFF", textAlign: "center", fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }), fontSize: 24, lineHeight: 32, letterSpacing: -0.3, marginBottom: 18 }}>
+                          Your 10/10{"\n"}self awaits
+                        </Text>
+                        <View style={{ width: "88%", borderRadius: 28, backgroundColor: "#6B9A1E", paddingBottom: 6, shadowColor: ACCENT, shadowOpacity: 0.4, shadowRadius: 20, shadowOffset: { width: 0, height: 8 }, elevation: 10 }}>
+                          <Pressable onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); router.push("/(tabs)/ten-by-ten"); }} style={({ pressed }) => ({ height: 56, borderRadius: 28, overflow: "hidden", transform: [{ translateY: pressed ? 5 : 0 }] })}>
+                            <LinearGradient colors={[ACCENT_LIGHT, ACCENT]} locations={[0, 1]} start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }} style={{ flex: 1, alignItems: "center", justifyContent: "center", borderRadius: 28, flexDirection: "row", gap: 8 }}>
+                              <Sparkles size={18} color={BG} strokeWidth={2} />
+                              <Text style={{ color: BG, fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }), fontSize: 18, lineHeight: 22 }}>Generate My 10/10</Text>
+                            </LinearGradient>
+                          </Pressable>
+                        </View>
+                      </View>
+                    </>
+                  )}
+                </View>
+              </View>
+
+            </ScrollView>
+
+            {/* Pagination dots */}
+            <View style={{ flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 6, marginTop: 10 }}>
+              {[0, 1].map((i) => (
+                <View key={i} style={{ width: activePage === i ? 20 : 6, height: 6, borderRadius: 3, backgroundColor: activePage === i ? ACCENT : "rgba(255,255,255,0.22)" }} />
+              ))}
             </View>
           </View>
         </View>

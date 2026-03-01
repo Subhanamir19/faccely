@@ -2,7 +2,7 @@
 import React from "react";
 import { Tabs } from "expo-router";
 import { Platform } from "react-native";
-import { Scan, CircleCheckBig, Sparkles, UserRound } from "lucide-react-native";
+import { Scan, CircleCheckBig, UserRound } from "lucide-react-native";
 
 const ACTIVE = "#FFFFFF";
 const INACTIVE = "rgba(255,255,255,0.40)";
@@ -52,16 +52,10 @@ export default function TabsLayout() {
         }}
       />
 
-      {/* Tab 3: 10/10 AI enhancement */}
-      <Tabs.Screen
-        name="ten-by-ten"
-        options={{
-          title: "10/10",
-          tabBarIcon: ({ color, size }) => <Sparkles color={color} size={size ?? 22} />,
-        }}
-      />
+      {/* 10/10 — accessible as a screen but not shown in the tab bar */}
+      <Tabs.Screen name="ten-by-ten" options={{ href: null }} />
 
-      {/* Tab 4: profile */}
+      {/* Tab 3: profile */}
       <Tabs.Screen
         name="profile"
         options={{

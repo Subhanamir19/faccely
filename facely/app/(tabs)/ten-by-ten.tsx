@@ -29,7 +29,7 @@ import Animated, {
   withTiming,
   Easing as REasing,
 } from "react-native-reanimated";
-import { Sparkles, RefreshCw, Share2, Camera, Images, X, Maximize2 } from "lucide-react-native";
+import { Sparkles, RefreshCw, Share2, Camera, Images, X, Maximize2, Lock } from "lucide-react-native";
 import { router } from "expo-router";
 import { COLORS, RADII, SP } from "@/lib/tokens";
 import { useScores } from "@/store/scores";
@@ -111,7 +111,7 @@ export default function TenByTenScreen() {
   const promoActivated = useSubscriptionStore((s) => s.promoActivated);
   const hasAccess = revenueCatEntitlement || promoActivated;
 
-  const { generatedUri, generatedAt, loading, error, generate, clear } = useTenByTen();
+  const { generatedUri, generatedAt, loading, error, generate, clear, canGenerate } = useTenByTen();
 
   // User-selected photo (overrides scan photo if set)
   const [selectedImageUri, setSelectedImageUri] = useState<string | null>(null);
@@ -121,6 +121,9 @@ export default function TenByTenScreen() {
 
   // Effective source: user pick → scan photo → null
   const sourceUri = selectedImageUri ?? scanImageUri ?? null;
+
+  // Quota: same photo, both attempts used this month
+  const quotaBlocked = !!sourceUri && !canGenerate(sourceUri);
 
   // Pick from camera roll
   const pickFromLibrary = useCallback(async () => {
@@ -330,24 +333,65 @@ export default function TenByTenScreen() {
           </Animated.View>
         )}
 
+        {/* Saved to Profile hint — appears after generation */}
+        {!loading && !!effectiveGeneratedUri && (
+          <Animated.View entering={FadeIn.duration(300)}>
+            <Pressable
+              onPress={() => router.push("/(tabs)/profile")}
+              style={({ pressed }) => [styles.savedHint, pressed && { opacity: 0.7 }]}
+            >
+              <Text style={styles.savedHintText}>Saved to your Profile →</Text>
+            </Pressable>
+          </Animated.View>
+        )}
+
         {/* Generate / Regenerate CTA */}
         {!loading && (
           <Animated.View entering={FadeInDown.duration(400).delay(180)} style={styles.ctaWrap}>
             {sourceUri ? (
-              <View style={styles.ctaDepth}>
-                <Pressable
-                  onPress={effectiveGeneratedUri ? clear : handleGenerate}
-                  style={({ pressed }) => [
-                    styles.ctaInner,
-                    pressed && { transform: [{ translateY: 4 }] },
-                  ]}
-                >
-                  <Sparkles size={18} color="#0B0B0B" strokeWidth={2} />
-                  <Text style={styles.ctaBtnText}>
-                    {effectiveGeneratedUri ? "Generate New Version" : "Generate My 10/10"}
-                  </Text>
-                </Pressable>
-              </View>
+              quotaBlocked ? (
+                // Quota hit for this photo this month
+                <View style={styles.lockedBox}>
+                  <Lock size={16} color={COLORS.sub} strokeWidth={2} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.lockedText}>
+                      Your 10/10 for this month is done. Follow your daily protocols and come back next month.
+                    </Text>
+                    <Pressable
+                      onPress={() => router.push("/(tabs)/program")}
+                      style={({ pressed }) => [styles.lockedProgramBtn, pressed && { opacity: 0.7 }]}
+                    >
+                      <Text style={styles.lockedProgramBtnText}>Go to my program →</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ) : (
+                <>
+                  {/* Photo tips — shown when regenerating */}
+                  {!!effectiveGeneratedUri && (
+                    <View style={styles.regenTips}>
+                      <Text style={styles.regenTipsTitle}>For best results:</Text>
+                      <Text style={styles.regenTip}>• Face looking straight at camera</Text>
+                      <Text style={styles.regenTip}>• Good lighting, no shadows</Text>
+                      <Text style={styles.regenTip}>• Neutral expression, no glasses</Text>
+                    </View>
+                  )}
+                <View style={styles.ctaDepth}>
+                  <Pressable
+                    onPress={effectiveGeneratedUri ? clear : handleGenerate}
+                    style={({ pressed }) => [
+                      styles.ctaInner,
+                      pressed && { transform: [{ translateY: 4 }] },
+                    ]}
+                  >
+                    <Sparkles size={18} color="#0B0B0B" strokeWidth={2} />
+                    <Text style={styles.ctaBtnText}>
+                      {effectiveGeneratedUri ? "Generate New Version" : "Generate My 10/10"}
+                    </Text>
+                  </Pressable>
+                </View>
+                </>
+              )
             ) : (
               // No photo selected yet
               <View style={styles.noPhotoHint}>
@@ -418,6 +462,17 @@ export default function TenByTenScreen() {
           >
             <Share2 size={18} color="#0B0B0B" strokeWidth={2} />
             <Text style={styles.fsShareText}>Save / Share</Text>
+          </Pressable>
+
+          {/* Motivational CTA */}
+          <Pressable
+            onPress={() => {
+              setFullscreenVisible(false);
+              router.push("/(tabs)/program");
+            }}
+            style={({ pressed }) => [styles.fsEarnBtn, pressed && { opacity: 0.7 }]}
+          >
+            <Text style={styles.fsEarnText}>Let's earn it →</Text>
           </Pressable>
         </View>
       </Modal>
@@ -702,6 +757,69 @@ const styles = StyleSheet.create({
     letterSpacing: -0.2,
   },
 
+  // Quota locked
+  lockedBox: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: SP[3],
+    paddingVertical: SP[4],
+    paddingHorizontal: SP[4],
+    borderRadius: RADII.lg,
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+  },
+  lockedText: {
+    color: "rgba(255,255,255,0.45)",
+    fontSize: 13,
+    fontFamily: "Poppins-Regular",
+    lineHeight: 19,
+  },
+  lockedProgramBtn: {
+    marginTop: SP[3],
+  },
+  lockedProgramBtnText: {
+    color: COLORS.accent,
+    fontSize: 13,
+    fontFamily: "Poppins-SemiBold",
+  },
+
+  // Saved to profile hint
+  savedHint: {
+    alignItems: "center",
+    paddingVertical: SP[2],
+  },
+  savedHintText: {
+    color: COLORS.accent,
+    fontSize: 13,
+    fontFamily: "Poppins-SemiBold",
+  },
+
+  // Regeneration photo tips
+  regenTips: {
+    paddingVertical: SP[3],
+    paddingHorizontal: SP[4],
+    borderRadius: RADII.md,
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    gap: SP[1],
+  },
+  regenTipsTitle: {
+    color: "rgba(255,255,255,0.45)",
+    fontSize: 11,
+    fontFamily: "Poppins-SemiBold",
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+    marginBottom: 2,
+  },
+  regenTip: {
+    color: "rgba(255,255,255,0.55)",
+    fontSize: 12,
+    fontFamily: "Poppins-Regular",
+    lineHeight: 18,
+  },
+
   // No photo hint (replaces CTA when no photo selected)
   noPhotoHint: {
     paddingVertical: SP[5],
@@ -785,6 +903,16 @@ const styles = StyleSheet.create({
     color: "#0B0B0B",
     fontSize: 15,
     fontFamily: "Poppins-SemiBold",
+  },
+  fsEarnBtn: {
+    position: "absolute",
+    bottom: 104,
+  },
+  fsEarnText: {
+    color: "rgba(255,255,255,0.45)",
+    fontSize: 14,
+    fontFamily: "Poppins-SemiBold",
+    letterSpacing: 0.2,
   },
 
   // Gates

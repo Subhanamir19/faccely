@@ -7,6 +7,9 @@ import {
   Image,
   Alert,
 } from "react-native";
+import * as FileSystem from "expo-file-system";
+import { LinearGradient } from "expo-linear-gradient";
+import { Sparkles } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
 import T from "@/components/ui/T";
@@ -24,6 +27,7 @@ import { useSigmaStore } from "@/store/sigma";
 import { useRecommendations } from "@/store/recommendations";
 import { useSubscriptionStore } from "@/store/subscription";
 import { persistAvatarFromUri } from "@/lib/media/avatar";
+import { useTenByTen } from "@/store/tenByTen";
 import { restorePurchases, checkSubscriptionStatus, logoutUser as logoutRevenueCatUser } from "@/lib/revenuecat";
 import { logger } from '@/lib/logger';
 
@@ -74,6 +78,13 @@ export default function ProfileScreen() {
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [restoringPurchases, setRestoringPurchases] = useState(false);
   const [isHydrating, setIsHydrating] = useState(true);
+  const { generatedUri, generatedAt } = useTenByTen();
+  const [heroImgValid, setHeroImgValid] = useState(false);
+
+  useEffect(() => {
+    if (!generatedUri) { setHeroImgValid(false); return; }
+    FileSystem.getInfoAsync(generatedUri).then((info) => setHeroImgValid(info.exists));
+  }, [generatedUri]);
   useEffect(() => {
     let cancelled = false;
     const run = async () => {
@@ -241,6 +252,25 @@ export default function ProfileScreen() {
         {isHydrating ? (
           <T style={styles.hydratingLabel}>Loading profile…</T>
         ) : null}
+
+        {/* ── 10/10 Hero Card ─────────────────────────────── */}
+        {heroImgValid && generatedUri && (
+          <View style={styles.heroCard}>
+            <Image source={{ uri: generatedUri }} style={styles.heroImage} resizeMode="cover" />
+            <LinearGradient colors={["transparent", "rgba(0,0,0,0.78)"]} style={styles.heroGradient} />
+            <View style={styles.heroLabel}>
+              <View style={styles.heroLabelRow}>
+                <Sparkles size={13} color={COLORS.accent} strokeWidth={2} />
+                <T style={styles.heroLabelText}>Your 10/10 Self</T>
+              </View>
+              {generatedAt ? (
+                <T style={styles.heroDateText}>
+                  Generated {new Date(generatedAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+                </T>
+              ) : null}
+            </View>
+          </View>
+        )}
 
         <View style={styles.avatarSection}>
           <View style={styles.avatarRing}>
@@ -470,5 +500,44 @@ const styles = StyleSheet.create({
   },
   subscriptionBtn: {
     width: "100%",
+  },
+  heroCard: {
+    width: "100%",
+    height: 220,
+    borderRadius: 20,
+    overflow: "hidden",
+    backgroundColor: "#111",
+  },
+  heroImage: {
+    width: "100%",
+    height: "100%",
+  },
+  heroGradient: {
+    ...StyleSheet.absoluteFillObject,
+    top: "50%",
+  },
+  heroLabel: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingHorizontal: 16,
+    paddingBottom: 14,
+  },
+  heroLabelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  heroLabelText: {
+    color: COLORS.accent,
+    fontSize: 14,
+    letterSpacing: -0.1,
+  },
+  heroDateText: {
+    color: "rgba(255,255,255,0.5)",
+    fontSize: 11,
+    fontFamily: "Poppins-Regular",
+    marginTop: 2,
   },
 });

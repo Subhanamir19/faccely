@@ -1,5 +1,8 @@
 // facely/store/tenByTen.ts
 // Zustand store for the "You as a 10/10" AI face enhancement feature.
+// Quota: 2 generations per calendar month per source photo.
+//   - Different photo → always allowed (resets same-source counter).
+//   - Same photo: 1 original + 1 courtesy retry, then locked until next month.
 
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
@@ -15,16 +18,29 @@ export type GenerationMetadata = {
   age?: number | null;
 };
 
-type TenByTenState = {
-  // Persisted
-  generatedUri: string | null;   // local file:// URI of the saved image
-  generatedAt: number | null;    // unix timestamp ms
+/** "YYYY-MM" string for the current calendar month */
+function currentMonthKey(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
 
-  // Transient
+type TenByTenState = {
+  // ── Persisted ────────────────────────────────────────────────────────────
+  generatedUri: string | null;   // local file:// URI of saved image
+  generatedAt: number | null;    // unix ms
+
+  // Quota tracking
+  lastSourceUri: string | null;  // source photo used for last generation
+  sameSourceCount: number;       // # of generations with that same source this month
+  monthKey: string | null;       // "YYYY-MM" — when to reset sameSourceCount
+
+  // ── Transient ─────────────────────────────────────────────────────────────
   loading: boolean;
   error: string | null;
 
-  // Actions
+  // ── Actions ───────────────────────────────────────────────────────────────
+  /** Returns true if the user is allowed to generate with the given source URI. */
+  canGenerate: (imageUri: string) => boolean;
   generate: (imageUri: string, metadata: GenerationMetadata) => Promise<void>;
   clear: () => void;
 };
@@ -50,17 +66,41 @@ async function saveImageFromB64(b64: string): Promise<string> {
 
 export const useTenByTen = create<TenByTenState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       generatedUri: null,
       generatedAt: null,
+      lastSourceUri: null,
+      sameSourceCount: 0,
+      monthKey: null,
       loading: false,
       error: null,
 
+      canGenerate: (imageUri: string): boolean => {
+        const { lastSourceUri, sameSourceCount, monthKey } = get();
+        const thisMonth = currentMonthKey();
+        const isNewMonth = monthKey !== thisMonth;
+        const isNewSource = imageUri !== lastSourceUri;
+        // New photo or new month → always OK
+        if (isNewSource || isNewMonth) return true;
+        // Same photo this month: allow up to 2 (original + 1 courtesy retry)
+        return sameSourceCount < 2;
+      },
+
       generate: async (imageUri: string, metadata: GenerationMetadata) => {
+        const { canGenerate, lastSourceUri, sameSourceCount, monthKey } = get();
+
+        if (!canGenerate(imageUri)) {
+          set({
+            error:
+              "You've used both generations for this photo this month. " +
+              "Upload a new photo or come back next month.",
+          });
+          return;
+        }
+
         set({ loading: true, error: null });
 
         try {
-          // Build multipart form — same pattern as /analyze
           const form = new FormData();
           form.append("image", {
             uri: imageUri,
@@ -78,7 +118,7 @@ export const useTenByTen = create<TenByTenState>()(
             method: "POST",
             body: form,
             headers: { Accept: "application/json", ...authHeaders },
-            timeoutMs: LONG_REQUEST_TIMEOUT_MS, // 3 min — gpt-image-1 can be slow
+            timeoutMs: LONG_REQUEST_TIMEOUT_MS,
           });
 
           if (!res.ok) {
@@ -92,7 +132,20 @@ export const useTenByTen = create<TenByTenState>()(
           if (!data?.b64) throw new Error("No image returned from server");
 
           const savedUri = await saveImageFromB64(data.b64);
-          set({ generatedUri: savedUri, generatedAt: Date.now(), loading: false });
+
+          const thisMonth = currentMonthKey();
+          const isNewMonth = monthKey !== thisMonth;
+          const isNewSource = imageUri !== lastSourceUri;
+          const newCount = (isNewMonth || isNewSource) ? 1 : sameSourceCount + 1;
+
+          set({
+            generatedUri: savedUri,
+            generatedAt: Date.now(),
+            loading: false,
+            lastSourceUri: imageUri,
+            sameSourceCount: newCount,
+            monthKey: thisMonth,
+          });
         } catch (err: unknown) {
           const message =
             err instanceof Error ? err.message : "Generation failed. Please try again.";
@@ -108,6 +161,9 @@ export const useTenByTen = create<TenByTenState>()(
       partialize: (state) => ({
         generatedUri: state.generatedUri,
         generatedAt: state.generatedAt,
+        lastSourceUri: state.lastSourceUri,
+        sameSourceCount: state.sameSourceCount,
+        monthKey: state.monthKey,
       }),
     }
   )
