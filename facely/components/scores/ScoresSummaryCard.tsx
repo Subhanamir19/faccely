@@ -1,7 +1,7 @@
 // facely/components/scores/ScoresSummaryCard.tsx
 // Redesigned summary card: profile photo overlapping top + 8 key metrics in compact grid (4x2)
 
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { View, StyleSheet, Animated, Easing, Image, Dimensions } from "react-native";
 import Text from "@/components/ui/T";
 import { COLORS, SP, RADII, TYPE, SIZES } from "@/lib/tokens";
@@ -145,6 +145,29 @@ function MetricCell({ label, score, delay, active, isLarge = false, gender }: Me
   const tierLabel = getTierLabel(label, score);
   const tierColor = getScoreColor(score);
 
+  // Count-up animation — synced with the progress bar timing
+  const countAnim = useRef(new Animated.Value(0)).current;
+  const [displayScore, setDisplayScore] = useState(0);
+
+  useEffect(() => {
+    if (active) {
+      countAnim.setValue(0);
+      const listener = countAnim.addListener(({ value }) => {
+        setDisplayScore(Math.round(value));
+      });
+      Animated.timing(countAnim, {
+        toValue: clamped,
+        duration: 900,
+        delay,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: false,
+      }).start(() => {
+        countAnim.removeListener(listener);
+      });
+      return () => countAnim.removeListener(listener);
+    }
+  }, [active, clamped, delay]);
+
   return (
     <View style={styles.metricCell}>
       <Text style={[styles.metricLabel, isLarge && styles.metricLabelLarge]}>
@@ -152,7 +175,7 @@ function MetricCell({ label, score, delay, active, isLarge = false, gender }: Me
       </Text>
       <View style={styles.scoreRow}>
         <Text style={[styles.metricScore, isLarge && styles.metricScoreLarge]}>
-          {clamped}
+          {displayScore}
         </Text>
         <View style={styles.tierChip}>
           <Text style={[styles.tierChipText, isLarge && styles.tierChipTextLarge]}>
@@ -357,7 +380,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: SP[2],
     paddingVertical: 3,
     borderRadius: 100,
-    overflow: "hidden",
     backgroundColor: "rgba(255,255,255,0.08)",
     flexShrink: 0,
   },

@@ -54,7 +54,7 @@ function buildPrompt(meta: { gender?: string; ethnicity?: string; age?: string }
     `Enhance this ${genderNote}${ethnicityNote}${ageNote} to their ideal facial potential. ` +
     `Make the following improvements while strictly preserving their identity, skin tone, eye color, and hair: ` +
     `(1) sharpen and define the jawline and chin for a chiseled, well-structured look, ` +
-    `(2) create hunter eyes with a positive canthal tilt and well-defined orbital rims, ` +
+    `(2) create hunter eyes with a positive canthal tilt and well-defined orbital rims, eyes color must stay consistent ` +
     `(3) improve forward maxilla projection and cheekbone prominence, ` +
     `(4) clear and even the skin — remove blemishes and redness, but preserve real skin texture, visible pores, and natural micro-imperfections. ` +
     `The result must be photorealistic and clearly the same person — just their best version. ` +

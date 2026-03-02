@@ -29,18 +29,17 @@ type TenByTenState = {
   generatedUri: string | null;   // local file:// URI of saved image
   generatedAt: number | null;    // unix ms
 
-  // Quota tracking
-  lastSourceUri: string | null;  // source photo used for last generation
-  sameSourceCount: number;       // # of generations with that same source this month
-  monthKey: string | null;       // "YYYY-MM" — when to reset sameSourceCount
+  // Quota tracking — 2 total per calendar month, no exceptions
+  monthlyCount: number;          // total generations used this month (0, 1, or 2)
+  monthKey: string | null;       // "YYYY-MM" — resets count when month changes
 
   // ── Transient ─────────────────────────────────────────────────────────────
   loading: boolean;
   error: string | null;
 
   // ── Actions ───────────────────────────────────────────────────────────────
-  /** Returns true if the user is allowed to generate with the given source URI. */
-  canGenerate: (imageUri: string) => boolean;
+  /** Returns true if the user still has generations left this month. */
+  canGenerate: () => boolean;
   generate: (imageUri: string, metadata: GenerationMetadata) => Promise<void>;
   clear: () => void;
 };
@@ -69,31 +68,27 @@ export const useTenByTen = create<TenByTenState>()(
     (set, get) => ({
       generatedUri: null,
       generatedAt: null,
-      lastSourceUri: null,
-      sameSourceCount: 0,
+      monthlyCount: 0,
       monthKey: null,
       loading: false,
       error: null,
 
-      canGenerate: (imageUri: string): boolean => {
-        const { lastSourceUri, sameSourceCount, monthKey } = get();
+      canGenerate: (): boolean => {
+        const { monthlyCount, monthKey } = get();
         const thisMonth = currentMonthKey();
-        const isNewMonth = monthKey !== thisMonth;
-        const isNewSource = imageUri !== lastSourceUri;
-        // New photo or new month → always OK
-        if (isNewSource || isNewMonth) return true;
-        // Same photo this month: allow up to 2 (original + 1 courtesy retry)
-        return sameSourceCount < 2;
+        // New month → count resets
+        if (monthKey !== thisMonth) return true;
+        return monthlyCount < 2;
       },
 
       generate: async (imageUri: string, metadata: GenerationMetadata) => {
-        const { canGenerate, lastSourceUri, sameSourceCount, monthKey } = get();
+        const { canGenerate, monthlyCount, monthKey } = get();
 
-        if (!canGenerate(imageUri)) {
+        if (!canGenerate()) {
           set({
             error:
-              "You've used both generations for this photo this month. " +
-              "Upload a new photo or come back next month.",
+              "You've used both generations for this month. " +
+              "Come back next month to generate again.",
           });
           return;
         }
@@ -135,15 +130,13 @@ export const useTenByTen = create<TenByTenState>()(
 
           const thisMonth = currentMonthKey();
           const isNewMonth = monthKey !== thisMonth;
-          const isNewSource = imageUri !== lastSourceUri;
-          const newCount = (isNewMonth || isNewSource) ? 1 : sameSourceCount + 1;
+          const newCount = isNewMonth ? 1 : monthlyCount + 1;
 
           set({
             generatedUri: savedUri,
             generatedAt: Date.now(),
             loading: false,
-            lastSourceUri: imageUri,
-            sameSourceCount: newCount,
+            monthlyCount: newCount,
             monthKey: thisMonth,
           });
         } catch (err: unknown) {
@@ -161,8 +154,7 @@ export const useTenByTen = create<TenByTenState>()(
       partialize: (state) => ({
         generatedUri: state.generatedUri,
         generatedAt: state.generatedAt,
-        lastSourceUri: state.lastSourceUri,
-        sameSourceCount: state.sameSourceCount,
+        monthlyCount: state.monthlyCount,
         monthKey: state.monthKey,
       }),
     }

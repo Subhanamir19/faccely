@@ -39,6 +39,7 @@ import { hapticLight } from "@/lib/haptics";
 import LimeButton from "@/components/ui/LimeButton";
 import { PurchasesPackage } from "react-native-purchases";
 import { logger } from '@/lib/logger';
+import * as WebBrowser from "expo-web-browser";
 
 const { width } = Dimensions.get("window");
 
@@ -588,7 +589,9 @@ const PaywallScreen: React.FC = () => {
               <View style={styles.legalLinks}>
                 <Text style={styles.legalLink}>Terms of Service</Text>
                 <Text style={styles.legalSeparator}>•</Text>
-                <Text style={styles.legalLink}>Privacy Policy</Text>
+                <Pressable onPress={() => WebBrowser.openBrowserAsync("https://third-tamarillo-756.notion.site/Privacy-Policy-30266c2b427680a29ba5e586b5913999")}>
+                  <Text style={styles.legalLink}>Privacy Policy</Text>
+                </Pressable>
               </View>
             </View>
           </View>

@@ -550,26 +550,27 @@ export default function TakePicture() {
                         <Image source={{ uri: generatedUri }} style={{ width: "100%", height: "100%" }} resizeMode="cover" />
                       </View>
                       <LinearGradient colors={["transparent", "rgba(0,0,0,0.82)", "#000000"]} locations={[0, 0.4, 1]} style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: "65%" }} pointerEvents="none" />
-                      <View style={{ paddingHorizontal: 20, paddingBottom: 24, alignItems: "center", marginTop: -54 }}>
-                        <View style={{ flexDirection: "row", alignItems: "center", gap: 5, marginBottom: 3 }}>
-                          <Sparkles size={11} color={ACCENT} strokeWidth={2} />
-                          <Text style={{ color: ACCENT, fontSize: 10, fontFamily: "Poppins-SemiBold", letterSpacing: 0.8, textTransform: "uppercase" }}>Your 10/10 Self</Text>
+                      <View style={{ paddingHorizontal: 20, paddingBottom: 24, alignItems: "center", marginTop: -16 }}>
+                        {/* Fixed-height block matches Card 1's 2-line title (2×32px + 18px margin) */}
+                        <View style={{ minHeight: 64, justifyContent: "flex-end", alignItems: "center", marginBottom: 18 }}>
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 5, marginBottom: 3 }}>
+                            <Sparkles size={11} color={ACCENT} strokeWidth={2} />
+                            <Text style={{ color: ACCENT, fontSize: 10, fontFamily: "Poppins-SemiBold", letterSpacing: 0.8, textTransform: "uppercase" }}>Your 10/10 Self</Text>
+                          </View>
+                          {generatedAt ? (
+                            <Text style={{ color: "rgba(255,255,255,0.42)", fontSize: 11, fontFamily: "Poppins-Regular" }}>
+                              Generated {new Date(generatedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                            </Text>
+                          ) : null}
                         </View>
-                        {generatedAt ? (
-                          <Text style={{ color: "rgba(255,255,255,0.42)", fontSize: 11, fontFamily: "Poppins-Regular", marginBottom: 14 }}>
-                            Generated {new Date(generatedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                          </Text>
-                        ) : null}
                         <View style={{ width: "88%", borderRadius: 28, backgroundColor: "#6B9A1E", paddingBottom: 6, shadowColor: ACCENT, shadowOpacity: 0.4, shadowRadius: 20, shadowOffset: { width: 0, height: 8 }, elevation: 10 }}>
-                          <Pressable onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push("/(tabs)/profile"); }} style={({ pressed }) => ({ height: 50, borderRadius: 28, overflow: "hidden", transform: [{ translateY: pressed ? 5 : 0 }] })}>
-                            <LinearGradient colors={[ACCENT_LIGHT, ACCENT]} locations={[0, 1]} start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }} style={{ flex: 1, alignItems: "center", justifyContent: "center", borderRadius: 28 }}>
-                              <Text style={{ color: BG, fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }), fontSize: 16, lineHeight: 20 }}>View in Profile →</Text>
+                          <Pressable onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push("/(tabs)/ten-by-ten"); }} style={({ pressed }) => ({ height: 56, borderRadius: 28, overflow: "hidden", transform: [{ translateY: pressed ? 5 : 0 }] })}>
+                            <LinearGradient colors={[ACCENT_LIGHT, ACCENT]} locations={[0, 1]} start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }} style={{ flex: 1, alignItems: "center", justifyContent: "center", borderRadius: 28, flexDirection: "row", gap: 7 }}>
+                              <Sparkles size={15} color={BG} strokeWidth={2} />
+                              <Text style={{ color: BG, fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }), fontSize: 16, lineHeight: 20 }}>Regenerate</Text>
                             </LinearGradient>
                           </Pressable>
                         </View>
-                        <Pressable onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push("/(tabs)/ten-by-ten"); }} style={{ marginTop: 10 }}>
-                          <Text style={{ color: "rgba(255,255,255,0.38)", fontSize: 13, fontFamily: "Poppins-SemiBold" }}>↻  Regenerate</Text>
-                        </Pressable>
                       </View>
                     </>
                   ) : (

@@ -19,7 +19,6 @@ import useMetricSizing from "@/components/layout/useMetricSizing";
 import PillNavButton from "@/components/ui/PillNavButton";
 import Text from "@/components/ui/T";
 import { COLORS, SP } from "@/lib/tokens";
-import { Sparkles, ArrowRight } from "lucide-react-native";
 import { useScores } from "../../store/scores";
 import { useAdvancedAnalysisConsent } from "@/hooks/useAdvancedAnalysisConsent";
 
@@ -156,25 +155,6 @@ export default function ScoreScreen() {
           </MetricCardShell>
         </Animated.View>
 
-        {/* 10/10 potential card */}
-        <Animated.View entering={FadeInDown.duration(400).delay(350)}>
-          <Pressable
-            onPress={() => router.push("/(tabs)/ten-by-ten")}
-            style={({ pressed }) => [styles.potentialCard, pressed && { opacity: 0.82 }]}
-          >
-            <View style={styles.potentialLeft}>
-              <View style={styles.potentialIconWrap}>
-                <Sparkles size={16} color={COLORS.accent} strokeWidth={2} />
-              </View>
-              <View>
-                <Text style={styles.potentialTitle}>See your 10/10 potential</Text>
-                <Text style={styles.potentialSub}>AI-enhanced version of your face</Text>
-              </View>
-            </View>
-            <ArrowRight size={16} color={COLORS.accent} strokeWidth={2.5} />
-          </Pressable>
-        </Animated.View>
-
         {/* Footer with buttons */}
         <Animated.View
           entering={FadeInDown.duration(400).delay(400)}
@@ -235,42 +215,4 @@ const styles = StyleSheet.create({
     gap: SP[3],
   },
 
-  // 10/10 card
-  potentialCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginTop: SP[4],
-    paddingVertical: SP[3],
-    paddingHorizontal: SP[4],
-    borderRadius: 18,
-    backgroundColor: "rgba(180,243,77,0.06)",
-    borderWidth: 1,
-    borderColor: "rgba(180,243,77,0.20)",
-  },
-  potentialLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SP[3],
-  },
-  potentialIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "rgba(180,243,77,0.10)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  potentialTitle: {
-    color: COLORS.text,
-    fontSize: 13,
-    fontFamily: "Poppins-SemiBold",
-    letterSpacing: -0.1,
-  },
-  potentialSub: {
-    color: COLORS.sub,
-    fontSize: 11,
-    fontFamily: "Poppins-Regular",
-    marginTop: 1,
-  },
 });

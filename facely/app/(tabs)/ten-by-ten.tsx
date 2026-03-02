@@ -3,18 +3,19 @@
 // Shows the user what they could look like with a chiseled jawline,
 // hunter eyes, fixed maxilla, and clear skin.
 
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useRef, useState } from "react";
 import {
   Image,
   Modal,
+  PanResponder,
   Pressable,
   SafeAreaView,
   ScrollView,
-  Share,
   StatusBar,
   StyleSheet,
   Text,
   View,
+  useWindowDimensions,
 } from "react-native";
 
 import * as FileSystem from "expo-file-system";
@@ -29,13 +30,15 @@ import Animated, {
   withTiming,
   Easing as REasing,
 } from "react-native-reanimated";
-import { Sparkles, RefreshCw, Share2, Camera, Images, X, Maximize2, Lock } from "lucide-react-native";
+import { Sparkles, RefreshCw, Camera, Images, X, Maximize2, Lock, ChevronLeft, ChevronRight } from "lucide-react-native";
+import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
 import { COLORS, RADII, SP } from "@/lib/tokens";
 import { useScores } from "@/store/scores";
 import { useOnboarding } from "@/store/onboarding";
 import { useSubscriptionStore } from "@/store/subscription";
 import { useTenByTen } from "@/store/tenByTen";
+import { useTenByTenConsent } from "@/hooks/useTenByTenConsent";
 
 // ---------------------------------------------------------------------------
 // Loading pulse animation
@@ -77,6 +80,43 @@ function PulsingOrb() {
 }
 
 // ---------------------------------------------------------------------------
+// Shimmer skeleton for the "After" frame while generating
+// ---------------------------------------------------------------------------
+
+function ShimmerPlaceholder() {
+  const tx = useSharedValue(-160);
+
+  React.useEffect(() => {
+    tx.value = withRepeat(
+      withTiming(350, { duration: 1200, easing: REasing.linear }),
+      -1,
+      false
+    );
+  }, []);
+
+  const shimmerStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: tx.value }],
+  }));
+
+  return (
+    <View style={{ flex: 1, backgroundColor: "#111", overflow: "hidden" }}>
+      <Animated.View
+        style={[
+          {
+            position: "absolute",
+            top: 0,
+            bottom: 0,
+            width: 100,
+            backgroundColor: "rgba(180,243,77,0.07)",
+          },
+          shimmerStyle,
+        ]}
+      />
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Pro gate
 // ---------------------------------------------------------------------------
 
@@ -112,6 +152,7 @@ export default function TenByTenScreen() {
   const hasAccess = revenueCatEntitlement || promoActivated;
 
   const { generatedUri, generatedAt, loading, error, generate, clear, canGenerate } = useTenByTen();
+  const { checkAndPromptConsent, ConsentModal } = useTenByTenConsent();
 
   // User-selected photo (overrides scan photo if set)
   const [selectedImageUri, setSelectedImageUri] = useState<string | null>(null);
@@ -119,11 +160,59 @@ export default function TenByTenScreen() {
   // Full-screen viewer
   const [fullscreenVisible, setFullscreenVisible] = useState(false);
 
+  // Drag slider
+  const { width: winWidth, height: winHeight } = useWindowDimensions();
+  const SLIDER_W = winWidth - SP[5] * 2;
+  const SLIDER_H = Math.round(SLIDER_W * 1.25);
+  const HANDLE_R = 20;
+  const initX = SLIDER_W / 2;
+  const sliderXRef    = useRef(initX);
+  const gestureStartX = useRef(initX);
+  const [sliderX, setSliderX] = useState(initX);
+  const pan = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder:  () => true,
+      onPanResponderGrant: () => {
+        gestureStartX.current = sliderXRef.current;
+      },
+      onPanResponderMove: (_, { dx }) => {
+        const next = Math.max(0, Math.min(SLIDER_W, gestureStartX.current + dx));
+        sliderXRef.current = next;
+        setSliderX(next);
+      },
+    })
+  ).current;
+
+  // Fullscreen comparison slider (separate PanResponder — uses full screen width)
+  // Fullscreen card dimensions — constrained, not truly fullscreen
+  const fsCardW = winWidth - 48;
+  const fsCardH = Math.min(Math.round(fsCardW * (4 / 3)), winHeight * 0.72);
+
+  const fsInitX = fsCardW / 2;
+  const fsSliderXRef    = useRef(fsInitX);
+  const fsGestureStartX = useRef(fsInitX);
+  const [fsSliderX, setFsSliderX] = useState(fsInitX);
+  const fsPan = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder:  () => true,
+      onPanResponderGrant: () => {
+        fsGestureStartX.current = fsSliderXRef.current;
+      },
+      onPanResponderMove: (_, { dx }) => {
+        const next = Math.max(0, Math.min(fsCardW, fsGestureStartX.current + dx));
+        fsSliderXRef.current = next;
+        setFsSliderX(next);
+      },
+    })
+  ).current;
+
   // Effective source: user pick → scan photo → null
   const sourceUri = selectedImageUri ?? scanImageUri ?? null;
 
   // Quota: same photo, both attempts used this month
-  const quotaBlocked = !!sourceUri && !canGenerate(sourceUri);
+  const quotaBlocked = !canGenerate();
 
   // Pick from camera roll
   const pickFromLibrary = useCallback(async () => {
@@ -154,22 +243,14 @@ export default function TenByTenScreen() {
 
   const handleGenerate = useCallback(async () => {
     if (!sourceUri) return;
+    const agreed = await checkAndPromptConsent();
+    if (!agreed) return;
     await generate(sourceUri, {
       gender: onboardingData?.gender ?? null,
       ethnicity: onboardingData?.ethnicity ?? null,
       age: typeof onboardingData?.age === "number" ? onboardingData.age : null,
     });
-  }, [sourceUri, onboardingData, generate]);
-
-  // Opens the native share sheet — includes "Save Image" on iOS/Android
-  const handleShare = useCallback(async () => {
-    if (!generatedUri) return;
-    try {
-      await Share.share({ url: generatedUri, title: "My 10/10 Self" });
-    } catch {
-      // user cancelled
-    }
-  }, [generatedUri]);
+  }, [sourceUri, onboardingData, generate, checkAndPromptConsent]);
 
   // Determine if the saved generated image file still exists
   const [fileValid, setFileValid] = React.useState<boolean | null>(null);
@@ -179,6 +260,17 @@ export default function TenByTenScreen() {
   }, [generatedUri]);
 
   const effectiveGeneratedUri = generatedUri && fileValid ? generatedUri : null;
+
+  // Haptic feedback when generation lands
+  const prevGeneratedRef = useRef<string | null>(null);
+  React.useEffect(() => {
+    if (effectiveGeneratedUri && effectiveGeneratedUri !== prevGeneratedRef.current) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      prevGeneratedRef.current = effectiveGeneratedUri;
+      // Auto-open fullscreen comparison so user immediately sees before/after
+      setFullscreenVisible(true);
+    }
+  }, [effectiveGeneratedUri]);
 
   // Pro gate
   if (!hasAccess) return (
@@ -200,20 +292,58 @@ export default function TenByTenScreen() {
           </View>
           <Text style={styles.headerTitle}>You as a 10/10</Text>
           <Text style={styles.headerSub}>
-            See your face with a chiseled jawline, hunter eyes,{"\n"}
-            forward maxilla, and flawless skin.
+            See the version of yourself that this program is built to help you become.
           </Text>
         </Animated.View>
 
         {/* Loading state */}
         {loading && (
-          <Animated.View entering={FadeIn.duration(300)} style={styles.loadingWrap}>
-            <PulsingOrb />
-            <Text style={styles.loadingTitle}>Generating your 10/10...</Text>
-            <Text style={styles.loadingSub}>
-              Our AI is sculpting your ideal self.{"\n"}This takes 15–30 seconds.
-            </Text>
-          </Animated.View>
+          sourceUri ? (
+            /* Shimmer side-by-side — user sees their photo + animated After frame */
+            <Animated.View entering={FadeIn.duration(300)} style={{ gap: SP[4] }}>
+              <View style={styles.comparisonWrap}>
+                {/* Before */}
+                <View style={styles.photoCol}>
+                  <Text style={styles.photoLabel}>Before</Text>
+                  <View style={styles.photoFrame}>
+                    <Image source={{ uri: sourceUri }} style={styles.photo} resizeMode="cover" />
+                    <View style={styles.photoOverlay}>
+                      <Text style={styles.photoOverlayText}>You now</Text>
+                    </View>
+                  </View>
+                </View>
+                {/* Divider */}
+                <View style={styles.divider}>
+                  <View style={styles.dividerLine} />
+                  <View style={styles.dividerBadge}>
+                    <Sparkles size={12} color={COLORS.accent} strokeWidth={2} />
+                  </View>
+                  <View style={styles.dividerLine} />
+                </View>
+                {/* After — shimmer skeleton */}
+                <View style={styles.photoCol}>
+                  <Text style={styles.photoLabel}>After</Text>
+                  <View style={styles.photoFrame}>
+                    <ShimmerPlaceholder />
+                  </View>
+                </View>
+              </View>
+              <View style={styles.loadingWrap}>
+                <PulsingOrb />
+                <Text style={styles.loadingTitle}>Sculpting your 10/10...</Text>
+                <Text style={styles.loadingSub}>This takes 15–30 seconds.</Text>
+              </View>
+            </Animated.View>
+          ) : (
+            /* No photo selected — centered orb */
+            <Animated.View entering={FadeIn.duration(300)} style={styles.loadingWrap}>
+              <PulsingOrb />
+              <Text style={styles.loadingTitle}>Generating your 10/10...</Text>
+              <Text style={styles.loadingSub}>
+                Our AI is sculpting your ideal self.{"\n"}This takes 15–30 seconds.
+              </Text>
+            </Animated.View>
+          )
         )}
 
         {/* Error state */}
@@ -232,45 +362,64 @@ export default function TenByTenScreen() {
 
         {/* Before / After comparison */}
         {!loading && (
-          <Animated.View
-            entering={FadeInDown.duration(400).delay(100)}
-            style={styles.comparisonWrap}
-          >
-            {/* Before */}
-            <View style={styles.photoCol}>
-              <Text style={styles.photoLabel}>Before</Text>
-              <View style={styles.photoFrame}>
-                {sourceUri ? (
-                  <>
-                    <Image source={{ uri: sourceUri }} style={styles.photo} resizeMode="cover" />
-                    <View style={styles.photoOverlay}>
-                      <Text style={styles.photoOverlayText}>You now</Text>
-                    </View>
-                  </>
-                ) : (
-                  // No photo yet — show pick options inside the frame
-                  <View style={styles.photoPickerPlaceholder}>
-                    <Pressable
-                      onPress={pickFromLibrary}
-                      style={({ pressed }) => [styles.pickBtn, pressed && { opacity: 0.7 }]}
-                    >
-                      <Images size={22} color={COLORS.accent} strokeWidth={1.5} />
-                      <Text style={styles.pickBtnText}>Library</Text>
-                    </Pressable>
-                    <View style={styles.pickSep} />
-                    <Pressable
-                      onPress={takePhoto}
-                      style={({ pressed }) => [styles.pickBtn, pressed && { opacity: 0.7 }]}
-                    >
-                      <Camera size={22} color={COLORS.accent} strokeWidth={1.5} />
-                      <Text style={styles.pickBtnText}>Camera</Text>
-                    </Pressable>
-                  </View>
-                )}
-              </View>
+          <Animated.View entering={FadeInDown.duration(400).delay(100)}>
+            {effectiveGeneratedUri && sourceUri ? (
+              /* ── Drag slider (both images available) ────────────── */
+              <View style={{ gap: SP[3] }}>
+                <View
+                  style={[styles.sliderContainer, { width: SLIDER_W, height: SLIDER_H }]}
+                  {...pan.panHandlers}
+                >
+                  {/* After image — base layer */}
+                  <Image
+                    source={{ uri: effectiveGeneratedUri }}
+                    style={{ width: SLIDER_W, height: SLIDER_H }}
+                    resizeMode="cover"
+                  />
 
-              {/* Change photo buttons below frame */}
-              {sourceUri && (
+                  {/* Before image — clipped overlay */}
+                  <View style={[styles.sliderClip, { width: sliderX, height: SLIDER_H }]}>
+                    <Image
+                      source={{ uri: sourceUri }}
+                      style={{ width: SLIDER_W, height: SLIDER_H }}
+                      resizeMode="cover"
+                    />
+                  </View>
+
+                  {/* BEFORE badge */}
+                  <View style={styles.sliderBadgeLeft}>
+                    <Text style={styles.sliderBadgeText}>BEFORE</Text>
+                  </View>
+
+                  {/* AFTER badge */}
+                  <View style={styles.sliderBadgeRight}>
+                    <Text style={[styles.sliderBadgeText, { color: COLORS.accent }]}>AFTER</Text>
+                  </View>
+
+                  {/* Divider line */}
+                  <View style={[styles.sliderDivider, { left: sliderX - 1, height: SLIDER_H }]} />
+
+                  {/* Drag handle */}
+                  <View
+                    style={[
+                      styles.sliderHandle,
+                      { left: sliderX - HANDLE_R, top: SLIDER_H / 2 - HANDLE_R },
+                    ]}
+                  >
+                    <ChevronLeft size={13} color="#0B0B0B" strokeWidth={2.5} />
+                    <ChevronRight size={13} color="#0B0B0B" strokeWidth={2.5} />
+                  </View>
+
+                  {/* Expand button */}
+                  <Pressable
+                    onPress={() => setFullscreenVisible(true)}
+                    style={({ pressed }) => [styles.sliderExpandBtn, pressed && { opacity: 0.7 }]}
+                  >
+                    <Maximize2 size={14} color="#FFFFFF" strokeWidth={2} />
+                  </Pressable>
+                </View>
+
+                {/* Change photo row */}
                 <View style={styles.changePhotoRow}>
                   <Pressable
                     onPress={pickFromLibrary}
@@ -287,49 +436,82 @@ export default function TenByTenScreen() {
                     <Text style={styles.changeBtnText}>Camera</Text>
                   </Pressable>
                 </View>
-              )}
-            </View>
-
-            {/* Divider */}
-            <View style={styles.divider}>
-              <View style={styles.dividerLine} />
-              <View style={styles.dividerBadge}>
-                <Sparkles size={12} color={COLORS.accent} strokeWidth={2} />
               </View>
-              <View style={styles.dividerLine} />
-            </View>
+            ) : (
+              /* ── No generated image: side-by-side picker layout ── */
+              <View style={styles.comparisonWrap}>
+                {/* Before */}
+                <View style={styles.photoCol}>
+                  <Text style={styles.photoLabel}>Before</Text>
+                  <View style={styles.photoFrame}>
+                    {sourceUri ? (
+                      <>
+                        <Image source={{ uri: sourceUri }} style={styles.photo} resizeMode="cover" />
+                        <View style={styles.photoOverlay}>
+                          <Text style={styles.photoOverlayText}>You now</Text>
+                        </View>
+                      </>
+                    ) : (
+                      <View style={styles.photoPickerPlaceholder}>
+                        <Pressable
+                          onPress={pickFromLibrary}
+                          style={({ pressed }) => [styles.pickBtn, pressed && { opacity: 0.7 }]}
+                        >
+                          <Images size={22} color={COLORS.accent} strokeWidth={1.5} />
+                          <Text style={styles.pickBtnText}>Library</Text>
+                        </Pressable>
+                        <View style={styles.pickSep} />
+                        <Pressable
+                          onPress={takePhoto}
+                          style={({ pressed }) => [styles.pickBtn, pressed && { opacity: 0.7 }]}
+                        >
+                          <Camera size={22} color={COLORS.accent} strokeWidth={1.5} />
+                          <Text style={styles.pickBtnText}>Camera</Text>
+                        </Pressable>
+                      </View>
+                    )}
+                  </View>
+                  {sourceUri && (
+                    <View style={styles.changePhotoRow}>
+                      <Pressable
+                        onPress={pickFromLibrary}
+                        style={({ pressed }) => [styles.changeBtn, pressed && { opacity: 0.7 }]}
+                      >
+                        <Images size={12} color="rgba(255,255,255,0.55)" strokeWidth={2} />
+                        <Text style={styles.changeBtnText}>Library</Text>
+                      </Pressable>
+                      <Pressable
+                        onPress={takePhoto}
+                        style={({ pressed }) => [styles.changeBtn, pressed && { opacity: 0.7 }]}
+                      >
+                        <Camera size={12} color="rgba(255,255,255,0.55)" strokeWidth={2} />
+                        <Text style={styles.changeBtnText}>Camera</Text>
+                      </Pressable>
+                    </View>
+                  )}
+                </View>
 
-            {/* After */}
-            <View style={styles.photoCol}>
-              <Text style={styles.photoLabel}>After</Text>
-              <Pressable
-                onPress={() => effectiveGeneratedUri && setFullscreenVisible(true)}
-                style={styles.photoFrame}
-              >
-                {effectiveGeneratedUri ? (
-                  <Image
-                    source={{ uri: effectiveGeneratedUri }}
-                    style={styles.photo}
-                    resizeMode="cover"
-                  />
-                ) : (
-                  <View style={styles.photoPlaceholder}>
-                    <Sparkles size={28} color="rgba(180,243,77,0.3)" strokeWidth={1.5} />
-                    <Text style={styles.placeholderText}>
-                      {loading ? "Generating..." : "Your 10/10 self"}
-                    </Text>
+                {/* Divider */}
+                <View style={styles.divider}>
+                  <View style={styles.dividerLine} />
+                  <View style={styles.dividerBadge}>
+                    <Sparkles size={12} color={COLORS.accent} strokeWidth={2} />
                   </View>
-                )}
-                {effectiveGeneratedUri && (
-                  <View style={[styles.photoOverlay, styles.photoOverlayAccent]}>
-                    <Maximize2 size={10} color="#0B0B0B" strokeWidth={2.5} style={{ marginRight: 4 }} />
-                    <Text style={[styles.photoOverlayText, { color: "#0B0B0B" }]}>
-                      Tap to expand
-                    </Text>
+                  <View style={styles.dividerLine} />
+                </View>
+
+                {/* After placeholder */}
+                <View style={styles.photoCol}>
+                  <Text style={styles.photoLabel}>After</Text>
+                  <View style={styles.photoFrame}>
+                    <View style={styles.photoPlaceholder}>
+                      <Sparkles size={28} color="rgba(180,243,77,0.3)" strokeWidth={1.5} />
+                      <Text style={styles.placeholderText}>Your 10/10 self</Text>
+                    </View>
                   </View>
-                )}
-              </Pressable>
-            </View>
+                </View>
+              </View>
+            )}
           </Animated.View>
         )}
 
@@ -401,18 +583,6 @@ export default function TenByTenScreen() {
               </View>
             )}
 
-            {/* Share / Save button */}
-            {effectiveGeneratedUri && (
-              <Animated.View entering={FadeIn.duration(300)} style={styles.actionRow}>
-                <Pressable
-                  onPress={handleShare}
-                  style={({ pressed }) => [styles.actionBtn, pressed && { opacity: 0.7 }]}
-                >
-                  <Share2 size={16} color={COLORS.text} strokeWidth={2} />
-                  <Text style={styles.actionBtnText}>Save / Share</Text>
-                </Pressable>
-              </Animated.View>
-            )}
           </Animated.View>
         )}
 
@@ -421,12 +591,14 @@ export default function TenByTenScreen() {
           entering={FadeInDown.duration(300).delay(300)}
           style={styles.finePrint}
         >
-          AI-generated visualization for motivational purposes only.
-          Results are approximate and not medically accurate.
+          Results are approximate and for motivational purposes only.
         </Animated.Text>
       </ScrollView>
 
-      {/* Full-screen image viewer */}
+      {/* One-time consent modal */}
+      <ConsentModal />
+
+      {/* Full-screen comparison viewer */}
       <Modal
         visible={fullscreenVisible}
         transparent
@@ -435,45 +607,80 @@ export default function TenByTenScreen() {
         onRequestClose={() => setFullscreenVisible(false)}
       >
         <View style={styles.fsBackdrop}>
-          {effectiveGeneratedUri && (
-            <Image
-              source={{ uri: effectiveGeneratedUri }}
-              style={styles.fsImage}
-              resizeMode="contain"
-            />
-          )}
+          <View style={[styles.fsCardWrap, { width: fsCardW }]}>
+            {/* Comparison slider — before on left, after on right */}
+            {effectiveGeneratedUri && sourceUri ? (
+              <View
+                style={[styles.fsCard, { width: fsCardW, height: fsCardH }]}
+                {...fsPan.panHandlers}
+              >
+                {/* After image — base layer */}
+                <Image
+                  source={{ uri: effectiveGeneratedUri }}
+                  style={{ width: fsCardW, height: fsCardH }}
+                  resizeMode="cover"
+                />
 
-          {/* Close button */}
-          <Pressable
-            onPress={() => setFullscreenVisible(false)}
-            style={({ pressed }) => [styles.fsClose, pressed && { opacity: 0.7 }]}
-          >
-            <X size={20} color="#FFFFFF" strokeWidth={2.5} />
-          </Pressable>
+                {/* Before image — clipped overlay */}
+                <View style={[styles.fsSliderClip, { width: fsSliderX, height: fsCardH }]}>
+                  <Image
+                    source={{ uri: sourceUri }}
+                    style={{ width: fsCardW, height: fsCardH }}
+                    resizeMode="cover"
+                  />
+                </View>
 
-          {/* Share / Save button */}
-          <Pressable
-            onPress={async () => {
-              if (!effectiveGeneratedUri) return;
-              try { await Share.share({ url: effectiveGeneratedUri, title: "My 10/10 Self" }); }
-              catch { /* cancelled */ }
-            }}
-            style={({ pressed }) => [styles.fsShare, pressed && { opacity: 0.7 }]}
-          >
-            <Share2 size={18} color="#0B0B0B" strokeWidth={2} />
-            <Text style={styles.fsShareText}>Save / Share</Text>
-          </Pressable>
+                {/* BEFORE badge */}
+                <View style={styles.sliderBadgeLeft}>
+                  <Text style={styles.sliderBadgeText}>BEFORE</Text>
+                </View>
 
-          {/* Motivational CTA */}
-          <Pressable
-            onPress={() => {
-              setFullscreenVisible(false);
-              router.push("/(tabs)/program");
-            }}
-            style={({ pressed }) => [styles.fsEarnBtn, pressed && { opacity: 0.7 }]}
-          >
-            <Text style={styles.fsEarnText}>Let's earn it →</Text>
-          </Pressable>
+                {/* AFTER badge */}
+                <View style={styles.sliderBadgeRight}>
+                  <Text style={[styles.sliderBadgeText, { color: COLORS.accent }]}>AFTER</Text>
+                </View>
+
+                {/* Divider line */}
+                <View style={[styles.fsDivider, { left: fsSliderX - 1 }]} />
+
+                {/* Drag handle */}
+                <View
+                  style={[
+                    styles.sliderHandle,
+                    { left: fsSliderX - HANDLE_R, top: fsCardH / 2 - HANDLE_R },
+                  ]}
+                >
+                  <ChevronLeft size={13} color="#0B0B0B" strokeWidth={2.5} />
+                  <ChevronRight size={13} color="#0B0B0B" strokeWidth={2.5} />
+                </View>
+              </View>
+            ) : effectiveGeneratedUri ? (
+              <Image
+                source={{ uri: effectiveGeneratedUri }}
+                style={[styles.fsImage, { width: fsCardW, height: fsCardH }]}
+                resizeMode="cover"
+              />
+            ) : null}
+
+            {/* Close button — top-right corner of card */}
+            <Pressable
+              onPress={() => setFullscreenVisible(false)}
+              style={({ pressed }) => [styles.fsClose, pressed && { opacity: 0.7 }]}
+            >
+              <X size={20} color="#FFFFFF" strokeWidth={2.5} />
+            </Pressable>
+
+            {/* Motivational CTA — below card */}
+            <Pressable
+              onPress={() => {
+                setFullscreenVisible(false);
+                router.push("/(tabs)/program");
+              }}
+              style={({ pressed }) => [styles.fsEarnBtn, pressed && { opacity: 0.7 }]}
+            >
+              <Text style={styles.fsEarnText}>Let's earn it →</Text>
+            </Pressable>
+          </View>
         </View>
       </Modal>
     </SafeAreaView>
@@ -527,8 +734,8 @@ const styles = StyleSheet.create({
   // Loading
   loadingWrap: {
     alignItems: "center",
-    paddingVertical: SP[8],
-    gap: SP[4],
+    paddingVertical: SP[4],
+    gap: SP[3],
   },
   orb: {
     width: 96,
@@ -832,29 +1039,6 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 
-  // Action row
-  actionRow: {
-    flexDirection: "row",
-    gap: SP[3],
-  },
-  actionBtn: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: SP[2],
-    paddingVertical: SP[3],
-    borderRadius: RADII.lg,
-    backgroundColor: "rgba(255,255,255,0.07)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
-  },
-  actionBtnText: {
-    color: COLORS.text,
-    fontSize: 14,
-    fontFamily: "Poppins-SemiBold",
-  },
-
   // Fine print
   finePrint: {
     color: "rgba(255,255,255,0.2)",
@@ -867,52 +1051,133 @@ const styles = StyleSheet.create({
   // Full-screen viewer
   fsBackdrop: {
     flex: 1,
-    backgroundColor: "#000000",
+    backgroundColor: "rgba(0,0,0,0.92)",
     alignItems: "center",
     justifyContent: "center",
   },
+  fsCardWrap: {
+    gap: SP[4],
+    alignItems: "center",
+  },
+  fsCard: {
+    borderRadius: RADII.xl,
+    overflow: "hidden",
+    backgroundColor: "#111",
+  },
   fsImage: {
-    width: "100%",
-    height: "100%",
+    borderRadius: RADII.xl,
+    overflow: "hidden",
   },
   fsClose: {
     position: "absolute",
-    top: 56,
-    right: 20,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "rgba(0,0,0,0.6)",
+    top: 12,
+    right: 12,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(0,0,0,0.55)",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.15)",
     alignItems: "center",
     justifyContent: "center",
   },
-  fsShare: {
-    position: "absolute",
-    bottom: 48,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SP[2],
-    paddingVertical: SP[3],
-    paddingHorizontal: SP[6],
-    borderRadius: 26,
-    backgroundColor: COLORS.accent,
-  },
-  fsShareText: {
-    color: "#0B0B0B",
-    fontSize: 15,
-    fontFamily: "Poppins-SemiBold",
-  },
   fsEarnBtn: {
-    position: "absolute",
-    bottom: 104,
+    paddingVertical: SP[2],
   },
   fsEarnText: {
     color: "rgba(255,255,255,0.45)",
     fontSize: 14,
     fontFamily: "Poppins-SemiBold",
     letterSpacing: 0.2,
+  },
+
+  // Drag slider
+  sliderContainer: {
+    borderRadius: RADII.xl,
+    overflow: "hidden",
+    backgroundColor: "#111",
+    alignSelf: "center",
+  },
+  sliderClip: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    overflow: "hidden",
+  },
+  sliderBadgeLeft: {
+    position: "absolute",
+    top: 12,
+    left: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 8,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+  },
+  sliderBadgeRight: {
+    position: "absolute",
+    top: 12,
+    right: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 8,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    borderWidth: 1,
+    borderColor: "rgba(180,243,77,0.22)",
+  },
+  sliderBadgeText: {
+    color: "rgba(255,255,255,0.85)",
+    fontSize: 9,
+    fontFamily: "Poppins-SemiBold",
+    letterSpacing: 0.8,
+  },
+  sliderDivider: {
+    position: "absolute",
+    top: 0,
+    width: 2,
+    backgroundColor: "rgba(255,255,255,0.88)",
+  },
+  sliderHandle: {
+    position: "absolute",
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    shadowColor: "#000",
+    shadowOpacity: 0.28,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 6,
+  },
+  sliderExpandBtn: {
+    position: "absolute",
+    bottom: 12,
+    right: 10,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.15)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  fsSliderClip: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    overflow: "hidden",
+  },
+  fsDivider: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    width: 2,
+    backgroundColor: "rgba(255,255,255,0.88)",
   },
 
   // Gates
