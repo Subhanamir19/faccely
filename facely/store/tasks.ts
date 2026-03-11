@@ -297,7 +297,7 @@ export const useTasksStore = create<TasksState>()(
     }),
     {
       name: "sigma_tasks_v1",
-      version: 3,
+      version: 4,
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({
         today: state.today,
@@ -342,6 +342,11 @@ export const useTasksStore = create<TasksState>()(
         // v2 → v3: removed session/morning/evening architecture.
         // Wipe today so initToday regenerates with the new Exercises/Protocols format.
         if (version <= 2 && persisted) {
+          persisted.today = null;
+        }
+        // v3 → v4: replaced 20-exercise catalog with 15 video-based exercises.
+        // Wipe today so initToday regenerates with updated exercise IDs.
+        if (version <= 3 && persisted) {
           persisted.today = null;
         }
         return persisted as any;

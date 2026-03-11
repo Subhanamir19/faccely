@@ -95,31 +95,39 @@ function LimeButton({
     );
   }
   return (
-    <View style={[{ alignSelf: "center", width: "86%", borderRadius: 26, backgroundColor: "#6B9A1E", paddingBottom: DEPTH }, style]}>
+    <View style={[{ alignSelf: "center", width: "86%", borderRadius: 28, backgroundColor: "#6B9A1E", paddingBottom: DEPTH, shadowColor: ACCENT, shadowOpacity: 0.5, shadowRadius: 24, shadowOffset: { width: 0, height: 10 }, elevation: 12 }, style]}>
       <Pressable
         onPress={onPress}
+        hitSlop={8}
         style={({ pressed }) => ({
-          borderRadius: 26,
-          paddingVertical: 16,
-          alignItems: "center",
-          justifyContent: "center",
-          backgroundColor: ACCENT,
-          transform: [{ translateY: pressed ? DEPTH - 1 : 0 }],
+          height: 56,
+          borderRadius: 28,
+          overflow: "hidden",
+          transform: [{ translateY: pressed ? DEPTH : 0 }],
         })}
       >
-        <Text
-          style={{
-            color: BG,
-            fontSize: 16,
-            fontFamily: Platform.select({
-              ios: "Poppins-SemiBold",
-              android: "Poppins-SemiBold",
-              default: "Poppins-SemiBold",
-            }),
-          }}
+        <LinearGradient
+          colors={[ACCENT_LIGHT, ACCENT]}
+          locations={[0, 1]}
+          start={{ x: 0.5, y: 0 }}
+          end={{ x: 0.5, y: 1 }}
+          style={{ flex: 1, alignItems: "center", justifyContent: "center", borderRadius: 28 }}
         >
-          {title}
-        </Text>
+          <Text
+            style={{
+              color: BG,
+              fontSize: 18,
+              lineHeight: 22,
+              fontFamily: Platform.select({
+                ios: "Poppins-SemiBold",
+                android: "Poppins-SemiBold",
+                default: "Poppins-SemiBold",
+              }),
+            }}
+          >
+            {title}
+          </Text>
+        </LinearGradient>
       </Pressable>
     </View>
   );
@@ -625,11 +633,7 @@ export default function TakePicture() {
     title: string;
     overlay: "frontal" | "side";
   }) => (
-    <ImageBackground
-      source={require("../../assets/bg/score-bg.jpg")}
-      style={{ flex: 1, backgroundColor: BG }}
-      imageStyle={{ transform: [{ translateY: 40 }] }}
-    >
+    <View style={{ flex: 1, backgroundColor: BG }}>
       <SafeAreaView style={{ flex: 1 }}>
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 18 }}>
           <Text
@@ -648,20 +652,18 @@ export default function TakePicture() {
             {title}
           </Text>
 
-          {/* Card with neon frame + guide image */}
+          {/* Guide image — clean, no frame overlay */}
           <View
             style={{
               width: "86%",
               aspectRatio: 3 / 4,
               borderRadius: 22,
               overflow: "hidden",
-              position: "relative",
               backgroundColor: "#000",
-              marginTop: 6, // tiny visual offset so it feels perfectly centered
+              marginTop: 6,
             }}
           >
             <Image source={guideSrc} style={{ width: "100%", height: "100%" }} resizeMode="cover" />
-            <NeonFrame />
           </View>
 
           <Text
@@ -702,7 +704,7 @@ export default function TakePicture() {
           </View>
         </View>
       </SafeAreaView>
-    </ImageBackground>
+    </View>
   );
 
   return (

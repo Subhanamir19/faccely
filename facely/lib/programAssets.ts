@@ -80,4 +80,10 @@ export const POSE_FRAMES: Record<string, any[]> = {
   ],
 };
 
+// Aliases for renamed exercise IDs — reuse existing frames where available
+// New exercises (jawline-1, hunter-eyes-2, neck-lift-2, slim-nose-massage,
+// towel-chewing, gua-sha) have no frames yet — will fall back to FALLBACK_FRAME.
+(POSE_FRAMES as any)["hunter-eyes-1"]  = POSE_FRAMES["hunter-eyes"];
+(POSE_FRAMES as any)["neck-lift-1"]    = POSE_FRAMES["neck-lift"];
+
 export const FALLBACK_FRAME = require("../assets/analysis-images/facial_symmetry.jpg");

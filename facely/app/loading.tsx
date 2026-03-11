@@ -124,6 +124,7 @@ export default function LoadingScreen() {
   const sideMime = takeFirst(params.sideMime);
   const normalized = normalizeNormalized(takeFirst(params.normalized));
 
+  const storedImageUri = useScores((state) => state.imageUri);
   const [isLoading, setIsLoading] = useState(true);
   const [onboardingHydrated, setOnboardingHydrated] = useState(false);
 
@@ -324,5 +325,8 @@ export default function LoadingScreen() {
     sideMime,
   ]);
 
-  return <CinematicLoader loading={isLoading} />;
+  const photoUri = front
+    ? safeDecode(front)
+    : storedImageUri ?? undefined;
+  return <CinematicLoader loading={isLoading} photoUri={photoUri} />;
 }
