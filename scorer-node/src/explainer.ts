@@ -741,6 +741,141 @@ function normalizeResponse(raw: string | null | undefined): Record<MetricKey, st
   return out;
 }
 
+/* ────────────────────────────────────────────────────────────────────────────
+ * Advanced-explain  — one natural-language sentence per sub-metric
+ * Output shape:
+ *   { cheekbones:{width,maxilla,bone_structure,face_fat},
+ *     jawline:{development,gonial_angle,projection},
+ *     eyes:{canthal_tilt,eye_type,brow_volume,symmetry},
+ *     skin:{color,quality} }
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+const ADVANCED_SYSTEM_PROMPT = `
+You are a facial-aesthetics analyst. For each sub-metric below write ONE sentence
+(20–120 words) that is specific to what you actually see in the image.
+
+Rules:
+- Present tense. Neutral tone. No medical advice, no ethnicity/identity claims.
+- Mention the dominant visible cue first, then one concrete direction if improvement is possible.
+- If the feature is already strong, confirm it clearly instead of adding filler praise.
+- No emojis. No markdown. No commands. Everyday words only.
+- Return STRICT JSON with this exact shape and no other text:
+
+{
+  "cheekbones": {
+    "width":          "<sentence>",
+    "maxilla":        "<sentence>",
+    "bone_structure": "<sentence>",
+    "face_fat":       "<sentence>"
+  },
+  "jawline": {
+    "development":  "<sentence>",
+    "gonial_angle": "<sentence>",
+    "projection":   "<sentence>"
+  },
+  "eyes": {
+    "canthal_tilt": "<sentence>",
+    "eye_type":     "<sentence>",
+    "brow_volume":  "<sentence>",
+    "symmetry":     "<sentence>"
+  },
+  "skin": {
+    "color":   "<sentence>",
+    "quality": "<sentence>"
+  }
+}
+`.trim();
+
+export type AdvancedExplainResult = {
+  cheekbones: { width: string; maxilla: string; bone_structure: string; face_fat: string };
+  jawline: { development: string; gonial_angle: string; projection: string };
+  eyes: { canthal_tilt: string; eye_type: string; brow_volume: string; symmetry: string };
+  skin: { color: string; quality: string };
+};
+
+export async function explainAdvancedBytes(
+  client: OpenAI,
+  bytes: Buffer,
+  mime: string,
+  scores: Scores
+): Promise<AdvancedExplainResult> {
+  const img64 = bytes.toString("base64");
+
+  const userText = `
+Scores (0–100, use to calibrate strength of language only — do NOT output the numbers):
+${JSON.stringify(scores)}
+
+Look at the image carefully and write one sentence per sub-metric.
+Confirm strong features; point to one refinement direction for weaker ones.
+JSON only.
+`.trim();
+
+  const resp = await withRetry(
+    () =>
+      client.chat.completions.create({
+        model: MODEL,
+        temperature: 0.45,
+        top_p: 0.9,
+        max_tokens: 900,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: ADVANCED_SYSTEM_PROMPT },
+          {
+            role: "user",
+            content: [
+              { type: "text", text: userText },
+              { type: "image_url", image_url: { url: `data:${mime};base64,${img64}` } },
+            ],
+          },
+        ],
+      }),
+    {
+      maxAttempts: 2,
+      baseDelayMs: 1200,
+      onRetry: (attempt, err, delay) => {
+        console.warn(
+          `[explain-advanced] retry ${attempt}: ${(err as Error).message}, waiting ${Math.round(delay)}ms`
+        );
+      },
+    }
+  );
+
+  const raw = resp.choices?.[0]?.message?.content ?? "{}";
+  let data: any;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    data = JSON.parse(raw.replace(/```json|```/g, "").trim() || "{}");
+  }
+
+  const str = (v: unknown, fallback: string): string =>
+    typeof v === "string" && v.trim().length > 0 ? v.trim() : fallback;
+
+  return {
+    cheekbones: {
+      width:          str(data?.cheekbones?.width,          ""),
+      maxilla:        str(data?.cheekbones?.maxilla,        ""),
+      bone_structure: str(data?.cheekbones?.bone_structure, ""),
+      face_fat:       str(data?.cheekbones?.face_fat,       ""),
+    },
+    jawline: {
+      development:  str(data?.jawline?.development,  ""),
+      gonial_angle: str(data?.jawline?.gonial_angle, ""),
+      projection:   str(data?.jawline?.projection,   ""),
+    },
+    eyes: {
+      canthal_tilt: str(data?.eyes?.canthal_tilt, ""),
+      eye_type:     str(data?.eyes?.eye_type,     ""),
+      brow_volume:  str(data?.eyes?.brow_volume,  ""),
+      symmetry:     str(data?.eyes?.symmetry,     ""),
+    },
+    skin: {
+      color:   str(data?.skin?.color,   ""),
+      quality: str(data?.skin?.quality, ""),
+    },
+  };
+}
+
 function levenshtein(a: string, b: string): number {
   const aLen = a.length;
   const bLen = b.length;

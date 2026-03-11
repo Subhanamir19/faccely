@@ -49,7 +49,7 @@ import {
   type ExplanationsV2,
 } from "./validators.js";
 import { scoreImageBytes, scoreImagePairBytes } from "./scorer.js";
-import { explainImageBytes, explainImagePairBytes } from "./explainer.js";
+import { explainImageBytes, explainImagePairBytes, explainAdvancedBytes } from "./explainer.js";
 import {
   router as routineRouter,
   setRoutineOpenAIClient,
@@ -1103,6 +1103,49 @@ app.post("/analyze/explain/pair", async (req, res) => {
     cleanupTempFile(files?.side?.[0]);
     if (slot) release(slot);
     console.log("[/analyze/explain/pair] ms =", Date.now() - t0);
+  }
+});
+
+/* ---------------------- /analyze/advanced-explain ------------------------- */
+app.post("/analyze/advanced-explain", async (req, res) => {
+  const t0 = Date.now();
+  const userId = res.locals.userId;
+  if (!userId) {
+    return res.status(401).json({ error: "missing_user_id" });
+  }
+  let slot: ConcurrencyToken | null = null;
+  try {
+    await runSingleUpload("image", req, res);
+    const file = req.file;
+    if (!file)
+      return res.status(400).json(
+        apiError("missing_image", "Image field 'image' is required.", {
+          hint: "Ensure the multipart field is named 'image'.",
+        })
+      );
+    const scoresRaw = req.body?.scores;
+    if (typeof scoresRaw !== "string" || !scoresRaw.trim())
+      return res.status(400).json(
+        apiError("missing_scores", "Field 'scores' is required.", {
+          hint: "Include the JSON-encoded scores blob in the 'scores' form field.",
+        })
+      );
+    const scores = parseScoresPayload(scoresRaw);
+    slot = await enqueue();
+    const { buffer, mime } = await toJpegBuffer(file);
+    const result = await explainAdvancedBytes(openai, buffer, mime, scores);
+    return res.json(result);
+  } catch (err: any) {
+    if (isServerOverloaded(err)) return respondServerOverloaded(res);
+    console.error("[/analyze/advanced-explain] error:", err?.response?.data ?? err);
+    return res.status(500).json({
+      errorCode: "advanced_explanation_failed",
+      message: "Failed to generate advanced explanations.",
+    });
+  } finally {
+    cleanupTempFile(req.file);
+    if (slot) release(slot);
+    console.log("[/analyze/advanced-explain] ms =", Date.now() - t0);
   }
 });
 
