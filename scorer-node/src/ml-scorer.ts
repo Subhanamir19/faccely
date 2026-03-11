@@ -6,7 +6,6 @@
 
 import type { Scores } from "./validators.js";
 import { ML_SCORING } from "./config/index.js";
-import FormData from "form-data";
 
 type ScoreResult = { scores: Scores; modelVersion: string };
 
@@ -43,18 +42,17 @@ export async function scoreWithML(imageBuffer: Buffer): Promise<ScoreResult> {
     throw new Error("ML_SCORING_API_URL not configured");
   }
 
-  const formData = new FormData();
-  formData.append("image", imageBuffer, {
-    filename: "image.jpg",
-    contentType: "image/jpeg",
-  });
+  // Use Web API FormData (Node 18+ native) — form-data npm package stream is
+  // incompatible with Node.js native fetch and causes multipart parse errors.
+  const formData = new globalThis.FormData();
+  formData.append("image", new Blob([new Uint8Array(imageBuffer)], { type: "image/jpeg" }), "image.jpg");
 
   const response = await fetchWithTimeout(
     `${ML_SCORING.apiUrl}/score`,
     {
       method: "POST",
-      body: formData as any,
-      headers: formData.getHeaders(),
+      body: formData,
+      // Do NOT set Content-Type manually — fetch sets it with the correct boundary
     },
     ML_API_TIMEOUT_MS
   );
@@ -86,22 +84,18 @@ export async function scoreWithMLPair(
     throw new Error("ML_SCORING_API_URL not configured");
   }
 
-  const formData = new FormData();
-  formData.append("frontal", frontalBuffer, {
-    filename: "frontal.jpg",
-    contentType: "image/jpeg",
-  });
-  formData.append("side", sideBuffer, {
-    filename: "side.jpg",
-    contentType: "image/jpeg",
-  });
+  // Use Web API FormData (Node 18+ native) — form-data npm package stream is
+  // incompatible with Node.js native fetch and causes multipart parse errors.
+  const formData = new globalThis.FormData();
+  formData.append("frontal", new Blob([new Uint8Array(frontalBuffer)], { type: "image/jpeg" }), "frontal.jpg");
+  formData.append("side", new Blob([new Uint8Array(sideBuffer)], { type: "image/jpeg" }), "side.jpg");
 
   const response = await fetchWithTimeout(
     `${ML_SCORING.apiUrl}/score/pair`,
     {
       method: "POST",
-      body: formData as any,
-      headers: formData.getHeaders(),
+      body: formData,
+      // Do NOT set Content-Type manually — fetch sets it with the correct boundary
     },
     ML_API_TIMEOUT_MS
   );
