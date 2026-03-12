@@ -27,6 +27,8 @@ import { persistAvatarFromUri } from "@/lib/media/avatar";
 import { restorePurchases, checkSubscriptionStatus, logoutUser as logoutRevenueCatUser } from "@/lib/revenuecat";
 import { logger } from '@/lib/logger';
 import * as WebBrowser from "expo-web-browser";
+import * as Clipboard from "expo-clipboard";
+import { useRecoveryCodeStore } from "@/store/recoveryCode";
 
 async function resetLocalUserData() {
   try {
@@ -75,6 +77,9 @@ export default function ProfileScreen() {
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [restoringPurchases, setRestoringPurchases] = useState(false);
   const [isHydrating, setIsHydrating] = useState(true);
+  const [codeCopied, setCodeCopied] = useState(false);
+  const recoveryCode = useRecoveryCodeStore((s) => s.code);
+  const ensureCode = useRecoveryCodeStore((s) => s.ensureCode);
 
   useEffect(() => {
     let cancelled = false;
@@ -91,6 +96,13 @@ export default function ProfileScreen() {
       cancelled = true;
     };
   }, [hydrateOnboarding, hydrateProfile]);
+
+  // Ensure recovery code exists for subscribed users (including those who purchased before this feature)
+  useEffect(() => {
+    if (hasAccess) {
+      ensureCode().catch(() => {});
+    }
+  }, [hasAccess, ensureCode]);
 
   const name =
     (authUser as any)?.fullName ||
@@ -259,18 +271,29 @@ export default function ProfileScreen() {
           </View>
         </View>
 
+          {recoveryCode ? (
           <GlassCard style={styles.card}>
             <View style={styles.cardHeader}>
-              <T style={styles.cardLabel}>Linked account</T>
-              <T style={styles.cardSubtext}>Signed in with email</T>
+              <T style={styles.cardLabel}>Recovery Code</T>
+              <T style={styles.cardSubtext}>
+                Save this code — use it to restore your subscription if you reinstall the app.
+              </T>
             </View>
-            <View style={styles.accountRow}>
-              <View>
-                <T style={styles.primaryText}>{name}</T>
-              <T style={styles.subText}>{email}</T>
+            <View style={styles.recoveryRow}>
+              <T style={styles.recoveryCode}>{recoveryCode}</T>
+              <Pressable
+                style={styles.copyBtn}
+                onPress={async () => {
+                  await Clipboard.setStringAsync(recoveryCode);
+                  setCodeCopied(true);
+                  setTimeout(() => setCodeCopied(false), 2000);
+                }}
+              >
+                <T style={styles.copyBtnText}>{codeCopied ? "Copied!" : "Copy"}</T>
+              </Pressable>
             </View>
-          </View>
-        </GlassCard>
+          </GlassCard>
+        ) : null}
 
         <GlassCard style={styles.card}>
           <View style={styles.cardHeader}>
@@ -481,6 +504,33 @@ const styles = StyleSheet.create({
   },
   subscriptionBtn: {
     width: "100%",
+  },
+  recoveryRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 6,
+    gap: 12,
+  },
+  recoveryCode: {
+    color: COLORS.accent,
+    fontSize: 18,
+    fontFamily: "Poppins-SemiBold",
+    letterSpacing: 2,
+    flex: 1,
+  },
+  copyBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 10,
+    backgroundColor: "rgba(255,255,255,0.07)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+  },
+  copyBtnText: {
+    color: COLORS.text,
+    fontSize: 13,
+    fontFamily: "Poppins-SemiBold",
   },
   privacyLink: {
     color: COLORS.sub,

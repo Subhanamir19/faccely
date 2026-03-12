@@ -15,6 +15,7 @@ import path from "path";
 import sigmaRouter from "./routes/sigma.js";
 import jobsRouter from "./routes/jobs.js";           // ← add this
 import promoRouter from "./routes/promo.js";
+import recoveryCodesRouter from "./routes/recoveryCodes.js";
 import generateRouter, { setGenerateOpenAIClient } from "./routes/generate.js";
 import { historyRouter } from "./routes/history.js";
 import { usersRouter } from "./routes/users.js";
@@ -609,6 +610,7 @@ app.use("/sigma", requestTimeout(30_000), verifyAuth, sigmaRouter);
 app.use("/generate", requestTimeout(120_000), verifyAuth, generateRouter);
 app.use("/jobs", verifyAuth, jobsRouter);                    // ← add this line
 app.use("/promo", verifyAuth, promoRouter);
+app.use("/recovery-codes", recoveryCodesRouter);
 
 // Comprehensive health check endpoint
 app.get("/health", async (_req, res) => {

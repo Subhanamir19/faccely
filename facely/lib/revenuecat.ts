@@ -40,8 +40,12 @@ export async function initializeRevenueCat(appUserId?: string): Promise<void> {
       );
     }
 
-    // Configure SDK
-    Purchases.setLogLevel(LOG_LEVEL.DEBUG);
+    // Configure SDK — verbose logging in dev only
+    if (__DEV__) {
+      Purchases.setLogLevel(LOG_LEVEL.DEBUG);
+    } else {
+      Purchases.setLogLevel(LOG_LEVEL.ERROR);
+    }
 
     Purchases.configure({
       apiKey,

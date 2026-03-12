@@ -3,7 +3,12 @@ import React, { useEffect } from "react";
 import { View } from "react-native";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import { useFonts } from "expo-font";
+import {
+  useFonts,
+  Poppins_400Regular,
+  Poppins_500Medium,
+  Poppins_600SemiBold,
+} from "@expo-google-fonts/poppins";
 import LoadingOverlay from "../components/ui/LoadingOverlay";
 import "react-native-reanimated";
 import { useRoutineStore } from "../store/routineStore";
@@ -19,7 +24,9 @@ SplashScreen.preventAutoHideAsync().catch(() => {});
 
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
-    "Poppins-SemiBold": require("../assets/fonts/Poppins-SemiBold.ttf"),
+    "Poppins-Regular":  Poppins_400Regular,
+    "Poppins-Medium":   Poppins_500Medium,
+    "Poppins-SemiBold": Poppins_600SemiBold,
   });
   const authInitialized = useAuthStore((state) => state.initialized);
   const idToken = useAuthStore((state) => state.idToken);

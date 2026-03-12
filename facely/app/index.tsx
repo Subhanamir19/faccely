@@ -10,7 +10,6 @@ const MIN_SPLASH_DURATION = 2500; // 2.5 seconds minimum splash display
 
 export default function IndexGate() {
   const status = useAuthStore((state) => state.status);
-  const isAnonymous = useAuthStore((state) => state.isAnonymous);
   const initialized = useAuthStore((state) => state.initialized);
   const uid = useAuthStore((state) => state.uid);
   const { completed, hydrate, data: onboardingData } = useOnboarding();
@@ -99,9 +98,10 @@ export default function IndexGate() {
   }, [status, uid, isRevenueCatInitialized]);
 
   // Safety timeout: if subscription check hasn't completed within 5 seconds
-  // (e.g. RevenueCat failed to initialize), stop blocking and fall through.
+  // after RevenueCat is ready (e.g. network failure), stop blocking and fall through.
+  // Timer only starts once RevenueCat is initialized to avoid false timeouts on cold launch.
   useEffect(() => {
-    if (subscriptionChecked) return;
+    if (subscriptionChecked || !isRevenueCatInitialized || status !== "authenticated") return;
     const timer = setTimeout(() => {
       if (!subscriptionChecked) {
         if (__DEV__) {
@@ -109,9 +109,9 @@ export default function IndexGate() {
         }
         setSubscriptionCheckTimedOut(true);
       }
-    }, 15000);
+    }, 5000);
     return () => clearTimeout(timer);
-  }, [subscriptionChecked]);
+  }, [subscriptionChecked, isRevenueCatInitialized, status]);
 
   // Reset subscription checked state when user changes
   useEffect(() => {
@@ -141,12 +141,6 @@ export default function IndexGate() {
   // If onboarding questions not completed, show the splash screen first
   if (!hasCompletedQuestions) {
     return <Redirect href="/(onboarding)/splash" />;
-  }
-
-  // Questions done - now require auth before paywall
-  // This ensures users have a stable identity for subscription recovery
-  if (status !== "authenticated" || isAnonymous) {
-    return <Redirect href="/(auth)/login" />;
   }
 
   // Wait for subscription status to be checked before routing to paywall or main app.

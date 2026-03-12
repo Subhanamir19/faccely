@@ -203,7 +203,7 @@ export function toUserFacingError(err: unknown, fallback: string): Error {
   return new Error(fallback);
 }
 
-type ErrorContext = "analyze" | "explain";
+type ErrorContext = "analyze" | "explain" | "advanced-analysis";
 
 const BACKEND_ERROR_MAP: Record<
   ErrorContext,
@@ -253,6 +253,28 @@ const BACKEND_ERROR_MAP: Record<
     server_overloaded:
       "Servers are busy at the moment. Please try again in a few minutes.",
   },
+  "advanced-analysis": {
+    invalid_scores_json:
+      "There was an internal issue with your last scan. Please retake your photos and try again.",
+    invalid_scores_payload:
+      "There was an internal issue with your last scan. Please retake your photos and try again.",
+    unsupported_media_type:
+      "Use a clear JPEG or PNG photo instead of HEIC or unsupported formats.",
+    payload_too_large:
+      "Your image is too large. Try a smaller or cropped photo.",
+    provider_auth_failed:
+      "Advanced analysis is temporarily unavailable due to a server configuration issue. Please try again later.",
+    provider_rate_limited:
+      "Servers are busy at the moment. Please try again in a few minutes.",
+    provider_unavailable:
+      "Advanced analysis is temporarily unavailable. Please try again in a few minutes.",
+    explanation_provider_malformed:
+      "We couldn't generate your advanced breakdown right now. Your scores are safe — please try again later.",
+    explanation_failed:
+      "We couldn't generate your advanced breakdown right now. Your scores are safe — please try again later.",
+    server_overloaded:
+      "Servers are busy at the moment. Please try again in a few minutes.",
+  },
 };
 
 function extractBackendErrorCode(err: unknown): string | undefined {
@@ -276,6 +298,7 @@ export function mapBackendErrorToUserMessage(
   const defaultMessages: Record<ErrorContext, string> = {
     analyze: "Face scoring failed unexpectedly. Please retry with a clear frontal and side photo.",
     explain: "Advanced analysis failed unexpectedly. Please try again.",
+    "advanced-analysis": "Advanced breakdown failed unexpectedly. Your scores are safe — please try again.",
   };
 
   const message = (err as any)?.message;

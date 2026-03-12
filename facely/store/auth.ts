@@ -1,6 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
+import { supabase } from "@/lib/supabase/client";
 
 export type AuthStatus = "checking" | "signedOut" | "authenticated";
 
@@ -128,6 +129,7 @@ export const useAuthStore = create<AuthState>()(
         }));
       },
       logout: async () => {
+        await supabase.auth.signOut().catch(() => {});
         set({
           user: null,
           uid: null,

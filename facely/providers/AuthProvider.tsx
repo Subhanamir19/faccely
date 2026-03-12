@@ -116,10 +116,14 @@ export function AuthProvider({ children }: Props) {
           return;
         }
 
-        // No existing session - user needs to sign in via auth screen
-        // We no longer auto-create anonymous sessions
-        lastSyncedUserId.current = null;
-        clearAuthState();
+        // No existing session — silently sign in anonymously.
+        // onAuthStateChange will fire SIGNED_IN and call applySession automatically.
+        const { error: anonError } = await supabase.auth.signInAnonymously();
+        if (anonError) {
+          console.warn("[auth] anonymous sign-in failed", anonError.message);
+          lastSyncedUserId.current = null;
+          clearAuthState();
+        }
       } catch (err: any) {
         console.warn("[auth] supabase bootstrap failed", err?.message || err);
         lastSyncedUserId.current = null;

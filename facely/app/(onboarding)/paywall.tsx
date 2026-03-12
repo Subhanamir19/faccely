@@ -40,6 +40,8 @@ import LimeButton from "@/components/ui/LimeButton";
 import { PurchasesPackage } from "react-native-purchases";
 import { logger } from '@/lib/logger';
 import * as WebBrowser from "expo-web-browser";
+import { useRecoveryCodeStore } from "@/store/recoveryCode";
+import { restoreWithCode } from "@/lib/api/recoveryCodes";
 
 const { width } = Dimensions.get("window");
 
@@ -192,6 +194,10 @@ const PaywallScreen: React.FC = () => {
   const [selected, setSelected] = useState<PlanKey>("yearly");
   const [showPromoInput, setShowPromoInput] = useState(false);
   const [promoCode, setPromoCode] = useState("");
+  const [showRecoveryInput, setShowRecoveryInput] = useState(false);
+  const [recoveryCode, setRecoveryCode] = useState("");
+  const [restoringWithCode, setRestoringWithCode] = useState(false);
+  const ensureCode = useRecoveryCodeStore((s) => s.ensureCode);
   const isMountedRef = useRef(true);
   const [isLoading, setIsLoading] = useState(false);
   const [packages, setPackages] = useState<{
@@ -359,6 +365,27 @@ const PaywallScreen: React.FC = () => {
     }
   }, [finishOnboarding, setOnboardingCompletedFromOnboarding]);
 
+  const onRestoreWithCode = useCallback(async () => {
+    const trimmed = recoveryCode.trim().toUpperCase();
+    if (!trimmed) return;
+    setRestoringWithCode(true);
+    try {
+      const success = await restoreWithCode(trimmed);
+      if (success) {
+        await completeOnboarding();
+        const hasEntitlement = await checkSubscriptionStatus();
+        setRevenueCatEntitlement(hasEntitlement);
+        navigateToMainApp();
+      } else {
+        Alert.alert("Invalid Code", "We couldn't find a subscription linked to that code. Double-check and try again.");
+      }
+    } catch {
+      Alert.alert("Restore Failed", "Something went wrong. Please try again.");
+    } finally {
+      setRestoringWithCode(false);
+    }
+  }, [recoveryCode, completeOnboarding, setRevenueCatEntitlement, navigateToMainApp]);
+
   const onContinue = useCallback(async () => {
     setIsLoading(true);
     setLoading(true);
@@ -388,6 +415,9 @@ const PaywallScreen: React.FC = () => {
       // This prevents a race where the RevenueCat listener fires and
       // IndexGate sees hasAccess=true but onboarding isn't marked complete.
       await completeOnboarding();
+
+      // Generate recovery code silently in the background — non-blocking
+      ensureCode().catch(() => {});
 
       // Update subscription state
       const hasEntitlement = await checkSubscriptionStatus();
@@ -427,6 +457,7 @@ const PaywallScreen: React.FC = () => {
 
       if (hasAccess) {
         await completeOnboarding();
+        ensureCode().catch(() => {});
         setRevenueCatEntitlement(hasEntitlement);
         navigateToMainApp();
       } else {
@@ -552,6 +583,39 @@ const PaywallScreen: React.FC = () => {
             <Pressable style={styles.restoreButton} onPress={onRestorePurchases} disabled={isLoading}>
               <Text style={styles.restoreText}>Restore Purchases</Text>
             </Pressable>
+
+            {/* RESTORE WITH RECOVERY CODE */}
+            <Pressable
+              style={styles.promoToggle}
+              onPress={() => setShowRecoveryInput(!showRecoveryInput)}
+            >
+              <Text style={styles.promoToggleText}>Reinstalled? Restore with recovery code</Text>
+            </Pressable>
+
+            {showRecoveryInput && (
+              <View style={styles.promoSection}>
+                <View style={styles.promoInputWrapper}>
+                  <TextInput
+                    style={styles.promoInput}
+                    placeholder="XXXX-XXXX-XXXX"
+                    placeholderTextColor="rgba(200,200,200,0.5)"
+                    value={recoveryCode}
+                    onChangeText={setRecoveryCode}
+                    autoCapitalize="characters"
+                    autoCorrect={false}
+                  />
+                  <Pressable
+                    style={styles.promoApplyButton}
+                    onPress={onRestoreWithCode}
+                    disabled={restoringWithCode}
+                  >
+                    <Text style={styles.promoApplyText}>
+                      {restoringWithCode ? "..." : "Restore"}
+                    </Text>
+                  </Pressable>
+                </View>
+              </View>
+            )}
 
             {/* PROMO CODE */}
             <Pressable

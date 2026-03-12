@@ -20,6 +20,7 @@ export default function OnboardingLayout() {
       <Stack.Screen name="improve-areas" />
       <Stack.Screen name="time-dedication" />
       <Stack.Screen name="routine-animation" />
+      <Stack.Screen name="results-reveal" />
       <Stack.Screen name="paywall" />
     </Stack>
   );

@@ -37,6 +37,7 @@ const ONBOARDING_SCREENS: { label: string; route: string }[] = [
   { label: "Improve Areas",    route: "/(onboarding)/improve-areas" },
   { label: "Time Dedication",  route: "/(onboarding)/time-dedication" },
   { label: "Routine Animation",route: "/(onboarding)/routine-animation" },
+  { label: "Results Reveal",   route: "/(onboarding)/results-reveal" },
   { label: "Paywall",          route: "/(onboarding)/paywall" },
 ];
 
