@@ -114,18 +114,42 @@ router.post("/restore", restoreRateLimit, async (req, res) => {
     return res.status(500).json({ error: "session_revocation_failed" });
   }
 
-  const { data: sessionData, error: sessionError } = await supabase.auth.admin.createSession({
-    user_id: data.user_id,
-  });
+  // supabase-js does not expose admin.createSession — call GoTrue REST API directly.
+  const supabaseUrl = process.env.SUPABASE_URL!;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
-  if (sessionError || !sessionData?.session) {
-    console.error("[recovery] Session creation failed:", sessionError?.message);
+  const sessionRes = await fetch(
+    `${supabaseUrl}/auth/v1/admin/users/${data.user_id}/sessions`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${serviceRoleKey}`,
+        apikey: serviceRoleKey,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({}),
+    }
+  );
+
+  if (!sessionRes.ok) {
+    const errText = await sessionRes.text();
+    console.error("[recovery] Session creation failed:", errText);
+    return res.status(500).json({ error: "session_creation_failed" });
+  }
+
+  const session = (await sessionRes.json()) as {
+    access_token?: string;
+    refresh_token?: string;
+  };
+
+  if (!session.access_token || !session.refresh_token) {
+    console.error("[recovery] Session creation returned no tokens");
     return res.status(500).json({ error: "session_creation_failed" });
   }
 
   return res.json({
-    access_token: sessionData.session.access_token,
-    refresh_token: sessionData.session.refresh_token,
+    access_token: session.access_token,
+    refresh_token: session.refresh_token,
     user_id: data.user_id,
   });
 });
