@@ -24,6 +24,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { Sparkles } from "lucide-react-native";
 import { useTenByTen } from "@/store/tenByTen";
+import RecoveryCodeHint from "@/components/ui/RecoveryCodeHint";
 
 // NEW: shared pre-upload compressor (JPEG, max 1080px)
 import { ensureJpegCompressed } from "../../lib/api/media";
@@ -709,6 +710,7 @@ export default function TakePicture() {
 
   return (
     <>
+      <RecoveryCodeHint />
       {step === "intro" && renderIntro()}
       {step === "capture" &&
         renderGuide({

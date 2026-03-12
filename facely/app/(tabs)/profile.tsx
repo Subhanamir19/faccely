@@ -6,6 +6,7 @@ import {
   StyleSheet,
   Image,
   Alert,
+  Pressable,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
@@ -79,6 +80,7 @@ export default function ProfileScreen() {
   const [isHydrating, setIsHydrating] = useState(true);
   const [codeCopied, setCodeCopied] = useState(false);
   const recoveryCode = useRecoveryCodeStore((s) => s.code);
+  const generating = useRecoveryCodeStore((s) => s.generating);
   const ensureCode = useRecoveryCodeStore((s) => s.ensureCode);
 
   useEffect(() => {
@@ -271,30 +273,6 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-          {recoveryCode ? (
-          <GlassCard style={styles.card}>
-            <View style={styles.cardHeader}>
-              <T style={styles.cardLabel}>Recovery Code</T>
-              <T style={styles.cardSubtext}>
-                Save this code — use it to restore your subscription if you reinstall the app.
-              </T>
-            </View>
-            <View style={styles.recoveryRow}>
-              <T style={styles.recoveryCode}>{recoveryCode}</T>
-              <Pressable
-                style={styles.copyBtn}
-                onPress={async () => {
-                  await Clipboard.setStringAsync(recoveryCode);
-                  setCodeCopied(true);
-                  setTimeout(() => setCodeCopied(false), 2000);
-                }}
-              >
-                <T style={styles.copyBtnText}>{codeCopied ? "Copied!" : "Copy"}</T>
-              </Pressable>
-            </View>
-          </GlassCard>
-        ) : null}
-
         <GlassCard style={styles.card}>
           <View style={styles.cardHeader}>
             <T style={styles.cardLabel}>Demographics</T>
@@ -346,6 +324,38 @@ export default function ProfileScreen() {
             Privacy Policy ↗
           </T>
         </GlassCard>
+
+        {hasAccess ? (
+          <GlassCard style={styles.card}>
+            <View style={styles.cardHeader}>
+              <T style={styles.cardLabel}>Recovery Code</T>
+              <T style={styles.cardSubtext}>
+                Save this — use it to restore your subscription if you ever reinstall the app.
+              </T>
+            </View>
+            {recoveryCode ? (
+              <View style={styles.recoveryRow}>
+                <T style={styles.recoveryCode}>{recoveryCode}</T>
+                <Pressable
+                  style={styles.copyBtn}
+                  onPress={async () => {
+                    try {
+                      await Clipboard.setStringAsync(recoveryCode);
+                      setCodeCopied(true);
+                      setTimeout(() => setCodeCopied(false), 2000);
+                    } catch {}
+                  }}
+                >
+                  <T style={styles.copyBtnText}>{codeCopied ? "Copied!" : "Copy"}</T>
+                </Pressable>
+              </View>
+            ) : (
+              <T style={styles.generatingLabel}>
+                {generating ? "Generating your code…" : "Loading…"}
+              </T>
+            )}
+          </GlassCard>
+        ) : null}
 
         <View style={styles.dangerZone}>
           <GlassCard style={styles.dangerCard}>
@@ -531,6 +541,12 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     fontSize: 13,
     fontFamily: "Poppins-SemiBold",
+  },
+  generatingLabel: {
+    color: COLORS.sub,
+    fontSize: 13,
+    fontFamily: "Poppins-Regular",
+    marginTop: 4,
   },
   privacyLink: {
     color: COLORS.sub,

@@ -117,6 +117,7 @@ export default function IndexGate() {
   useEffect(() => {
     if (!uid || uid !== lastCheckedUid.current) {
       setSubscriptionChecked(false);
+      setSubscriptionCheckTimedOut(false);
     }
   }, [uid]);
 

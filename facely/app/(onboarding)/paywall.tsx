@@ -416,8 +416,8 @@ const PaywallScreen: React.FC = () => {
       // IndexGate sees hasAccess=true but onboarding isn't marked complete.
       await completeOnboarding();
 
-      // Generate recovery code silently in the background — non-blocking
-      ensureCode().catch(() => {});
+      // Generate recovery code — awaited so it's persisted before user enters app
+      await ensureCode().catch(() => {});
 
       // Update subscription state
       const hasEntitlement = await checkSubscriptionStatus();

@@ -75,6 +75,7 @@ export function AuthProvider({ children }: Props) {
         if (isRevenueCatInitialized) {
           checkSubscriptionStatus()
             .then((hasEntitlement) => {
+              if (cancelled) return;
               useSubscriptionStore.getState().setRevenueCatEntitlement(hasEntitlement);
               if (__DEV__) {
                 const state = useSubscriptionStore.getState();
@@ -140,14 +141,21 @@ export function AuthProvider({ children }: Props) {
         if (cancelled) return;
 
         if (event === "SIGNED_OUT") {
-          // User signed out - stay signed out, index.tsx will redirect to auth screen
           lastSyncedUserId.current = null;
           clearAuthState();
 
-          // Also logout from RevenueCat to prevent subscription mixing between accounts
+          // Logout from RevenueCat to prevent subscription mixing
           const isRevenueCatInitialized = useSubscriptionStore.getState().isRevenueCatInitialized;
           if (isRevenueCatInitialized) {
             logoutUser().catch(() => {});
+          }
+
+          // Re-enter anonymous session automatically.
+          // Guard: don't retry if we're already mid-sign-in to avoid loops.
+          if (!cancelled) {
+            supabase.auth.signInAnonymously().catch((err) => {
+              console.warn("[auth] failed to re-enter anonymous after sign-out:", err?.message);
+            });
           }
           return;
         }
