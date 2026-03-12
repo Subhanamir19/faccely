@@ -87,7 +87,7 @@ export default function TrustAccuracyScreen() {
     if (navigated.current) return;
     navigated.current = true;
     clearScanPhotos();
-    router.push("/(onboarding)/score-teaser");
+    router.push("/(onboarding)/improve-areas");
   }, [userPressedContinue, apiDone, clearScanPhotos]);
 
   const targetAccuracy = useMemo(
@@ -179,7 +179,7 @@ export default function TrustAccuracyScreen() {
       if (navigated.current) return;
       navigated.current = true;
       clearScanPhotos();
-      router.push("/(onboarding)/score-teaser");
+      router.push("/(onboarding)/improve-areas");
     } else {
       // Scores still loading — flag intent; useEffect navigates when they arrive
       setUserPressedContinue(true);

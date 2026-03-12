@@ -23,6 +23,7 @@ import Animated, {
   withSequence,
 } from "react-native-reanimated";
 import { CommonActions, useNavigation } from "@react-navigation/native";
+import { router } from "expo-router";
 import { Check, Gift } from "lucide-react-native";
 import { useOnboarding } from "@/store/onboarding";
 import { useAuthStore } from "@/store/auth";
@@ -423,8 +424,8 @@ const PaywallScreen: React.FC = () => {
       const hasEntitlement = await checkSubscriptionStatus();
       setRevenueCatEntitlement(hasEntitlement);
 
-      // Reset navigation state directly to the main app tabs.
-      navigateToMainApp();
+      // Show score reveal before entering the main app.
+      router.replace("/(onboarding)/score-teaser");
     } catch (error: any) {
       logger.error("[Paywall] Purchase error:", error);
       if (isMountedRef.current) {

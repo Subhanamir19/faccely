@@ -21,6 +21,12 @@ type State = {
   // compatibility alias (some files might read )
   done: boolean;
 
+  // Temporary scan photo URIs held during onboarding flow
+  scanFrontalUri: string | null;
+  scanSideUri: string | null;
+  setScanPhotos: (frontal: string, side: string) => void;
+  clearScanPhotos: () => void;
+
   hydrate: () => Promise<void>;
   setField: <K extends keyof OnboardingData>(k: K, v: OnboardingData[K]) => void;
   finish: () => Promise<void>;
@@ -36,6 +42,10 @@ export const useOnboarding = create<State>((set, get) => ({
   data: {},
   completed: false,
   done: false,
+  scanFrontalUri: null,
+  scanSideUri: null,
+  setScanPhotos: (frontal, side) => set({ scanFrontalUri: frontal, scanSideUri: side }),
+  clearScanPhotos: () => set({ scanFrontalUri: null, scanSideUri: null }),
 
   hydrate: async () => {
     const d = await getJSON<OnboardingData>(KEY, {});

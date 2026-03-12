@@ -87,7 +87,7 @@ export default function ScoreTeaserScreen() {
 
   const handleCTA = useCallback(() => {
     hapticSuccess();
-    router.push("/(onboarding)/improve-areas");
+    router.replace("/(tabs)/score");
   }, []);
 
   if (loading) return <CinematicLoader loading />;

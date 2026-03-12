@@ -35,8 +35,8 @@ import { useTasksStore } from "@/store/tasks";
 // Ring timer constants
 // ---------------------------------------------------------------------------
 
-const RING_SIZE     = 220;
-const STROKE_W      = 12;
+const RING_SIZE     = 280;
+const STROKE_W      = 14;
 const RADIUS        = (RING_SIZE - STROKE_W) / 2;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 
@@ -406,15 +406,15 @@ const styles = StyleSheet.create({
     marginBottom: SP[5],
   },
   exerciseIconWrap: {
-    width: 80,
-    height: 80,
-    borderRadius: 20,
+    width: 110,
+    height: 110,
+    borderRadius: 26,
     overflow: "hidden",
     backgroundColor: "rgba(255,255,255,0.06)",
     borderWidth: 1,
     borderColor: COLORS.cardBorder,
   },
-  exerciseIcon: { width: 80, height: 80, resizeMode: "cover" },
+  exerciseIcon: { width: 110, height: 110, resizeMode: "cover" },
   exerciseName: {
     color: COLORS.text,
     fontSize: 24,
@@ -447,13 +447,13 @@ const styles = StyleSheet.create({
   ringCenter: { alignItems: "center", justifyContent: "center" },
   ringTime: {
     color: COLORS.text,
-    fontSize: 56,
+    fontSize: 72,
     fontFamily: "Poppins-SemiBold",
-    lineHeight: 60,
+    lineHeight: 76,
   },
   ringLabel: {
     color: COLORS.sub,
-    fontSize: 14,
+    fontSize: 16,
     fontFamily: "Poppins-SemiBold",
     marginTop: 2,
   },

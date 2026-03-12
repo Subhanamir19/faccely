@@ -98,20 +98,20 @@ export default function IndexGate() {
   }, [status, uid, isRevenueCatInitialized]);
 
   // Safety timeout: if subscription check hasn't completed within 5 seconds
-  // after RevenueCat is ready (e.g. network failure), stop blocking and fall through.
-  // Timer only starts once RevenueCat is initialized to avoid false timeouts on cold launch.
+  // after auth is ready, stop blocking and fall through.
+  // This covers both: network failure AND RevenueCat never initializing.
   useEffect(() => {
-    if (subscriptionChecked || !isRevenueCatInitialized || status !== "authenticated") return;
+    if (subscriptionChecked || subscriptionCheckTimedOut || status !== "authenticated") return;
     const timer = setTimeout(() => {
       if (!subscriptionChecked) {
         if (__DEV__) {
-          console.warn("[IndexGate] Subscription check timed out after 5s");
+          console.warn("[IndexGate] Subscription check timed out after 5s (RC initialized:", isRevenueCatInitialized, ")");
         }
         setSubscriptionCheckTimedOut(true);
       }
-    }, 5000);
+    }, 8000);
     return () => clearTimeout(timer);
-  }, [subscriptionChecked, isRevenueCatInitialized, status]);
+  }, [subscriptionChecked, subscriptionCheckTimedOut, status]);
 
   // Reset subscription checked state when user changes
   useEffect(() => {

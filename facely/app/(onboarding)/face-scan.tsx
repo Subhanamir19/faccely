@@ -313,21 +313,18 @@ export default function OnboardingFaceScan() {
       const sResolved = await ensureFileUriAsync(sideUri!);
       if (!fResolved || !sResolved) throw new Error("Could not read selected photos.");
 
-      let fNormTemp, sNormTemp;
+      // Sequential: compress then immediately persist each photo before the next
+      // ImageManipulator call. Running both in parallel on Android can cause the
+      // first temp file to be evicted from the ImageManipulator cache before we copy it.
+      let fNorm, sNorm;
       try {
-        [fNormTemp, sNormTemp] = await Promise.all([
-          ensureJpegCompressed(fResolved),
-          ensureJpegCompressed(sResolved),
-        ]);
+        fNorm = await persistCompressedResult(await ensureJpegCompressed(fResolved));
+        sNorm = await persistCompressedResult(await ensureJpegCompressed(sResolved));
       } catch {
         throw new Error(
           "Couldn't load one of your photos. Please retake or pick a different image."
         );
       }
-      const [fNorm, sNorm] = await Promise.all([
-        persistCompressedResult(fNormTemp),
-        persistCompressedResult(sNormTemp),
-      ]);
 
       // Fire and forget — result tracked via useScores store
       useScores

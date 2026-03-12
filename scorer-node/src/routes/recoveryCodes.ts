@@ -110,8 +110,8 @@ router.post("/restore", restoreRateLimit, async (req, res) => {
     .eq("user_id", data.user_id);
 
   if (revokeError) {
-    console.error("[recovery] Session revocation failed:", revokeError.message);
-    return res.status(500).json({ error: "session_revocation_failed" });
+    // Non-fatal — log but continue. Revocation is best-effort (old JWT expires within ~1h).
+    console.warn("[recovery] Session revocation failed (non-fatal):", revokeError.message);
   }
 
   // supabase-js does not expose admin.createSession — call GoTrue REST API directly.
