@@ -17,6 +17,12 @@ function generateCode(): string {
   return `${segment(4)}-${segment(4)}-${segment(4)}`;
 }
 
+// Synthetic email used to enable magic-link restore for anonymous users.
+// The user keeps the same user_id — only their email field changes.
+function syntheticEmail(userId: string): string {
+  return `${userId}@rc.facely.app`;
+}
+
 const restoreRateLimit = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 5,
@@ -26,7 +32,7 @@ const restoreRateLimit = rateLimit({
 });
 
 const generateRateLimit = rateLimit({
-  windowMs: 60 * 60 * 1000, // 1 request per hour per IP
+  windowMs: 60 * 60 * 1000,
   max: 10,
   message: { error: "too_many_attempts" },
   standardHeaders: true,
@@ -37,6 +43,7 @@ const router = Router();
 
 // POST /recovery-codes/generate — authenticated, rate-limited
 // Returns existing code or creates a new one. Idempotent.
+// Also ensures the user has a synthetic email so magic-link restore works.
 router.post("/generate", generateRateLimit, verifyAuth, async (req, res) => {
   const userId = res.locals.userId as string;
 
@@ -49,8 +56,13 @@ router.post("/generate", generateRateLimit, verifyAuth, async (req, res) => {
     .single();
 
   if (existing?.code) {
+    // Still ensure synthetic email exists (in case user generated code before this was added)
+    await ensureSyntheticEmail(userId);
     return res.json({ code: existing.code });
   }
+
+  // Ensure user has a synthetic email for future magic-link restore
+  await ensureSyntheticEmail(userId);
 
   // Generate with collision retry
   for (let attempt = 0; attempt < 5; attempt++) {
@@ -71,9 +83,23 @@ router.post("/generate", generateRateLimit, verifyAuth, async (req, res) => {
   return res.status(500).json({ error: "code_generation_failed" });
 });
 
+async function ensureSyntheticEmail(userId: string): Promise<void> {
+  const { data: userData } = await supabase.auth.admin.getUserById(userId);
+  if (userData?.user?.email) return; // already has email
+
+  const email = syntheticEmail(userId);
+  const { error } = await supabase.auth.admin.updateUserById(userId, {
+    email,
+    email_confirm: true,
+  });
+  if (error) {
+    console.warn("[recovery] Failed to assign synthetic email:", error.message);
+  }
+}
+
 // POST /recovery-codes/restore — unauthenticated, rate limited
-// Takes a recovery code, returns session tokens for the linked user.
-// Code is NOT marked used — user can restore as many times as needed.
+// Looks up recovery code, generates a magic-link OTP, and returns the token hash.
+// Client exchanges the token hash for a Supabase session via verifyOtp().
 router.post("/restore", restoreRateLimit, async (req, res) => {
   const { code } = req.body as { code?: unknown };
 
@@ -94,62 +120,45 @@ router.post("/restore", restoreRateLimit, async (req, res) => {
     .limit(1)
     .single();
 
-  // Always return the same error — don't reveal if code exists
   if (error || !data) {
     return res.status(401).json({ error: "invalid_code" });
   }
 
-  // Revoke ALL existing sessions for this user before issuing a new one.
-  // admin.signOut() takes a JWT, not a user_id — so we delete directly from
-  // the auth.sessions table using the service-role client (.schema() requires supabase-js v2.7+).
-  // The old device's JWT remains valid until expiry (~1 hour) but cannot refresh.
-  const { error: revokeError } = await (supabase as any)
-    .schema("auth")
-    .from("sessions")
-    .delete()
-    .eq("user_id", data.user_id);
-
-  if (revokeError) {
-    // Non-fatal — log but continue. Revocation is best-effort (old JWT expires within ~1h).
-    console.warn("[recovery] Session revocation failed (non-fatal):", revokeError.message);
+  // Get the user's email (may be synthetic for anonymous users)
+  const { data: userData, error: userError } = await supabase.auth.admin.getUserById(data.user_id);
+  if (userError || !userData?.user) {
+    console.error("[recovery] Failed to get user:", userError?.message);
+    return res.status(500).json({ error: "user_not_found" });
   }
 
-  // supabase-js does not expose admin.createSession — call GoTrue REST API directly.
-  const supabaseUrl = process.env.SUPABASE_URL!;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
-  const sessionRes = await fetch(
-    `${supabaseUrl}/auth/v1/admin/users/${data.user_id}/sessions`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${serviceRoleKey}`,
-        apikey: serviceRoleKey,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({}),
+  // Assign synthetic email if the user has none (anonymous users)
+  let email = userData.user.email;
+  if (!email) {
+    email = syntheticEmail(data.user_id);
+    const { error: updateError } = await supabase.auth.admin.updateUserById(data.user_id, {
+      email,
+      email_confirm: true,
+    });
+    if (updateError) {
+      console.error("[recovery] Failed to assign email:", updateError.message);
+      return res.status(500).json({ error: "session_creation_failed" });
     }
-  );
-
-  if (!sessionRes.ok) {
-    const errText = await sessionRes.text();
-    console.error("[recovery] Session creation failed:", errText);
-    return res.status(500).json({ error: "session_creation_failed" });
   }
 
-  const session = (await sessionRes.json()) as {
-    access_token?: string;
-    refresh_token?: string;
-  };
+  // Generate a magic-link token. This does NOT send any email —
+  // generateLink is an admin-only call that returns the raw token for us to use directly.
+  const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
+    type: "magiclink",
+    email,
+  });
 
-  if (!session.access_token || !session.refresh_token) {
-    console.error("[recovery] Session creation returned no tokens");
+  if (linkError || !linkData?.properties?.hashed_token) {
+    console.error("[recovery] generateLink failed:", linkError?.message);
     return res.status(500).json({ error: "session_creation_failed" });
   }
 
   return res.json({
-    access_token: session.access_token,
-    refresh_token: session.refresh_token,
+    token_hash: linkData.properties.hashed_token,
     user_id: data.user_id,
   });
 });

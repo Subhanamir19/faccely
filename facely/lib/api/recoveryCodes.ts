@@ -18,7 +18,9 @@ export async function generateRecoveryCode(): Promise<string | null> {
   }
 }
 
-export async function restoreWithCode(code: string): Promise<boolean> {
+export type RestoreResult = "ok" | "invalid_code" | "server_error" | "network_error";
+
+export async function restoreWithCode(code: string): Promise<RestoreResult> {
   try {
     const res = await fetch(`${API_BASE}/recovery-codes/restore`, {
       method: "POST",
@@ -26,7 +28,8 @@ export async function restoreWithCode(code: string): Promise<boolean> {
       body: JSON.stringify({ code }),
     });
 
-    if (!res.ok) return false;
+    if (res.status === 401) return "invalid_code";
+    if (!res.ok) return "server_error";
 
     const json = (await res.json()) as {
       access_token?: string;
@@ -34,21 +37,21 @@ export async function restoreWithCode(code: string): Promise<boolean> {
       user_id?: string;
     };
 
-    if (!json.access_token || !json.refresh_token || !json.user_id) return false;
+    if (!json.token_hash || !json.user_id) return "server_error";
 
-    // Restore Supabase session — AuthProvider listener will fire and update store
-    const { error } = await supabase.auth.setSession({
-      access_token: json.access_token,
-      refresh_token: json.refresh_token,
+    // Exchange the magic-link token hash for a real session
+    const { error } = await supabase.auth.verifyOtp({
+      token_hash: json.token_hash,
+      type: "magiclink",
     });
 
-    if (error) return false;
+    if (error) return "server_error";
 
     // Re-link RevenueCat to the recovered user
     await identifyUser(json.user_id).catch(() => {});
 
-    return true;
+    return "ok";
   } catch {
-    return false;
+    return "network_error";
   }
 }

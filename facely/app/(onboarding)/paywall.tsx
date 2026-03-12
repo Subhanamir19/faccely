@@ -371,14 +371,16 @@ const PaywallScreen: React.FC = () => {
     if (!trimmed) return;
     setRestoringWithCode(true);
     try {
-      const success = await restoreWithCode(trimmed);
-      if (success) {
+      const result = await restoreWithCode(trimmed);
+      if (result === "ok") {
         await completeOnboarding();
         const hasEntitlement = await checkSubscriptionStatus();
         setRevenueCatEntitlement(hasEntitlement);
         navigateToMainApp();
-      } else {
+      } else if (result === "invalid_code") {
         Alert.alert("Invalid Code", "We couldn't find a subscription linked to that code. Double-check and try again.");
+      } else {
+        Alert.alert("Restore Failed", "Something went wrong on our end. Please try again in a moment.");
       }
     } catch {
       Alert.alert("Restore Failed", "Something went wrong. Please try again.");

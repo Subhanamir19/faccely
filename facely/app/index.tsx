@@ -139,27 +139,23 @@ export default function IndexGate() {
     return <VideoSplash visible={true} />;
   }
 
-  // If onboarding questions not completed, show the splash screen first
-  if (!hasCompletedQuestions) {
-    return <Redirect href="/(onboarding)/splash" />;
-  }
-
-  // Wait for subscription status to be checked before routing to paywall or main app.
-  // This prevents users with valid subscriptions from seeing the paywall briefly.
-  // We must wait regardless of whether RevenueCat is initialized yet — otherwise
-  // an already-subscribed user could be sent to the paywall before the check runs.
-  // However, if RevenueCat never initializes (network issue, etc.), we fall through
-  // after the timeout so the user isn't stuck forever.
+  // Wait for subscription status before routing — prevents subscribed users from
+  // briefly seeing the paywall or being sent to onboarding on a new device.
   if (!subscriptionChecked && !subscriptionCheckTimedOut) {
     return <VideoSplash visible={true} />;
   }
 
-  // Authenticated but no subscription - go to paywall
-  if (!hasAccess) {
-    return <Redirect href="/(onboarding)/paywall" />;
+  // Subscribed user — go straight to main app regardless of local onboarding data.
+  // (On a reinstall/new device, age/gender won't be in local store but user is paid.)
+  if (hasAccess) {
+    return <Redirect href="/(tabs)/take-picture" />;
   }
 
-  // Onboarding questions done, authenticated, and subscribed - go to main app
-  // Note: if onboardingCompleted was false, the auto-heal effect above already fixed it
-  return <Redirect href="/(tabs)/take-picture" />;
+  // Not subscribed and hasn't gone through onboarding questions — start from beginning
+  if (!hasCompletedQuestions) {
+    return <Redirect href="/(onboarding)/splash" />;
+  }
+
+  // Completed questions but no subscription — go to paywall
+  return <Redirect href="/(onboarding)/paywall" />;
 }
