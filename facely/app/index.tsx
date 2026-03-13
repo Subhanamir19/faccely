@@ -12,6 +12,7 @@ export default function IndexGate() {
   const status = useAuthStore((state) => state.status);
   const initialized = useAuthStore((state) => state.initialized);
   const uid = useAuthStore((state) => state.uid);
+  const userEmail = useAuthStore((state) => state.user?.email ?? null);
   const { completed, hydrate, data: onboardingData } = useOnboarding();
   const onboardingCompleted = useAuthStore((state) => state.onboardingCompleted);
   // Get both sources of access - promo OR RevenueCat entitlement grants access
@@ -59,8 +60,7 @@ export default function IndexGate() {
 
   // Check subscription status when user authenticates
   useEffect(() => {
-    // Only check if authenticated and RevenueCat is ready
-    if (status !== "authenticated" || !uid || !isRevenueCatInitialized) {
+    if (status !== "authenticated" || !uid) {
       return;
     }
 
@@ -83,9 +83,10 @@ export default function IndexGate() {
         if (__DEV__) {
           console.warn("[IndexGate] Subscription check failed:", error);
         }
-        // Still mark as checked so we don't block forever
+        // Treat failure same as timeout — we don't know subscription status,
+        // so route to paywall (not splash) to avoid losing returning subscribers.
         if (!cancelled) {
-          setSubscriptionChecked(true);
+          setSubscriptionCheckTimedOut(true);
         }
       }
     };
@@ -95,7 +96,7 @@ export default function IndexGate() {
     return () => {
       cancelled = true;
     };
-  }, [status, uid, isRevenueCatInitialized]);
+  }, [status, uid]);
 
   // Safety timeout: if subscription check hasn't completed within 5 seconds
   // after auth is ready, stop blocking and fall through.
@@ -151,8 +152,16 @@ export default function IndexGate() {
     return <Redirect href="/(tabs)/take-picture" />;
   }
 
-  // Not subscribed and hasn't gone through onboarding questions — start from beginning
-  if (!hasCompletedQuestions) {
+  // RC timed out — we can't confirm subscription status. Don't punish a returning
+  // subscriber by sending them through full onboarding. Paywall has Restore Purchases.
+  if (subscriptionCheckTimedOut) {
+    return <Redirect href="/(onboarding)/paywall" />;
+  }
+
+  // RC confirmed no subscription and user hasn't completed onboarding questions.
+  // Only send to splash if they're a truly fresh anonymous user (no email).
+  // Email users are always returning users — send to paywall so they can restore/subscribe.
+  if (!hasCompletedQuestions && !userEmail) {
     return <Redirect href="/(onboarding)/splash" />;
   }
 
