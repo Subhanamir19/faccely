@@ -516,7 +516,7 @@ export default function ResultsRevealScreen() {
             </Text>
           </View>
           <View style={{ width: "88%", alignSelf: "center" }}>
-            <LimeButton label="Start Ascending Today" onPress={() => router.push("/(onboarding)/paywall")} />
+            <LimeButton label="Start Ascending Today" onPress={() => router.push("/(onboarding)/score-projection")} />
           </View>
         </View>
       </View>

@@ -15,6 +15,29 @@ import {
 } from "./media";
 import { buildAuthHeadersAsync } from "./authHeaders";
 import { logger } from '@/lib/logger';
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
+async function devBypassHeader(): Promise<Record<string, string>> {
+  if (!__DEV__) return {};
+  const val = await AsyncStorage.getItem("dev_bypass_scan_gate").catch(() => null);
+  return val === "true" ? { "x-dev-bypass-scan-gate": "1" } : {};
+}
+
+export class RescanTooSoonError extends Error {
+  readonly code = "RESCAN_TOO_SOON";
+  constructor(public readonly nextScanAt: string) {
+    super("rescan_too_soon");
+  }
+}
+
+async function assertNotTooSoon(res: Response): Promise<void> {
+  if (res.status === 429) {
+    const body = await res.json().catch(() => null);
+    if (body?.error === "rescan_too_soon") {
+      throw new RescanTooSoonError(body.next_scan_at ?? "");
+    }
+  }
+}
 
 /* -------------------------------------------------------------------------- */
 /*   Types                                                                    */
@@ -160,13 +183,16 @@ async function analyzePairMultipart(front: InputFile, side: InputFile): Promise<
 
   let res: Response;
   try {
-    const authHeaders = await buildAuthHeadersAsync({ includeLegacy: true });
+    const [authHeaders, devHeaders] = await Promise.all([
+      buildAuthHeadersAsync({ includeLegacy: true }),
+      devBypassHeader(),
+    ]);
     res = await fetchWithRetry(
       url,
       {
         method: "POST",
         body: form,
-        headers: { Accept: "application/json", ...authHeaders },
+        headers: { Accept: "application/json", ...authHeaders, ...devHeaders },
         timeoutMs: DEFAULT_UPLOAD_TIMEOUT_MS,
       },
       3,
@@ -180,6 +206,7 @@ async function analyzePairMultipart(front: InputFile, side: InputFile): Promise<
     logger.log(`[scores] /analyze/pair duration: ${duration} ms`);
   }
 
+  await assertNotTooSoon(res);
   if (!res.ok) {
     const body = await res.text().catch(() => "");
     logger.error("[scores] /analyze/pair fail http", res.status, body);
@@ -222,13 +249,17 @@ async function analyzePairBytes(front: InputFile, side: InputFile): Promise<Scor
   const url = `${API_BASE}/analyze/pair-bytes`;
   const start = Date.now();
 
-  const authHeaders = await buildAuthHeadersAsync({ includeLegacy: true });
+  const [authHeaders, devHeaders] = await Promise.all([
+    buildAuthHeadersAsync({ includeLegacy: true }),
+    devBypassHeader(),
+  ]);
   const res = await fetchWithRetry(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Accept: "application/json",
       ...authHeaders,
+      ...devHeaders,
     },
     body: JSON.stringify({
       front: `data:image/jpeg;base64,${f}`,
@@ -238,6 +269,7 @@ async function analyzePairBytes(front: InputFile, side: InputFile): Promise<Scor
   });
 
   const duration = Date.now() - start;
+  await assertNotTooSoon(res);
   if (!res.ok) {
     const body = await res.text().catch(() => "");
     logger.error("[scores] /analyze/pair-bytes fail http", res.status, body);
@@ -294,13 +326,16 @@ export async function analyzeImage(input: InputFile): Promise<Scores> {
 
   let res: Response;
   try {
-    const authHeaders = await buildAuthHeadersAsync({ includeLegacy: true });
+    const [authHeaders, devHeaders] = await Promise.all([
+      buildAuthHeadersAsync({ includeLegacy: true }),
+      devBypassHeader(),
+    ]);
     res = await fetchWithRetry(
       url,
       {
         method: "POST",
         body: form,
-        headers: { Accept: "application/json", ...authHeaders },
+        headers: { Accept: "application/json", ...authHeaders, ...devHeaders },
         timeoutMs: DEFAULT_UPLOAD_TIMEOUT_MS,
       },
       3,
@@ -314,6 +349,7 @@ export async function analyzeImage(input: InputFile): Promise<Scores> {
     logger.log(`[scores] /analyze duration: ${duration} ms`);
   }
 
+  await assertNotTooSoon(res);
   if (!res.ok) {
     const body = await res.text().catch(() => "");
     logger.error("[scores] /analyze fail http", res.status, body);

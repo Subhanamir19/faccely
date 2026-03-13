@@ -4,7 +4,8 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
-import { buildDailyRoutine, type RoutineTaskPick } from "@/lib/taskBuilder";
+import { buildDailyRoutine, buildDailyProtocols, type RoutineTaskPick } from "@/lib/taskBuilder";
+import type { ProtocolType } from "@/lib/protocolCatalog";
 import { summarizeFocusAreas } from "@/lib/taskSelection";
 import { logger } from '@/lib/logger';
 
@@ -13,14 +14,25 @@ import { logger } from '@/lib/logger';
 // ---------------------------------------------------------------------------
 
 export type TaskStatus = "pending" | "completed" | "skipped";
+export type ProtocolStatus = "pending" | "done";
 
 export type DailyTask = RoutineTaskPick & {
   status: TaskStatus;
 };
 
+export type ProtocolTask = {
+  id: string;
+  name: string;
+  type: ProtocolType;
+  quantity: string;
+  reason: string;
+  status: ProtocolStatus;
+};
+
 export type DayRecord = {
   date: string; // "YYYY-MM-DD" UTC
   tasks: DailyTask[];
+  protocols: ProtocolTask[];
   mood: string | null;
   allComplete: boolean;
   completedOnce: boolean; // true once all tasks are checked off for the first time today
@@ -38,6 +50,7 @@ type TasksState = {
   completeTask: (exerciseId: string) => void;
   uncompleteTask: (exerciseId: string) => void;
   skipTask: (exerciseId: string) => void;
+  completeProtocol: (id: string, done: boolean) => void;
   setMood: (mood: string) => void;
   reset: () => void;
 };
@@ -145,6 +158,22 @@ export const useTasksStore = create<TasksState>()(
           if (state.today.completedOnce === undefined) {
             set({ today: { ...state.today, completedOnce: state.today.allComplete } });
           }
+          // Backfill protocols if missing or if any protocol is missing quantity (e.g. hot reload after v5/v6 upgrade)
+          const needsProtocolBackfill =
+            !state.today.protocols ||
+            state.today.protocols.some((p) => !p.quantity);
+          if (needsProtocolBackfill) {
+            const fresh = buildDailyProtocols(currentDate);
+            const protocols: ProtocolTask[] = (state.today.protocols ?? []).map((existing) => {
+              const updated = fresh.find((f) => f.id === existing.id);
+              return updated ? { ...existing, quantity: updated.quantity } : existing;
+            });
+            // If protocols array was empty or had different IDs, fall back to fresh set
+            const backfilled = protocols.length === fresh.length
+              ? protocols
+              : fresh.map((p) => ({ ...p, status: "pending" as ProtocolStatus }));
+            set({ today: { ...state.today, protocols: backfilled } });
+          }
           return;
         }
 
@@ -209,10 +238,16 @@ export const useTasksStore = create<TasksState>()(
 
         const focusSummary = summarizeFocusAreas(picks);
 
+        const protocols: ProtocolTask[] = buildDailyProtocols(currentDate).map((p) => ({
+          ...p,
+          status: "pending" as ProtocolStatus,
+        }));
+
         set({
           today: {
             date: currentDate,
             tasks,
+            protocols,
             mood: null,
             allComplete: false,
             completedOnce: false,
@@ -280,6 +315,15 @@ export const useTasksStore = create<TasksState>()(
         });
       },
 
+      completeProtocol: (id: string, done: boolean) => {
+        const state = get();
+        if (!state.today) return;
+        const protocols = state.today.protocols.map((p) =>
+          p.id === id ? { ...p, status: (done ? "done" : "pending") as ProtocolStatus } : p
+        );
+        set({ today: { ...state.today, protocols } });
+      },
+
       setMood: (mood: string) => {
         const state = get();
         if (!state.today) return;
@@ -297,7 +341,7 @@ export const useTasksStore = create<TasksState>()(
     }),
     {
       name: "sigma_tasks_v1",
-      version: 4,
+      version: 6,
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({
         today: state.today,
@@ -347,6 +391,16 @@ export const useTasksStore = create<TasksState>()(
         // v3 → v4: replaced 20-exercise catalog with 15 video-based exercises.
         // Wipe today so initToday regenerates with updated exercise IDs.
         if (version <= 3 && persisted) {
+          persisted.today = null;
+        }
+        // v4 → v5: added protocols[] to DayRecord.
+        // Wipe today so initToday regenerates with protocol tasks included.
+        if (version <= 4 && persisted) {
+          persisted.today = null;
+        }
+        // v5 → v6: added quantity field to ProtocolPick/ProtocolTask.
+        // Wipe today so initToday regenerates with quantity populated.
+        if (version <= 5 && persisted) {
           persisted.today = null;
         }
         return persisted as any;

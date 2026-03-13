@@ -7,15 +7,16 @@ import {
   BackHandler,
   Image,
   Modal,
-  Platform,
   Pressable,
   SafeAreaView,
+  ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
 import { router, useLocalSearchParams, useFocusEffect } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
+import { Video, ResizeMode } from "expo-av";
 import Svg, { Circle } from "react-native-svg";
 import Animated, {
   FadeIn,
@@ -29,13 +30,15 @@ import * as Haptics from "expo-haptics";
 import { COLORS, RADII, SP } from "@/lib/tokens";
 import { getExerciseIcon } from "@/lib/exerciseIcons";
 import { getExerciseDuration } from "@/lib/exerciseDurations";
+import { getExerciseVideo } from "@/lib/exerciseVideos";
+import { getExerciseDetail } from "@/lib/exerciseDetails";
 import { useTasksStore } from "@/store/tasks";
 
 // ---------------------------------------------------------------------------
 // Ring timer constants
 // ---------------------------------------------------------------------------
 
-const RING_SIZE     = 280;
+const RING_SIZE     = 240;
 const STROKE_W      = 14;
 const RADIUS        = (RING_SIZE - STROKE_W) / 2;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
@@ -91,6 +94,8 @@ export default function TimerScreen() {
 
   const duration = getExerciseDuration(exerciseId ?? "");
   const icon     = getExerciseIcon(exerciseId ?? "");
+  const videoSrc = getExerciseVideo(exerciseId ?? "");
+  const detail   = getExerciseDetail(exerciseId ?? "");
   const task     = today?.tasks.find((t) => t.exerciseId === exerciseId);
   const name     = task?.name ?? exerciseId ?? "";
 
@@ -101,6 +106,7 @@ export default function TimerScreen() {
   // Modal states
   const [showLeaveWarning, setShowLeaveWarning] = useState(false);
   const [showNextPrompt,   setShowNextPrompt]   = useState(false);
+  const [showHowTo,        setShowHowTo]        = useState(false);
   const [nextTask, setNextTask] = useState<{ exerciseId: string; name: string } | null>(null);
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -219,14 +225,17 @@ export default function TimerScreen() {
   }, []);
 
   // ---------------------------------------------------------------------------
-  // How to Perform
+  // How to Perform — bottom sheet
   // ---------------------------------------------------------------------------
   const handleHowToPerform = useCallback(() => {
-    router.push({
-      pathname: "/program/video/[exerciseId]",
-      params: { exerciseId: exerciseId ?? "" },
-    });
-  }, [exerciseId]);
+    setIsPaused(true);
+    setShowHowTo(true);
+  }, []);
+
+  const handleCloseHowTo = useCallback(() => {
+    setShowHowTo(false);
+    if (!isDone) setIsPaused(false);
+  }, [isDone]);
 
   const progress  = duration > 0 ? (duration - timeLeft) / duration : 0;
   const btnScale  = useSharedValue(1);
@@ -242,15 +251,31 @@ export default function TimerScreen() {
         <Text style={styles.backIcon}>‹</Text>
       </Pressable>
 
-      {/* ── Exercise icon + name ── */}
-      <Animated.View entering={FadeInDown.duration(350)} style={styles.header}>
-        <View style={styles.exerciseIconWrap}>
-          <Image source={icon} style={styles.exerciseIcon} />
-        </View>
-        <Text style={styles.exerciseName}>{name}</Text>
-        <Text style={styles.exerciseTargets}>
-          {task?.targets.map((t) => (t === "all" ? "full face" : t)).join(" · ") ?? ""}
-        </Text>
+      {/* ── Video + name overlay ── */}
+      <Animated.View entering={FadeInDown.duration(350)} style={styles.videoSection}>
+        {videoSrc ? (
+          <Video
+            source={videoSrc}
+            style={styles.videoPlayer}
+            resizeMode={ResizeMode.CONTAIN}
+            shouldPlay
+            isLooping
+            isMuted
+          />
+        ) : (
+          <View style={styles.videoFallback}>
+            <Image source={icon} style={styles.videoFallbackIcon} />
+          </View>
+        )}
+        <LinearGradient
+          colors={["transparent", "rgba(0,0,0,0.88)"]}
+          style={styles.videoOverlay}
+        >
+          <Text style={styles.exerciseName}>{name}</Text>
+          <Text style={styles.exerciseTargets}>
+            {task?.targets.map((t) => (t === "all" ? "full face" : t)).join(" · ") ?? ""}
+          </Text>
+        </LinearGradient>
       </Animated.View>
 
       {/* ── Ring timer ── */}
@@ -286,13 +311,9 @@ export default function TimerScreen() {
                 onPressOut={handleBtnOut}
                 style={({ pressed }) => [styles.doneBtnPressable, { transform: [{ translateY: pressed ? 5 : 0 }] }]}
               >
-                <LinearGradient
-                  colors={["#CCFF6B", "#B4F34D"]} locations={[0, 1]}
-                  start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }}
-                  style={styles.doneBtnGradient}
-                >
+                <View style={styles.doneBtnGradient}>
                   <Text style={styles.doneBtnText}>Mark Done</Text>
-                </LinearGradient>
+                </View>
               </Pressable>
             </View>
           ) : (
@@ -370,6 +391,63 @@ export default function TimerScreen() {
         </Pressable>
       </Modal>
 
+      {/* ── How to Perform bottom sheet ── */}
+      <Modal
+        transparent
+        visible={showHowTo}
+        animationType="slide"
+        statusBarTranslucent
+        onRequestClose={handleCloseHowTo}
+      >
+        <Pressable style={styles.howToBackdrop} onPress={handleCloseHowTo}>
+          <Animated.View entering={FadeInUp.duration(280)} style={styles.howToSheet}>
+            <Pressable onPress={() => {}} style={{ flex: 1 }}>
+              <View style={styles.howToHandle} />
+              <View style={styles.howToHeader}>
+                <Text style={styles.howToTitle}>How to Perform</Text>
+                <Pressable onPress={handleCloseHowTo} style={styles.howToClose}>
+                  <Text style={styles.howToCloseText}>✕</Text>
+                </Pressable>
+              </View>
+              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.howToScroll}>
+                {detail ? (
+                  <>
+                    {/* Benefits */}
+                    <Text style={styles.howToSectionLabel}>BENEFITS</Text>
+                    <View style={styles.benefitBox}>
+                      <Text style={styles.benefitText}>{detail.benefits}</Text>
+                    </View>
+
+                    {/* Steps */}
+                    <Text style={[styles.howToSectionLabel, { marginTop: SP[5] }]}>HOW TO DO IT</Text>
+                    {detail.steps.map((step, i) => (
+                      <View key={i} style={styles.stepRow}>
+                        <View style={styles.stepNum}>
+                          <Text style={styles.stepNumText}>{i + 1}</Text>
+                        </View>
+                        <Text style={styles.stepText}>{step}</Text>
+                      </View>
+                    ))}
+
+                    {/* Reps */}
+                    <Text style={[styles.howToSectionLabel, { marginTop: SP[5] }]}>REPS / DURATION</Text>
+                    <Text style={styles.repsText}>{detail.reps}</Text>
+
+                    {/* Pro Tip */}
+                    <Text style={[styles.howToSectionLabel, { marginTop: SP[5] }]}>PRO TIP</Text>
+                    <View style={styles.tipBox}>
+                      <Text style={styles.tipText}>{detail.tip}</Text>
+                    </View>
+                  </>
+                ) : (
+                  <Text style={styles.repsText}>No details available.</Text>
+                )}
+              </ScrollView>
+            </Pressable>
+          </Animated.View>
+        </Pressable>
+      </Modal>
+
     </SafeAreaView>
   );
 }
@@ -398,36 +476,52 @@ const styles = StyleSheet.create({
     lineHeight: 36,
   },
 
-  // Header
-  header: {
-    alignItems: "center",
-    gap: SP[2],
-    marginTop: SP[4],
-    marginBottom: SP[5],
+  // Video section
+  videoSection: {
+    width: "100%",
+    height: 260,
+    borderRadius: RADII.xl,
+    overflow: "hidden",
+    marginTop: SP[2],
+    marginBottom: SP[3],
+    backgroundColor: COLORS.bgBottom,
   },
-  exerciseIconWrap: {
+  videoPlayer: {
+    width: "100%",
+    height: "100%",
+  },
+  videoFallback: {
+    width: "100%",
+    height: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  videoFallbackIcon: {
     width: 110,
     height: 110,
-    borderRadius: 26,
-    overflow: "hidden",
-    backgroundColor: "rgba(255,255,255,0.06)",
-    borderWidth: 1,
-    borderColor: COLORS.cardBorder,
+    resizeMode: "cover",
+    borderRadius: 20,
   },
-  exerciseIcon: { width: 110, height: 110, resizeMode: "cover" },
+  videoOverlay: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingHorizontal: SP[4],
+    paddingTop: SP[8],
+    paddingBottom: SP[3],
+  },
   exerciseName: {
     color: COLORS.text,
-    fontSize: 24,
+    fontSize: 20,
     fontFamily: "Poppins-SemiBold",
-    textAlign: "center",
-    marginTop: SP[2],
   },
   exerciseTargets: {
     color: COLORS.sub,
-    fontSize: 13,
+    fontSize: 12,
     fontFamily: "Poppins-SemiBold",
     textTransform: "capitalize",
-    textAlign: "center",
+    marginTop: 2,
   },
 
   // Ring
@@ -471,33 +565,31 @@ const styles = StyleSheet.create({
   },
   howBtnDepth: {
     borderRadius: RADII.pill,
-    backgroundColor: "rgba(255,255,255,0.03)",
-    borderWidth: 1,
-    borderColor: COLORS.cardBorder,
-    paddingBottom: 3,
+    backgroundColor: "#6B9A1E",
+    paddingBottom: 4,
   },
   howBtn: {
-    height: 48,
+    height: 56,
     borderRadius: RADII.pill,
-    backgroundColor: "rgba(255,255,255,0.05)",
+    backgroundColor: COLORS.accent,
     alignItems: "center",
     justifyContent: "center",
   },
   howBtnText: {
-    color: COLORS.text,
-    fontSize: 15,
+    color: "#0B0B0B",
+    fontSize: 16,
     fontFamily: "Poppins-SemiBold",
   },
   doneBtnDepth: {
     width: "100%",
     borderRadius: RADII.pill,
-    backgroundColor: "#6B9A1E",
+    backgroundColor: "#999999",
     paddingBottom: 5,
-    shadowColor: "#B4F34D",
-    shadowOpacity: 0.5,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 12,
+    shadowColor: "#ffffff",
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 8,
   },
   doneBtnPressable: {
     height: 56,
@@ -509,6 +601,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderRadius: RADII.pill,
+    backgroundColor: "#FFFFFF",
   },
   doneBtnDisabled: {
     height: 56,
@@ -519,7 +612,7 @@ const styles = StyleSheet.create({
     width: "100%",
   },
   doneBtnText: {
-    color: "#0B0B0B",
+    color: "#111111",
     fontSize: 17,
     fontFamily: "Poppins-SemiBold",
   },
@@ -625,5 +718,129 @@ const styles = StyleSheet.create({
     color: COLORS.sub,
     fontSize: 15,
     fontFamily: "Poppins-SemiBold",
+  },
+
+  // How To Perform bottom sheet
+  howToBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.60)",
+    justifyContent: "flex-end",
+  },
+  howToSheet: {
+    backgroundColor: "#141414",
+    borderTopLeftRadius: RADII.xl,
+    borderTopRightRadius: RADII.xl,
+    borderWidth: 1,
+    borderBottomWidth: 0,
+    borderColor: COLORS.cardBorder,
+    maxHeight: "78%",
+    paddingHorizontal: SP[5],
+    paddingBottom: SP[6],
+  },
+  howToHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "rgba(255,255,255,0.18)",
+    alignSelf: "center",
+    marginTop: SP[3],
+    marginBottom: SP[2],
+  },
+  howToHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: SP[3],
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.divider,
+    marginBottom: SP[4],
+  },
+  howToTitle: {
+    color: COLORS.text,
+    fontSize: 18,
+    fontFamily: "Poppins-SemiBold",
+  },
+  howToClose: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  howToCloseText: {
+    color: COLORS.sub,
+    fontSize: 14,
+    fontFamily: "Poppins-SemiBold",
+  },
+  howToScroll: {
+    paddingBottom: SP[4],
+  },
+  howToSectionLabel: {
+    color: COLORS.sub,
+    fontSize: 11,
+    fontFamily: "Poppins-SemiBold",
+    letterSpacing: 1.2,
+    marginBottom: SP[2],
+  },
+  benefitBox: {
+    backgroundColor: "rgba(180,243,77,0.08)",
+    borderRadius: RADII.md,
+    borderWidth: 1,
+    borderColor: "rgba(180,243,77,0.20)",
+    padding: SP[4],
+  },
+  benefitText: {
+    color: COLORS.textHigh,
+    fontSize: 14,
+    fontFamily: "Poppins-SemiBold",
+    lineHeight: 22,
+  },
+  stepRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: SP[3],
+    marginBottom: SP[3],
+  },
+  stepNum: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: COLORS.accent,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 1,
+    flexShrink: 0,
+  },
+  stepNumText: {
+    color: "#0B0B0B",
+    fontSize: 12,
+    fontFamily: "Poppins-SemiBold",
+  },
+  stepText: {
+    flex: 1,
+    color: COLORS.textHigh,
+    fontSize: 14,
+    fontFamily: "Poppins-SemiBold",
+    lineHeight: 22,
+  },
+  repsText: {
+    color: COLORS.textHigh,
+    fontSize: 15,
+    fontFamily: "Poppins-SemiBold",
+    lineHeight: 22,
+  },
+  tipBox: {
+    backgroundColor: "rgba(245,158,11,0.10)",
+    borderRadius: RADII.md,
+    borderWidth: 1,
+    borderColor: "rgba(245,158,11,0.25)",
+    padding: SP[4],
+  },
+  tipText: {
+    color: COLORS.textHigh,
+    fontSize: 14,
+    fontFamily: "Poppins-SemiBold",
+    lineHeight: 22,
   },
 });

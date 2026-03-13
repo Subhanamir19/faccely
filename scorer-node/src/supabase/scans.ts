@@ -43,6 +43,11 @@ export async function createScan(input: CreateScanInput): Promise<ScanRecord> {
   return data as ScanRecord;
 }
 
+export async function getLastScan(userId: string): Promise<ScanRecord | null> {
+  const scans = await getScansForUser(userId, 1);
+  return scans[0] ?? null;
+}
+
 export async function getScansForUser(
   userId: string,
   limit = 20

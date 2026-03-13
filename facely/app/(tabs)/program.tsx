@@ -1,9 +1,8 @@
 // app/(tabs)/program.tsx
 // Daily exercise screen — workout card (top 70%) + compact exercise list (bottom 30%)
 
-import React, { useEffect, useState, useCallback, useRef } from "react";
+import React, { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import {
-  Dimensions,
   Image,
   Modal,
   Pressable,
@@ -21,57 +20,158 @@ import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withSpring,
-  withSequence,
   withTiming,
-  withRepeat,
+  withSequence,
 } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { COLORS, RADII, SP } from "@/lib/tokens";
 import DayCompleteModal from "@/components/ui/DayCompleteModal";
 import MoodCheckModal from "@/components/ui/MoodCheckModal";
-import { useTasksStore, type DailyTask } from "@/store/tasks";
+import { useTasksStore, type DailyTask, type ProtocolTask, type DayRecord } from "@/store/tasks";
+import { useScores, type Scores } from "@/store/scores";
+import { useOnboarding } from "@/store/onboarding";
 import { getExerciseIcon } from "@/lib/exerciseIcons";
-
-const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 
 // Module-level: only show intro splash once per day
 let lastIntroDate: string | null = null;
+
+// ---------------------------------------------------------------------------
+// Loading screen — helpers
+// ---------------------------------------------------------------------------
+
+const SCORE_FIELD_LABELS: Record<string, string> = {
+  jawline:           "Jawline",
+  cheekbones:        "Cheekbones",
+  eyes_symmetry:     "Eye symmetry",
+  nose_harmony:      "Nose harmony",
+  facial_symmetry:   "Facial symmetry",
+  skin_quality:      "Skin quality",
+  sexual_dimorphism: "Facial structure",
+};
+
+const LOADING_GOAL_LABELS: Record<string, string> = {
+  jawline:    "jawline",
+  cheekbones: "cheekbones",
+  symmetry:   "symmetry",
+  skin:       "skin",
+  eyes:       "eyes",
+  overall:    "overall improvement",
+};
+
+function findWeakestField(scores: Scores | null): { label: string; value: number } | null {
+  if (!scores) return null;
+  let worst: { label: string; value: number } | null = null;
+  for (const [field, label] of Object.entries(SCORE_FIELD_LABELS)) {
+    const v = (scores as Record<string, number>)[field];
+    if (typeof v === "number" && v > 0 && (!worst || v < worst.value)) {
+      worst = { label, value: Math.round(v) };
+    }
+  }
+  return worst;
+}
+
+function getConsecutiveMissed(history: DayRecord[]): number {
+  let count = 0;
+  const d = new Date();
+  for (let i = 0; i < 5; i++) {
+    d.setUTCDate(d.getUTCDate() - 1);
+    const ds = d.toISOString().slice(0, 10);
+    const record = history.find((r) => r.date === ds);
+    if (!record || !record.allComplete) count++;
+    else break;
+  }
+  return count;
+}
+
+function buildLoadingPhrases(
+  streak: number,
+  history: DayRecord[],
+  scores: Scores | null,
+  goals: string[] | null,
+): string[] {
+  const missed = getConsecutiveMissed(history);
+  const phrases: string[] = [];
+
+  // Phrase 0 — streak / context
+  if (missed > 1) {
+    phrases.push(`Back after ${missed} days — starting light`);
+  } else if (streak >= 14) {
+    phrases.push(`${streak}-day streak — Week 4 intensity active`);
+  } else if (streak >= 7) {
+    phrases.push(`${streak}-day streak — Week 2 intensity active`);
+  } else if (streak > 0) {
+    phrases.push(`${streak}-day streak — keep going`);
+  } else {
+    phrases.push(`Day 1 — let's build the habit`);
+  }
+
+  // Phrase 1 — score or goal insight
+  const weakest = findWeakestField(scores);
+  if (weakest) {
+    phrases.push(`${weakest.label} needs work — prioritizing today`);
+  } else if (goals?.length) {
+    const label = LOADING_GOAL_LABELS[goals[0]] ?? goals[0];
+    phrases.push(`Focusing on your ${label} goal`);
+  } else {
+    phrases.push(`Building your personalized plan`);
+  }
+
+  // Phrase 2 — ready
+  phrases.push(`Your plan is ready`);
+
+  return phrases;
+}
 
 // ---------------------------------------------------------------------------
 // Loading screen
 // ---------------------------------------------------------------------------
 
 function TasksLoadingScreen() {
-  const dot1 = useSharedValue(0.3);
-  const dot2 = useSharedValue(0.3);
-  const dot3 = useSharedValue(0.3);
+  const { currentStreak, history } = useTasksStore();
+  const { scores } = useScores();
+  const { data: onboardingData } = useOnboarding();
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const phrases = useMemo(
+    () => buildLoadingPhrases(currentStreak, history, scores, onboardingData.goals ?? null),
+    [],
+  );
+
+  const [phraseIndex, setPhraseIndex] = useState(0);
+  const progressWidth = useSharedValue(0);
 
   useEffect(() => {
-    const cfg = { damping: 12, stiffness: 120 };
-    dot1.value = withRepeat(withSequence(withSpring(1, cfg), withSpring(0.3, cfg)), -1, false);
-    setTimeout(() => {
-      dot2.value = withRepeat(withSequence(withSpring(1, cfg), withSpring(0.3, cfg)), -1, false);
-    }, 200);
-    setTimeout(() => {
-      dot3.value = withRepeat(withSequence(withSpring(1, cfg), withSpring(0.3, cfg)), -1, false);
-    }, 400);
+    progressWidth.value = withTiming(1, { duration: 2700 });
+    const tick = setInterval(() => {
+      setPhraseIndex((i) => Math.min(i + 1, phrases.length - 1));
+    }, 900);
+    return () => clearInterval(tick);
   }, []);
 
-  const d1 = useAnimatedStyle(() => ({ opacity: dot1.value, transform: [{ scale: dot1.value }] }));
-  const d2 = useAnimatedStyle(() => ({ opacity: dot2.value, transform: [{ scale: dot2.value }] }));
-  const d3 = useAnimatedStyle(() => ({ opacity: dot3.value, transform: [{ scale: dot3.value }] }));
+  const barStyle = useAnimatedStyle(() => ({
+    width: `${progressWidth.value * 100}%`,
+  }));
 
   return (
     <SafeAreaView style={styles.safe}>
       <Animated.View entering={FadeIn.duration(300)} exiting={FadeOut.duration(250)} style={styles.loadingWrap}>
         <Text style={styles.loadingTitle}>Today's Workout</Text>
-        <View style={styles.dotsRow}>
-          <Animated.View style={[styles.loadingDot, d1]} />
-          <Animated.View style={[styles.loadingDot, d2]} />
-          <Animated.View style={[styles.loadingDot, d3]} />
+
+        <View style={styles.progressTrackLoading}>
+          <Animated.View style={[styles.progressFillLoading, barStyle]} />
         </View>
-        <Text style={styles.loadingSubtext}>Selecting exercises for you</Text>
+
+        <View style={styles.phraseContainer}>
+          <Animated.Text
+            key={phraseIndex}
+            entering={FadeIn.duration(400)}
+            exiting={FadeOut.duration(250)}
+            style={styles.loadingPhrase}
+          >
+            {phrases[phraseIndex]}
+          </Animated.Text>
+        </View>
       </Animated.View>
     </SafeAreaView>
   );
@@ -108,63 +208,96 @@ function StreakBadge({ streak }: { streak: number }) {
 function WorkoutCard({
   streak,
   focusSummary,
+  overloadLabel,
   completedCount,
   totalCount,
 }: {
   streak: number;
   focusSummary: string;
+  overloadLabel: string;
   completedCount: number;
   totalCount: number;
 }) {
   const progress = totalCount > 0 ? completedCount / totalCount : 0;
   const barWidth = useSharedValue(0);
+  const numScale = useSharedValue(1);
 
   useEffect(() => {
     barWidth.value = withSpring(progress, { damping: 18, stiffness: 100 });
   }, [progress]);
 
+  useEffect(() => {
+    if (completedCount > 0) {
+      numScale.value = withSequence(
+        withSpring(1.3, { damping: 5, stiffness: 500 }),
+        withSpring(1.0, { damping: 10, stiffness: 200 }),
+      );
+    }
+  }, [completedCount]);
+
   const barStyle = useAnimatedStyle(() => ({
     width: `${barWidth.value * 100}%`,
   }));
 
+  const numStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: numScale.value }],
+  }));
+
   const allDone = completedCount === totalCount && totalCount > 0;
 
+  const focusHero = allDone
+    ? "All done — great work"
+    : focusSummary
+      ? focusSummary
+          .split(/,\s*|\s*&\s*/)
+          .map((s) => s.trim())
+          .filter(Boolean)
+          .slice(0, 2)
+          .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
+          .join(" · ")
+      : "Today's Plan";
+
   return (
-    <View style={styles.workoutCard}>
-      {/* Day label + streak */}
+    <LinearGradient
+      colors={["#282828", "#161616"]}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 0, y: 1 }}
+      style={styles.workoutCard}
+    >
+      {/* Date + streak */}
       <View style={styles.cardTopRow}>
-        <View>
-          <Text style={styles.cardDate}>{formatDateHeader()}</Text>
-          <Text style={styles.cardSubtitle}>
-            {allDone ? "All done — great work" : `${totalCount - completedCount} exercises left`}
-          </Text>
-        </View>
+        <Text style={styles.cardDate}>{formatDateHeader()}</Text>
         <StreakBadge streak={streak} />
       </View>
 
-      {/* Big completion counter */}
-      <View style={styles.completionRow}>
-        <Text style={styles.completionNum}>{completedCount}</Text>
-        <Text style={styles.completionDenom}>/{totalCount}</Text>
-        <Text style={styles.completionLabel}> done</Text>
-      </View>
+      {/* Hero: focus area */}
+      <Animated.Text
+        key={allDone ? 1 : 0}
+        entering={FadeInDown.duration(320).delay(80)}
+        exiting={FadeOut.duration(150)}
+        style={styles.heroFocus}
+        numberOfLines={1}
+      >
+        {focusHero}
+      </Animated.Text>
 
-      {/* Progress bar */}
-      <View style={styles.progressTrack}>
-        <Animated.View style={[styles.progressFill, barStyle]} />
-      </View>
+      {/* Tier pill */}
+      {overloadLabel !== "Base" && (
+        <Animated.View entering={FadeIn.duration(400).delay(220)} style={styles.tierPill}>
+          <Text style={styles.tierPillText}>{overloadLabel}</Text>
+        </Animated.View>
+      )}
 
-      {/* Focus area */}
-      {focusSummary ? (
-        <View style={styles.focusRow}>
-          <View style={styles.focusDot} />
-          <Text style={styles.focusText} numberOfLines={1}>
-            Targeting {focusSummary}
-          </Text>
+      {/* Progress bar + inline count */}
+      <View style={styles.progressSection}>
+        <View style={styles.progressTrack}>
+          <Animated.View style={[styles.progressFill, barStyle]} />
         </View>
-      ) : null}
-
-    </View>
+        <Animated.Text style={[styles.progressCount, numStyle]}>
+          {completedCount}/{totalCount}
+        </Animated.Text>
+      </View>
+    </LinearGradient>
   );
 }
 
@@ -208,7 +341,7 @@ function ExerciseRow({
             <Image source={getExerciseIcon(task.exerciseId)} style={styles.exerciseIconImg} />
           </View>
 
-          {/* Name + target */}
+          {/* Name + target + reason */}
           <View style={styles.taskLeft}>
             <Text style={[styles.taskTitle, isCompleted && styles.taskTitleDone]} numberOfLines={1}>
               {task.name}
@@ -240,6 +373,143 @@ function ExerciseRow({
         </View>
       </Pressable>
     </Animated.View>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Protocol row
+// ---------------------------------------------------------------------------
+
+const PROTOCOL_EMOJI: Record<string, string> = {
+  // lifestyle
+  "sprint-session":         "🏃",
+  "facial-icing":           "🧊",
+  "high-intensity-exercise":"🏋️",
+  "nasal-breathing":        "👃",
+  "cold-shower":            "🚿",
+  "sunlight-exposure":      "☀️",
+  "mewing":                 "👅",
+  "back-sleeping":          "🛏️",
+  // dietary
+  "lemon-electrolytes":     "🍋",
+  "egg-yolk-banana":        "🍳",
+  "black-raisins":          "🍇",
+  "raw-banana":             "🍌",
+  "beef-liver":             "🫀",
+  "red-meat":               "🥩",
+  "unsalted-cheese":        "🧀",
+  "ashwagandha":            "🌿",
+  "raw-milk":               "🥛",
+  // skincare
+  "cold-water-splash":      "💧",
+  "gua-sha":                "🪨",
+  "facial-icing-skin":      "🧊",
+  "oil-cleanser":           "🫧",
+  "bentonite-clay-mask":    "🏺",
+  "turmeric-mask":          "🟡",
+};
+
+function ProtocolRow({
+  protocol,
+  onPress,
+}: {
+  protocol: ProtocolTask;
+  onPress: () => void;
+}) {
+  const isDone = protocol.status === "done";
+  const scale = useSharedValue(1);
+  const cardAnimStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+
+  return (
+    <Animated.View style={cardAnimStyle}>
+      <Pressable
+        onPress={isDone ? undefined : onPress}
+        onPressIn={() => { if (!isDone) scale.value = withSpring(0.97, { damping: 15, stiffness: 300 }); }}
+        onPressOut={() => { scale.value = withSpring(1, { damping: 12, stiffness: 200 }); }}
+        disabled={isDone}
+        style={[styles.protocolCard, isDone && styles.protocolCardDone]}
+      >
+        <View style={styles.taskRow}>
+          <View style={[styles.protocolIconWrap, isDone && styles.exerciseIconDimmed]}>
+            <Text style={styles.protocolEmoji}>{PROTOCOL_EMOJI[protocol.id] ?? PROTOCOL_EMOJI[protocol.type] ?? "💊"}</Text>
+          </View>
+          <View style={styles.taskLeft}>
+            <Text style={[styles.protocolTitle, isDone && styles.protocolTitleDone]} numberOfLines={1}>
+              {protocol.name}
+            </Text>
+            <Text style={styles.protocolQuantity} numberOfLines={1}>
+              {protocol.quantity}
+            </Text>
+          </View>
+          <View style={styles.taskRight}>
+            <View style={[styles.statusDot, styles.protocolStatusDot, isDone && styles.protocolStatusDotDone]}>
+              {isDone && <Text style={styles.statusCheck}>✓</Text>}
+            </View>
+          </View>
+        </View>
+      </Pressable>
+    </Animated.View>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Protocol confirmation modal
+// ---------------------------------------------------------------------------
+
+function ProtocolConfirmModal({
+  visible,
+  protocol,
+  onDone,
+  onDismiss,
+}: {
+  visible: boolean;
+  protocol: ProtocolTask | null;
+  onDone: () => void;
+  onDismiss: () => void;
+}) {
+  if (!protocol) return null;
+  return (
+    <Modal
+      transparent
+      visible={visible}
+      animationType="fade"
+      statusBarTranslucent
+      onRequestClose={onDismiss}
+    >
+      <Pressable style={styles.modalBackdrop} onPress={onDismiss}>
+        <Animated.View entering={FadeInDown.duration(250).springify()} style={styles.modalCard}>
+          <Pressable onPress={() => {}} style={{ width: "100%" }}>
+            <Text style={styles.modalTitle}>Did you complete this?</Text>
+            <Text style={styles.modalExercise}>{protocol.name}</Text>
+            <Text style={styles.modalHint}>{protocol.reason}</Text>
+            <View style={styles.modalBtns}>
+              <Pressable style={styles.modalBtnGhost} onPress={onDismiss}>
+                <Text style={styles.modalBtnGhostText}>Not yet</Text>
+              </Pressable>
+              <View style={styles.modalBtnDepth}>
+                <Pressable
+                  onPress={onDone}
+                  style={({ pressed }) => [
+                    styles.modalBtnPressable,
+                    { transform: [{ translateY: pressed ? 5 : 0 }] },
+                  ]}
+                >
+                  <LinearGradient
+                    colors={["#CCFF6B", "#B4F34D"]}
+                    locations={[0, 1]}
+                    start={{ x: 0.5, y: 0 }}
+                    end={{ x: 0.5, y: 1 }}
+                    style={styles.modalBtnGradient}
+                  >
+                    <Text style={styles.modalBtnPrimaryText}>Done ✓</Text>
+                  </LinearGradient>
+                </Pressable>
+              </View>
+            </View>
+          </Pressable>
+        </Animated.View>
+      </Pressable>
+    </Modal>
   );
 }
 
@@ -320,12 +590,14 @@ export default function TasksScreen() {
     loading,
     initToday,
     completeTask,
+    completeProtocol,
     setMood,
   } = useTasksStore();
 
-  const [showDayComplete, setShowDayComplete] = useState(false);
-  const [showMoodCheck, setShowMoodCheck]     = useState(false);
-  const [confirmTask, setConfirmTask]         = useState<DailyTask | null>(null);
+  const [showDayComplete, setShowDayComplete]     = useState(false);
+  const [showMoodCheck, setShowMoodCheck]         = useState(false);
+  const [confirmTask, setConfirmTask]             = useState<DailyTask | null>(null);
+  const [confirmProtocol, setConfirmProtocol]     = useState<ProtocolTask | null>(null);
 
   // Intro splash — once per day
   const todayDateStr = new Date().toISOString().slice(0, 10);
@@ -342,7 +614,7 @@ export default function TasksScreen() {
         lastIntroDate = todayDateStr;
         setIntroVisible(false);
       }
-    }, 1800);
+    }, 2700);
     return () => clearTimeout(t);
   }, []);
 
@@ -409,6 +681,7 @@ export default function TasksScreen() {
         <WorkoutCard
           streak={currentStreak}
           focusSummary={today.focusSummary}
+          overloadLabel={today.tasks[0]?.overloadLabel ?? "Base"}
           completedCount={completedCount}
           totalCount={totalCount}
         />
@@ -440,6 +713,29 @@ export default function TasksScreen() {
               />
             </Animated.View>
           ))}
+
+          {/* ── Other Protocols ── */}
+          {today.protocols?.length > 0 && (
+            <>
+              <View style={styles.protocolsHeader}>
+                <Text style={styles.protocolsTitle}>Daily Stack</Text>
+                <Text style={styles.sectionHint}>
+                  {today.protocols.every((p) => p.status === "done") ? "All done" : `${today.protocols.filter((p) => p.status === "pending").length} left`}
+                </Text>
+              </View>
+              {today.protocols.map((protocol, idx) => (
+                <Animated.View
+                  key={protocol.id}
+                  entering={FadeInDown.duration(300).delay((tasks.length + idx) * 50)}
+                >
+                  <ProtocolRow
+                    protocol={protocol}
+                    onPress={() => setConfirmProtocol(protocol)}
+                  />
+                </Animated.View>
+              ))}
+            </>
+          )}
         </ScrollView>
       </View>
 
@@ -470,6 +766,19 @@ export default function TasksScreen() {
         onSelect={(mood) => { setMood(mood); setShowMoodCheck(false); }}
         onSkip={() => setShowMoodCheck(false)}
       />
+
+      <ProtocolConfirmModal
+        visible={confirmProtocol !== null}
+        protocol={confirmProtocol}
+        onDone={() => {
+          if (confirmProtocol) {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            completeProtocol(confirmProtocol.id, true);
+          }
+          setConfirmProtocol(null);
+        }}
+        onDismiss={() => setConfirmProtocol(null)}
+      />
     </SafeAreaView>
   );
 }
@@ -483,11 +792,35 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: COLORS.bgBottom },
 
   // Loading
-  loadingWrap: { flex: 1, alignItems: "center", justifyContent: "center", gap: SP[3] },
+  loadingWrap: { flex: 1, alignItems: "center", justifyContent: "center", gap: SP[4] },
   loadingTitle: { color: COLORS.text, fontSize: 22, fontFamily: "Poppins-SemiBold" },
-  loadingSubtext: { color: COLORS.sub, fontSize: 13, fontFamily: "Poppins-SemiBold", marginTop: SP[1] },
-  dotsRow: { flexDirection: "row", gap: 8, alignItems: "center", justifyContent: "center" },
-  loadingDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: COLORS.accent },
+  progressTrackLoading: {
+    width: 120,
+    height: 2,
+    borderRadius: 1,
+    backgroundColor: "rgba(255,255,255,0.10)",
+    overflow: "hidden",
+  },
+  progressFillLoading: {
+    height: "100%",
+    borderRadius: 1,
+    backgroundColor: COLORS.accent,
+  },
+  phraseContainer: {
+    height: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    width: "100%",
+    paddingHorizontal: SP[6],
+  },
+  loadingPhrase: {
+    position: "absolute",
+    color: COLORS.sub,
+    fontSize: 13,
+    fontFamily: "Poppins-SemiBold",
+    textAlign: "center",
+    width: "100%",
+  },
 
   // Layout
   topSection: {
@@ -505,16 +838,23 @@ const styles = StyleSheet.create({
 
   // Workout card
   workoutCard: {
-    backgroundColor: COLORS.card,
     borderRadius: RADII.card,
     borderWidth: 1,
-    borderColor: COLORS.cardBorder,
+    borderColor: "rgba(255,255,255,0.12)",
+    borderTopWidth: 2,
+    borderTopColor: COLORS.accent,
     padding: SP[4],
     gap: SP[3],
+    shadowColor: COLORS.accent,
+    shadowOpacity: 0.30,
+    shadowRadius: 36,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 14,
+    overflow: "hidden",
   },
   cardTopRow: {
     flexDirection: "row",
-    alignItems: "flex-start",
+    alignItems: "center",
     justifyContent: "space-between",
   },
   cardDate: {
@@ -523,12 +863,6 @@ const styles = StyleSheet.create({
     fontFamily: "Poppins-SemiBold",
     letterSpacing: 0.5,
     textTransform: "uppercase",
-  },
-  cardSubtitle: {
-    color: COLORS.text,
-    fontSize: 16,
-    fontFamily: "Poppins-SemiBold",
-    marginTop: 2,
   },
   streakBadge: {
     flexDirection: "row",
@@ -544,29 +878,35 @@ const styles = StyleSheet.create({
   streakIcon: { fontSize: 15 },
   streakText: { color: "#FFAA32", fontSize: 14, fontFamily: "Poppins-SemiBold" },
 
-  completionRow: {
-    flexDirection: "row",
-    alignItems: "baseline",
+  heroFocus: {
+    color: COLORS.text,
+    fontSize: 22,
+    fontFamily: "Poppins-SemiBold",
+    letterSpacing: -0.3,
   },
-  completionNum: {
+  tierPill: {
+    alignSelf: "flex-start",
+    paddingHorizontal: SP[3],
+    paddingVertical: 4,
+    borderRadius: RADII.pill,
+    borderWidth: 1,
+    borderColor: COLORS.accentBorder,
+    backgroundColor: COLORS.accentGlow,
+  },
+  tierPillText: {
     color: COLORS.accent,
-    fontSize: 36,
+    fontSize: 11,
     fontFamily: "Poppins-SemiBold",
-    lineHeight: 40,
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
   },
-  completionDenom: {
-    color: COLORS.sub,
-    fontSize: 18,
-    fontFamily: "Poppins-SemiBold",
-    lineHeight: 24,
+  progressSection: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SP[3],
   },
-  completionLabel: {
-    color: COLORS.sub,
-    fontSize: 14,
-    fontFamily: "Poppins-SemiBold",
-  },
-
   progressTrack: {
+    flex: 1,
     height: 5,
     borderRadius: 3,
     backgroundColor: "rgba(255,255,255,0.08)",
@@ -577,23 +917,12 @@ const styles = StyleSheet.create({
     borderRadius: 3,
     backgroundColor: COLORS.accent,
   },
-
-  focusRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SP[2],
-  },
-  focusDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: COLORS.accent,
-  },
-  focusText: {
+  progressCount: {
     color: COLORS.sub,
     fontSize: 13,
     fontFamily: "Poppins-SemiBold",
-    flex: 1,
+    minWidth: 28,
+    textAlign: "right",
   },
 
   // Section header
@@ -666,6 +995,12 @@ const styles = StyleSheet.create({
     fontFamily: "Poppins-SemiBold",
     textTransform: "capitalize",
   },
+  taskReason: {
+    color: "rgba(11,11,11,0.40)",
+    fontSize: 11,
+    fontFamily: "Poppins-SemiBold",
+    marginTop: 1,
+  },
   taskRight: {
     flexDirection: "row",
     alignItems: "center",
@@ -706,6 +1041,62 @@ const styles = StyleSheet.create({
     color: "#B4F34D",
     fontSize: 13,
     fontFamily: "Poppins-SemiBold",
+  },
+
+  // Protocol cards
+  protocolCard: {
+    backgroundColor: "rgba(255,255,255,0.07)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
+    borderRadius: RADII.lg,
+    padding: SP[4],
+  },
+  protocolCardDone: {
+    backgroundColor: "rgba(255,255,255,0.03)",
+    borderColor: "rgba(255,255,255,0.05)",
+  },
+  protocolIconWrap: {
+    width: 52,
+    height: 52,
+    borderRadius: 14,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  protocolEmoji: { fontSize: 26 },
+  protocolTitle: {
+    color: COLORS.text,
+    fontSize: 15,
+    fontFamily: "Poppins-SemiBold",
+  },
+  protocolTitleDone: { color: "rgba(255,255,255,0.30)" },
+  protocolQuantity: {
+    color: "rgba(255,255,255,0.50)",
+    fontSize: 12,
+    fontFamily: "Poppins-SemiBold",
+  },
+  protocolStatusDot: {
+    borderColor: "rgba(255,255,255,0.25)",
+  },
+  protocolStatusDotDone: {
+    backgroundColor: COLORS.accent,
+    borderColor: COLORS.accent,
+  },
+
+  // Protocols section header
+  protocolsHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingTop: SP[4],
+    paddingBottom: SP[2],
+  },
+  protocolsTitle: {
+    flex: 1,
+    color: COLORS.sub,
+    fontSize: 13,
+    fontFamily: "Poppins-SemiBold",
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
   },
 
   // Confirmation modal
