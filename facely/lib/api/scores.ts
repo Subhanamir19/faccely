@@ -32,7 +32,8 @@ export class RescanTooSoonError extends Error {
 
 async function assertNotTooSoon(res: Response): Promise<void> {
   if (res.status === 429) {
-    const body = await res.json().catch(() => null);
+    // Clone before reading so the original body remains consumable by the caller.
+    const body = await res.clone().json().catch(() => null);
     if (body?.error === "rescan_too_soon") {
       throw new RescanTooSoonError(body.next_scan_at ?? "");
     }
