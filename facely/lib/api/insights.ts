@@ -82,6 +82,7 @@ export type InsightData = {
   history: DashboardHistoryItem[];
   joined_days_ago: number;
   latest_advanced: LatestAdvanced | null;
+  previous_advanced: LatestAdvanced | null;
 };
 
 export async function fetchInsights(): Promise<InsightData> {

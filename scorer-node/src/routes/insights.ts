@@ -46,8 +46,15 @@ insightsRouter.get("/", async (_req, res) => {
     ]);
 
     const latest = scans[scans.length - 1] ?? null;
-    const latestAnalysis = latest ? await getAnalysisForScan(latest.id) : null;
+    const previous = scans.length >= 2 ? scans[scans.length - 2] : null;
+
+    const [latestAnalysis, previousAnalysis] = await Promise.all([
+      latest ? getAnalysisForScan(latest.id) : Promise.resolve(null),
+      previous ? getAnalysisForScan(previous.id) : Promise.resolve(null),
+    ]);
+
     const latestAdvanced = (latestAnalysis?.advanced_result as Record<string, unknown> | null) ?? null;
+    const previousAdvanced = (previousAnalysis?.advanced_result as Record<string, unknown> | null) ?? null;
 
     const scanCount = scans.length;
 
@@ -135,6 +142,7 @@ insightsRouter.get("/", async (_req, res) => {
       history,
       joined_days_ago: joinedDaysAgo,
       latest_advanced: latestAdvanced,
+      previous_advanced: previousAdvanced,
     });
   } catch (err) {
     console.error("[insights] failed to fetch insight", err);

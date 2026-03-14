@@ -639,9 +639,24 @@ type AdvancedGroup = {
   label: string;
   items: { label: string; scoreKey: string }[];
   data: Record<string, number | string> | null;
+  prevData: Record<string, number | string> | null;
 };
 
-function AdvancedSection({ latestAdvanced }: { latestAdvanced: import("@/lib/api/insights").LatestAdvanced | null }) {
+function getChangeTag(current: number, previous: number | undefined): { label: string; color: string; icon: string } | null {
+  if (previous === undefined) return null;
+  const delta = current - previous;
+  if (delta >= 3)  return { label: "IMPROVED", color: "#10B981", icon: "↑" };
+  if (delta <= -3) return { label: "DECLINED", color: "#EF4444", icon: "↓" };
+  return           { label: "STABLE",   color: "#94A3B8", icon: "→" };
+}
+
+function AdvancedSection({
+  latestAdvanced,
+  previousAdvanced,
+}: {
+  latestAdvanced: import("@/lib/api/insights").LatestAdvanced | null;
+  previousAdvanced: import("@/lib/api/insights").LatestAdvanced | null;
+}) {
   const [open, setOpen] = useState(false);
 
   const groups: AdvancedGroup[] = [
@@ -653,7 +668,8 @@ function AdvancedSection({ latestAdvanced }: { latestAdvanced: import("@/lib/api
         { label: "Bone Structure",     scoreKey: "bone_structure_score" },
         { label: "Face Fat",           scoreKey: "face_fat_score" },
       ],
-      data: latestAdvanced?.cheekbones as Record<string, number | string> | null ?? null,
+      data:     latestAdvanced?.cheekbones  as Record<string, number | string> | null ?? null,
+      prevData: previousAdvanced?.cheekbones as Record<string, number | string> | null ?? null,
     },
     {
       label: "Jawline",
@@ -662,7 +678,8 @@ function AdvancedSection({ latestAdvanced }: { latestAdvanced: import("@/lib/api
         { label: "Gonial Angle",   scoreKey: "gonial_angle_score" },
         { label: "Chin Projection",scoreKey: "projection_score" },
       ],
-      data: latestAdvanced?.jawline as Record<string, number | string> | null ?? null,
+      data:     latestAdvanced?.jawline  as Record<string, number | string> | null ?? null,
+      prevData: previousAdvanced?.jawline as Record<string, number | string> | null ?? null,
     },
     {
       label: "Eyes",
@@ -672,7 +689,8 @@ function AdvancedSection({ latestAdvanced }: { latestAdvanced: import("@/lib/api
         { label: "Brow Volume",  scoreKey: "brow_volume_score" },
         { label: "Symmetry",     scoreKey: "symmetry_score" },
       ],
-      data: latestAdvanced?.eyes as Record<string, number | string> | null ?? null,
+      data:     latestAdvanced?.eyes  as Record<string, number | string> | null ?? null,
+      prevData: previousAdvanced?.eyes as Record<string, number | string> | null ?? null,
     },
     {
       label: "Skin",
@@ -680,7 +698,8 @@ function AdvancedSection({ latestAdvanced }: { latestAdvanced: import("@/lib/api
         { label: "Skin Color",   scoreKey: "color_score" },
         { label: "Skin Quality", scoreKey: "quality_score" },
       ],
-      data: latestAdvanced?.skin as Record<string, number | string> | null ?? null,
+      data:     latestAdvanced?.skin  as Record<string, number | string> | null ?? null,
+      prevData: previousAdvanced?.skin as Record<string, number | string> | null ?? null,
     },
   ];
 
@@ -713,8 +732,13 @@ function AdvancedSection({ latestAdvanced }: { latestAdvanced: import("@/lib/api
                 <View key={group.label} style={styles.advancedGroup}>
                   <Text style={styles.advancedGroupLabel}>{group.label}</Text>
                   {group.items.map((item, i) => {
-                    const score = group.data ? (group.data[item.scoreKey] as number | undefined) : undefined;
-                    const tag = score !== undefined ? getSubMetricTag(score) : null;
+                    const score    = group.data     ? (group.data[item.scoreKey]     as number | undefined) : undefined;
+                    const prevScore = group.prevData ? (group.prevData[item.scoreKey] as number | undefined) : undefined;
+
+                    const changeTag = score !== undefined ? getChangeTag(score, prevScore) : null;
+                    const absTag    = score !== undefined && !changeTag ? getSubMetricTag(score) : null;
+                    const tag       = changeTag ?? absTag;
+
                     return (
                       <View
                         key={item.scoreKey}
@@ -730,7 +754,9 @@ function AdvancedSection({ latestAdvanced }: { latestAdvanced: import("@/lib/api
                           )}
                           {tag && (
                             <View style={[styles.subMetricTag, { backgroundColor: `${tag.color}20`, borderColor: `${tag.color}60` }]}>
-                              <Text style={[styles.subMetricTagText, { color: tag.color }]}>{tag.label}</Text>
+                              <Text style={[styles.subMetricTagText, { color: tag.color }]}>
+                                {changeTag ? `${changeTag.icon} ${changeTag.label}` : tag.label}
+                              </Text>
                             </View>
                           )}
                         </View>
@@ -820,6 +846,7 @@ export default function DashboardScreen() {
   const history = data?.history ?? [];
   const joinedDaysAgo = data?.joined_days_ago ?? 0;
   const latestAdvanced = data?.latest_advanced ?? null;
+  const previousAdvanced = data?.previous_advanced ?? null;
 
   const renderBody = () => {
     if (error) {
@@ -863,7 +890,7 @@ export default function DashboardScreen() {
           <MetricRow key={m.key} metric={m} index={i} advancedData={advancedData} />
         ))}
 
-        <AdvancedSection latestAdvanced={latestAdvanced} />
+        <AdvancedSection latestAdvanced={latestAdvanced} previousAdvanced={previousAdvanced} />
 
         {history.length > 0 && <HistorySection items={history} />}
 
