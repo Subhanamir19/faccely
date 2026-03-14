@@ -1,25 +1,33 @@
 // app/(tabs)/dashboard.tsx
-// Progress Dashboard — Score ring, trend graph, metric breakdown, AI insights
+// Progress Dashboard — full redesign with lime design system
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   View,
   ScrollView,
   StyleSheet,
   RefreshControl,
   Platform,
-  TouchableOpacity,
   Pressable,
+  Dimensions,
+  Image,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import * as Haptics from "expo-haptics";
 import Animated, {
   FadeInDown,
+  FadeIn,
   useSharedValue,
   useAnimatedProps,
+  useAnimatedStyle,
   withTiming,
+  withSpring,
+  withRepeat,
+  withSequence,
   Easing,
+  runOnJS,
 } from "react-native-reanimated";
 import Svg, {
   Circle,
@@ -28,82 +36,80 @@ import Svg, {
   LinearGradient as SvgGradient,
   Stop,
   Path,
+  Line,
 } from "react-native-svg";
 import { useRouter } from "expo-router";
 import Text from "@/components/ui/T";
-import ScreenHeader from "@/components/layout/ScreenHeader";
-import { COLORS, SP, RADII, TYPE } from "@/lib/tokens";
+import { COLORS, SP, RADII, TYPE, SHADOWS } from "@/lib/tokens";
 import { useInsights } from "@/store/insights";
 import { useAdvancedAnalysis } from "@/store/advancedAnalysis";
+import { useTasksStore } from "@/store/tasks";
 import type {
   DashboardMetric,
   DashboardHistoryItem,
-  AdvancedItem,
   InsightContent,
   DashboardOverall,
+  LatestAdvanced,
 } from "@/lib/api/insights";
 import type { AdvancedAnalysis } from "@/lib/api/advancedAnalysis";
 
 /* -------------------------------------------------------------------------- */
-/*   Gold accent palette (dashboard-local override)                           */
+/*  Design tokens — lime palette                                               */
 /* -------------------------------------------------------------------------- */
 
-const GOLD = {
-  primary: "#C9A84C",
-  light: "#F5D78E",
-  dim: "rgba(201,168,76,0.60)",
-  glow: "rgba(201,168,76,0.18)",
-  border: "rgba(201,168,76,0.30)",
-  bg: "rgba(201,168,76,0.10)",
-  track: "rgba(201,168,76,0.15)",
+const LIME = {
+  primary: "#B4F34D",
+  light:   "#CCFF6B",
+  dark:    "#6B9A1E",
+  dim:     "rgba(180,243,77,0.60)",
+  glow:    "rgba(180,243,77,0.18)",
+  border:  "rgba(180,243,77,0.30)",
+  bg:      "rgba(180,243,77,0.10)",
+  track:   "rgba(180,243,77,0.15)",
+};
+
+const DIR_COLOR: Record<string, string> = {
+  up:   "#B4F34D",
+  down: "#EF4444",
+  flat: "rgba(255,255,255,0.35)",
 };
 
 const VERDICT_COLOR: Record<string, string> = {
-  improved: "#4ADE80",
-  same: "rgba(255,255,255,0.45)",
-  declined: "#F87171",
+  improved: "#B4F34D",
+  same:     "rgba(255,255,255,0.45)",
+  declined: "#EF4444",
 };
+
+const VERDICT_BG: Record<string, string> = {
+  improved: "rgba(180,243,77,0.12)",
+  same:     "rgba(255,255,255,0.08)",
+  declined: "rgba(239,68,68,0.12)",
+};
+
 const CHANGE_COLOR: Record<string, string> = {
-  improving: "#4ADE80",
-  same: "rgba(255,255,255,0.40)",
-  worse: "#F87171",
+  improving: "#B4F34D",
+  same:      "rgba(255,255,255,0.40)",
+  worse:     "#EF4444",
 };
+
 const CHANGE_ICON: Record<string, string> = {
   improving: "↑",
-  same: "→",
-  worse: "↓",
-};
-const DIR_COLOR: Record<string, string> = {
-  up: "#4ADE80",
-  flat: "rgba(255,255,255,0.40)",
-  down: "#F87171",
+  same:      "→",
+  worse:     "↓",
 };
 
 const METRIC_LABELS: Record<string, string> = {
-  jawline: "Jawline",
-  facial_symmetry: "Symmetry",
-  skin_quality: "Skin",
-  cheekbones: "Cheekbones",
-  eyes_symmetry: "Eye Symmetry",
-  nose_harmony: "Nose Harmony",
+  jawline:           "Jawline",
+  facial_symmetry:   "Facial Symmetry",
+  skin_quality:      "Skin Quality",
+  cheekbones:        "Cheekbones",
+  eyes_symmetry:     "Eye Symmetry",
+  nose_harmony:      "Nose Harmony",
   sexual_dimorphism: "Masculinity",
 };
 
-function formatDelta(d: number): string {
-  if (d > 0) return `+${d.toFixed(1)}`;
-  if (d < 0) return d.toFixed(1);
-  return "0";
-}
-
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-  });
-}
-
 /* -------------------------------------------------------------------------- */
-/*   Sub-metric config (mirrors analysis.tsx CARD_GROUPS)                     */
+/*  Sub-metric config                                                          */
 /* -------------------------------------------------------------------------- */
 
 type SubMetricDef = { key: string; label: string };
@@ -144,6 +150,20 @@ const SUBMETRIC_MAP: Partial<Record<string, { groupKey: keyof AdvancedAnalysis; 
   },
 };
 
+/* -------------------------------------------------------------------------- */
+/*  Helpers                                                                    */
+/* -------------------------------------------------------------------------- */
+
+function formatDelta(d: number): string {
+  if (d > 0) return `+${d.toFixed(1)}`;
+  if (d < 0) return d.toFixed(1);
+  return "0";
+}
+
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
 function getSubMetricTag(score: number): { label: string; color: string } {
   if (score >= 91) return { label: "EXCEPTIONAL", color: "#10B981" };
   if (score >= 76) return { label: "STRONG",      color: "#B4F34D" };
@@ -154,15 +174,304 @@ function getSubMetricTag(score: number): { label: string; color: string } {
   return                  { label: "POOR",        color: "#DC2626" };
 }
 
+function getScoreTier(score: number): { label: string; color: string } {
+  if (score >= 85) return { label: "ELITE",      color: "#7DFF6A" };
+  if (score >= 70) return { label: "STRONG",     color: "#B4F34D" };
+  if (score >= 55) return { label: "GOOD",       color: "#C8DA45" };
+  if (score >= 40) return { label: "AVERAGE",    color: "#F5C842" };
+  if (score >= 25) return { label: "BELOW AVG",  color: "#F08C5A" };
+  return                  { label: "WEAK",       color: "#EF4444" };
+}
+
 /* -------------------------------------------------------------------------- */
-/*   ScoreRing — animated SVG arc                                             */
+/*  Metric images                                                              */
+/* -------------------------------------------------------------------------- */
+
+const METRIC_IMAGES: Record<string, any> = {
+  jawline:           require("@/assets/analysis-image-new/jawline analysis.jpeg"),
+  cheekbones:        require("@/assets/analysis-image-new/cheekbones analysis.jpeg"),
+  eyes_symmetry:     require("@/assets/analysis-image-new/eye area naalysis.jpeg"),
+  skin_quality:      require("@/assets/analysis-image-new/skin analysis.jpeg"),
+  // Placeholders until images are provided
+  facial_symmetry:   null,
+  nose_harmony:      null,
+  sexual_dimorphism: null,
+};
+
+const METRIC_PLACEHOLDER_EMOJI: Record<string, string> = {
+  facial_symmetry:   "⚖️",
+  nose_harmony:      "👃",
+  sexual_dimorphism: "💪",
+};
+
+/* -------------------------------------------------------------------------- */
+/*  CurvedArrow — animated SVG arrow for direction                             */
+/* -------------------------------------------------------------------------- */
+
+const AnimatedPath = Animated.createAnimatedComponent(Path);
+
+function CurvedArrow({ direction }: { direction: "up" | "down" | "flat" }) {
+  const progress = useSharedValue(0);
+
+  useEffect(() => {
+    progress.value = withTiming(1, { duration: 900, easing: Easing.out(Easing.cubic) });
+  }, []);
+
+  // Path lengths (pre-calculated for each shape)
+  const upPath    = "M 3 17 C 3 9 9 3 17 3";
+  const downPath  = "M 3 3 C 3 11 9 17 17 17";
+  const flatPath  = "M 2 10 L 18 10";
+  const pathLen   = direction === "flat" ? 16 : 20;
+
+  const animatedProps = useAnimatedProps(() => ({
+    strokeDashoffset: pathLen * (1 - progress.value),
+  }));
+
+  const color =
+    direction === "up"   ? LIME.primary :
+    direction === "down" ? "#EF4444"    :
+    "rgba(255,255,255,0.40)";
+
+  const d = direction === "up" ? upPath : direction === "down" ? downPath : flatPath;
+
+  // Arrow tip points
+  const tip =
+    direction === "up"   ? { d: "M 14 3 L 17 3 L 17 6" } :
+    direction === "down" ? { d: "M 14 17 L 17 17 L 17 14" } :
+    { d: "M 15 7 L 18 10 L 15 13" };
+
+  return (
+    <Svg width={20} height={20}>
+      <AnimatedPath
+        d={d}
+        stroke={color}
+        strokeWidth={2}
+        fill="none"
+        strokeLinecap="round"
+        strokeDasharray={pathLen}
+        animatedProps={animatedProps}
+      />
+      <Path
+        d={tip.d}
+        stroke={color}
+        strokeWidth={2}
+        fill="none"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/*  MetricCard3D — individual 3D metric tile                                   */
+/* -------------------------------------------------------------------------- */
+
+const CARD_W = (Dimensions.get("window").width - SP[4] * 2 - SP[3]) / 2;
+const CARD_H = CARD_W * 1.2;
+
+function MetricCard3D({
+  metric,
+  delay,
+}: {
+  metric: DashboardMetric;
+  delay: number;
+}) {
+  const scale = useSharedValue(1);
+  const animStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+
+  const color      = DIR_COLOR[metric.direction] ?? DIR_COLOR.flat;
+  const tier       = getScoreTier(metric.current);
+  const label      = METRIC_LABELS[metric.key] ?? metric.key;
+  const img        = METRIC_IMAGES[metric.key];
+  const placeholder = METRIC_PLACEHOLDER_EMOJI[metric.key] ?? "📊";
+
+  const dirLabel =
+    metric.direction === "up"   ? "IMPROVED" :
+    metric.direction === "down" ? "DECLINED" : "STABLE";
+
+  const handlePressIn = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    scale.value = withSpring(0.96, { damping: 14, stiffness: 300 });
+  };
+  const handlePressOut = () => {
+    scale.value = withSpring(1, { damping: 12, stiffness: 200 });
+  };
+
+  return (
+    <Animated.View entering={FadeInDown.delay(delay).duration(400)} style={animStyle}>
+      <Pressable onPressIn={handlePressIn} onPressOut={handlePressOut} style={styles.metricTileOuter}>
+        {/* 3D base layer */}
+        <View style={[styles.metricTileBase, { shadowColor: color }]} />
+        {/* Face */}
+        <View style={[styles.metricTileFace, { borderTopColor: color }]}>
+          <LinearGradient
+            colors={["#1E1E1E", "#0F0F0F"]}
+            style={StyleSheet.absoluteFill}
+          />
+
+          {/* Image area */}
+          <View style={styles.metricTileImage}>
+            {img ? (
+              <Image source={img} style={styles.metricTileImg} resizeMode="cover" />
+            ) : (
+              <View style={styles.metricTilePlaceholder}>
+                <Text style={{ fontSize: 36 }}>{placeholder}</Text>
+              </View>
+            )}
+            {/* Gradient fade over image for text legibility */}
+            <LinearGradient
+              colors={["rgba(15,15,15,0.70)", "transparent", "rgba(15,15,15,0.80)"]}
+              locations={[0, 0.4, 1]}
+              style={StyleSheet.absoluteFill}
+              pointerEvents="none"
+            />
+            {/* Score in top-right */}
+            <View style={styles.metricTileScoreBadge}>
+              <Text style={[styles.metricTileScore, { color: tier.color }]}>
+                {metric.current.toFixed(0)}
+              </Text>
+            </View>
+          </View>
+
+          {/* Name */}
+          <Text style={styles.metricTileName} numberOfLines={1}>{label}</Text>
+
+          {/* Bottom: arrow + tag */}
+          <View style={styles.metricTileBottom}>
+            <CurvedArrow direction={metric.direction} />
+            <View style={[styles.metricDirPill, { backgroundColor: `${color}18`, borderColor: `${color}40` }]}>
+              <Text style={[styles.metricDirText, { color }]}>{dirLabel}</Text>
+            </View>
+            <Text style={[styles.metricDeltaText, { color }]}>
+              {formatDelta(Math.round(metric.delta * 10) / 10)}
+            </Text>
+          </View>
+        </View>
+      </Pressable>
+    </Animated.View>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/*  OverallCard3D — 8th grid tile showing overall score                        */
+/* -------------------------------------------------------------------------- */
+
+function OverallCard3D({
+  overall,
+  overallDelta,
+  verdict,
+  delay,
+}: {
+  overall: DashboardOverall;
+  overallDelta: number;
+  verdict: string;
+  delay: number;
+}) {
+  const scale = useSharedValue(1);
+  const animStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  const color = verdict === "improved" ? LIME.primary : verdict === "declined" ? "#EF4444" : "rgba(255,255,255,0.40)";
+  const tier  = getScoreTier(overall.current);
+
+  return (
+    <Animated.View entering={FadeInDown.delay(delay).duration(400)} style={animStyle}>
+      <Pressable
+        onPressIn={() => { scale.value = withSpring(0.96, { damping: 14, stiffness: 300 }); }}
+        onPressOut={() => { scale.value = withSpring(1, { damping: 12, stiffness: 200 }); }}
+        style={styles.metricTileOuter}
+      >
+        <View style={[styles.metricTileBase, { shadowColor: LIME.primary }]} />
+        <View style={[styles.metricTileFace, { borderTopColor: LIME.primary }]}>
+          <LinearGradient colors={["#1C2410", "#0F0F0F"]} style={StyleSheet.absoluteFill} />
+
+          {/* Overall score center */}
+          <View style={styles.overallCenter}>
+            <Text style={styles.overallScoreNum}>{overall.current.toFixed(1)}</Text>
+            <View style={[styles.tierPill, { backgroundColor: `${tier.color}18`, borderColor: `${tier.color}50`, marginTop: SP[1] }]}>
+              <Text style={[styles.tierText, { color: tier.color }]}>{tier.label}</Text>
+            </View>
+          </View>
+
+          <Text style={styles.metricTileName}>Overall</Text>
+
+          <View style={styles.metricTileBottom}>
+            <CurvedArrow direction={overallDelta > 0.5 ? "up" : overallDelta < -0.5 ? "down" : "flat"} />
+            <Text style={[styles.metricDeltaText, { color: overallDelta >= 0 ? LIME.primary : "#EF4444", fontSize: 13, fontFamily: "Poppins-SemiBold" }]}>
+              {formatDelta(Math.round(overallDelta * 10) / 10)}
+            </Text>
+          </View>
+        </View>
+      </Pressable>
+    </Animated.View>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/*  MetricGrid — 2-column 4-row grid of metric tiles                           */
+/* -------------------------------------------------------------------------- */
+
+function MetricGrid({
+  metrics,
+  overall,
+  overallDelta,
+  verdict,
+}: {
+  metrics: DashboardMetric[];
+  overall: DashboardOverall;
+  overallDelta: number;
+  verdict: string;
+}) {
+  return (
+    <View style={styles.metricGrid}>
+      {metrics.map((m, i) => (
+        <MetricCard3D key={m.key} metric={m} delay={280 + i * 45} />
+      ))}
+      <OverallCard3D
+        overall={overall}
+        overallDelta={overallDelta}
+        verdict={verdict}
+        delay={280 + metrics.length * 45}
+      />
+    </View>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/*  GlassCard                                                                  */
+/* -------------------------------------------------------------------------- */
+
+function GlassCard({
+  children,
+  style,
+  accentLeft,
+}: {
+  children: React.ReactNode;
+  style?: object;
+  accentLeft?: boolean;
+}) {
+  return (
+    <View style={[styles.card, style]}>
+      <BlurView
+        intensity={Platform.OS === "android" ? 20 : 45}
+        tint="dark"
+        style={StyleSheet.absoluteFill}
+      />
+      <View style={styles.cardInner} />
+      {accentLeft && <View style={styles.cardAccentLeft} />}
+      {children}
+    </View>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/*  ScoreRing — animated SVG arc                                               */
 /* -------------------------------------------------------------------------- */
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
 function ScoreRing({
   score,
-  size = 160,
+  size = 148,
   strokeWidth = 10,
 }: {
   score: number;
@@ -191,21 +500,31 @@ function ScoreRing({
     <View style={{ width: size, height: size, alignItems: "center", justifyContent: "center" }}>
       <Svg width={size} height={size} style={{ position: "absolute" }}>
         <Defs>
-          <SvgGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1">
-            <Stop offset="0%" stopColor={GOLD.primary} />
-            <Stop offset="100%" stopColor={GOLD.light} />
+          <SvgGradient id="ringGrad" x1="0" y1="1" x2="1" y2="0">
+            <Stop offset="0%" stopColor={LIME.primary} />
+            <Stop offset="100%" stopColor={LIME.light} />
           </SvgGradient>
         </Defs>
-        {/* track */}
+        {/* Glow layer */}
         <Circle
           cx={cx}
           cy={cy}
           r={radius}
-          stroke={GOLD.track}
+          stroke={LIME.primary}
+          strokeWidth={strokeWidth + 6}
+          fill="none"
+          opacity={0.08}
+        />
+        {/* Track */}
+        <Circle
+          cx={cx}
+          cy={cy}
+          r={radius}
+          stroke="rgba(255,255,255,0.08)"
           strokeWidth={strokeWidth}
           fill="none"
         />
-        {/* progress arc */}
+        {/* Progress arc */}
         <AnimatedCircle
           cx={cx}
           cy={cy}
@@ -220,612 +539,746 @@ function ScoreRing({
           origin={`${cx}, ${cy}`}
         />
       </Svg>
-      <View style={{ alignItems: "center" }}>
-        <Text
-          style={{
-            fontSize: 36,
-            fontFamily: "Poppins-Bold",
-            color: GOLD.light,
-            lineHeight: 40,
-          }}
-        >
-          {score.toFixed(1)}
-        </Text>
-        <Text style={{ ...TYPE.small, color: GOLD.dim }}>overall</Text>
-      </View>
     </View>
   );
 }
 
 /* -------------------------------------------------------------------------- */
-/*   MiniGraph — polyline chart                                               */
+/*  MiniGraph — SVG area chart                                                 */
 /* -------------------------------------------------------------------------- */
+
+const { width: SCREEN_W } = Dimensions.get("window");
+const GRAPH_H = 100;
+const GRAPH_W = SCREEN_W - SP[4] * 2 - SP[6] * 2; // full card width minus padding
 
 function MiniGraph({
   points,
-  width = 200,
-  height = 56,
+  dates,
+  width = GRAPH_W,
+  height = GRAPH_H,
 }: {
   points: number[];
+  dates?: string[];
   width?: number;
   height?: number;
 }) {
   if (points.length < 2) return null;
 
-  const padX = 4;
-  const padY = 6;
+  const padX = 8;
+  const padY = 10;
+  const innerW = width - padX * 2;
+  const innerH = height - padY * 2;
+
   const min = Math.min(...points);
   const max = Math.max(...points);
   const range = max - min || 1;
 
-  const coords = points.map((p, i) => {
-    const x = padX + (i / (points.length - 1)) * (width - padX * 2);
-    const y = padY + (1 - (p - min) / range) * (height - padY * 2);
-    return `${x},${y}`;
-  });
+  const toX = (i: number) => padX + (i / (points.length - 1)) * innerW;
+  const toY = (p: number) => padY + (1 - (p - min) / range) * innerH;
 
-  const polyStr = coords.join(" ");
+  const coords = points.map((p, i) => ({ x: toX(i), y: toY(p) }));
+  const polyStr = coords.map((c) => `${c.x},${c.y}`).join(" ");
 
-  // Build fill path
-  const first = coords[0];
-  const last = coords[coords.length - 1];
-  const [lastX] = last.split(",");
-  const [firstX] = first.split(",");
-  const fillPath = `M ${first} L ${coords.slice(1).join(" L ")} L ${lastX},${height} L ${firstX},${height} Z`;
+  const firstC = coords[0];
+  const lastC = coords[coords.length - 1];
+  const fillPath = `M ${firstC.x},${firstC.y} ${coords
+    .slice(1)
+    .map((c) => `L ${c.x},${c.y}`)
+    .join(" ")} L ${lastC.x},${height} L ${firstC.x},${height} Z`;
+
+  // Y-axis guide values
+  const mid = (min + max) / 2;
 
   return (
-    <Svg width={width} height={height}>
-      <Defs>
-        <SvgGradient id="graphFill" x1="0" y1="0" x2="0" y2="1">
-          <Stop offset="0%" stopColor={GOLD.primary} stopOpacity="0.25" />
-          <Stop offset="100%" stopColor={GOLD.primary} stopOpacity="0" />
-        </SvgGradient>
-      </Defs>
-      <Path d={fillPath} fill="url(#graphFill)" />
-      <Polyline
-        points={polyStr}
-        fill="none"
-        stroke={GOLD.primary}
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </Svg>
-  );
-}
-
-/* -------------------------------------------------------------------------- */
-/*   Card shell                                                               */
-/* -------------------------------------------------------------------------- */
-
-function Card({
-  children,
-  style,
-}: {
-  children: React.ReactNode;
-  style?: object;
-}) {
-  return (
-    <View style={[styles.card, style]}>
-      <BlurView
-        intensity={Platform.OS === "android" ? 20 : 40}
-        tint="dark"
-        style={StyleSheet.absoluteFill}
-      />
-      <View style={styles.cardOverlay} />
-      <View style={styles.cardTopLine} />
-      {children}
+    <View>
+      {/* Y-axis labels */}
+      <View style={[StyleSheet.absoluteFill, { justifyContent: "space-between", paddingVertical: padY }]} pointerEvents="none">
+        {[max, mid, min].map((v, i) => (
+          <Text key={i} style={{ ...TYPE.small, color: "rgba(255,255,255,0.30)", fontSize: 10 }}>
+            {v.toFixed(0)}
+          </Text>
+        ))}
+      </View>
+      <Svg width={width} height={height}>
+        <Defs>
+          <SvgGradient id="graphFill" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0%"   stopColor={LIME.primary} stopOpacity="0.30" />
+            <Stop offset="100%" stopColor={LIME.primary} stopOpacity="0.00" />
+          </SvgGradient>
+        </Defs>
+        {/* Grid lines at 25%, 50%, 75% height */}
+        {[0.25, 0.5, 0.75].map((frac, i) => (
+          <Line
+            key={i}
+            x1={padX}
+            y1={padY + frac * innerH}
+            x2={width - padX}
+            y2={padY + frac * innerH}
+            stroke="rgba(255,255,255,0.05)"
+            strokeWidth={1}
+            strokeDasharray="4,4"
+          />
+        ))}
+        {/* Fill */}
+        <Path d={fillPath} fill="url(#graphFill)" />
+        {/* Line */}
+        <Polyline
+          points={polyStr}
+          fill="none"
+          stroke={LIME.primary}
+          strokeWidth={2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        {/* First dot */}
+        <Circle cx={firstC.x} cy={firstC.y} r={4} fill={LIME.primary} opacity={0.8} />
+        {/* Last dot */}
+        <Circle cx={lastC.x} cy={lastC.y} r={5} fill={LIME.primary} />
+        <Circle cx={lastC.x} cy={lastC.y} r={9} fill={LIME.primary} opacity={0.15} />
+      </Svg>
     </View>
   );
 }
 
 /* -------------------------------------------------------------------------- */
-/*   Empty / Generating states                                                */
-/* -------------------------------------------------------------------------- */
-
-function EmptyState() {
-  const router = useRouter();
-  return (
-    <Animated.View entering={FadeInDown.duration(500).delay(100)}>
-      <Card style={styles.centeredCard}>
-        <View style={styles.centeredInner}>
-          <Text style={styles.stateIcon}>📊</Text>
-          <Text variant="h3" color="text" style={{ textAlign: "center" }}>
-            No Progress Yet
-          </Text>
-          <Text variant="caption" color="sub" style={styles.stateSubtext}>
-            Complete a second scan to unlock personalized progress insights and
-            track your improvement over time.
-          </Text>
-          <TouchableOpacity
-            style={styles.stateCTA}
-            onPress={() => router.push("/(tabs)/take-picture")}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.stateCTAText}>Scan Now →</Text>
-          </TouchableOpacity>
-        </View>
-      </Card>
-    </Animated.View>
-  );
-}
-
-function GeneratingState() {
-  return (
-    <Animated.View entering={FadeInDown.duration(500).delay(100)}>
-      <Card style={styles.centeredCard}>
-        <View style={styles.centeredInner}>
-          <Text style={styles.stateIcon}>⚡</Text>
-          <Text variant="h3" color="text" style={{ textAlign: "center" }}>
-            Generating Insights
-          </Text>
-          <Text variant="caption" color="sub" style={styles.stateSubtext}>
-            Your AI progress report is being prepared. Pull down to refresh in a
-            few seconds.
-          </Text>
-        </View>
-      </Card>
-    </Animated.View>
-  );
-}
-
-/* -------------------------------------------------------------------------- */
-/*   Hero card — ring + graph + overall stats                                */
+/*  HeroCard — delta headline + ring + 2×2 stats + celebration glow          */
 /* -------------------------------------------------------------------------- */
 
 function HeroCard({
   overall,
-  graphPoints,
-  graphDates,
+  overallDelta,
+  verdict,
   scanCount,
   joinedDaysAgo,
 }: {
   overall: DashboardOverall;
-  graphPoints: number[];
-  graphDates: string[];
+  overallDelta: number;
+  verdict: string;
   scanCount: number;
   joinedDaysAgo: number;
 }) {
-  const delta = overall.current - overall.baseline;
+  const tier = getScoreTier(overall.current);
+  const isImproved = verdict === "improved";
+  const deltaColor = overallDelta >= 0 ? LIME.primary : "#EF4444";
+  const deltaBg    = overallDelta >= 0 ? "rgba(180,243,77,0.12)" : "rgba(239,68,68,0.12)";
+  const deltaBorder = overallDelta >= 0 ? LIME.border : "rgba(239,68,68,0.35)";
+
+  // Celebration pulse on the card border when improved
+  const glowOpacity = useSharedValue(isImproved ? 0.35 : 0);
+  useEffect(() => {
+    if (!isImproved) return;
+    glowOpacity.value = withRepeat(
+      withSequence(
+        withTiming(0.7, { duration: 1100, easing: Easing.inOut(Easing.sin) }),
+        withTiming(0.25, { duration: 1100, easing: Easing.inOut(Easing.sin) }),
+      ),
+      -1,
+      false,
+    );
+  }, [isImproved]);
+  const glowStyle = useAnimatedStyle(() => ({
+    borderColor: `rgba(180,243,77,${glowOpacity.value})`,
+  }));
+
+  const stats = [
+    { label: "Baseline", value: overall.baseline.toFixed(1), color: COLORS.sub },
+    { label: "Best Ever", value: overall.best.toFixed(1),    color: LIME.dim, highlight: overall.current >= overall.best },
+    { label: "Days",      value: `${joinedDaysAgo}`,         color: COLORS.sub },
+    { label: "Scans",     value: `${scanCount}`,             color: COLORS.sub },
+  ];
 
   return (
-    <Animated.View entering={FadeInDown.duration(500).delay(80)}>
-      <Card>
-        <View style={styles.heroInner}>
-          {/* Top row: ring + stats */}
-          <View style={styles.heroTop}>
-            <ScoreRing score={overall.current} size={152} strokeWidth={9} />
-
-            <View style={styles.heroStats}>
-              <StatPill
-                label="Baseline"
-                value={overall.baseline.toFixed(1)}
-                color={GOLD.dim}
-              />
-              <StatPill
-                label="Best Ever"
-                value={overall.best.toFixed(1)}
-                color={GOLD.light}
-              />
-              <StatPill
-                label={delta >= 0 ? "Total Gain" : "Net Change"}
-                value={formatDelta(Math.round(delta * 10) / 10)}
-                color={delta >= 0 ? "#4ADE80" : "#F87171"}
-              />
-              <StatPill
-                label="Scans"
-                value={`${scanCount}`}
-                color="rgba(255,255,255,0.7)"
-              />
-            </View>
-          </View>
-
-          {/* Graph row */}
-          {graphPoints.length >= 2 && (
-            <View style={styles.graphContainer}>
-              <View style={styles.graphHeader}>
-                <Text style={styles.graphLabel}>Score Trend</Text>
-                {graphDates.length >= 2 && (
-                  <Text style={styles.graphRange}>
-                    {formatDate(graphDates[0])} →{" "}
-                    {formatDate(graphDates[graphDates.length - 1])}
-                  </Text>
-                )}
-              </View>
-              <MiniGraph
-                points={graphPoints}
-                width={graphPoints.length > 10 ? 280 : 240}
-                height={60}
-              />
-            </View>
-          )}
-
-          {/* Footer */}
-          <View style={styles.heroFooter}>
-            <Text style={styles.heroFooterText}>
-              {joinedDaysAgo > 0
-                ? `${joinedDaysAgo} day${joinedDaysAgo !== 1 ? "s" : ""} of tracking`
-                : "Started today"}
+    <Animated.View style={[styles.heroGlowBorder, glowStyle]}>
+      <GlassCard style={styles.heroCard}>
+        {/* ── Delta headline ── */}
+        <View style={styles.heroDeltaRow}>
+          <View style={[styles.heroDeltaBadge, { backgroundColor: deltaBg, borderColor: deltaBorder }]}>
+            <Text style={[styles.heroDeltaText, { color: deltaColor }]}>
+              {formatDelta(Math.round(overallDelta * 10) / 10)}
             </Text>
           </View>
+          <Text style={styles.heroDeltaLabel}>
+            {isImproved ? "improvement since baseline 🎉" : overallDelta < 0 ? "change since baseline" : "no change yet"}
+          </Text>
         </View>
-      </Card>
-    </Animated.View>
-  );
-}
 
-function StatPill({
-  label,
-  value,
-  color,
-}: {
-  label: string;
-  value: string;
-  color: string;
-}) {
-  return (
-    <View style={styles.statPill}>
-      <Text style={[styles.statValue, { color }]}>{value}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
-    </View>
-  );
-}
+        <View style={styles.heroDivider} />
 
-/* -------------------------------------------------------------------------- */
-/*   AI Coach card                                                             */
-/* -------------------------------------------------------------------------- */
-
-function CoachCard({ content }: { content: InsightContent }) {
-  const color = VERDICT_COLOR[content.verdict];
-  return (
-    <Animated.View entering={FadeInDown.duration(500).delay(160)}>
-      <Card>
-        <View style={styles.coachInner}>
-          <View style={styles.coachHeader}>
-            <View style={styles.coachBadge}>
-              <Text style={styles.coachBadgeIcon}>🤖</Text>
-              <Text style={styles.coachBadgeText}>AI Coach</Text>
-            </View>
-            <View
-              style={[
-                styles.verdictBadge,
-                { borderColor: color, backgroundColor: `${color}18` },
-              ]}
-            >
-              <Text style={[styles.verdictText, { color }]}>
-                {content.verdict.toUpperCase()}
-              </Text>
+        {/* ── Ring + stats ── */}
+        <View style={styles.heroRow}>
+          {/* Ring */}
+          <View style={styles.heroLeft}>
+            <ScoreRing score={overall.current} size={144} strokeWidth={10} />
+            <View style={[StyleSheet.absoluteFill, { alignItems: "center", justifyContent: "center" }]} pointerEvents="none">
+              <Text style={styles.heroScore}>{overall.current.toFixed(1)}</Text>
+              <Text style={[TYPE.small, { color: LIME.dim, marginTop: -2 }]}>overall</Text>
+              <View style={[styles.tierPill, { backgroundColor: `${tier.color}18`, borderColor: `${tier.color}50` }]}>
+                <Text style={[styles.tierText, { color: tier.color }]}>{tier.label}</Text>
+              </View>
             </View>
           </View>
-          <Text style={styles.narrative}>{content.narrative}</Text>
+
+          {/* 2×2 stat grid */}
+          <View style={styles.heroStatsGrid}>
+            {stats.map((s, i) => (
+              <View key={i} style={styles.heroStatCell}>
+                <Text style={[styles.heroStatValue, s.highlight ? { color: LIME.primary } : {}]}>
+                  {s.value}
+                  {s.highlight && <Text style={{ fontSize: 10 }}> 🏆</Text>}
+                </Text>
+                <Text style={styles.heroStatLabel}>{s.label}</Text>
+              </View>
+            ))}
+          </View>
         </View>
-      </Card>
+      </GlassCard>
     </Animated.View>
   );
 }
 
 /* -------------------------------------------------------------------------- */
-/*   Metric rows (expandable)                                                 */
+/*  MetricRow — individual pressable card                                      */
 /* -------------------------------------------------------------------------- */
-
-const VERDICT_BADGE: Record<string, string> = {
-  up: "IMPROVED",
-  flat: "STABLE",
-  down: "DECLINED",
-};
 
 function MetricRow({
   metric,
-  index,
+  insightVerdict,
   advancedData,
+  delay,
 }: {
   metric: DashboardMetric;
-  index: number;
+  insightVerdict?: { delta: number; verdict: string } | null;
   advancedData: AdvancedAnalysis | null;
+  delay: number;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const color = DIR_COLOR[metric.direction];
-  const arrow =
-    metric.direction === "up" ? "↑" : metric.direction === "down" ? "↓" : "→";
-  const verdictLabel = VERDICT_BADGE[metric.direction];
+  const scale = useSharedValue(1);
+  const barProgress = useSharedValue(0);
 
-  const barWidth = Math.min(100, Math.max(0, metric.current));
+  useEffect(() => {
+    barProgress.value = withTiming(metric.current / 100, {
+      duration: 800,
+      easing: Easing.out(Easing.cubic),
+    });
+  }, [metric.current]);
 
-  const subConfig = SUBMETRIC_MAP[metric.key];
-  const subGroupData = subConfig && advancedData
-    ? (advancedData[subConfig.groupKey] as Record<string, number | string>)
-    : null;
+  const animStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  const barStyle = useAnimatedStyle(() => ({
+    width: `${barProgress.value * 100}%` as any,
+  }));
+
+  const tier = getScoreTier(metric.current);
+  // Bar color follows score tier for absolute context, but green/red tint for direction
+  const barColor = metric.direction === "up"
+    ? LIME.primary
+    : metric.direction === "down"
+      ? "#EF4444"
+      : tier.color;
+  const label = METRIC_LABELS[metric.key] ?? metric.key;
+  const subMap = SUBMETRIC_MAP[metric.key];
+  const advGroup = subMap && advancedData ? (advancedData as any)[subMap.groupKey] : null;
+
+  // Baseline position on bar (0–100 → 0–1)
+  const baselinePos = Math.min(100, Math.max(0, metric.baseline));
+
+  const dirLabel =
+    metric.direction === "up" ? "↑ IMPROVED" :
+    metric.direction === "down" ? "↓ DECLINED" :
+    "→ STABLE";
+
+  const handlePress = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    scale.value = withSpring(0.98, { damping: 14, stiffness: 300 }, () => {
+      scale.value = withSpring(1, { damping: 14, stiffness: 300 });
+    });
+    setExpanded((v) => !v);
+  };
 
   return (
-    <Animated.View entering={FadeInDown.duration(400).delay(280 + index * 40)}>
-      <Pressable onPress={() => setExpanded((p) => !p)} style={styles.metricRow}>
-        <BlurView
-          intensity={Platform.OS === "android" ? 15 : 28}
-          tint="dark"
-          style={StyleSheet.absoluteFill}
-        />
-        <View style={styles.metricOverlay} />
-        <View style={styles.metricInner}>
-          {/* Main row */}
-          <View style={styles.metricMainRow}>
-            <Text style={styles.metricLabel}>
-              {METRIC_LABELS[metric.key] ?? metric.key}
-            </Text>
-            <View style={styles.metricRight}>
-              <View
-                style={[
-                  styles.metricVerdictBadge,
-                  { borderColor: color, backgroundColor: `${color}18` },
-                ]}
-              >
-                <Text style={[styles.metricVerdictText, { color }]}>
-                  {verdictLabel}
+    <Animated.View entering={FadeInDown.delay(delay).duration(400)}>
+      <Animated.View style={animStyle}>
+        <GlassCard style={styles.metricCard}>
+          <Pressable onPress={handlePress} style={styles.metricPressable}>
+            {/* Header row */}
+            <View style={styles.metricHeaderRow}>
+              <Text style={[TYPE.captionSemiBold, { color: COLORS.textHigh, flex: 1 }]}>
+                {label}
+              </Text>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: SP[2] }}>
+                {/* Score tier pill */}
+                <View style={[styles.tierPillSmall, { backgroundColor: `${tier.color}18`, borderColor: `${tier.color}40` }]}>
+                  <Text style={[styles.tierTextSmall, { color: tier.color }]}>{tier.label}</Text>
+                </View>
+                <Text style={[TYPE.captionSemiBold, { color: COLORS.text, minWidth: 32, textAlign: "right" }]}>
+                  {metric.current.toFixed(1)}
+                </Text>
+                <Text style={{ color: "rgba(255,255,255,0.30)", fontSize: 13 }}>
+                  {expanded ? "▴" : "▾"}
                 </Text>
               </View>
-              <Text style={[styles.metricDelta, { color }]}>
+            </View>
+
+            {/* Dual-marker progress bar */}
+            <View style={styles.barTrack}>
+              {/* Current fill */}
+              <Animated.View style={[styles.barFill, barStyle, { backgroundColor: barColor }]} />
+              {/* Baseline tick */}
+              <View
+                style={[
+                  styles.baselineTick,
+                  { left: `${baselinePos}%` as any },
+                ]}
+              />
+            </View>
+
+            {/* Direction badge */}
+            <View style={styles.directionRow}>
+              <View style={[styles.dirBadge, { borderColor: `${barColor}40`, backgroundColor: `${barColor}12` }]}>
+                <Text style={[TYPE.small, { color: barColor, fontSize: 10, fontFamily: "Poppins-SemiBold" }]}>
+                  {dirLabel}
+                </Text>
+              </View>
+              <Text style={[TYPE.small, { color: barColor, fontSize: 10 }]}>
                 {formatDelta(metric.delta)}
               </Text>
-              <Text style={[styles.metricArrow, { color }]}>{arrow}</Text>
-              <Text style={styles.metricExpand}>{expanded ? "−" : "+"}</Text>
             </View>
-          </View>
 
-          {/* Progress bar */}
-          <View style={styles.barTrack}>
-            <View
-              style={[
-                styles.barFill,
-                { width: `${barWidth}%` as any, backgroundColor: color },
-              ]}
-            />
-          </View>
+            {/* Expanded panel */}
+            {expanded && (
+              <Animated.View entering={FadeIn.duration(250)} style={styles.expandedPanel}>
+                {/* Divider */}
+                <View style={styles.expandDivider} />
 
-          {/* Expanded detail */}
-          {expanded && (
-            <View style={styles.metricDetail}>
-              {/* Overall scores row */}
-              <View style={styles.metricDetailRow}>
-                <DetailStat label="Current" value={metric.current.toFixed(1)} />
-                <DetailStat label="Baseline" value={metric.baseline.toFixed(1)} />
-                <DetailStat label="Best" value={metric.best.toFixed(1)} />
-              </View>
-
-              {/* Sub-metrics from advanced analysis */}
-              {subConfig && subGroupData && (
-                <View style={styles.subMetricList}>
-                  {subConfig.items.map((item) => {
-                    const score = subGroupData[`${item.key}_score`] as number | undefined;
-                    const tag = score !== undefined ? getSubMetricTag(score) : null;
-                    return (
-                      <View key={item.key} style={styles.subMetricRow}>
-                        <Text style={styles.subMetricLabel}>{item.label}</Text>
-                        <View style={styles.subMetricRight}>
-                          {score !== undefined && (
-                            <Text style={styles.subMetricScore}>{Math.round(score)}</Text>
-                          )}
-                          {tag && (
-                            <View style={[styles.subMetricTag, { backgroundColor: `${tag.color}20`, borderColor: `${tag.color}60` }]}>
-                              <Text style={[styles.subMetricTagText, { color: tag.color }]}>{tag.label}</Text>
-                            </View>
-                          )}
-                        </View>
-                      </View>
-                    );
-                  })}
+                {/* Before → After comparison */}
+                <View style={styles.beforeAfterRow}>
+                  {/* Baseline box */}
+                  <View style={styles.beforeBox}>
+                    <Text style={styles.beforeLabel}>BASELINE</Text>
+                    <Text style={styles.beforeValue}>{metric.baseline.toFixed(1)}</Text>
+                  </View>
+                  {/* Arrow + delta */}
+                  <View style={styles.arrowCol}>
+                    <Text style={[styles.arrowText, { color: barColor }]}>
+                      {metric.direction === "up" ? "→" : metric.direction === "down" ? "→" : "→"}
+                    </Text>
+                    <Text style={[styles.arrowDelta, { color: barColor }]}>
+                      {formatDelta(metric.delta)}
+                    </Text>
+                  </View>
+                  {/* Current box */}
+                  <View style={[styles.afterBox, { borderColor: `${barColor}40`, backgroundColor: `${barColor}08` }]}>
+                    <Text style={[styles.afterLabel, { color: barColor }]}>NOW</Text>
+                    <Text style={[styles.afterValue, { color: barColor }]}>{metric.current.toFixed(1)}</Text>
+                  </View>
+                  {/* Best Ever */}
+                  <View style={styles.bestBox}>
+                    <Text style={styles.beforeLabel}>BEST</Text>
+                    <Text style={[styles.beforeValue, metric.current >= metric.best ? { color: LIME.primary } : {}]}>
+                      {metric.best.toFixed(1)}{metric.current >= metric.best ? " 🏆" : ""}
+                    </Text>
+                  </View>
                 </View>
-              )}
-            </View>
-          )}
-        </View>
-      </Pressable>
+
+                {/* Sub-metrics from advanced data */}
+                {advGroup && subMap && (
+                  <>
+                    <View style={[styles.expandDivider, { marginTop: SP[3] }]} />
+                    <View style={{ gap: SP[2], marginTop: SP[2] }}>
+                      {subMap.items.map((item) => {
+                        const rawScore = advGroup[`${item.key}_score`];
+                        const score =
+                          typeof rawScore === "number" ? rawScore : null;
+                        const tag = score !== null ? getSubMetricTag(score) : null;
+                        return (
+                          <View key={item.key} style={styles.subMetricRow}>
+                            <Text style={[TYPE.caption, { color: COLORS.muted, flex: 1 }]}>
+                              {item.label}
+                            </Text>
+                            {score !== null && (
+                              <Text style={[TYPE.captionSemiBold, { color: COLORS.text, marginRight: SP[2] }]}>
+                                {score.toFixed(1)}
+                              </Text>
+                            )}
+                            {tag && (
+                              <View style={[styles.tagPill, { borderColor: `${tag.color}40`, backgroundColor: `${tag.color}15` }]}>
+                                <Text style={[TYPE.small, { color: tag.color, fontSize: 9, fontFamily: "Poppins-SemiBold" }]}>
+                                  {tag.label}
+                                </Text>
+                              </View>
+                            )}
+                          </View>
+                        );
+                      })}
+                    </View>
+                  </>
+                )}
+              </Animated.View>
+            )}
+          </Pressable>
+        </GlassCard>
+      </Animated.View>
     </Animated.View>
   );
 }
 
-function DetailStat({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.detailStat}>
-      <Text style={styles.detailValue}>{value}</Text>
-      <Text style={styles.detailLabel}>{label}</Text>
-    </View>
-  );
-}
-
 /* -------------------------------------------------------------------------- */
-/*   Advanced analysis section (collapsible)                                  */
+/*  AdvancedSection — collapsible advanced analysis                            */
 /* -------------------------------------------------------------------------- */
 
-type AdvancedGroup = {
+type AdvancedGroupKey = keyof AdvancedAnalysis;
+
+type AdvGroupDef = {
+  key: AdvancedGroupKey;
   label: string;
-  items: { label: string; scoreKey: string }[];
-  data: Record<string, number | string> | null;
-  prevData: Record<string, number | string> | null;
+  items: { scoreKey: string; label: string }[];
 };
 
-function getChangeTag(current: number, previous: number | undefined): { label: string; color: string; icon: string } | null {
-  if (previous === undefined) return null;
-  const delta = current - previous;
-  if (delta >= 3)  return { label: "IMPROVED", color: "#10B981", icon: "↑" };
-  if (delta <= -3) return { label: "DECLINED", color: "#EF4444", icon: "↓" };
-  return           { label: "STABLE",   color: "#94A3B8", icon: "→" };
+const ADV_GROUPS: AdvGroupDef[] = [
+  {
+    key: "cheekbones",
+    label: "Cheekbones",
+    items: [
+      { scoreKey: "width_score",          label: "Cheekbone Width" },
+      { scoreKey: "maxilla_score",        label: "Maxilla Development" },
+      { scoreKey: "bone_structure_score", label: "Bone Structure" },
+      { scoreKey: "face_fat_score",       label: "Face Fat" },
+    ],
+  },
+  {
+    key: "jawline",
+    label: "Jawline",
+    items: [
+      { scoreKey: "development_score",  label: "Development" },
+      { scoreKey: "gonial_angle_score", label: "Gonial Angle" },
+      { scoreKey: "projection_score",   label: "Chin Projection" },
+    ],
+  },
+  {
+    key: "eyes",
+    label: "Eyes",
+    items: [
+      { scoreKey: "canthal_tilt_score", label: "Canthal Tilt" },
+      { scoreKey: "eye_type_score",     label: "Eye Type" },
+      { scoreKey: "brow_volume_score",  label: "Brow Volume" },
+      { scoreKey: "symmetry_score",     label: "Symmetry" },
+    ],
+  },
+  {
+    key: "skin",
+    label: "Skin",
+    items: [
+      { scoreKey: "color_score",   label: "Skin Color" },
+      { scoreKey: "quality_score", label: "Skin Quality" },
+    ],
+  },
+];
+
+function compareAdvanced(
+  latest: LatestAdvanced | null,
+  previous: LatestAdvanced | null,
+  groupKey: AdvancedGroupKey,
+  scoreKey: string,
+): "improving" | "same" | "worse" | null {
+  if (!latest || !previous) return null;
+  const lg = (latest as any)[groupKey];
+  const pg = (previous as any)[groupKey];
+  if (!lg || !pg) return null;
+  const l = lg[scoreKey];
+  const p = pg[scoreKey];
+  if (typeof l !== "number" || typeof p !== "number") return null;
+  const diff = l - p;
+  if (diff > 0.5) return "improving";
+  if (diff < -0.5) return "worse";
+  return "same";
 }
 
 function AdvancedSection({
   latestAdvanced,
   previousAdvanced,
 }: {
-  latestAdvanced: import("@/lib/api/insights").LatestAdvanced | null;
-  previousAdvanced: import("@/lib/api/insights").LatestAdvanced | null;
+  latestAdvanced: LatestAdvanced | null;
+  previousAdvanced: LatestAdvanced | null;
 }) {
   const [open, setOpen] = useState(false);
 
-  const groups: AdvancedGroup[] = [
-    {
-      label: "Cheekbones",
-      items: [
-        { label: "Cheekbone Width",    scoreKey: "width_score" },
-        { label: "Maxilla Development",scoreKey: "maxilla_score" },
-        { label: "Bone Structure",     scoreKey: "bone_structure_score" },
-        { label: "Face Fat",           scoreKey: "face_fat_score" },
-      ],
-      data:     latestAdvanced?.cheekbones  as Record<string, number | string> | null ?? null,
-      prevData: previousAdvanced?.cheekbones as Record<string, number | string> | null ?? null,
-    },
-    {
-      label: "Jawline",
-      items: [
-        { label: "Development",    scoreKey: "development_score" },
-        { label: "Gonial Angle",   scoreKey: "gonial_angle_score" },
-        { label: "Chin Projection",scoreKey: "projection_score" },
-      ],
-      data:     latestAdvanced?.jawline  as Record<string, number | string> | null ?? null,
-      prevData: previousAdvanced?.jawline as Record<string, number | string> | null ?? null,
-    },
-    {
-      label: "Eyes",
-      items: [
-        { label: "Canthal Tilt", scoreKey: "canthal_tilt_score" },
-        { label: "Eye Type",     scoreKey: "eye_type_score" },
-        { label: "Brow Volume",  scoreKey: "brow_volume_score" },
-        { label: "Symmetry",     scoreKey: "symmetry_score" },
-      ],
-      data:     latestAdvanced?.eyes  as Record<string, number | string> | null ?? null,
-      prevData: previousAdvanced?.eyes as Record<string, number | string> | null ?? null,
-    },
-    {
-      label: "Skin",
-      items: [
-        { label: "Skin Color",   scoreKey: "color_score" },
-        { label: "Skin Quality", scoreKey: "quality_score" },
-      ],
-      data:     latestAdvanced?.skin  as Record<string, number | string> | null ?? null,
-      prevData: previousAdvanced?.skin as Record<string, number | string> | null ?? null,
-    },
-  ];
+  const hasData = latestAdvanced !== null && Object.values(latestAdvanced).some((v) => v !== null);
 
-  const totalItems = groups.reduce((n, g) => n + g.items.length, 0);
+  const totalItems = ADV_GROUPS.reduce((acc, g) => {
+    const grp = latestAdvanced ? (latestAdvanced as any)[g.key] : null;
+    return acc + (grp ? g.items.filter((it) => typeof grp[it.scoreKey] === "number").length : 0);
+  }, 0);
 
   return (
-    <Animated.View entering={FadeInDown.duration(400).delay(560)}>
-      <Card style={{ overflow: "hidden" }}>
-        <Pressable
-          onPress={() => setOpen((p) => !p)}
-          style={styles.sectionToggle}
-        >
-          <Text style={styles.sectionToggleTitle}>Advanced Analysis</Text>
-          <View style={styles.sectionToggleRight}>
-            <Text style={styles.sectionCount}>{totalItems} sub-metrics</Text>
-            <Text style={styles.sectionChevron}>{open ? "▲" : "▼"}</Text>
-          </View>
-        </Pressable>
+    <GlassCard style={styles.sectionCard}>
+      <Pressable
+        onPress={() => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          setOpen((v) => !v);
+        }}
+        style={styles.collapseHeader}
+      >
+        <View style={{ flex: 1 }}>
+          <Text style={[TYPE.captionSemiBold, { color: COLORS.textHigh }]}>
+            Advanced Analysis
+          </Text>
+          {hasData && (
+            <Text style={[TYPE.small, { color: COLORS.sub, marginTop: 2 }]}>
+              {totalItems} sub-metrics
+            </Text>
+          )}
+        </View>
+        <Text style={{ color: "rgba(255,255,255,0.40)", fontSize: 16 }}>
+          {open ? "▴" : "▾"}
+        </Text>
+      </Pressable>
 
-        {open && (
-          <View style={styles.advancedList}>
-            {!latestAdvanced ? (
-              <View style={styles.advancedEmpty}>
-                <Text style={styles.advancedEmptyText}>
-                  Run a detailed analysis to unlock real sub-metric scores.
-                </Text>
-              </View>
+      {open && (
+        <Animated.View entering={FadeIn.duration(250)}>
+          <View style={styles.collapseBody}>
+            {!hasData ? (
+              <Text style={[TYPE.caption, { color: COLORS.muted, textAlign: "center", paddingVertical: SP[3] }]}>
+                Run a detailed analysis to unlock sub-metric scores.
+              </Text>
             ) : (
-              groups.map((group) => (
-                <View key={group.label} style={styles.advancedGroup}>
-                  <Text style={styles.advancedGroupLabel}>{group.label}</Text>
-                  {group.items.map((item, i) => {
-                    const score    = group.data     ? (group.data[item.scoreKey]     as number | undefined) : undefined;
-                    const prevScore = group.prevData ? (group.prevData[item.scoreKey] as number | undefined) : undefined;
-
-                    const changeTag = score !== undefined ? getChangeTag(score, prevScore) : null;
-                    const absTag    = score !== undefined && !changeTag ? getSubMetricTag(score) : null;
-                    const tag       = changeTag ?? absTag;
-
-                    return (
-                      <View
-                        key={item.scoreKey}
-                        style={[
-                          styles.advancedItem,
-                          i < group.items.length - 1 && styles.advancedItemBorder,
-                        ]}
-                      >
-                        <Text style={styles.advancedLabel}>{item.label}</Text>
-                        <View style={styles.subMetricRight}>
-                          {score !== undefined && (
-                            <Text style={styles.subMetricScore}>{Math.round(score)}</Text>
-                          )}
-                          {tag && (
-                            <View style={[styles.subMetricTag, { backgroundColor: `${tag.color}20`, borderColor: `${tag.color}60` }]}>
-                              <Text style={[styles.subMetricTagText, { color: tag.color }]}>
-                                {changeTag ? `${changeTag.icon} ${changeTag.label}` : tag.label}
+              ADV_GROUPS.map((grp) => {
+                const grpData = latestAdvanced ? (latestAdvanced as any)[grp.key] : null;
+                if (!grpData) return null;
+                return (
+                  <View key={grp.key} style={styles.advGroup}>
+                    <Text style={[TYPE.smallSemiBold, { color: LIME.primary, marginBottom: SP[2], textTransform: "uppercase", letterSpacing: 0.8 }]}>
+                      {grp.label}
+                    </Text>
+                    {grp.items.map((item) => {
+                      const score = grpData[item.scoreKey];
+                      if (typeof score !== "number") return null;
+                      const tag = getSubMetricTag(score);
+                      const change = compareAdvanced(latestAdvanced, previousAdvanced, grp.key, item.scoreKey);
+                      const changeColor = change ? CHANGE_COLOR[change] : "rgba(255,255,255,0.35)";
+                      const changeIcon = change ? CHANGE_ICON[change] : "→";
+                      return (
+                        <View key={item.scoreKey} style={styles.advItem}>
+                          <View style={{ flex: 1 }}>
+                            <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 4 }}>
+                              <Text style={[TYPE.caption, { color: COLORS.muted, flex: 1 }]}>
+                                {item.label}
                               </Text>
+                              <Text style={[TYPE.captionSemiBold, { color: COLORS.text, marginRight: SP[2] }]}>
+                                {score.toFixed(0)}
+                              </Text>
+                              {change && (
+                                <Text style={[{ color: changeColor, fontSize: 11, fontFamily: "Poppins-SemiBold", marginRight: SP[2] }]}>
+                                  {changeIcon}
+                                </Text>
+                              )}
+                              <View style={[styles.tagPill, { borderColor: `${tag.color}40`, backgroundColor: `${tag.color}15` }]}>
+                                <Text style={[TYPE.small, { color: tag.color, fontSize: 9, fontFamily: "Poppins-SemiBold" }]}>
+                                  {tag.label}
+                                </Text>
+                              </View>
                             </View>
-                          )}
+                            {/* Mini score bar */}
+                            <View style={styles.miniBarTrack}>
+                              <View style={[styles.miniBarFill, { width: `${score}%` as any, backgroundColor: tag.color }]} />
+                            </View>
+                          </View>
                         </View>
-                      </View>
-                    );
-                  })}
+                      );
+                    })}
+                  </View>
+                );
+              })
+            )}
+          </View>
+        </Animated.View>
+      )}
+    </GlassCard>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/*  ScanHistorySection — collapsible                                           */
+/* -------------------------------------------------------------------------- */
+
+function ScanHistorySection({ history }: { history: DashboardHistoryItem[] }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <GlassCard style={styles.sectionCard}>
+      <Pressable
+        onPress={() => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          setOpen((v) => !v);
+        }}
+        style={styles.collapseHeader}
+      >
+        <View style={{ flex: 1 }}>
+          <Text style={[TYPE.captionSemiBold, { color: COLORS.textHigh }]}>
+            Scan History
+          </Text>
+          <Text style={[TYPE.small, { color: COLORS.sub, marginTop: 2 }]}>
+            {history.length} {history.length === 1 ? "scan" : "scans"} recorded
+          </Text>
+        </View>
+        <Text style={{ color: "rgba(255,255,255,0.40)", fontSize: 16 }}>
+          {open ? "▴" : "▾"}
+        </Text>
+      </Pressable>
+
+      {open && (
+        <Animated.View entering={FadeIn.duration(250)}>
+          <View style={styles.collapseBody}>
+            {history.length === 0 ? (
+              <Text style={[TYPE.caption, { color: COLORS.muted, textAlign: "center", paddingVertical: SP[3] }]}>
+                No scan history yet.
+              </Text>
+            ) : (
+              history.map((item, i) => (
+                <View key={item.id} style={[styles.historyRow, i < history.length - 1 && styles.historyRowBorder]}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[TYPE.captionSemiBold, { color: COLORS.textHigh }]}>
+                      {item.label}
+                    </Text>
+                    <Text style={[TYPE.small, { color: COLORS.sub, marginTop: 2 }]}>
+                      {formatDate(item.created_at)}
+                    </Text>
+                  </View>
+                  <View style={[styles.scoreChip, { backgroundColor: LIME.bg, borderColor: LIME.border }]}>
+                    <Text style={[TYPE.captionSemiBold, { color: LIME.primary }]}>
+                      {item.overall.toFixed(1)}
+                    </Text>
+                  </View>
                 </View>
               ))
             )}
           </View>
-        )}
-      </Card>
-    </Animated.View>
+        </Animated.View>
+      )}
+    </GlassCard>
   );
 }
 
 /* -------------------------------------------------------------------------- */
-/*   Scan history (collapsible)                                               */
+/*  3D Lime Button                                                             */
 /* -------------------------------------------------------------------------- */
 
-function HistorySection({ items }: { items: DashboardHistoryItem[] }) {
-  const [open, setOpen] = useState(false);
+function LimeButton3D({ onPress, label }: { onPress: () => void; label: string }) {
+  const btnDepth = useSharedValue(0);
+
+  const animStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: btnDepth.value }],
+  }));
+
+  const handlePressIn = () => {
+    btnDepth.value = withSpring(4, { damping: 14, stiffness: 300 });
+  };
+
+  const handlePressOut = () => {
+    btnDepth.value = withSpring(0, { damping: 14, stiffness: 300 });
+  };
 
   return (
-    <Animated.View entering={FadeInDown.duration(400).delay(620)}>
-      <Card style={{ overflow: "hidden" }}>
-        <Pressable
-          onPress={() => setOpen((p) => !p)}
-          style={styles.sectionToggle}
-        >
-          <Text style={styles.sectionToggleTitle}>Scan History</Text>
-          <View style={styles.sectionToggleRight}>
-            <Text style={styles.sectionCount}>{items.length} scans</Text>
-            <Text style={styles.sectionChevron}>{open ? "▲" : "▼"}</Text>
-          </View>
-        </Pressable>
-
-        {open && (
-          <View style={styles.historyList}>
-            {items.map((item, i) => (
-              <View
-                key={item.id}
-                style={[
-                  styles.historyItem,
-                  i < items.length - 1 && styles.historyItemBorder,
-                ]}
-              >
-                <View>
-                  <Text style={styles.historyLabel}>{item.label}</Text>
-                  <Text style={styles.historyDate}>{formatDate(item.created_at)}</Text>
-                </View>
-                <Text style={styles.historyScore}>{item.overall.toFixed(1)}</Text>
-              </View>
-            ))}
-          </View>
-        )}
-      </Card>
-    </Animated.View>
+    <View style={styles.btn3dOuter}>
+      <Pressable
+        onPress={onPress}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        style={{ borderRadius: 28, overflow: "hidden" }}
+      >
+        <Animated.View style={[{ borderRadius: 28 }, animStyle]}>
+          <LinearGradient
+            colors={["#CCFF6B", "#B4F34D"]}
+            start={{ x: 0.5, y: 0 }}
+            end={{ x: 0.5, y: 1 }}
+            style={styles.btn3dFace}
+          >
+            <Text style={[TYPE.button, { color: "#0B0B0B" }]}>{label}</Text>
+          </LinearGradient>
+        </Animated.View>
+      </Pressable>
+      <View style={styles.btn3dBase} />
+    </View>
   );
 }
 
 /* -------------------------------------------------------------------------- */
-/*   Main screen                                                              */
+/*  State screens: Loading / Error / Empty                                     */
+/* -------------------------------------------------------------------------- */
+
+function LoadingState() {
+  return (
+    <View style={styles.centeredState}>
+      <Text style={[TYPE.body, { color: COLORS.muted, textAlign: "center" }]}>
+        Loading your progress…
+      </Text>
+    </View>
+  );
+}
+
+function ErrorState({ message }: { message: string }) {
+  return (
+    <View style={styles.centeredState}>
+      <Text style={[TYPE.body, { color: COLORS.error, textAlign: "center", marginBottom: SP[2] }]}>
+        Couldn't load data
+      </Text>
+      <Text style={[TYPE.caption, { color: COLORS.muted, textAlign: "center" }]}>
+        {message}
+      </Text>
+    </View>
+  );
+}
+
+function EmptyState({ router }: { router: ReturnType<typeof useRouter> }) {
+  const btnDepth = useSharedValue(0);
+  const animStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: btnDepth.value }],
+  }));
+
+  return (
+    <View style={styles.centeredState}>
+      <Animated.View entering={FadeInDown.duration(500)}>
+        <Text style={[TYPE.h3, { color: COLORS.text, textAlign: "center", marginBottom: SP[2] }]}>
+          Track Your Progress
+        </Text>
+        <Text style={[TYPE.body, { color: COLORS.muted, textAlign: "center", marginBottom: SP[6] }]}>
+          You need at least 2 scans to see your progress dashboard.
+        </Text>
+        <View style={styles.btn3dOuter}>
+          <Pressable
+            onPress={() => router.push("/(tabs)/take-picture")}
+            onPressIn={() => { btnDepth.value = withSpring(4, { damping: 14, stiffness: 300 }); }}
+            onPressOut={() => { btnDepth.value = withSpring(0, { damping: 14, stiffness: 300 }); }}
+            style={{ borderRadius: 28, overflow: "hidden" }}
+          >
+            <Animated.View style={[{ borderRadius: 28 }, animStyle]}>
+              <LinearGradient
+                colors={["#CCFF6B", "#B4F34D"]}
+                start={{ x: 0.5, y: 0 }}
+                end={{ x: 0.5, y: 1 }}
+                style={styles.btn3dFace}
+              >
+                <Text style={[TYPE.button, { color: "#0B0B0B" }]}>Take First Scan</Text>
+              </LinearGradient>
+            </Animated.View>
+          </Pressable>
+          <View style={styles.btn3dBase} />
+        </View>
+      </Animated.View>
+    </View>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Main Screen                                                                */
 /* -------------------------------------------------------------------------- */
 
 export default function DashboardScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { data, loading, error, loadInsights } = useInsights();
+  const currentStreak = useTasksStore((s) => s.currentStreak);
   const advancedData = useAdvancedAnalysis((s) => s.data);
 
   useEffect(() => {
@@ -836,622 +1289,752 @@ export default function DashboardScreen() {
     loadInsights(true);
   }, [loadInsights]);
 
-  const insight = data?.insight ?? null;
-  const scanCount = data?.scan_count ?? 0;
-  const content = insight?.content ?? null;
-  const overall = data?.overall ?? null;
-  const metrics = data?.metrics ?? [];
-  const graphPoints = data?.graph_points ?? [];
-  const graphDates = data?.graph_dates ?? [];
-  const history = data?.history ?? [];
+  // Derived data
+  const insight       = data?.insight ?? null;
+  const content       = insight?.content ?? null;
+  const overall       = data?.overall ?? null;
+  const metrics       = data?.metrics ?? [];
+  const graphPoints   = data?.graph_points ?? [];
+  const graphDates    = data?.graph_dates ?? [];
+  const history       = data?.history ?? [];
+  const scanCount     = data?.scan_count ?? 0;
   const joinedDaysAgo = data?.joined_days_ago ?? 0;
-  const latestAdvanced = data?.latest_advanced ?? null;
+  const latestAdvanced   = data?.latest_advanced ?? null;
   const previousAdvanced = data?.previous_advanced ?? null;
 
-  const renderBody = () => {
-    if (error) {
-      return (
-        <Animated.View entering={FadeInDown.duration(400)}>
-          <Text
-            variant="caption"
-            color="sub"
-            style={{ textAlign: "center", marginTop: SP[8] }}
-          >
-            {error}
-          </Text>
-        </Animated.View>
-      );
-    }
+  // Overall delta
+  const overallDelta = content?.overall_delta ?? 0;
+  const verdict = content?.verdict ?? "same";
 
-    if (!overall && scanCount < 2) return <EmptyState />;
-    if (!overall) return <GeneratingState />;
+  // Render body
+  const renderBody = () => {
+    if (loading && !data) return <LoadingState />;
+    if (error && !data) return <ErrorState message={error} />;
+    if (scanCount < 2) return <EmptyState router={router} />;
 
     return (
       <>
-        <HeroCard
-          overall={overall}
-          graphPoints={graphPoints}
-          graphDates={graphDates}
-          scanCount={scanCount}
-          joinedDaysAgo={joinedDaysAgo}
-        />
-
-        {content ? (
-          <CoachCard content={content} />
-        ) : (
-          <GeneratingState />
-        )}
-
-        <Animated.View entering={FadeInDown.duration(400).delay(240)}>
-          <Text style={styles.sectionTitle}>Metric Breakdown</Text>
+        {/* ── Section 2: Hero Score Card ── */}
+        <Animated.View entering={FadeInDown.delay(100).duration(450)}>
+          <HeroCard
+            overall={overall!}
+            overallDelta={overallDelta}
+            verdict={verdict}
+            scanCount={scanCount}
+            joinedDaysAgo={joinedDaysAgo}
+          />
         </Animated.View>
 
-        {metrics.map((m, i) => (
-          <MetricRow key={m.key} metric={m} index={i} advancedData={advancedData} />
-        ))}
-
-        <AdvancedSection latestAdvanced={latestAdvanced} previousAdvanced={previousAdvanced} />
-
-        {history.length > 0 && <HistorySection items={history} />}
-
-        {insight && (
-          <Animated.View entering={FadeInDown.duration(400).delay(700)}>
-            <Text style={styles.footerText}>
-              Updated{" "}
-              {new Date(insight.created_at).toLocaleDateString(undefined, {
-                month: "short",
-                day: "numeric",
-                year: "numeric",
-              })}
-            </Text>
+        {/* ── Section 3: Score Trend ── */}
+        {graphPoints.length >= 2 && (
+          <Animated.View entering={FadeInDown.delay(180).duration(450)}>
+            <GlassCard style={styles.trendCard}>
+              {/* Header */}
+              <View style={styles.trendHeader}>
+                <Text style={[TYPE.captionSemiBold, { color: COLORS.textHigh }]}>
+                  Score Trend
+                </Text>
+                {graphDates.length >= 2 && (
+                  <Text style={[TYPE.small, { color: COLORS.sub }]}>
+                    {formatDate(graphDates[0])} → {formatDate(graphDates[graphDates.length - 1])}
+                  </Text>
+                )}
+              </View>
+              {/* Chart */}
+              <View style={styles.trendChart}>
+                <MiniGraph points={graphPoints} dates={graphDates} />
+              </View>
+            </GlassCard>
           </Animated.View>
         )}
+
+        {/* ── Section 4: Metric Breakdown title ── */}
+        <Animated.View entering={FadeInDown.delay(240).duration(400)}>
+          <Text style={[TYPE.h4, { color: COLORS.text, marginBottom: SP[1], marginTop: SP[2] }]}>
+            Metric Breakdown
+          </Text>
+          <Text style={[TYPE.small, { color: COLORS.sub, marginBottom: SP[3] }]}>
+            7 facial metrics · tap a card to see sub-metrics below
+          </Text>
+        </Animated.View>
+
+        {/* ── Section 5: Metric grid 2×4 ── */}
+        {overall && (
+          <MetricGrid
+            metrics={metrics}
+            overall={overall}
+            overallDelta={overallDelta}
+            verdict={verdict}
+          />
+        )}
+
+        {/* ── Section 6: AI Coach ── */}
+        {content && (
+          <Animated.View entering={FadeInDown.delay(560).duration(450)}>
+            <GlassCard style={styles.aiCard} accentLeft>
+              {/* Subtle lime gradient overlay */}
+              <LinearGradient
+                colors={["rgba(180,243,77,0.06)", "rgba(180,243,77,0.00)"]}
+                start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                style={StyleSheet.absoluteFill}
+                pointerEvents="none"
+              />
+              <View style={styles.aiHeader}>
+                <View style={styles.aiTitleRow}>
+                  <Text style={{ fontSize: 18, marginRight: SP[2] }}>🤖</Text>
+                  <Text style={[TYPE.captionSemiBold, { color: COLORS.textHigh }]}>
+                    AI Coach
+                  </Text>
+                </View>
+                <View style={[styles.verdictPill, {
+                  backgroundColor: VERDICT_BG[verdict] ?? "rgba(255,255,255,0.08)",
+                  borderColor: `${VERDICT_COLOR[verdict] ?? "rgba(255,255,255,0.25)"}60`,
+                }]}>
+                  <Text style={[TYPE.small, {
+                    color: VERDICT_COLOR[verdict] ?? COLORS.muted,
+                    fontFamily: "Poppins-SemiBold",
+                    fontSize: 10,
+                    textTransform: "uppercase",
+                    letterSpacing: 0.6,
+                  }]}>
+                    {verdict}
+                  </Text>
+                </View>
+              </View>
+              <Text style={[TYPE.caption, { color: "rgba(255,255,255,0.75)", lineHeight: 22, marginTop: SP[2] }]}>
+                {content.narrative}
+              </Text>
+            </GlassCard>
+          </Animated.View>
+        )}
+
+        {/* ── Section 7: Advanced Analysis collapsible ── */}
+        <Animated.View entering={FadeInDown.delay(620).duration(450)}>
+          <AdvancedSection
+            latestAdvanced={latestAdvanced}
+            previousAdvanced={previousAdvanced}
+          />
+        </Animated.View>
+
+        {/* ── Section 8: Scan History collapsible ── */}
+        <Animated.View entering={FadeInDown.delay(680).duration(450)}>
+          <ScanHistorySection history={history} />
+        </Animated.View>
+
+        {/* ── Section 9: New Scan CTA ── */}
+        <Animated.View entering={FadeInDown.delay(740).duration(450)} style={styles.ctaContainer}>
+          <LimeButton3D
+            label="New Scan"
+            onPress={() => router.push("/(tabs)/take-picture")}
+          />
+        </Animated.View>
       </>
     );
   };
 
   return (
-    <View style={styles.screen}>
+    <View style={[styles.root, { paddingTop: insets.top }]}>
+      {/* Background gradient */}
       <LinearGradient
-        colors={[COLORS.bgTop, COLORS.bgBottom]}
+        colors={["#000000", "#0B0B0B"]}
         style={StyleSheet.absoluteFill}
-        start={{ x: 0.5, y: 0 }}
-        end={{ x: 0.5, y: 1 }}
-      />
-      {/* Gold glow */}
-      <LinearGradient
-        colors={[GOLD.glow, "transparent"]}
-        style={styles.topGlow}
-        start={{ x: 0.5, y: 0 }}
-        end={{ x: 0.5, y: 1 }}
       />
 
-      <View style={[styles.container, { paddingTop: insets.top }]}>
-        <ScreenHeader
-          title="Progress"
-          subtitle={
-            scanCount > 0
-              ? `${scanCount} scan${scanCount !== 1 ? "s" : ""}`
-              : "Track your improvement"
-          }
-        />
+      <ScrollView
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: insets.bottom + SP[10] },
+        ]}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={loading && !!data}
+            onRefresh={onRefresh}
+            tintColor={LIME.primary}
+          />
+        }
+      >
+        {/* ── Section 1: Header ── */}
+        <Animated.View entering={FadeInDown.delay(0).duration(400)} style={styles.headerRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={[TYPE.h2, { color: COLORS.text }]}>Progress</Text>
+            <Text style={[TYPE.small, { color: COLORS.sub, marginTop: 2 }]}>
+              {scanCount} {scanCount === 1 ? "scan" : "scans"} · {joinedDaysAgo}d tracked
+            </Text>
+          </View>
+          {currentStreak > 0 && (
+            <View style={styles.streakPill}>
+              <Text style={[TYPE.smallSemiBold, { color: "#FB923C" }]}>
+                🔥 {currentStreak}
+              </Text>
+            </View>
+          )}
+        </Animated.View>
 
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={[
-            styles.scroll,
-            { paddingBottom: insets.bottom + 120 },
-          ]}
-          refreshControl={
-            <RefreshControl
-              refreshing={loading}
-              onRefresh={onRefresh}
-              tintColor={GOLD.primary}
-              colors={[GOLD.primary]}
-            />
-          }
-        >
-          {renderBody()}
-        </ScrollView>
-      </View>
-
-      {/* Fixed bottom CTA */}
-      <View style={[styles.ctaWrap, { paddingBottom: insets.bottom + 8 }]}>
-        <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
-        <View style={styles.ctaBorder} />
-        <TouchableOpacity
-          style={styles.ctaBtn}
-          onPress={() => router.push("/(tabs)/take-picture")}
-          activeOpacity={0.85}
-        >
-          <LinearGradient
-            colors={[GOLD.primary, GOLD.light]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.ctaGradient}
-          >
-            <Text style={styles.ctaBtnText}>New Scan</Text>
-          </LinearGradient>
-        </TouchableOpacity>
-      </View>
+        {renderBody()}
+      </ScrollView>
     </View>
   );
 }
 
 /* -------------------------------------------------------------------------- */
-/*   Styles                                                                   */
+/*  Styles                                                                     */
 /* -------------------------------------------------------------------------- */
 
 const styles = StyleSheet.create({
-  screen: {
+  root: {
     flex: 1,
-    backgroundColor: COLORS.bgTop,
+    backgroundColor: "#000000",
   },
-  topGlow: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 260,
-  },
-  container: {
-    flex: 1,
-  },
-  scroll: {
+
+  scrollContent: {
     paddingHorizontal: SP[4],
-    paddingTop: SP[2],
+    paddingTop: SP[3],
     gap: SP[3],
   },
 
-  // ── Card ──────────────────────────────────────────────────────────────────
-  card: {
-    borderRadius: RADII.xl,
-    overflow: "hidden",
-    ...(Platform.OS === "ios"
-      ? {
-          shadowColor: "#000",
-          shadowOpacity: 0.32,
-          shadowRadius: 24,
-          shadowOffset: { width: 0, height: 12 },
-        }
-      : { elevation: 8 }),
-  },
-  cardOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(16,14,10,0.92)",
-    borderWidth: 1,
-    borderColor: GOLD.border,
-    borderRadius: RADII.xl,
-  },
-  cardTopLine: {
-    position: "absolute",
-    top: 0,
-    left: 24,
-    right: 24,
-    height: 1,
-    backgroundColor: GOLD.primary,
-    opacity: 0.4,
-    borderRadius: 1,
+  /* Header */
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: SP[1],
   },
 
-  // ── Empty / Generating ────────────────────────────────────────────────────
-  centeredCard: {
-    marginTop: SP[8],
-  },
-  centeredInner: {
-    padding: SP[6],
-    alignItems: "center",
-    gap: SP[3],
-  },
-  stateIcon: {
-    fontSize: 44,
-  },
-  stateSubtext: {
-    textAlign: "center",
-    lineHeight: 20,
-    paddingHorizontal: SP[2],
-  },
-  stateCTA: {
-    marginTop: SP[2],
-    paddingHorizontal: SP[5],
-    paddingVertical: SP[2],
-    borderRadius: RADII.circle,
-    borderWidth: 1,
-    borderColor: GOLD.border,
-    backgroundColor: GOLD.bg,
-  },
-  stateCTAText: {
-    ...TYPE.captionSemiBold,
-    color: GOLD.light,
-  },
-
-  // ── Hero card ─────────────────────────────────────────────────────────────
-  heroInner: {
-    padding: SP[4],
-    gap: SP[4],
-  },
-  heroTop: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SP[4],
-  },
-  heroStats: {
-    flex: 1,
-    gap: SP[2],
-  },
-  statPill: {
-    gap: 1,
-  },
-  statValue: {
-    fontSize: 18,
-    fontFamily: "Poppins-SemiBold",
-    lineHeight: 22,
-  },
-  statLabel: {
-    ...TYPE.small,
-    color: "rgba(255,255,255,0.40)",
-  },
-  graphContainer: {
-    gap: SP[1],
-  },
-  graphHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 2,
-  },
-  graphLabel: {
-    ...TYPE.small,
-    color: "rgba(255,255,255,0.45)",
-  },
-  graphRange: {
-    ...TYPE.small,
-    color: "rgba(255,255,255,0.30)",
-  },
-  heroFooter: {
-    alignItems: "center",
-  },
-  heroFooterText: {
-    ...TYPE.small,
-    color: "rgba(255,255,255,0.30)",
-  },
-
-  // ── Coach card ────────────────────────────────────────────────────────────
-  coachInner: {
-    padding: SP[4],
-    gap: SP[3],
-  },
-  coachHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  coachBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SP[1],
-  },
-  coachBadgeIcon: {
-    fontSize: 14,
-  },
-  coachBadgeText: {
-    ...TYPE.smallSemiBold,
-    color: GOLD.dim,
-    letterSpacing: 0.5,
-  },
-  verdictBadge: {
+  streakPill: {
     paddingHorizontal: SP[3],
-    paddingVertical: 3,
-    borderRadius: RADII.circle,
+    paddingVertical: SP[1],
+    borderRadius: RADII.pill,
+    backgroundColor: "rgba(251,146,60,0.12)",
     borderWidth: 1,
-  },
-  verdictText: {
-    ...TYPE.smallSemiBold,
-    letterSpacing: 0.8,
-  },
-  narrative: {
-    ...TYPE.body,
-    color: "rgba(255,255,255,0.85)",
-    lineHeight: 24,
+    borderColor: "rgba(251,146,60,0.30)",
   },
 
-  // ── Section title ─────────────────────────────────────────────────────────
-  sectionTitle: {
-    ...TYPE.captionSemiBold,
-    color: "rgba(255,255,255,0.40)",
-    letterSpacing: 0.8,
-    paddingHorizontal: SP[1],
-    marginTop: SP[1],
-  },
-
-  // ── Metric rows ───────────────────────────────────────────────────────────
-  metricRow: {
-    borderRadius: RADII.md,
+  /* Glass card */
+  card: {
+    borderRadius: RADII.card,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
     overflow: "hidden",
-    ...(Platform.OS === "ios"
-      ? {
-          shadowColor: "#000",
-          shadowOpacity: 0.18,
-          shadowRadius: 10,
-          shadowOffset: { width: 0, height: 4 },
-        }
-      : { elevation: 4 }),
+    ...SHADOWS.card,
   },
-  metricOverlay: {
+
+  cardInner: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(16,14,10,0.90)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.06)",
-    borderRadius: RADII.md,
+    borderRadius: RADII.card,
+    backgroundColor: "rgba(255,255,255,0.03)",
   },
-  metricInner: {
+
+  cardAccentLeft: {
+    position: "absolute",
+    left: 0,
+    top: 16,
+    bottom: 16,
+    width: 3,
+    backgroundColor: LIME.primary,
+    borderRadius: 2,
+  },
+
+  /* Hero card */
+  heroGlowBorder: {
+    borderRadius: RADII.card + 2,
+    borderWidth: 1.5,
+    borderColor: "rgba(180,243,77,0.35)",
+  },
+  heroCard: {
+    padding: SP[5],
+    borderWidth: 0, // border handled by heroGlowBorder
+  },
+  heroDeltaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SP[3],
+    marginBottom: SP[3],
+  },
+  heroDeltaBadge: {
     paddingHorizontal: SP[4],
-    paddingVertical: SP[3],
-    gap: SP[1],
+    paddingVertical: SP[2],
+    borderRadius: RADII.pill,
+    borderWidth: 1,
   },
-  metricMainRow: {
+  heroDeltaText: {
+    fontSize: 22,
+    fontFamily: "Poppins-Bold",
+    lineHeight: 28,
+  },
+  heroDeltaLabel: {
+    ...TYPE.small,
+    color: "rgba(255,255,255,0.50)",
+    flex: 1,
+    flexWrap: "wrap" as const,
+  },
+  heroDivider: {
+    height: 1,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    marginBottom: SP[4],
+  },
+  heroRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
+    gap: SP[4],
   },
-  metricLabel: {
-    ...TYPE.captionSemiBold,
+  heroLeft: {
+    alignItems: "center",
+    justifyContent: "center",
+    width: 144,
+    height: 144,
+  },
+  heroScore: {
+    fontSize: 34,
+    fontFamily: "Poppins-Bold",
     color: COLORS.text,
+    lineHeight: 38,
   },
-  metricRight: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SP[1],
-  },
-  metricVerdictBadge: {
+  tierPill: {
+    marginTop: SP[1],
     paddingHorizontal: SP[2],
     paddingVertical: 2,
-    borderRadius: RADII.circle,
+    borderRadius: RADII.pill,
     borderWidth: 1,
-    marginRight: SP[1],
   },
-  metricVerdictText: {
-    fontSize: 10,
+  tierText: {
+    fontSize: 9,
     fontFamily: "Poppins-SemiBold",
     letterSpacing: 0.6,
   },
-  metricDelta: {
-    ...TYPE.captionSemiBold,
-  },
-  metricArrow: {
-    ...TYPE.captionSemiBold,
-    fontSize: 14,
-  },
-  metricExpand: {
-    ...TYPE.captionSemiBold,
-    color: "rgba(255,255,255,0.30)",
-    marginLeft: SP[1],
-    fontSize: 16,
-  },
-  barTrack: {
-    height: 3,
-    backgroundColor: "rgba(255,255,255,0.08)",
-    borderRadius: 2,
-    overflow: "hidden",
-    marginTop: 2,
-  },
-  barFill: {
-    height: 3,
-    borderRadius: 2,
-    opacity: 0.7,
-  },
-  metricDetail: {
-    marginTop: SP[2],
-    paddingTop: SP[2],
-    borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.06)",
-  },
-  metricDetailRow: {
+  heroStatsGrid: {
+    flex: 1,
     flexDirection: "row",
-    justifyContent: "space-around",
+    flexWrap: "wrap" as const,
+    gap: SP[2],
   },
-  detailStat: {
-    alignItems: "center",
+  heroStatCell: {
+    width: "46%",
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderRadius: RADII.md,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.06)",
+    paddingVertical: SP[2],
+    paddingHorizontal: SP[3],
     gap: 2,
   },
-  detailValue: {
-    ...TYPE.captionSemiBold,
-    color: GOLD.light,
-  },
-  detailLabel: {
-    ...TYPE.small,
-    color: "rgba(255,255,255,0.35)",
-  },
-
-  // ── Sub-metrics ───────────────────────────────────────────────────────────
-  subMetricList: {
-    marginTop: SP[2],
-    gap: SP[1],
-  },
-  subMetricRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingVertical: 5,
-    borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.05)",
-  },
-  subMetricLabel: {
-    ...TYPE.small,
-    color: "rgba(255,255,255,0.70)",
-  },
-  subMetricRight: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SP[2],
-  },
-  subMetricScore: {
-    ...TYPE.smallSemiBold,
-    color: "rgba(255,255,255,0.55)",
-    minWidth: 24,
-    textAlign: "right",
-  },
-  subMetricTag: {
-    paddingHorizontal: SP[2],
-    paddingVertical: 2,
-    borderRadius: RADII.circle,
-    borderWidth: 1,
-  },
-  subMetricTagText: {
-    fontSize: 9,
-    fontFamily: "Poppins-SemiBold",
-    letterSpacing: 0.5,
-  },
-
-  // ── Collapsible sections ──────────────────────────────────────────────────
-  sectionToggle: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: SP[4],
-    paddingVertical: SP[3],
-  },
-  sectionToggleTitle: {
+  heroStatValue: {
     ...TYPE.captionSemiBold,
     color: COLORS.text,
   },
-  sectionToggleRight: {
+  heroStatLabel: {
+    ...TYPE.small,
+    color: COLORS.sub,
+    fontSize: 11,
+  },
+
+  /* Metric grid */
+  metricGrid: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: SP[2],
-  },
-  sectionCount: {
-    ...TYPE.small,
-    color: "rgba(255,255,255,0.35)",
-  },
-  sectionChevron: {
-    ...TYPE.small,
-    color: GOLD.dim,
+    flexWrap: "wrap",
+    gap: SP[3],
   },
 
-  // ── Advanced items ────────────────────────────────────────────────────────
-  advancedList: {
-    paddingHorizontal: SP[4],
-    paddingBottom: SP[3],
+  /* Metric 3D tile */
+  metricTileOuter: {
+    width: CARD_W,
+    height: CARD_H,
+    position: "relative",
   },
-  advancedGroup: {
-    marginBottom: SP[3],
-  },
-  advancedGroupLabel: {
-    ...TYPE.smallSemiBold,
-    color: GOLD.primary,
-    textTransform: "uppercase",
-    letterSpacing: 0.8,
-    marginBottom: SP[1],
-  },
-  advancedEmpty: {
-    paddingVertical: SP[4],
-    alignItems: "center",
-  },
-  advancedEmptyText: {
-    ...TYPE.small,
-    color: "rgba(255,255,255,0.40)",
-    textAlign: "center",
-  },
-  advancedItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingVertical: SP[2],
-  },
-  advancedItemBorder: {
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.05)",
-  },
-  advancedLabel: {
-    ...TYPE.captionSemiBold,
-    color: COLORS.text,
-    lineHeight: 18,
-  },
-  advancedComment: {
-    ...TYPE.small,
-    color: "rgba(255,255,255,0.50)",
-    lineHeight: 16,
-    marginTop: 1,
-  },
-
-  // ── History items ─────────────────────────────────────────────────────────
-  historyList: {
-    paddingHorizontal: SP[4],
-    paddingBottom: SP[3],
-  },
-  historyItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingVertical: SP[2],
-  },
-  historyItemBorder: {
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.05)",
-  },
-  historyLabel: {
-    ...TYPE.captionSemiBold,
-    color: COLORS.text,
-  },
-  historyDate: {
-    ...TYPE.small,
-    color: "rgba(255,255,255,0.40)",
-    marginTop: 1,
-  },
-  historyScore: {
-    fontSize: 18,
-    fontFamily: "Poppins-SemiBold",
-    color: GOLD.light,
-  },
-
-  // ── Footer ────────────────────────────────────────────────────────────────
-  footerText: {
-    ...TYPE.caption,
-    color: "rgba(255,255,255,0.25)",
-    textAlign: "center",
-    marginTop: SP[2],
-  },
-
-  // ── Bottom CTA ────────────────────────────────────────────────────────────
-  ctaWrap: {
+  metricTileBase: {
     position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    paddingHorizontal: SP[4],
-    paddingTop: SP[3],
-    overflow: "hidden",
+    bottom: -4,
+    left: 4,
+    right: 4,
+    height: CARD_H,
+    borderRadius: RADII.xl,
+    backgroundColor: "#0A0A0A",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.55,
+    shadowRadius: 14,
+    elevation: 8,
   },
-  ctaBorder: {
+  metricTileFace: {
+    width: CARD_W,
+    height: CARD_H,
+    borderRadius: RADII.xl,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
+    borderTopWidth: 2,
+    borderTopColor: LIME.primary, // overridden per card
+    justifyContent: "flex-end",
+  },
+  metricTileImage: {
     position: "absolute",
     top: 0,
     left: 0,
     right: 0,
-    height: 1,
-    backgroundColor: GOLD.border,
+    bottom: 0,
   },
-  ctaBtn: {
-    borderRadius: RADII.circle,
-    overflow: "hidden",
-    ...(Platform.OS === "ios"
-      ? {
-          shadowColor: GOLD.primary,
-          shadowOpacity: 0.45,
-          shadowRadius: 20,
-          shadowOffset: { width: 0, height: 6 },
-        }
-      : { elevation: 10 }),
+  metricTileImg: {
+    width: "100%",
+    height: "100%",
   },
-  ctaGradient: {
-    paddingVertical: SP[4],
+  metricTilePlaceholder: {
+    flex: 1,
     alignItems: "center",
-    borderRadius: RADII.circle,
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.04)",
   },
-  ctaBtnText: {
-    fontSize: 17,
+  metricTileScoreBadge: {
+    position: "absolute",
+    top: SP[2],
+    right: SP[2],
+    backgroundColor: "rgba(0,0,0,0.55)",
+    borderRadius: RADII.md,
+    paddingHorizontal: SP[2],
+    paddingVertical: 2,
+  },
+  metricTileScore: {
+    fontSize: 13,
     fontFamily: "Poppins-SemiBold",
-    color: "#1A1200",
-    letterSpacing: 0.3,
+  },
+  metricTileName: {
+    fontSize: 13,
+    fontFamily: "Poppins-SemiBold",
+    color: "#FFFFFF",
+    paddingHorizontal: SP[3],
+    paddingTop: SP[2],
+    textShadowColor: "rgba(0,0,0,0.8)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
+  },
+  metricTileBottom: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: SP[3],
+    paddingBottom: SP[3],
+    paddingTop: SP[1],
+    gap: SP[1],
+  },
+  metricDirPill: {
+    paddingHorizontal: SP[2],
+    paddingVertical: 2,
+    borderRadius: RADII.pill,
+    borderWidth: 1,
+  },
+  metricDirText: {
+    fontSize: 8,
+    fontFamily: "Poppins-SemiBold",
+    letterSpacing: 0.5,
+  },
+  metricDeltaText: {
+    fontSize: 11,
+    fontFamily: "Poppins-SemiBold",
+  },
+
+  /* Overall card center */
+  overallCenter: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  overallScoreNum: {
+    fontSize: 32,
+    fontFamily: "Poppins-Bold",
+    color: LIME.primary,
+    lineHeight: 36,
+  },
+
+  /* Trend card */
+  trendCard: {
+    padding: SP[5],
+  },
+
+  trendHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: SP[3],
+  },
+
+  trendChart: {
+    overflow: "hidden",
+    borderRadius: RADII.md,
+  },
+
+  /* Metric cards */
+  metricCard: {
+    marginBottom: 0,
+  },
+
+  metricPressable: {
+    padding: SP[4],
+  },
+
+  metricHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: SP[2],
+  },
+
+  tierPillSmall: {
+    paddingHorizontal: SP[2],
+    paddingVertical: 2,
+    borderRadius: RADII.pill,
+    borderWidth: 1,
+  },
+  tierTextSmall: {
+    fontSize: 8,
+    fontFamily: "Poppins-SemiBold",
+    letterSpacing: 0.5,
+  },
+  barTrack: {
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    marginBottom: SP[2],
+    position: "relative" as const,
+    overflow: "visible" as const,
+  },
+  barFill: {
+    height: "100%",
+    borderRadius: 3,
+  },
+  baselineTick: {
+    position: "absolute" as const,
+    top: -3,
+    width: 2,
+    height: 11,
+    borderRadius: 1,
+    backgroundColor: "rgba(255,255,255,0.50)",
+    marginLeft: -1,
+  },
+  beforeAfterRow: {
+    flexDirection: "row" as const,
+    alignItems: "center",
+    gap: SP[2],
+  },
+  beforeBox: {
+    flex: 1,
+    alignItems: "center" as const,
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderRadius: RADII.md,
+    paddingVertical: SP[2],
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.07)",
+  },
+  arrowCol: {
+    alignItems: "center" as const,
+    gap: 1,
+  },
+  arrowText: {
+    fontSize: 16,
+    fontFamily: "Poppins-SemiBold",
+  },
+  arrowDelta: {
+    fontSize: 10,
+    fontFamily: "Poppins-SemiBold",
+  },
+  afterBox: {
+    flex: 1,
+    alignItems: "center" as const,
+    borderRadius: RADII.md,
+    paddingVertical: SP[2],
+    borderWidth: 1,
+  },
+  bestBox: {
+    flex: 1,
+    alignItems: "center" as const,
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderRadius: RADII.md,
+    paddingVertical: SP[2],
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.07)",
+  },
+  beforeLabel: {
+    fontSize: 8,
+    fontFamily: "Poppins-SemiBold",
+    color: "rgba(255,255,255,0.35)",
+    letterSpacing: 0.5,
+    marginBottom: 2,
+  },
+  beforeValue: {
+    ...TYPE.captionSemiBold,
+    color: COLORS.text,
+  },
+  afterLabel: {
+    fontSize: 8,
+    fontFamily: "Poppins-SemiBold",
+    letterSpacing: 0.5,
+    marginBottom: 2,
+  },
+  afterValue: {
+    ...TYPE.captionSemiBold,
+  },
+  miniBarTrack: {
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    overflow: "hidden" as const,
+  },
+  miniBarFill: {
+    height: "100%",
+    borderRadius: 2,
+    opacity: 0.75,
+  },
+
+  directionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SP[2],
+  },
+
+  dirBadge: {
+    paddingHorizontal: SP[2],
+    paddingVertical: 3,
+    borderRadius: RADII.pill,
+    borderWidth: 1,
+  },
+
+  expandedPanel: {
+    marginTop: SP[3],
+  },
+
+  expandDivider: {
+    height: 1,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    marginBottom: SP[3],
+  },
+
+  statBoxRow: {
+    flexDirection: "row",
+    gap: SP[3],
+  },
+
+  statBox: {
+    flex: 1,
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderRadius: RADII.md,
+    paddingVertical: SP[3],
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.06)",
+  },
+
+  subMetricRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+
+  tagPill: {
+    paddingHorizontal: SP[2],
+    paddingVertical: 3,
+    borderRadius: RADII.pill,
+    borderWidth: 1,
+  },
+
+  /* AI Coach card */
+  aiCard: {
+    padding: SP[5],
+    paddingLeft: SP[5] + 8, // extra left padding for accent bar
+  },
+
+  aiHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+
+  aiTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+
+  verdictPill: {
+    paddingHorizontal: SP[3],
+    paddingVertical: 4,
+    borderRadius: RADII.pill,
+    borderWidth: 1,
+  },
+
+  /* Collapsible sections */
+  sectionCard: {
+    overflow: "hidden",
+  },
+
+  collapseHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: SP[4],
+  },
+
+  collapseBody: {
+    paddingHorizontal: SP[4],
+    paddingBottom: SP[4],
+  },
+
+  advGroup: {
+    marginBottom: SP[4],
+  },
+
+  advItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: SP[1],
+  },
+
+  historyRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: SP[3],
+  },
+
+  historyRowBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.06)",
+  },
+
+  scoreChip: {
+    paddingHorizontal: SP[3],
+    paddingVertical: SP[1],
+    borderRadius: RADII.md,
+    borderWidth: 1,
+  },
+
+  /* 3D button */
+  ctaContainer: {
+    marginTop: SP[3],
+    marginBottom: SP[2],
+  },
+
+  btn3dOuter: {
+    position: "relative",
+    borderRadius: 28,
+    backgroundColor: "#6B9A1E",
+    ...SHADOWS.primaryBtn,
+  },
+
+  btn3dFace: {
+    height: 56,
+    borderRadius: 28,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: SP[6],
+  },
+
+  btn3dBase: {
+    position: "absolute",
+    bottom: -4,
+    left: 0,
+    right: 0,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: "#6B9A1E",
+    zIndex: -1,
+  },
+
+  /* State screens */
+  centeredState: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: SP[12],
+    paddingHorizontal: SP[6],
   },
 });

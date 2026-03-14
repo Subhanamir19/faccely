@@ -1,7 +1,8 @@
 import { create } from "zustand";
 import { fetchInsights, type InsightData } from "../lib/api/insights";
 
-const STALE_MS = 30_000; // don't re-fetch if data is less than 30s old
+const STALE_MS       = 30_000; // background auto-fetch cooldown
+const FORCE_STALE_MS =  5_000; // minimum gap between manual pull-to-refreshes
 
 type State = {
   data: InsightData | null;
@@ -24,7 +25,8 @@ export const useInsights = create<State & Actions>((set, get) => ({
   loadInsights: async (force = false) => {
     const { loading, lastFetchedAt } = get();
     if (loading) return; // already in-flight
-    if (!force && lastFetchedAt && Date.now() - lastFetchedAt < STALE_MS) return; // fresh
+    const cooldown = force ? FORCE_STALE_MS : STALE_MS;
+    if (lastFetchedAt && Date.now() - lastFetchedAt < cooldown) return;
 
     set({ loading: true, error: null });
     try {
