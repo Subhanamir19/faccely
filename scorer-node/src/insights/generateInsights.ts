@@ -2,6 +2,15 @@
 // Builds scan context, calls gpt-4o-mini, saves result to insights table.
 
 import OpenAI from "openai";
+import { InsightContentSchema } from "../validators.js";
+import { getAllScansForUser, type ScanRecord } from "../supabase/scans.js";
+import { getAnalysisForScanBatch } from "../supabase/analyses.js";
+import { upsertInsight } from "../supabase/insights.js";
+import { metricKeys } from "../validators.js";
+
+/* -------------------------------------------------------------------------- */
+/*   OpenAI client singleton                                                  */
+/* -------------------------------------------------------------------------- */
 
 let _openai: OpenAI | null = null;
 
@@ -12,10 +21,6 @@ export function setInsightsOpenAIClient(client: OpenAI): void {
 export function getInsightsOpenAIClient(): OpenAI | null {
   return _openai;
 }
-import { InsightContentSchema } from "../validators.js";
-import { getAllScansForUser, type ScanRecord } from "../supabase/scans.js";
-import { upsertInsight } from "../supabase/insights.js";
-import { metricKeys } from "../validators.js";
 
 /* -------------------------------------------------------------------------- */
 /*   Helpers                                                                  */
@@ -38,14 +43,22 @@ function formatDate(iso: string): string {
   });
 }
 
-function formatScanForPrompt(scan: ScanRecord, label: string): string {
+function formatScanForPrompt(
+  scan: ScanRecord,
+  label: string,
+  explanationText?: string
+): string {
   const s = scan.scores as Record<string, number>;
-  return [
+  const lines = [
     `${label} — ${formatDate(scan.created_at)}:`,
     `  Overall: ${avgScore(scan)}`,
     `  Jawline: ${s.jawline}, Symmetry: ${s.facial_symmetry}, Skin: ${s.skin_quality}`,
     `  Cheekbones: ${s.cheekbones}, Eyes: ${s.eyes_symmetry}, Nose: ${s.nose_harmony}, Masculinity: ${s.sexual_dimorphism}`,
-  ].join("\n");
+  ];
+  if (explanationText) {
+    lines.push(`  AI Analysis: ${explanationText.slice(0, 300)}`);
+  }
+  return lines.join("\n");
 }
 
 /* -------------------------------------------------------------------------- */
@@ -74,7 +87,9 @@ export function selectScanContext(scans: ScanRecord[]): ScanRecord[] {
     const latestAvg = avgScore(latest);
     const afterBaseline = scans.slice(1, -1);
     if (afterBaseline.length > 0) {
-      const worst = afterBaseline.reduce((w, s) => (avgScore(s) < avgScore(w) ? s : w));
+      const worst = afterBaseline.reduce((w, s) =>
+        avgScore(s) < avgScore(w) ? s : w
+      );
       if (!selected.has(worst.id) && latestAvg > avgScore(worst)) {
         selected.set(worst.id, worst);
       }
@@ -91,7 +106,10 @@ export function selectScanContext(scans: ScanRecord[]): ScanRecord[] {
   }
 
   return Array.from(selected.values())
-    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+    .sort(
+      (a, b) =>
+        new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    )
     .slice(0, 6);
 }
 
@@ -99,7 +117,11 @@ export function selectScanContext(scans: ScanRecord[]): ScanRecord[] {
 /*   Prompt builder                                                           */
 /* -------------------------------------------------------------------------- */
 
-function buildPrompt(selected: ScanRecord[], allScans: ScanRecord[]): string {
+function buildPrompt(
+  selected: ScanRecord[],
+  allScans: ScanRecord[],
+  analysisMap: Map<string, { explanations: Record<string, unknown> }>
+): string {
   const baseline = selected[0];
   const latest = selected[selected.length - 1];
   const baselineAvg = avgScore(baseline);
@@ -116,7 +138,24 @@ function buildPrompt(selected: ScanRecord[], allScans: ScanRecord[]): string {
     } else {
       label = `Scan #${scanNumber}`;
     }
-    return formatScanForPrompt(scan, label);
+
+    // Extract a short summary from explanations if available
+    let explanationText: string | undefined;
+    const analysis = analysisMap.get(scan.id);
+    if (analysis?.explanations) {
+      const expl = analysis.explanations as Record<string, unknown>;
+      // Try to get narrative/summary from explanations
+      const texts: string[] = [];
+      for (const key of metricKeys) {
+        const val = expl[key];
+        if (Array.isArray(val) && val.length > 0) {
+          texts.push(String(val[0]).slice(0, 60));
+        }
+      }
+      if (texts.length > 0) explanationText = texts.slice(0, 3).join("; ");
+    }
+
+    return formatScanForPrompt(scan, label, explanationText);
   });
 
   return [
@@ -139,10 +178,15 @@ function buildPrompt(selected: ScanRecord[], allScans: ScanRecord[]): string {
     `    "eyes_symmetry": { "delta": ..., "verdict": ... },`,
     `    "nose_harmony": { "delta": ..., "verdict": ... },`,
     `    "sexual_dimorphism": { "delta": ..., "verdict": ... }`,
-    `  }`,
+    `  },`,
+    `  "advanced": [`,
+    `    { "label": <short anatomical label, max 30 chars>, "comment": <specific observation, max 80 chars>, "change": <"improving"|"same"|"worse"> },`,
+    `    ... (10 to 13 items total, covering: jaw definition, cheekbone projection, skin texture, eye spacing, brow structure, nose bridge, lip definition, facial thirds balance, temple width, chin projection, neck-jaw angle, overall symmetry, masculinity markers)`,
+    `  ]`,
     `}`,
     ``,
     `Metric verdict rules: "improved" if delta >= 2, "declined" if delta <= -2, else "same".`,
+    `Advanced change rules: "improving" if trending upward across scans, "worse" if trending down, "same" if stable.`,
     `Return only the JSON object, no markdown fences.`,
   ].join("\n");
 }
@@ -176,7 +220,11 @@ export async function generateInsightsForUser(
   const selected = selectScanContext(allScans);
   if (selected.length < 2) return;
 
-  const prompt = buildPrompt(selected, allScans);
+  // Fetch analyses for baseline + latest to enrich prompt
+  const selectedIds = selected.map((s) => s.id);
+  const analysisMap = await getAnalysisForScanBatch(selectedIds);
+
+  const prompt = buildPrompt(selected, allScans, analysisMap);
 
   const completion = await openai.chat.completions.create({
     model: "gpt-4o-mini",
@@ -189,7 +237,7 @@ export async function generateInsightsForUser(
       { role: "user", content: prompt },
     ],
     temperature: 0.4,
-    max_tokens: 600,
+    max_tokens: 2000,
   });
 
   const rawText = completion.choices[0]?.message?.content ?? "";
@@ -197,5 +245,7 @@ export async function generateInsightsForUser(
   const content = InsightContentSchema.parse(rawJson);
 
   await upsertInsight(userId, latestScanId, content);
-  console.log(`[insights] saved for user=${userId} latestScanId=${latestScanId}`);
+  console.log(
+    `[insights] saved for user=${userId} latestScanId=${latestScanId} advanced=${content.advanced?.length ?? 0}`
+  );
 }

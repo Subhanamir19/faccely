@@ -53,3 +53,28 @@ export async function getAnalysisForScan(
 
   return (data as AnalysisRecord | null) ?? null;
 }
+
+export async function getAnalysisForScanBatch(
+  scanIds: string[]
+): Promise<Map<string, AnalysisRecord>> {
+  if (scanIds.length === 0) return new Map();
+
+  const { data, error } = await supabase
+    .from("analyses")
+    .select("*")
+    .in("scan_id", scanIds)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    throw new Error(`Failed to fetch analyses for scans: ${error.message}`);
+  }
+
+  // Keep only the latest analysis per scan_id
+  const map = new Map<string, AnalysisRecord>();
+  for (const row of (data ?? []) as AnalysisRecord[]) {
+    if (!map.has(row.scan_id)) {
+      map.set(row.scan_id, row);
+    }
+  }
+  return map;
+}

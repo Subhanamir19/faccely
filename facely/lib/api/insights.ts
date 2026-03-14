@@ -7,6 +7,12 @@ export type MetricInsight = {
   verdict: "improved" | "same" | "declined";
 };
 
+export type AdvancedItem = {
+  label: string;
+  comment: string;
+  change: "improving" | "same" | "worse";
+};
+
 export type InsightContent = {
   overall_delta: number;
   verdict: "improved" | "same" | "declined";
@@ -20,6 +26,7 @@ export type InsightContent = {
     nose_harmony: MetricInsight;
     sexual_dimorphism: MetricInsight;
   };
+  advanced?: AdvancedItem[];
 };
 
 export type InsightRecord = {
@@ -30,9 +37,37 @@ export type InsightRecord = {
   content: InsightContent;
 };
 
+export type DashboardMetric = {
+  key: string;
+  current: number;
+  baseline: number;
+  best: number;
+  delta: number;
+  direction: "up" | "down" | "flat";
+};
+
+export type DashboardHistoryItem = {
+  id: string;
+  created_at: string;
+  overall: number;
+  label: string;
+};
+
+export type DashboardOverall = {
+  current: number;
+  baseline: number;
+  best: number;
+};
+
 export type InsightData = {
   insight: InsightRecord | null;
   scan_count: number;
+  overall: DashboardOverall | null;
+  metrics: DashboardMetric[];
+  graph_points: number[];
+  graph_dates: string[];
+  history: DashboardHistoryItem[];
+  joined_days_ago: number;
 };
 
 export async function fetchInsights(): Promise<InsightData> {

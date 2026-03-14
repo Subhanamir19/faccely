@@ -159,6 +159,12 @@ const MetricInsightSchema = z.object({
   verdict: z.enum(["improved", "same", "declined"]),
 });
 
+const AdvancedItemSchema = z.object({
+  label: z.string(),
+  comment: z.string(),
+  change: z.enum(["improving", "same", "worse"]),
+});
+
 export const InsightContentSchema = z.object({
   overall_delta: z.number(),
   verdict: z.enum(["improved", "same", "declined"]),
@@ -172,7 +178,9 @@ export const InsightContentSchema = z.object({
     nose_harmony: MetricInsightSchema,
     sexual_dimorphism: MetricInsightSchema,
   }),
+  advanced: z.array(AdvancedItemSchema).optional(),
 });
 
+export type AdvancedItem = z.infer<typeof AdvancedItemSchema>;
 export type InsightContent = z.infer<typeof InsightContentSchema>;
  
