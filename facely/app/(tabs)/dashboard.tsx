@@ -635,8 +635,56 @@ function DetailStat({ label, value }: { label: string; value: string }) {
 /*   Advanced analysis section (collapsible)                                  */
 /* -------------------------------------------------------------------------- */
 
-function AdvancedSection({ items }: { items: AdvancedItem[] }) {
+type AdvancedGroup = {
+  label: string;
+  items: { label: string; scoreKey: string }[];
+  data: Record<string, number | string> | null;
+};
+
+function AdvancedSection({ latestAdvanced }: { latestAdvanced: import("@/lib/api/insights").LatestAdvanced | null }) {
   const [open, setOpen] = useState(false);
+
+  const groups: AdvancedGroup[] = [
+    {
+      label: "Cheekbones",
+      items: [
+        { label: "Cheekbone Width",    scoreKey: "width_score" },
+        { label: "Maxilla Development",scoreKey: "maxilla_score" },
+        { label: "Bone Structure",     scoreKey: "bone_structure_score" },
+        { label: "Face Fat",           scoreKey: "face_fat_score" },
+      ],
+      data: latestAdvanced?.cheekbones as Record<string, number | string> | null ?? null,
+    },
+    {
+      label: "Jawline",
+      items: [
+        { label: "Development",    scoreKey: "development_score" },
+        { label: "Gonial Angle",   scoreKey: "gonial_angle_score" },
+        { label: "Chin Projection",scoreKey: "projection_score" },
+      ],
+      data: latestAdvanced?.jawline as Record<string, number | string> | null ?? null,
+    },
+    {
+      label: "Eyes",
+      items: [
+        { label: "Canthal Tilt", scoreKey: "canthal_tilt_score" },
+        { label: "Eye Type",     scoreKey: "eye_type_score" },
+        { label: "Brow Volume",  scoreKey: "brow_volume_score" },
+        { label: "Symmetry",     scoreKey: "symmetry_score" },
+      ],
+      data: latestAdvanced?.eyes as Record<string, number | string> | null ?? null,
+    },
+    {
+      label: "Skin",
+      items: [
+        { label: "Skin Color",   scoreKey: "color_score" },
+        { label: "Skin Quality", scoreKey: "quality_score" },
+      ],
+      data: latestAdvanced?.skin as Record<string, number | string> | null ?? null,
+    },
+  ];
+
+  const totalItems = groups.reduce((n, g) => n + g.items.length, 0);
 
   return (
     <Animated.View entering={FadeInDown.duration(400).delay(560)}>
@@ -647,35 +695,51 @@ function AdvancedSection({ items }: { items: AdvancedItem[] }) {
         >
           <Text style={styles.sectionToggleTitle}>Advanced Analysis</Text>
           <View style={styles.sectionToggleRight}>
-            <Text style={styles.sectionCount}>{items.length} metrics</Text>
+            <Text style={styles.sectionCount}>{totalItems} sub-metrics</Text>
             <Text style={styles.sectionChevron}>{open ? "▲" : "▼"}</Text>
           </View>
         </Pressable>
 
         {open && (
           <View style={styles.advancedList}>
-            {items.map((item, i) => {
-              const color = CHANGE_COLOR[item.change];
-              return (
-                <View
-                  key={i}
-                  style={[
-                    styles.advancedItem,
-                    i < items.length - 1 && styles.advancedItemBorder,
-                  ]}
-                >
-                  <View style={styles.advancedLeft}>
-                    <Text style={[styles.advancedChange, { color }]}>
-                      {CHANGE_ICON[item.change]}
-                    </Text>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.advancedLabel}>{item.label}</Text>
-                      <Text style={styles.advancedComment}>{item.comment}</Text>
-                    </View>
-                  </View>
+            {!latestAdvanced ? (
+              <View style={styles.advancedEmpty}>
+                <Text style={styles.advancedEmptyText}>
+                  Run a detailed analysis to unlock real sub-metric scores.
+                </Text>
+              </View>
+            ) : (
+              groups.map((group) => (
+                <View key={group.label} style={styles.advancedGroup}>
+                  <Text style={styles.advancedGroupLabel}>{group.label}</Text>
+                  {group.items.map((item, i) => {
+                    const score = group.data ? (group.data[item.scoreKey] as number | undefined) : undefined;
+                    const tag = score !== undefined ? getSubMetricTag(score) : null;
+                    return (
+                      <View
+                        key={item.scoreKey}
+                        style={[
+                          styles.advancedItem,
+                          i < group.items.length - 1 && styles.advancedItemBorder,
+                        ]}
+                      >
+                        <Text style={styles.advancedLabel}>{item.label}</Text>
+                        <View style={styles.subMetricRight}>
+                          {score !== undefined && (
+                            <Text style={styles.subMetricScore}>{Math.round(score)}</Text>
+                          )}
+                          {tag && (
+                            <View style={[styles.subMetricTag, { backgroundColor: `${tag.color}20`, borderColor: `${tag.color}60` }]}>
+                              <Text style={[styles.subMetricTagText, { color: tag.color }]}>{tag.label}</Text>
+                            </View>
+                          )}
+                        </View>
+                      </View>
+                    );
+                  })}
                 </View>
-              );
-            })}
+              ))
+            )}
           </View>
         )}
       </Card>
@@ -755,7 +819,7 @@ export default function DashboardScreen() {
   const graphDates = data?.graph_dates ?? [];
   const history = data?.history ?? [];
   const joinedDaysAgo = data?.joined_days_ago ?? 0;
-  const advanced = content?.advanced ?? [];
+  const latestAdvanced = data?.latest_advanced ?? null;
 
   const renderBody = () => {
     if (error) {
@@ -799,7 +863,7 @@ export default function DashboardScreen() {
           <MetricRow key={m.key} metric={m} index={i} advancedData={advancedData} />
         ))}
 
-        {advanced.length > 0 && <AdvancedSection items={advanced} />}
+        <AdvancedSection latestAdvanced={latestAdvanced} />
 
         {history.length > 0 && <HistorySection items={history} />}
 
@@ -1243,24 +1307,34 @@ const styles = StyleSheet.create({
     paddingHorizontal: SP[4],
     paddingBottom: SP[3],
   },
+  advancedGroup: {
+    marginBottom: SP[3],
+  },
+  advancedGroupLabel: {
+    ...TYPE.smallSemiBold,
+    color: GOLD.primary,
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+    marginBottom: SP[1],
+  },
+  advancedEmpty: {
+    paddingVertical: SP[4],
+    alignItems: "center",
+  },
+  advancedEmptyText: {
+    ...TYPE.small,
+    color: "rgba(255,255,255,0.40)",
+    textAlign: "center",
+  },
   advancedItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     paddingVertical: SP[2],
   },
   advancedItemBorder: {
     borderBottomWidth: 1,
     borderBottomColor: "rgba(255,255,255,0.05)",
-  },
-  advancedLeft: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: SP[2],
-  },
-  advancedChange: {
-    fontSize: 14,
-    fontFamily: "Poppins-SemiBold",
-    lineHeight: 20,
-    width: 16,
-    textAlign: "center",
   },
   advancedLabel: {
     ...TYPE.captionSemiBold,

@@ -59,6 +59,19 @@ export type DashboardOverall = {
   best: number;
 };
 
+export type LatestAdvancedSubMetric = {
+  label: string;
+  scoreKey: string;
+  score: number | undefined;
+};
+
+export type LatestAdvanced = {
+  cheekbones: { width: string; width_score: number; maxilla: string; maxilla_score: number; bone_structure: string; bone_structure_score: number; face_fat: string; face_fat_score: number } | null;
+  jawline: { development: string; development_score: number; gonial_angle: string; gonial_angle_score: number; projection: string; projection_score: number } | null;
+  eyes: { canthal_tilt: string; canthal_tilt_score: number; eye_type: string; eye_type_score: number; brow_volume: string; brow_volume_score: number; symmetry: string; symmetry_score: number } | null;
+  skin: { color: string; color_score: number; quality: string; quality_score: number } | null;
+};
+
 export type InsightData = {
   insight: InsightRecord | null;
   scan_count: number;
@@ -68,6 +81,7 @@ export type InsightData = {
   graph_dates: string[];
   history: DashboardHistoryItem[];
   joined_days_ago: number;
+  latest_advanced: LatestAdvanced | null;
 };
 
 export async function fetchInsights(): Promise<InsightData> {

@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { getLatestInsightForUser } from "../supabase/insights.js";
 import { getAllScansForUser } from "../supabase/scans.js";
+import { getAnalysisForScan } from "../supabase/analyses.js";
 import {
   generateInsightsForUser,
   getInsightsOpenAIClient,
@@ -44,6 +45,10 @@ insightsRouter.get("/", async (_req, res) => {
       getAllScansForUser(userId),
     ]);
 
+    const latest = scans[scans.length - 1] ?? null;
+    const latestAnalysis = latest ? await getAnalysisForScan(latest.id) : null;
+    const latestAdvanced = (latestAnalysis?.advanced_result as Record<string, unknown> | null) ?? null;
+
     const scanCount = scans.length;
 
     // Lazy trigger: only fire when no insight exists at all
@@ -71,7 +76,6 @@ insightsRouter.get("/", async (_req, res) => {
 
     // Per-metric current / baseline / best across all scans
     const baseline = scans[0] ?? null;
-    const latest = scans[scans.length - 1] ?? null;
 
     const metricsPayload =
       baseline && latest
@@ -130,6 +134,7 @@ insightsRouter.get("/", async (_req, res) => {
       graph_dates: graphDates,
       history,
       joined_days_ago: joinedDaysAgo,
+      latest_advanced: latestAdvanced,
     });
   } catch (err) {
     console.error("[insights] failed to fetch insight", err);

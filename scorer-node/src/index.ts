@@ -61,7 +61,7 @@ import { insightsRouter } from "./routes/insights.js";
 import { generateInsightsForUser, setInsightsOpenAIClient } from "./insights/generateInsights.js";
 import { createScan } from "./supabase/scans.js";
 import { uploadScanImage } from "./supabase/storage.js";
-import { createAnalysis } from "./supabase/analyses.js";
+import { createAnalysis, saveAdvancedResult } from "./supabase/analyses.js";
 import { checkDbHealth } from "./supabase/client.js";
 import { requestTimeout } from "./middleware/timeout.js";
 import { checkRedisHealth } from "./lib/redis.js";
@@ -1148,6 +1148,15 @@ app.post("/analyze/advanced-explain", async (req, res) => {
     slot = await enqueue();
     const { buffer, mime } = await toJpegBuffer(file);
     const result = await explainAdvancedBytes(openai, buffer, mime, scores);
+
+    // Persist to DB so the dashboard can read it without re-uploading the image
+    const scanId = req.body?.scanId;
+    if (typeof scanId === "string" && scanId.trim()) {
+      saveAdvancedResult(scanId.trim(), result as unknown as Record<string, unknown>).catch((err) =>
+        console.error("[/analyze/advanced-explain] failed to save advanced_result:", err)
+      );
+    }
+
     return res.json(result);
   } catch (err: any) {
     if (isServerOverloaded(err)) return respondServerOverloaded(res);

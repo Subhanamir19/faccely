@@ -10,6 +10,7 @@ export interface AnalysisRecord {
   scan_id: string;
   created_at: string;
   explanations: Record<string, unknown>;
+  advanced_result: Record<string, unknown> | null;
 }
 
 export async function createAnalysis(
@@ -52,6 +53,20 @@ export async function getAnalysisForScan(
   }
 
   return (data as AnalysisRecord | null) ?? null;
+}
+
+export async function saveAdvancedResult(
+  scanId: string,
+  advancedResult: Record<string, unknown>
+): Promise<void> {
+  const { error } = await supabase
+    .from("analyses")
+    .update({ advanced_result: advancedResult })
+    .eq("scan_id", scanId);
+
+  if (error) {
+    throw new Error(`Failed to save advanced result for scan ${scanId}: ${error.message}`);
+  }
 }
 
 export async function getAnalysisForScanBatch(
