@@ -1286,7 +1286,7 @@ export default function DashboardScreen() {
   }, []);
 
   const onRefresh = useCallback(() => {
-    loadInsights(true);
+    loadInsights();
   }, [loadInsights]);
 
   // Derived data

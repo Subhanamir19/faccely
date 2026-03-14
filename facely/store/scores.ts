@@ -14,6 +14,7 @@ import {
   type Explanations,
 } from "../lib/api/analysis";
 import { mapBackendErrorToUserMessage } from "../lib/api/client";
+import { useInsights } from "./insights";
 
 type InputFile = string | { uri: string; name?: string; mime?: string };
 
@@ -306,6 +307,7 @@ export const useScores = create<State & Actions>((set, get) => ({
           ...deriveLegacyFlags(requests),
         };
       });
+      useInsights.getState().invalidate();
       return true;
     } catch (e: any) {
       const message = mapBackendErrorToUserMessage(e, "explain");
@@ -365,6 +367,7 @@ export const useScores = create<State & Actions>((set, get) => ({
           ...deriveLegacyFlags(requests),
         };
       });
+      useInsights.getState().invalidate();
       return true;
     } catch (e: any) {
       const message = mapBackendErrorToUserMessage(e, "explain");
