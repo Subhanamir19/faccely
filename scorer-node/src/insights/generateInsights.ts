@@ -2,6 +2,16 @@
 // Builds scan context, calls gpt-4o-mini, saves result to insights table.
 
 import OpenAI from "openai";
+
+let _openai: OpenAI | null = null;
+
+export function setInsightsOpenAIClient(client: OpenAI): void {
+  _openai = client;
+}
+
+export function getInsightsOpenAIClient(): OpenAI | null {
+  return _openai;
+}
 import { InsightContentSchema } from "../validators.js";
 import { getAllScansForUser, type ScanRecord } from "../supabase/scans.js";
 import { upsertInsight } from "../supabase/insights.js";

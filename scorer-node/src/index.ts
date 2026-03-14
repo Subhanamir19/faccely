@@ -58,7 +58,7 @@ import {
 import protocolsRouter, { setProtocolsOpenAIClient } from "./routes/protocols.js";
 import { programsRouter } from "./routes/programs.js";
 import { insightsRouter } from "./routes/insights.js";
-import { generateInsightsForUser } from "./insights/generateInsights.js";
+import { generateInsightsForUser, setInsightsOpenAIClient } from "./insights/generateInsights.js";
 import { createScan } from "./supabase/scans.js";
 import { uploadScanImage } from "./supabase/storage.js";
 import { createAnalysis } from "./supabase/analyses.js";
@@ -89,6 +89,7 @@ const openai = new OpenAI({
 setRoutineOpenAIClient(openai);
 setProtocolsOpenAIClient(openai);
 setGenerateOpenAIClient(openai);
+setInsightsOpenAIClient(openai);
 
 
 // --- one-time schema sanity check (shows up in Railway logs) ---
