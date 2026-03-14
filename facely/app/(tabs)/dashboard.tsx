@@ -833,7 +833,7 @@ export default function DashboardScreen() {
   }, []);
 
   const onRefresh = useCallback(() => {
-    loadInsights();
+    loadInsights(true);
   }, [loadInsights]);
 
   const insight = data?.insight ?? null;
