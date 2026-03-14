@@ -57,7 +57,9 @@ import {
 } from "./routes/routine.js";
 import protocolsRouter, { setProtocolsOpenAIClient } from "./routes/protocols.js";
 import { programsRouter } from "./routes/programs.js";
-import { createScan, getLastScan, type ScanRecord } from "./supabase/scans.js";
+import { insightsRouter } from "./routes/insights.js";
+import { generateInsightsForUser } from "./insights/generateInsights.js";
+import { createScan } from "./supabase/scans.js";
 import { uploadScanImage } from "./supabase/storage.js";
 import { createAnalysis } from "./supabase/analyses.js";
 import { checkDbHealth } from "./supabase/client.js";
@@ -65,59 +67,6 @@ import { requestTimeout } from "./middleware/timeout.js";
 import { checkRedisHealth } from "./lib/redis.js";
 
 
-
-/* -------------------------------------------------------------------------- */
-/*   Scan gate + score anchoring                                              */
-/* -------------------------------------------------------------------------- */
-
-const SCAN_GATE_DAYS   = 7;
-const SCORE_MAX_GAIN   = 12;
-const SCORE_MAX_LOSS   = 8;
-
-/** Clamp each metric so no single scan can move more than ±threshold. Integer output. */
-function anchorScores(raw: Scores, prev: Scores): Scores {
-  const out = {} as Scores;
-  for (const key of metricKeys) {
-    const delta   = raw[key] - prev[key];
-    const clamped = Math.min(SCORE_MAX_GAIN, Math.max(-SCORE_MAX_LOSS, delta));
-    out[key]      = Math.round(prev[key] + clamped);
-  }
-  return out;
-}
-
-type GateResult =
-  | { blocked: true;  nextScanAt: string }
-  | { blocked: false; lastScan: ScanRecord | null };
-
-/**
- * Single DB call — returns gate decision AND the previous scan for anchoring.
- * Fails OPEN on DB error so a transient DB hiccup never blocks a legitimate scan.
- * Dev bypass is only honoured outside production.
- */
-async function checkScanGate(userId: string, devBypass: boolean): Promise<GateResult> {
-  if (devBypass && !config.IS_PROD) {
-    console.log("[scan-gate] dev bypass active");
-    return { blocked: false, lastScan: null };
-  }
-
-  let lastScan: ScanRecord | null = null;
-  try {
-    lastScan = await getLastScan(userId);
-  } catch (err) {
-    // Fail open: DB hiccup should never block a scan.
-    console.error("[scan-gate] getLastScan failed — failing open:", (err as Error)?.message);
-    return { blocked: false, lastScan: null };
-  }
-
-  if (!lastScan) return { blocked: false, lastScan: null };
-
-  const nextAt = new Date(lastScan.created_at).getTime() + SCAN_GATE_DAYS * 24 * 60 * 60 * 1000;
-  if (Date.now() < nextAt) {
-    return { blocked: true, nextScanAt: new Date(nextAt).toISOString() };
-  }
-
-  return { blocked: false, lastScan };
-}
 
 /* -------------------------------------------------------------------------- */
 /*   App core                                                                 */
@@ -657,6 +606,7 @@ function respondServerOverloaded(res: express.Response) {
 app.use("/routine", requestTimeout(30_000), verifyAuth, idempotency(), routineRouter);
 app.use("/protocols", requestTimeout(30_000), verifyAuth, idempotency(), protocolsRouter);
 app.use("/programs", requestTimeout(30_000), verifyAuth, programsRouter);
+app.use("/insights", requestTimeout(30_000), verifyAuth, insightsRouter);
 app.use("/routine/async", verifyAuth, routineAsyncRouter);
 
 app.use("/sigma", requestTimeout(30_000), verifyAuth, sigmaRouter);
@@ -731,13 +681,6 @@ app.post("/analyze/pair-bytes", async (req, res) => {
     const fBuf = Buffer.from(fB64, "base64");
     const sBuf = Buffer.from(sB64, "base64");
 
-    // ── Gate + anchoring (single DB call) ──────────────────────────────────
-    const devBypass = req.headers["x-dev-bypass-scan-gate"] === "1";
-    const gate = await checkScanGate(userId, devBypass);
-    if (gate.blocked) {
-      return res.status(429).json({ error: "rescan_too_soon", next_scan_at: gate.nextScanAt });
-    }
-
     const { scores, modelVersion } = await scoreImagePairBytes(
       openai,
       fBuf,
@@ -745,13 +688,7 @@ app.post("/analyze/pair-bytes", async (req, res) => {
       sBuf,
       "image/jpeg"
     );
-    let parsed = ScoresSchema.parse(scores);
-
-    // Reuse gate result — no second DB call
-    if (!gate.blocked && gate.lastScan) {
-      const prev = ScoresSchema.safeParse(gate.lastScan.scores);
-      if (prev.success) parsed = anchorScores(parsed, prev.data);
-    }
+    const parsed = ScoresSchema.parse(scores);
 
     let scanId: string | undefined;
     if (userId) {
@@ -842,23 +779,10 @@ app.post("/analyze", upload.single("image"), async (req, res) => {
         })
       );
 
-    // ── Gate + anchoring (single DB call) ──────────────────────────────────
-    const devBypass = req.headers["x-dev-bypass-scan-gate"] === "1";
-    const gate = await checkScanGate(userId, devBypass);
-    if (gate.blocked) {
-      return res.status(429).json({ error: "rescan_too_soon", next_scan_at: gate.nextScanAt });
-    }
-
     const fileBuffer = await getFileBuffer(req.file);
     console.log("[/analyze] buffer:", preview(fileBuffer));
     const { scores, modelVersion } = await scoreImageBytes(openai, fileBuffer, req.file.mimetype);
-    let parsed = ScoresSchema.parse(scores);
-
-    // Reuse gate result — no second DB call
-    if (!gate.blocked && gate.lastScan) {
-      const prev = ScoresSchema.safeParse(gate.lastScan.scores);
-      if (prev.success) parsed = anchorScores(parsed, prev.data);
-    }
+    const parsed = ScoresSchema.parse(scores);
 
     let scanId: string | undefined;
     if (userId) {
@@ -957,13 +881,6 @@ app.post(
           })
         );
 
-      // ── Gate + anchoring (single DB call) ────────────────────────────────
-      const devBypass = req.headers["x-dev-bypass-scan-gate"] === "1";
-      const gate = await checkScanGate(userId, devBypass);
-      if (gate.blocked) {
-        return res.status(429).json({ error: "rescan_too_soon", next_scan_at: gate.nextScanAt });
-      }
-
       const frontalBuffer = await getFileBuffer(frontal);
       const sideBuffer = await getFileBuffer(side);
       console.log("[/analyze/pair] buffers:", preview(frontalBuffer), preview(sideBuffer));
@@ -974,13 +891,7 @@ app.post(
         sideBuffer,
         side.mimetype
       );
-      let parsed = ScoresSchema.parse(scores);
-
-      // Reuse gate result — no second DB call
-      if (!gate.blocked && gate.lastScan) {
-        const prev = ScoresSchema.safeParse(gate.lastScan.scores);
-        if (prev.success) parsed = anchorScores(parsed, prev.data);
-      }
+      const parsed = ScoresSchema.parse(scores);
 
       let scanId: string | undefined;
       if (res.locals.userId) {
@@ -1090,6 +1001,10 @@ app.post("/analyze/explain", async (req, res) => {
     if (scanId) {
       try {
         await createAnalysis({ scanId, explanations: parsed });
+        // fire insights generation async — non-blocking, does not affect response
+        generateInsightsForUser(openai, userId, scanId).catch((err) =>
+          console.error("[insights] background generation failed:", err instanceof Error ? err.message : err)
+        );
       } catch (err) {
         console.error("analysis persist failed", {
           route: "/analyze/explain",
@@ -1171,6 +1086,10 @@ app.post("/analyze/explain/pair", async (req, res) => {
     if (scanId) {
       try {
         await createAnalysis({ scanId, explanations: parsed });
+        // fire insights generation async — non-blocking, does not affect response
+        generateInsightsForUser(openai, userId, scanId).catch((err) =>
+          console.error("[insights] background generation failed:", err instanceof Error ? err.message : err)
+        );
       } catch (err) {
         console.error("analysis persist failed", {
           route: "/analyze/explain/pair",

@@ -149,4 +149,30 @@ export const RecommendationsResponseSchema = z.object({
 export type RecommendationsResponse = z.infer<
   typeof RecommendationsResponseSchema
 >;
+
+/* ============================================================================
+   Insights (AI-generated progress comparisons)
+   ========================================================================== */
+
+const MetricInsightSchema = z.object({
+  delta: z.number(),
+  verdict: z.enum(["improved", "same", "declined"]),
+});
+
+export const InsightContentSchema = z.object({
+  overall_delta: z.number(),
+  verdict: z.enum(["improved", "same", "declined"]),
+  narrative: z.string().max(500),
+  metrics: z.object({
+    jawline: MetricInsightSchema,
+    facial_symmetry: MetricInsightSchema,
+    skin_quality: MetricInsightSchema,
+    cheekbones: MetricInsightSchema,
+    eyes_symmetry: MetricInsightSchema,
+    nose_harmony: MetricInsightSchema,
+    sexual_dimorphism: MetricInsightSchema,
+  }),
+});
+
+export type InsightContent = z.infer<typeof InsightContentSchema>;
  

@@ -2,7 +2,7 @@
 import React from "react";
 import { Tabs } from "expo-router";
 import { Platform } from "react-native";
-import { Scan, CircleCheckBig, UserRound, Code2 } from "lucide-react-native";
+import { Scan, CircleCheckBig, UserRound, Code2, TrendingUp } from "lucide-react-native";
 
 const ACTIVE = "#FFFFFF";
 const INACTIVE = "rgba(255,255,255,0.40)";
@@ -55,7 +55,16 @@ export default function TabsLayout() {
       {/* 10/10 — accessible as a screen but not shown in the tab bar */}
       <Tabs.Screen name="ten-by-ten" options={{ href: null }} />
 
-      {/* Tab 3: profile */}
+      {/* Tab 3: progress dashboard */}
+      <Tabs.Screen
+        name="dashboard"
+        options={{
+          title: "progress",
+          tabBarIcon: ({ color, size }) => <TrendingUp color={color} size={size ?? 22} />,
+        }}
+      />
+
+      {/* Tab 4: profile */}
       <Tabs.Screen
         name="profile"
         options={{

@@ -43,11 +43,6 @@ export async function createScan(input: CreateScanInput): Promise<ScanRecord> {
   return data as ScanRecord;
 }
 
-export async function getLastScan(userId: string): Promise<ScanRecord | null> {
-  const scans = await getScansForUser(userId, 1);
-  return scans[0] ?? null;
-}
-
 export async function getScansForUser(
   userId: string,
   limit = 20
@@ -61,6 +56,22 @@ export async function getScansForUser(
 
   if (error) {
     throw new Error(`Failed to fetch scans for user ${userId}: ${error.message}`);
+  }
+
+  return (data ?? []) as ScanRecord[];
+}
+
+export async function getAllScansForUser(
+  userId: string
+): Promise<ScanRecord[]> {
+  const { data, error } = await supabase
+    .from("scans")
+    .select("*")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    throw new Error(`Failed to fetch all scans for user ${userId}: ${error.message}`);
   }
 
   return (data ?? []) as ScanRecord[];

@@ -71,3 +71,20 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_program_completions_unique
 
 CREATE INDEX IF NOT EXISTS idx_program_completions_user
   ON public.program_completions (user_id, program_id);
+
+-- ---------------------------------------------------------------------------
+-- Insights (AI-generated progress comparisons)
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.insights (
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id         text NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  latest_scan_id  uuid NOT NULL REFERENCES public.scans(id) ON DELETE CASCADE,
+  created_at      timestamptz NOT NULL DEFAULT now(),
+  content         jsonb NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_insights_user_scan_unique
+  ON public.insights (user_id, latest_scan_id);
+
+CREATE INDEX IF NOT EXISTS idx_insights_user_id
+  ON public.insights (user_id);
