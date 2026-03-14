@@ -34,6 +34,7 @@ import Text from "@/components/ui/T";
 import ScreenHeader from "@/components/layout/ScreenHeader";
 import { COLORS, SP, RADII, TYPE } from "@/lib/tokens";
 import { useInsights } from "@/store/insights";
+import { useAdvancedAnalysis } from "@/store/advancedAnalysis";
 import type {
   DashboardMetric,
   DashboardHistoryItem,
@@ -41,6 +42,7 @@ import type {
   InsightContent,
   DashboardOverall,
 } from "@/lib/api/insights";
+import type { AdvancedAnalysis } from "@/lib/api/advancedAnalysis";
 
 /* -------------------------------------------------------------------------- */
 /*   Gold accent palette (dashboard-local override)                           */
@@ -98,6 +100,58 @@ function formatDate(iso: string): string {
     month: "short",
     day: "numeric",
   });
+}
+
+/* -------------------------------------------------------------------------- */
+/*   Sub-metric config (mirrors analysis.tsx CARD_GROUPS)                     */
+/* -------------------------------------------------------------------------- */
+
+type SubMetricDef = { key: string; label: string };
+
+const SUBMETRIC_MAP: Partial<Record<string, { groupKey: keyof AdvancedAnalysis; items: SubMetricDef[] }>> = {
+  cheekbones: {
+    groupKey: "cheekbones",
+    items: [
+      { key: "width",          label: "Cheekbone Width" },
+      { key: "maxilla",        label: "Maxilla Development" },
+      { key: "bone_structure", label: "Bone Structure" },
+      { key: "face_fat",       label: "Face Fat" },
+    ],
+  },
+  jawline: {
+    groupKey: "jawline",
+    items: [
+      { key: "development",  label: "Development" },
+      { key: "gonial_angle", label: "Gonial Angle" },
+      { key: "projection",   label: "Chin Projection" },
+    ],
+  },
+  eyes_symmetry: {
+    groupKey: "eyes",
+    items: [
+      { key: "canthal_tilt", label: "Canthal Tilt" },
+      { key: "eye_type",     label: "Eye Type" },
+      { key: "brow_volume",  label: "Brow Volume" },
+      { key: "symmetry",     label: "Symmetry" },
+    ],
+  },
+  skin_quality: {
+    groupKey: "skin",
+    items: [
+      { key: "color",   label: "Skin Color" },
+      { key: "quality", label: "Skin Quality" },
+    ],
+  },
+};
+
+function getSubMetricTag(score: number): { label: string; color: string } {
+  if (score >= 91) return { label: "EXCEPTIONAL", color: "#10B981" };
+  if (score >= 76) return { label: "STRONG",      color: "#B4F34D" };
+  if (score >= 61) return { label: "ACCEPTABLE",  color: "#7DD3FC" };
+  if (score >= 46) return { label: "AVERAGE",     color: "#F59E0B" };
+  if (score >= 31) return { label: "BELOW AVG",   color: "#F97316" };
+  if (score >= 16) return { label: "WEAK",        color: "#EF4444" };
+  return                  { label: "POOR",        color: "#DC2626" };
 }
 
 /* -------------------------------------------------------------------------- */
@@ -463,9 +517,11 @@ const VERDICT_BADGE: Record<string, string> = {
 function MetricRow({
   metric,
   index,
+  advancedData,
 }: {
   metric: DashboardMetric;
   index: number;
+  advancedData: AdvancedAnalysis | null;
 }) {
   const [expanded, setExpanded] = useState(false);
   const color = DIR_COLOR[metric.direction];
@@ -474,6 +530,11 @@ function MetricRow({
   const verdictLabel = VERDICT_BADGE[metric.direction];
 
   const barWidth = Math.min(100, Math.max(0, metric.current));
+
+  const subConfig = SUBMETRIC_MAP[metric.key];
+  const subGroupData = subConfig && advancedData
+    ? (advancedData[subConfig.groupKey] as Record<string, number | string>)
+    : null;
 
   return (
     <Animated.View entering={FadeInDown.duration(400).delay(280 + index * 40)}>
@@ -522,11 +583,37 @@ function MetricRow({
           {/* Expanded detail */}
           {expanded && (
             <View style={styles.metricDetail}>
+              {/* Overall scores row */}
               <View style={styles.metricDetailRow}>
                 <DetailStat label="Current" value={metric.current.toFixed(1)} />
                 <DetailStat label="Baseline" value={metric.baseline.toFixed(1)} />
                 <DetailStat label="Best" value={metric.best.toFixed(1)} />
               </View>
+
+              {/* Sub-metrics from advanced analysis */}
+              {subConfig && subGroupData && (
+                <View style={styles.subMetricList}>
+                  {subConfig.items.map((item) => {
+                    const score = subGroupData[`${item.key}_score`] as number | undefined;
+                    const tag = score !== undefined ? getSubMetricTag(score) : null;
+                    return (
+                      <View key={item.key} style={styles.subMetricRow}>
+                        <Text style={styles.subMetricLabel}>{item.label}</Text>
+                        <View style={styles.subMetricRight}>
+                          {score !== undefined && (
+                            <Text style={styles.subMetricScore}>{Math.round(score)}</Text>
+                          )}
+                          {tag && (
+                            <View style={[styles.subMetricTag, { backgroundColor: `${tag.color}20`, borderColor: `${tag.color}60` }]}>
+                              <Text style={[styles.subMetricTagText, { color: tag.color }]}>{tag.label}</Text>
+                            </View>
+                          )}
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
             </View>
           )}
         </View>
@@ -649,6 +736,7 @@ export default function DashboardScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { data, loading, error, loadInsights } = useInsights();
+  const advancedData = useAdvancedAnalysis((s) => s.data);
 
   useEffect(() => {
     loadInsights();
@@ -708,7 +796,7 @@ export default function DashboardScreen() {
         </Animated.View>
 
         {metrics.map((m, i) => (
-          <MetricRow key={m.key} metric={m} index={i} />
+          <MetricRow key={m.key} metric={m} index={i} advancedData={advancedData} />
         ))}
 
         {advanced.length > 0 && <AdvancedSection items={advanced} />}
@@ -1082,6 +1170,46 @@ const styles = StyleSheet.create({
   detailLabel: {
     ...TYPE.small,
     color: "rgba(255,255,255,0.35)",
+  },
+
+  // ── Sub-metrics ───────────────────────────────────────────────────────────
+  subMetricList: {
+    marginTop: SP[2],
+    gap: SP[1],
+  },
+  subMetricRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 5,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.05)",
+  },
+  subMetricLabel: {
+    ...TYPE.small,
+    color: "rgba(255,255,255,0.70)",
+  },
+  subMetricRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SP[2],
+  },
+  subMetricScore: {
+    ...TYPE.smallSemiBold,
+    color: "rgba(255,255,255,0.55)",
+    minWidth: 24,
+    textAlign: "right",
+  },
+  subMetricTag: {
+    paddingHorizontal: SP[2],
+    paddingVertical: 2,
+    borderRadius: RADII.circle,
+    borderWidth: 1,
+  },
+  subMetricTagText: {
+    fontSize: 9,
+    fontFamily: "Poppins-SemiBold",
+    letterSpacing: 0.5,
   },
 
   // ── Collapsible sections ──────────────────────────────────────────────────
