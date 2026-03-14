@@ -46,11 +46,8 @@ insightsRouter.get("/", async (_req, res) => {
 
     const scanCount = scans.length;
 
-    // Lazy trigger: generate if missing or if advanced array is absent
-    const needsGeneration =
-      !insight ||
-      !Array.isArray(insight.content.advanced) ||
-      insight.content.advanced.length === 0;
+    // Lazy trigger: only fire when no insight exists at all
+    const needsGeneration = !insight;
 
     if (needsGeneration && scanCount >= 2) {
       const openai = getInsightsOpenAIClient();

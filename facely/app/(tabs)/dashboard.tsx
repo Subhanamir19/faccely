@@ -454,6 +454,12 @@ function CoachCard({ content }: { content: InsightContent }) {
 /*   Metric rows (expandable)                                                 */
 /* -------------------------------------------------------------------------- */
 
+const VERDICT_BADGE: Record<string, string> = {
+  up: "IMPROVED",
+  flat: "STABLE",
+  down: "DECLINED",
+};
+
 function MetricRow({
   metric,
   index,
@@ -465,6 +471,7 @@ function MetricRow({
   const color = DIR_COLOR[metric.direction];
   const arrow =
     metric.direction === "up" ? "↑" : metric.direction === "down" ? "↓" : "→";
+  const verdictLabel = VERDICT_BADGE[metric.direction];
 
   const barWidth = Math.min(100, Math.max(0, metric.current));
 
@@ -484,6 +491,16 @@ function MetricRow({
               {METRIC_LABELS[metric.key] ?? metric.key}
             </Text>
             <View style={styles.metricRight}>
+              <View
+                style={[
+                  styles.metricVerdictBadge,
+                  { borderColor: color, backgroundColor: `${color}18` },
+                ]}
+              >
+                <Text style={[styles.metricVerdictText, { color }]}>
+                  {verdictLabel}
+                </Text>
+              </View>
               <Text style={[styles.metricDelta, { color }]}>
                 {formatDelta(metric.delta)}
               </Text>
@@ -668,7 +685,7 @@ export default function DashboardScreen() {
     }
 
     if (!overall && scanCount < 2) return <EmptyState />;
-    if (!overall || !content) return <GeneratingState />;
+    if (!overall) return <GeneratingState />;
 
     return (
       <>
@@ -680,7 +697,11 @@ export default function DashboardScreen() {
           joinedDaysAgo={joinedDaysAgo}
         />
 
-        <CoachCard content={content} />
+        {content ? (
+          <CoachCard content={content} />
+        ) : (
+          <GeneratingState />
+        )}
 
         <Animated.View entering={FadeInDown.duration(400).delay(240)}>
           <Text style={styles.sectionTitle}>Metric Breakdown</Text>
@@ -1002,6 +1023,18 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: SP[1],
+  },
+  metricVerdictBadge: {
+    paddingHorizontal: SP[2],
+    paddingVertical: 2,
+    borderRadius: RADII.circle,
+    borderWidth: 1,
+    marginRight: SP[1],
+  },
+  metricVerdictText: {
+    fontSize: 10,
+    fontFamily: "Poppins-SemiBold",
+    letterSpacing: 0.6,
   },
   metricDelta: {
     ...TYPE.captionSemiBold,
