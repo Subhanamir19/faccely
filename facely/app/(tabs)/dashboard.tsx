@@ -11,6 +11,8 @@ import {
   Pressable,
   Dimensions,
   Image,
+  Modal,
+  TextInput,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
@@ -26,24 +28,29 @@ import Animated, {
   withSpring,
   withRepeat,
   withSequence,
+  withDelay,
   Easing,
   runOnJS,
+  cancelAnimation,
 } from "react-native-reanimated";
 import Svg, {
   Circle,
-  Polyline,
   Defs,
   LinearGradient as SvgGradient,
   Stop,
   Path,
   Line,
+  Text as SvgText,
 } from "react-native-svg";
-import { useRouter } from "expo-router";
+import { useRouter, useFocusEffect } from "expo-router";
 import Text from "@/components/ui/T";
 import { COLORS, SP, RADII, TYPE, SHADOWS } from "@/lib/tokens";
 import { useInsights } from "@/store/insights";
+import { useScores } from "@/store/scores";
 import { useAdvancedAnalysis } from "@/store/advancedAnalysis";
 import { useTasksStore } from "@/store/tasks";
+import { useAuthStore } from "@/store/auth";
+import { useProfile } from "@/store/profile";
 import type {
   DashboardMetric,
   DashboardHistoryItem,
@@ -52,6 +59,8 @@ import type {
   LatestAdvanced,
 } from "@/lib/api/insights";
 import type { AdvancedAnalysis } from "@/lib/api/advancedAnalysis";
+
+const AnimatedTextInput = Animated.createAnimatedComponent(TextInput);
 
 /* -------------------------------------------------------------------------- */
 /*  Design tokens — lime palette                                               */
@@ -192,9 +201,8 @@ const METRIC_IMAGES: Record<string, any> = {
   cheekbones:        require("@/assets/analysis-image-new/cheekbones analysis.jpeg"),
   eyes_symmetry:     require("@/assets/analysis-image-new/eye area naalysis.jpeg"),
   skin_quality:      require("@/assets/analysis-image-new/skin analysis.jpeg"),
-  // Placeholders until images are provided
-  facial_symmetry:   null,
-  nose_harmony:      null,
+  facial_symmetry:   require("@/assets/TASK-ICONS/symmetry.png"),
+  nose_harmony:      require("@/assets/TASK-ICONS/nosse.png"),
   sexual_dimorphism: null,
 };
 
@@ -205,54 +213,29 @@ const METRIC_PLACEHOLDER_EMOJI: Record<string, string> = {
 };
 
 /* -------------------------------------------------------------------------- */
-/*  CurvedArrow — animated SVG arrow for direction                             */
+/*  ZigzagArrow — angular stock-market style trend arrow                       */
 /* -------------------------------------------------------------------------- */
 
-const AnimatedPath = Animated.createAnimatedComponent(Path);
 
-function CurvedArrow({ direction }: { direction: "up" | "down" | "flat" }) {
-  const progress = useSharedValue(0);
-
-  useEffect(() => {
-    progress.value = withTiming(1, { duration: 900, easing: Easing.out(Easing.cubic) });
-  }, []);
-
-  // Path lengths (pre-calculated for each shape)
-  const upPath    = "M 3 17 C 3 9 9 3 17 3";
-  const downPath  = "M 3 3 C 3 11 9 17 17 17";
-  const flatPath  = "M 2 10 L 18 10";
-  const pathLen   = direction === "flat" ? 16 : 20;
-
-  const animatedProps = useAnimatedProps(() => ({
-    strokeDashoffset: pathLen * (1 - progress.value),
-  }));
-
-  const color =
+function ZigzagArrow({ direction, color: colorOverride }: { direction: "up" | "down" | "flat"; color?: string }) {
+  const color = colorOverride ?? (
     direction === "up"   ? LIME.primary :
     direction === "down" ? "#EF4444"    :
-    "rgba(255,255,255,0.40)";
+    "rgba(255,255,255,0.50)"
+  );
 
-  const d = direction === "up" ? upPath : direction === "down" ? downPath : flatPath;
-
-  // Arrow tip points
-  const tip =
-    direction === "up"   ? { d: "M 14 3 L 17 3 L 17 6" } :
-    direction === "down" ? { d: "M 14 17 L 17 17 L 17 14" } :
-    { d: "M 15 7 L 18 10 L 15 13" };
+  // Full path = zigzag body + arrowhead in one combined path
+  const d =
+    direction === "up"
+      ? "M 2,15 L 7,9 L 11,12 L 17,4 M 13,4 L 17,4 L 17,8"
+      : direction === "down"
+      ? "M 2,5 L 7,11 L 11,8 L 17,16 M 13,16 L 17,16 L 17,12"
+      : "M 2,10 L 18,10 M 14,6 L 18,10 L 14,14";
 
   return (
-    <Svg width={20} height={20}>
-      <AnimatedPath
-        d={d}
-        stroke={color}
-        strokeWidth={2}
-        fill="none"
-        strokeLinecap="round"
-        strokeDasharray={pathLen}
-        animatedProps={animatedProps}
-      />
+    <Svg width={22} height={20}>
       <Path
-        d={tip.d}
+        d={d}
         stroke={color}
         strokeWidth={2}
         fill="none"
@@ -264,175 +247,242 @@ function CurvedArrow({ direction }: { direction: "up" | "down" | "flat" }) {
 }
 
 /* -------------------------------------------------------------------------- */
-/*  MetricCard3D — individual 3D metric tile                                   */
+/*  MetricDetailSheet — bottom sheet shown when a metric card is pressed       */
 /* -------------------------------------------------------------------------- */
 
-const CARD_W = (Dimensions.get("window").width - SP[4] * 2 - SP[3]) / 2;
-const CARD_H = CARD_W * 1.2;
+function MetricDetailSheet({
+  metric,
+  latestAdvanced,
+  previousAdvanced,
+  onClose,
+}: {
+  metric: DashboardMetric;
+  latestAdvanced: LatestAdvanced | null;
+  previousAdvanced: LatestAdvanced | null;
+  onClose: () => void;
+}) {
+  const tier      = getScoreTier(metric.current);
+  const label     = METRIC_LABELS[metric.key] ?? metric.key;
+  const img       = METRIC_IMAGES[metric.key];
+  const placeholder = METRIC_PLACEHOLDER_EMOJI[metric.key] ?? "📊";
+  const subMap    = SUBMETRIC_MAP[metric.key];
+  const advGroup  = subMap && latestAdvanced ? (latestAdvanced as any)[subMap.groupKey] : null;
+  const barColor  =
+    metric.direction === "up"   ? LIME.primary :
+    metric.direction === "down" ? "#EF4444"    : tier.color;
+
+  return (
+    <Modal transparent animationType="none" onRequestClose={onClose}>
+      {/* Backdrop */}
+      <Pressable style={styles.sheetBackdrop} onPress={onClose} />
+
+      {/* Sheet */}
+      <Animated.View entering={FadeInDown.duration(320)} style={styles.sheetContainer}>
+        {/* Handle */}
+        <View style={styles.sheetHandle} />
+
+        {/* Header: image + name + close */}
+        <View style={styles.sheetHeader}>
+          <View style={styles.sheetThumb}>
+            {img ? (
+              <Image source={img} style={{ width: "100%", height: "100%" }} resizeMode="cover" />
+            ) : (
+              <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+                <Text style={{ fontSize: 32 }}>{placeholder}</Text>
+              </View>
+            )}
+          </View>
+          <View style={{ flex: 1, gap: SP[1] }}>
+            <Text style={styles.sheetMetricName}>{label}</Text>
+            <View style={[styles.tierPill, { backgroundColor: `${tier.color}18`, borderColor: `${tier.color}40`, alignSelf: "flex-start" }]}>
+              <Text style={[styles.tierText, { color: tier.color }]}>{tier.label}</Text>
+            </View>
+          </View>
+          <Pressable onPress={onClose} style={styles.sheetCloseBtn} hitSlop={12}>
+            <Text style={{ color: "rgba(255,255,255,0.45)", fontSize: 18, lineHeight: 20 }}>✕</Text>
+          </Pressable>
+        </View>
+
+        {/* Score comparison row */}
+        <View style={styles.sheetScoreRow}>
+          <View style={styles.sheetScoreBox}>
+            <Text style={styles.sheetScoreLabel}>BASELINE</Text>
+            <Text style={styles.sheetScoreValue}>{metric.baseline.toFixed(1)}</Text>
+          </View>
+          <View style={styles.sheetScoreArrow}>
+            <Text style={[styles.sheetScoreDelta, { color: barColor }]}>{formatDelta(metric.delta)}</Text>
+            <Text style={{ color: barColor, fontSize: 16, lineHeight: 18 }}>→</Text>
+          </View>
+          <View style={[styles.sheetScoreBox, { borderColor: `${barColor}50`, backgroundColor: `${barColor}12` }]}>
+            <Text style={[styles.sheetScoreLabel, { color: barColor }]}>NOW</Text>
+            <Text style={[styles.sheetScoreValue, { color: barColor }]}>{metric.current.toFixed(1)}</Text>
+          </View>
+          <View style={styles.sheetScoreBox}>
+            <Text style={styles.sheetScoreLabel}>BEST</Text>
+            <Text style={[styles.sheetScoreValue, metric.current >= metric.best ? { color: LIME.primary } : {}]}>
+              {metric.best.toFixed(1)}{metric.current >= metric.best ? " 🏆" : ""}
+            </Text>
+          </View>
+        </View>
+
+        {/* Sub-metrics */}
+        {advGroup && subMap ? (
+          <View style={styles.sheetSubList}>
+            {subMap.items.map((item) => {
+              const rawScore = advGroup[`${item.key}_score`];
+              const score    = typeof rawScore === "number" ? rawScore : null;
+              const tag      = score !== null ? getSubMetricTag(score) : null;
+              const change   = compareAdvanced(latestAdvanced, previousAdvanced, subMap.groupKey as any, `${item.key}_score`);
+              const dir: "up" | "down" | "flat" =
+                change === "improving" ? "up" :
+                change === "worse"     ? "down" : "flat";
+              const arrowColor =
+                dir === "up"   ? LIME.primary :
+                dir === "down" ? "#EF4444"    : "rgba(255,255,255,0.70)";
+
+              return (
+                <View key={item.key} style={styles.sheetSubRow}>
+                  <ZigzagArrow direction={dir} color={arrowColor} />
+                  <Text style={styles.sheetSubLabel}>{item.label}</Text>
+                  {score !== null && tag && (
+                    <View style={styles.sheetSubBarWrap}>
+                      <View style={[styles.sheetSubBarFill, { width: `${Math.min(100, score)}%` as any, backgroundColor: tag.color }]} />
+                    </View>
+                  )}
+                  {tag && (
+                    <View style={[styles.subTag3dBase, { backgroundColor: `${tag.color}55` }]}>
+                      <View style={[styles.subTag3dFace, { backgroundColor: tag.color }]}>
+                        <Text style={styles.subTag3dText}>{tag.label}</Text>
+                      </View>
+                    </View>
+                  )}
+                </View>
+              );
+            })}
+          </View>
+        ) : (
+          <Text style={styles.sheetNoSub}>No sub-metric data yet. Complete an analysis to unlock details.</Text>
+        )}
+      </Animated.View>
+    </Modal>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/*  MetricCard3D — horizontal exercise-style metric row card                   */
+/* -------------------------------------------------------------------------- */
+
+const METRIC_DEPTH = 5;
+const METRIC_COL_W = (Dimensions.get("window").width - SP[4] * 2 - SP[3]) / 2;
 
 function MetricCard3D({
   metric,
   delay,
+  onPress,
 }: {
   metric: DashboardMetric;
   delay: number;
+  onPress: () => void;
 }) {
-  const scale = useSharedValue(1);
-  const animStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
-
-  const color      = DIR_COLOR[metric.direction] ?? DIR_COLOR.flat;
-  const tier       = getScoreTier(metric.current);
-  const label      = METRIC_LABELS[metric.key] ?? metric.key;
-  const img        = METRIC_IMAGES[metric.key];
+  const tier        = getScoreTier(metric.current);
+  const label       = METRIC_LABELS[metric.key] ?? metric.key;
+  const img         = METRIC_IMAGES[metric.key];
   const placeholder = METRIC_PLACEHOLDER_EMOJI[metric.key] ?? "📊";
 
   const dirLabel =
     metric.direction === "up"   ? "IMPROVED" :
     metric.direction === "down" ? "DECLINED" : "STABLE";
 
-  const handlePressIn = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    scale.value = withSpring(0.96, { damping: 14, stiffness: 300 });
-  };
-  const handlePressOut = () => {
-    scale.value = withSpring(1, { damping: 12, stiffness: 200 });
-  };
+  // Arrow color on the dark pill
+  const arrowColor =
+    metric.direction === "up"   ? LIME.primary :
+    metric.direction === "down" ? "#EF4444"    :
+    "rgba(255,255,255,0.50)";
 
   return (
-    <Animated.View entering={FadeInDown.delay(delay).duration(400)} style={animStyle}>
-      <Pressable onPressIn={handlePressIn} onPressOut={handlePressOut} style={styles.metricTileOuter}>
-        {/* 3D base layer */}
-        <View style={[styles.metricTileBase, { shadowColor: color }]} />
-        {/* Face */}
-        <View style={[styles.metricTileFace, { borderTopColor: color }]}>
+    <Animated.View entering={FadeInDown.delay(delay).duration(400)}>
+      {/* Base layer — dark lime, gives 3D depth */}
+      <View style={styles.metricRowBase}>
+        <Pressable
+          onPress={onPress}
+          onPressIn={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}
+          style={({ pressed }) => [
+            styles.metricRowFace,
+            { transform: [{ translateY: pressed ? METRIC_DEPTH : 0 }] },
+          ]}
+        >
           <LinearGradient
-            colors={["#1E1E1E", "#0F0F0F"]}
+            colors={["#FFFFFF", "#E8E8E8"]}
+            start={{ x: 0.5, y: 0 }}
+            end={{ x: 0.5, y: 1 }}
             style={StyleSheet.absoluteFill}
           />
 
-          {/* Image area */}
-          <View style={styles.metricTileImage}>
+          {/* Thumbnail */}
+          <View style={styles.metricRowThumb}>
             {img ? (
-              <Image source={img} style={styles.metricTileImg} resizeMode="cover" />
+              <Image source={img} style={styles.metricRowThumbImg} resizeMode="cover" />
             ) : (
-              <View style={styles.metricTilePlaceholder}>
-                <Text style={{ fontSize: 36 }}>{placeholder}</Text>
+              <View style={styles.metricRowThumbPlaceholder}>
+                <Text style={{ fontSize: 26 }}>{placeholder}</Text>
               </View>
             )}
-            {/* Gradient fade over image for text legibility */}
-            <LinearGradient
-              colors={["rgba(15,15,15,0.70)", "transparent", "rgba(15,15,15,0.80)"]}
-              locations={[0, 0.4, 1]}
-              style={StyleSheet.absoluteFill}
-              pointerEvents="none"
-            />
-            {/* Score in top-right */}
-            <View style={styles.metricTileScoreBadge}>
-              <Text style={[styles.metricTileScore, { color: tier.color }]}>
-                {metric.current.toFixed(0)}
-              </Text>
-            </View>
           </View>
 
-          {/* Name */}
-          <Text style={styles.metricTileName} numberOfLines={1}>{label}</Text>
-
-          {/* Bottom: arrow + tag */}
-          <View style={styles.metricTileBottom}>
-            <CurvedArrow direction={metric.direction} />
-            <View style={[styles.metricDirPill, { backgroundColor: `${color}18`, borderColor: `${color}40` }]}>
-              <Text style={[styles.metricDirText, { color }]}>{dirLabel}</Text>
-            </View>
-            <Text style={[styles.metricDeltaText, { color }]}>
-              {formatDelta(Math.round(metric.delta * 10) / 10)}
-            </Text>
+          {/* Name + tier */}
+          <View style={styles.metricRowInfo}>
+            <Text style={styles.metricRowName} numberOfLines={1}>{label}</Text>
+            <Text style={[styles.metricRowTier]}>{tier.label}</Text>
           </View>
-        </View>
-      </Pressable>
+
+          {/* Arrow pill */}
+          <View style={styles.metricRowArrowBtn}>
+            <ZigzagArrow direction={metric.direction} color={arrowColor} />
+          </View>
+        </Pressable>
+      </View>
     </Animated.View>
   );
 }
 
 /* -------------------------------------------------------------------------- */
-/*  OverallCard3D — 8th grid tile showing overall score                        */
-/* -------------------------------------------------------------------------- */
-
-function OverallCard3D({
-  overall,
-  overallDelta,
-  verdict,
-  delay,
-}: {
-  overall: DashboardOverall;
-  overallDelta: number;
-  verdict: string;
-  delay: number;
-}) {
-  const scale = useSharedValue(1);
-  const animStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
-  const color = verdict === "improved" ? LIME.primary : verdict === "declined" ? "#EF4444" : "rgba(255,255,255,0.40)";
-  const tier  = getScoreTier(overall.current);
-
-  return (
-    <Animated.View entering={FadeInDown.delay(delay).duration(400)} style={animStyle}>
-      <Pressable
-        onPressIn={() => { scale.value = withSpring(0.96, { damping: 14, stiffness: 300 }); }}
-        onPressOut={() => { scale.value = withSpring(1, { damping: 12, stiffness: 200 }); }}
-        style={styles.metricTileOuter}
-      >
-        <View style={[styles.metricTileBase, { shadowColor: LIME.primary }]} />
-        <View style={[styles.metricTileFace, { borderTopColor: LIME.primary }]}>
-          <LinearGradient colors={["#1C2410", "#0F0F0F"]} style={StyleSheet.absoluteFill} />
-
-          {/* Overall score center */}
-          <View style={styles.overallCenter}>
-            <Text style={styles.overallScoreNum}>{overall.current.toFixed(1)}</Text>
-            <View style={[styles.tierPill, { backgroundColor: `${tier.color}18`, borderColor: `${tier.color}50`, marginTop: SP[1] }]}>
-              <Text style={[styles.tierText, { color: tier.color }]}>{tier.label}</Text>
-            </View>
-          </View>
-
-          <Text style={styles.metricTileName}>Overall</Text>
-
-          <View style={styles.metricTileBottom}>
-            <CurvedArrow direction={overallDelta > 0.5 ? "up" : overallDelta < -0.5 ? "down" : "flat"} />
-            <Text style={[styles.metricDeltaText, { color: overallDelta >= 0 ? LIME.primary : "#EF4444", fontSize: 13, fontFamily: "Poppins-SemiBold" }]}>
-              {formatDelta(Math.round(overallDelta * 10) / 10)}
-            </Text>
-          </View>
-        </View>
-      </Pressable>
-    </Animated.View>
-  );
-}
-
-/* -------------------------------------------------------------------------- */
-/*  MetricGrid — 2-column 4-row grid of metric tiles                           */
+/*  MetricGrid — vertical list of metric row cards                             */
 /* -------------------------------------------------------------------------- */
 
 function MetricGrid({
   metrics,
-  overall,
-  overallDelta,
-  verdict,
+  latestAdvanced,
+  previousAdvanced,
 }: {
   metrics: DashboardMetric[];
-  overall: DashboardOverall;
-  overallDelta: number;
-  verdict: string;
+  latestAdvanced: LatestAdvanced | null;
+  previousAdvanced: LatestAdvanced | null;
 }) {
+  const filtered = metrics.filter((m) => m.key !== "sexual_dimorphism");
+  const [selected, setSelected] = useState<DashboardMetric | null>(null);
+
   return (
-    <View style={styles.metricGrid}>
-      {metrics.map((m, i) => (
-        <MetricCard3D key={m.key} metric={m} delay={280 + i * 45} />
-      ))}
-      <OverallCard3D
-        overall={overall}
-        overallDelta={overallDelta}
-        verdict={verdict}
-        delay={280 + metrics.length * 45}
-      />
-    </View>
+    <>
+      <View style={styles.metricGrid}>
+        {filtered.map((m, i) => (
+          <MetricCard3D
+            key={m.key}
+            metric={m}
+            delay={260 + i * 50}
+            onPress={() => setSelected(m)}
+          />
+        ))}
+      </View>
+
+      {selected && (
+        <MetricDetailSheet
+          metric={selected}
+          latestAdvanced={latestAdvanced}
+          previousAdvanced={previousAdvanced}
+          onClose={() => setSelected(null)}
+        />
+      )}
+    </>
   );
 }
 
@@ -467,26 +517,34 @@ function GlassCard({
 /*  ScoreRing — animated SVG arc                                               */
 /* -------------------------------------------------------------------------- */
 
-const AnimatedCircle = Animated.createAnimatedComponent(Circle);
+const AnimatedCircle  = Animated.createAnimatedComponent(Circle);
+const AnimatedSvgPath = Animated.createAnimatedComponent(Path);
 
 function ScoreRing({
   score,
   size = 148,
   strokeWidth = 10,
+  light = false,
 }: {
   score: number;
   size?: number;
   strokeWidth?: number;
+  light?: boolean;
 }) {
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
   const progress = useSharedValue(0);
 
   useEffect(() => {
-    progress.value = withTiming(score / 100, {
-      duration: 1200,
-      easing: Easing.out(Easing.cubic),
-    });
+    cancelAnimation(progress);
+    progress.value = 0;
+    progress.value = withDelay(
+      80,
+      withTiming(score / 100, {
+        duration: 1200,
+        easing: Easing.out(Easing.cubic),
+      })
+    );
   }, [score]);
 
   const animatedProps = useAnimatedProps(() => ({
@@ -495,6 +553,9 @@ function ScoreRing({
 
   const cx = size / 2;
   const cy = size / 2;
+  const glowColor  = light ? "rgba(0,0,0,0.18)" : LIME.primary;
+  const trackColor = light ? "rgba(0,0,0,0.18)" : "rgba(255,255,255,0.08)";
+  const arcGradId  = light ? "ringGradLight" : "ringGrad";
 
   return (
     <View style={{ width: size, height: size, alignItems: "center", justifyContent: "center" }}>
@@ -504,32 +565,30 @@ function ScoreRing({
             <Stop offset="0%" stopColor={LIME.primary} />
             <Stop offset="100%" stopColor={LIME.light} />
           </SvgGradient>
+          <SvgGradient id="ringGradLight" x1="0" y1="1" x2="1" y2="0">
+            <Stop offset="0%" stopColor="#000000" />
+            <Stop offset="100%" stopColor="#000000" />
+          </SvgGradient>
         </Defs>
         {/* Glow layer */}
         <Circle
-          cx={cx}
-          cy={cy}
-          r={radius}
-          stroke={LIME.primary}
+          cx={cx} cy={cy} r={radius}
+          stroke={glowColor}
           strokeWidth={strokeWidth + 6}
           fill="none"
-          opacity={0.08}
+          opacity={0.18}
         />
         {/* Track */}
         <Circle
-          cx={cx}
-          cy={cy}
-          r={radius}
-          stroke="rgba(255,255,255,0.08)"
+          cx={cx} cy={cy} r={radius}
+          stroke={trackColor}
           strokeWidth={strokeWidth}
           fill="none"
         />
         {/* Progress arc */}
         <AnimatedCircle
-          cx={cx}
-          cy={cy}
-          r={radius}
-          stroke="url(#ringGrad)"
+          cx={cx} cy={cy} r={radius}
+          stroke={`url(#${arcGradId})`}
           strokeWidth={strokeWidth}
           fill="none"
           strokeDasharray={circumference}
@@ -544,104 +603,187 @@ function ScoreRing({
 }
 
 /* -------------------------------------------------------------------------- */
-/*  MiniGraph — SVG area chart                                                 */
+/*  MiniGraph — animated SVG area chart                                        */
 /* -------------------------------------------------------------------------- */
 
 const { width: SCREEN_W } = Dimensions.get("window");
 const GRAPH_H = 100;
-const GRAPH_W = SCREEN_W - SP[4] * 2 - SP[6] * 2; // full card width minus padding
+const GRAPH_W = SCREEN_W - SP[4] * 2 - SP[6] * 2;
+
+/* Regular dot — springs in with stagger */
+function GraphDot({
+  cx,
+  cy,
+  delay,
+}: {
+  cx: number;
+  cy: number;
+  delay: number;
+}) {
+  const anim = useSharedValue(0);
+  useEffect(() => {
+    anim.value = withDelay(delay, withSpring(1, { damping: 14, stiffness: 200 }));
+  }, []);
+  const dotProps = useAnimatedProps(() => ({ r: 3.5 * anim.value, opacity: anim.value }));
+  return (
+    <AnimatedCircle cx={cx} cy={cy} fill="#000" stroke={LIME.primary} strokeWidth={1.5} animatedProps={dotProps} />
+  );
+}
+
+/* Last dot — always visible, perpetually pulsing lime ring */
+function LastDot({ cx, cy }: { cx: number; cy: number }) {
+  const pulse = useSharedValue(0);
+
+  useEffect(() => {
+    pulse.value = withRepeat(
+      withSequence(
+        withTiming(1, { duration: 1000, easing: Easing.inOut(Easing.sin) }),
+        withTiming(0, { duration: 1000, easing: Easing.inOut(Easing.sin) }),
+      ),
+      -1,
+      false,
+    );
+  }, []);
+
+  const ringProps = useAnimatedProps(() => ({
+    r:       7 + pulse.value * 10,
+    opacity: (1 - pulse.value) * 0.60,
+  }));
+
+  return (
+    <>
+      {/* Pulsing lime ring */}
+      <AnimatedCircle cx={cx} cy={cy} fill="none" stroke={LIME.primary} strokeWidth={1.5} animatedProps={ringProps} />
+      {/* Static black core with lime border — always visible */}
+      <Circle cx={cx} cy={cy} r={5} fill="#000000" stroke={LIME.primary} strokeWidth={2} />
+    </>
+  );
+}
 
 function MiniGraph({
   points,
-  dates,
   width = GRAPH_W,
   height = GRAPH_H,
 }: {
   points: number[];
-  dates?: string[];
   width?: number;
   height?: number;
 }) {
   if (points.length < 2) return null;
 
-  const padX = 8;
-  const padY = 10;
-  const innerW = width - padX * 2;
-  const innerH = height - padY * 2;
-
-  const min = Math.min(...points);
-  const max = Math.max(...points);
-  const range = max - min || 1;
+  const padX      = 24; // room for Y-axis labels on the left
+  const padXRight = 22; // extra room so the last dot's pulse ring isn't clipped
+  const padY      = 8;
+  const innerW    = width - padX - padXRight;
+  const innerH    = height - padY * 2;
 
   const toX = (i: number) => padX + (i / (points.length - 1)) * innerW;
-  const toY = (p: number) => padY + (1 - (p - min) / range) * innerH;
+  const toY = (p: number) => padY + (1 - p / 100) * innerH;
 
-  const coords = points.map((p, i) => ({ x: toX(i), y: toY(p) }));
-  const polyStr = coords.map((c) => `${c.x},${c.y}`).join(" ");
+  const coords   = points.map((p, i) => ({ x: toX(i), y: toY(p) }));
+  const firstC   = coords[0];
+  const lastC    = coords[coords.length - 1];
+  const fillPath = `M ${firstC.x},${firstC.y} ${coords.slice(1).map((c) => `L ${c.x},${c.y}`).join(" ")} L ${lastC.x},${height} L ${firstC.x},${height} Z`;
+  const linePath = `M ${coords[0].x},${coords[0].y} ${coords.slice(1).map((c) => `L ${c.x},${c.y}`).join(" ")}`;
 
-  const firstC = coords[0];
-  const lastC = coords[coords.length - 1];
-  const fillPath = `M ${firstC.x},${firstC.y} ${coords
-    .slice(1)
-    .map((c) => `L ${c.x},${c.y}`)
-    .join(" ")} L ${lastC.x},${height} L ${firstC.x},${height} Z`;
+  // Generous upper bound — same approach as onboarding score-projection
+  const DASH_LEN = Math.ceil(width * 2.5);
 
-  // Y-axis guide values
-  const mid = (min + max) / 2;
+  const drawOffset = useSharedValue(DASH_LEN);
+  const fillAnim   = useSharedValue(0);
+
+  // Re-animate on mount and whenever points data changes
+  useEffect(() => {
+    drawOffset.value = DASH_LEN;
+    fillAnim.value   = 0;
+    drawOffset.value = withDelay(120, withTiming(0, { duration: 1300, easing: Easing.inOut(Easing.cubic) }));
+    fillAnim.value   = withDelay(900, withTiming(1, { duration: 700,  easing: Easing.out(Easing.quad)  }));
+  }, [points]);
+
+  const lineProps     = useAnimatedProps(() => ({ strokeDashoffset: drawOffset.value }));
+  const lineGlowProps = useAnimatedProps(() => ({ strokeDashoffset: drawOffset.value }));
+  const fillProps     = useAnimatedProps(() => ({ fillOpacity: fillAnim.value * 0.45 }));
 
   return (
-    <View>
-      {/* Y-axis labels */}
-      <View style={[StyleSheet.absoluteFill, { justifyContent: "space-between", paddingVertical: padY }]} pointerEvents="none">
-        {[max, mid, min].map((v, i) => (
-          <Text key={i} style={{ ...TYPE.small, color: "rgba(255,255,255,0.30)", fontSize: 10 }}>
-            {v.toFixed(0)}
-          </Text>
-        ))}
-      </View>
-      <Svg width={width} height={height}>
-        <Defs>
-          <SvgGradient id="graphFill" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0%"   stopColor={LIME.primary} stopOpacity="0.30" />
-            <Stop offset="100%" stopColor={LIME.primary} stopOpacity="0.00" />
-          </SvgGradient>
-        </Defs>
-        {/* Grid lines at 25%, 50%, 75% height */}
-        {[0.25, 0.5, 0.75].map((frac, i) => (
-          <Line
-            key={i}
-            x1={padX}
-            y1={padY + frac * innerH}
-            x2={width - padX}
-            y2={padY + frac * innerH}
-            stroke="rgba(255,255,255,0.05)"
-            strokeWidth={1}
-            strokeDasharray="4,4"
-          />
-        ))}
-        {/* Fill */}
-        <Path d={fillPath} fill="url(#graphFill)" />
-        {/* Line */}
-        <Polyline
-          points={polyStr}
-          fill="none"
-          stroke={LIME.primary}
-          strokeWidth={2}
-          strokeLinecap="round"
-          strokeLinejoin="round"
+    <Svg width={width} height={height}>
+      <Defs>
+        <SvgGradient id="graphFill2" x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0%"   stopColor={LIME.primary} stopOpacity="1" />
+          <Stop offset="100%" stopColor={LIME.primary} stopOpacity="0" />
+        </SvgGradient>
+      </Defs>
+
+      {/* Subtle grid lines */}
+      {[0.33, 0.66].map((frac, i) => (
+        <Line
+          key={i}
+          x1={padX} y1={padY + frac * innerH}
+          x2={width - padXRight} y2={padY + frac * innerH}
+          stroke="rgba(255,255,255,0.06)" strokeWidth={1} strokeDasharray="3,5"
         />
-        {/* First dot */}
-        <Circle cx={firstC.x} cy={firstC.y} r={4} fill={LIME.primary} opacity={0.8} />
-        {/* Last dot */}
-        <Circle cx={lastC.x} cy={lastC.y} r={5} fill={LIME.primary} />
-        <Circle cx={lastC.x} cy={lastC.y} r={9} fill={LIME.primary} opacity={0.15} />
-      </Svg>
-    </View>
+      ))}
+
+      {/* Fill — fades in after line draws */}
+      <AnimatedSvgPath d={fillPath} fill="url(#graphFill2)" animatedProps={fillProps} />
+
+      {/* Glow layer — wide soft halo, same draw animation */}
+      <AnimatedSvgPath
+        d={linePath}
+        fill="none"
+        stroke={LIME.primary}
+        strokeWidth={14}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeOpacity={0.13}
+        strokeDasharray={DASH_LEN}
+        animatedProps={lineGlowProps}
+      />
+
+      {/* Main line — draws left to right via strokeDashoffset */}
+      <AnimatedSvgPath
+        d={linePath}
+        fill="none"
+        stroke={LIME.primary}
+        strokeWidth={2.5}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeDasharray={DASH_LEN}
+        animatedProps={lineProps}
+      />
+
+      {/* Y-axis score labels — fixed 0/50/100 scale */}
+      {[100, 50, 0].map((score) => (
+        <SvgText
+          key={score}
+          x={2}
+          y={toY(score) + 4}
+          fontSize="9"
+          fontWeight="600"
+          fill="rgba(255,255,255,0.35)"
+          textAnchor="start"
+        >
+          {score}
+        </SvgText>
+      ))}
+
+      {/* Regular dots — stagger in alongside the line draw */}
+      {coords.slice(0, -1).map((c, i) => (
+        <GraphDot
+          key={i}
+          cx={c.x}
+          cy={c.y}
+          delay={Math.round((i / (coords.length - 1)) * 1300 + 120)}
+        />
+      ))}
+
+      {/* Last dot — always visible, pulsing */}
+      <LastDot cx={coords[coords.length - 1].x} cy={coords[coords.length - 1].y} />
+    </Svg>
   );
 }
 
 /* -------------------------------------------------------------------------- */
-/*  HeroCard — delta headline + ring + 2×2 stats + celebration glow          */
+/*  HeroCard — side-by-side: ring left, score info right                      */
 /* -------------------------------------------------------------------------- */
 
 function HeroCard({
@@ -650,88 +792,122 @@ function HeroCard({
   verdict,
   scanCount,
   joinedDaysAgo,
+  userName,
 }: {
   overall: DashboardOverall;
   overallDelta: number;
   verdict: string;
   scanCount: number;
   joinedDaysAgo: number;
+  userName: string;
 }) {
-  const tier = getScoreTier(overall.current);
   const isImproved = verdict === "improved";
   const deltaColor = overallDelta >= 0 ? LIME.primary : "#EF4444";
-  const deltaBg    = overallDelta >= 0 ? "rgba(180,243,77,0.12)" : "rgba(239,68,68,0.12)";
-  const deltaBorder = overallDelta >= 0 ? LIME.border : "rgba(239,68,68,0.35)";
 
-  // Celebration pulse on the card border when improved
-  const glowOpacity = useSharedValue(isImproved ? 0.35 : 0);
+  // Count-up animations — UI-thread driven via Reanimated shared values
+  const scoreVal    = useSharedValue(0);
+  const deltaVal    = useSharedValue(0);
+  const baselineVal = useSharedValue(0);
+  const bestVal     = useSharedValue(0);
+
+  useEffect(() => {
+    scoreVal.value    = 0;
+    deltaVal.value    = 0;
+    baselineVal.value = 0;
+    bestVal.value     = 0;
+    const cfg = { duration: 1400, easing: Easing.out(Easing.cubic) };
+    scoreVal.value    = withTiming(overall.current,         cfg);
+    deltaVal.value    = withDelay(100, withTiming(Math.abs(overallDelta), cfg));
+    baselineVal.value = withDelay(200, withTiming(overall.baseline,       cfg));
+    bestVal.value     = withDelay(300, withTiming(overall.best,           cfg));
+  }, [overall.current, overallDelta, overall.baseline, overall.best]);
+
+  const scoreProps    = useAnimatedProps(() => ({ text: String(Math.round(scoreVal.value)),    defaultValue: "" } as any));
+  const deltaProps    = useAnimatedProps(() => ({ text: `${overallDelta >= 0 ? "+" : "-"}${deltaVal.value.toFixed(1)}`, defaultValue: "" } as any));
+  const baselineProps = useAnimatedProps(() => ({ text: baselineVal.value.toFixed(1), defaultValue: "" } as any));
+  const bestProps     = useAnimatedProps(() => ({ text: bestVal.value.toFixed(1),     defaultValue: "" } as any));
+
+  // Pulsing lime glow when improved
+  const glowOpacity = useSharedValue(isImproved ? 0.4 : 0);
   useEffect(() => {
     if (!isImproved) return;
     glowOpacity.value = withRepeat(
       withSequence(
-        withTiming(0.7, { duration: 1100, easing: Easing.inOut(Easing.sin) }),
-        withTiming(0.25, { duration: 1100, easing: Easing.inOut(Easing.sin) }),
-      ),
-      -1,
-      false,
+        withTiming(0.75, { duration: 1000, easing: Easing.inOut(Easing.sin) }),
+        withTiming(0.25, { duration: 1000, easing: Easing.inOut(Easing.sin) }),
+      ), -1, false,
     );
   }, [isImproved]);
   const glowStyle = useAnimatedStyle(() => ({
-    borderColor: `rgba(180,243,77,${glowOpacity.value})`,
+    shadowOpacity: glowOpacity.value,
   }));
 
-  const stats = [
-    { label: "Baseline", value: overall.baseline.toFixed(1), color: COLORS.sub },
-    { label: "Best Ever", value: overall.best.toFixed(1),    color: LIME.dim, highlight: overall.current >= overall.best },
-    { label: "Days",      value: `${joinedDaysAgo}`,         color: COLORS.sub },
-    { label: "Scans",     value: `${scanCount}`,             color: COLORS.sub },
-  ];
+  // On lime background, positive delta uses dark ink; negative keeps a dark red
+  const darkDeltaColor = overallDelta >= 0 ? "#0F2800" : "#7F0000";
 
   return (
-    <Animated.View style={[styles.heroGlowBorder, glowStyle]}>
-      <GlassCard style={styles.heroCard}>
-        {/* ── Delta headline ── */}
-        <View style={styles.heroDeltaRow}>
-          <View style={[styles.heroDeltaBadge, { backgroundColor: deltaBg, borderColor: deltaBorder }]}>
-            <Text style={[styles.heroDeltaText, { color: deltaColor }]}>
-              {formatDelta(Math.round(overallDelta * 10) / 10)}
-            </Text>
-          </View>
-          <Text style={styles.heroDeltaLabel}>
-            {isImproved ? "improvement since baseline 🎉" : overallDelta < 0 ? "change since baseline" : "no change yet"}
-          </Text>
-        </View>
+    <Animated.View style={[styles.heroBase, glowStyle]}>
+      <View style={styles.heroFace}>
+        <LinearGradient
+          colors={[LIME.light, LIME.primary]}
+          start={{ x: 0.5, y: 0 }}
+          end={{ x: 0.5, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
 
-        <View style={styles.heroDivider} />
-
-        {/* ── Ring + stats ── */}
+        {/* Side-by-side row */}
         <View style={styles.heroRow}>
-          {/* Ring */}
-          <View style={styles.heroLeft}>
-            <ScoreRing score={overall.current} size={144} strokeWidth={10} />
+
+          {/* Left column — ring (light variant: dark arc on lime bg) */}
+          <View style={styles.heroRingCol}>
+            <ScoreRing score={overall.current} size={148} strokeWidth={11} light />
             <View style={[StyleSheet.absoluteFill, { alignItems: "center", justifyContent: "center" }]} pointerEvents="none">
-              <Text style={styles.heroScore}>{overall.current.toFixed(1)}</Text>
-              <Text style={[TYPE.small, { color: LIME.dim, marginTop: -2 }]}>overall</Text>
-              <View style={[styles.tierPill, { backgroundColor: `${tier.color}18`, borderColor: `${tier.color}50` }]}>
-                <Text style={[styles.tierText, { color: tier.color }]}>{tier.label}</Text>
+              <AnimatedTextInput
+                animatedProps={scoreProps}
+                editable={false}
+                style={[styles.heroScoreBig, { color: "#0F0F0F", padding: 0 }]}
+              />
+              <Text style={[styles.heroScoreLabel, { color: "rgba(0,0,0,0.50)" }]}>OVERALL</Text>
+            </View>
+          </View>
+
+          {/* Right column — info */}
+          <View style={styles.heroInfoCol}>
+            <Text style={[styles.heroInfoTitle, { color: "rgba(0,0,0,0.55)" }]}>{userName}'s Progress</Text>
+
+            {/* Delta line */}
+            <View style={styles.heroDeltaRow}>
+              <AnimatedTextInput
+                animatedProps={deltaProps}
+                editable={false}
+                style={[styles.heroDeltaNum, { color: darkDeltaColor, padding: 0 }]}
+              />
+              <Text style={[styles.heroDeltaSince, { color: "rgba(0,0,0,0.55)" }]}> since Day 1</Text>
+            </View>
+
+            {/* Stat boxes — 2 col grid */}
+            <View style={styles.heroStatGrid}>
+              <View style={[styles.heroStatBox, { backgroundColor: "rgba(0,0,0,0.12)", borderColor: "rgba(0,0,0,0.10)" }]}>
+                <Text style={[styles.heroStatLabel, { color: "rgba(0,0,0,0.50)" }]}>DAY 1 SCORE</Text>
+                <AnimatedTextInput
+                  animatedProps={baselineProps}
+                  editable={false}
+                  style={[styles.heroStatValue, { color: "#0F0F0F", padding: 0 }]}
+                />
+              </View>
+              <View style={[styles.heroStatBox, { backgroundColor: "rgba(0,0,0,0.12)", borderColor: "rgba(0,0,0,0.10)" }]}>
+                <Text style={[styles.heroStatLabel, { color: "rgba(0,0,0,0.50)" }]}>BEST EVER</Text>
+                <AnimatedTextInput
+                  animatedProps={bestProps}
+                  editable={false}
+                  style={[styles.heroStatValue, { color: "#0F0F0F", padding: 0 }]}
+                />
               </View>
             </View>
           </View>
 
-          {/* 2×2 stat grid */}
-          <View style={styles.heroStatsGrid}>
-            {stats.map((s, i) => (
-              <View key={i} style={styles.heroStatCell}>
-                <Text style={[styles.heroStatValue, s.highlight ? { color: LIME.primary } : {}]}>
-                  {s.value}
-                  {s.highlight && <Text style={{ fontSize: 10 }}> 🏆</Text>}
-                </Text>
-                <Text style={styles.heroStatLabel}>{s.label}</Text>
-              </View>
-            ))}
-          </View>
         </View>
-      </GlassCard>
+      </View>
     </Animated.View>
   );
 }
@@ -1230,41 +1406,74 @@ function ErrorState({ message }: { message: string }) {
   );
 }
 
-function EmptyState({ router }: { router: ReturnType<typeof useRouter> }) {
+function EmptyState({
+  router,
+  scanCount,
+  scanLoading,
+  scanFailed,
+}: {
+  router: ReturnType<typeof useRouter>;
+  scanCount: number;
+  scanLoading: boolean;
+  scanFailed: boolean;
+}) {
   const btnDepth = useSharedValue(0);
   const animStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: btnDepth.value }],
   }));
 
+  // Determine copy based on state
+  const title = (() => {
+    if (scanLoading) return "Analyzing Your Scan…";
+    if (scanFailed)  return "Scan Didn't Complete";
+    if (scanCount === 1) return "One More Scan Needed";
+    return "Take Your First Scan";
+  })();
+
+  const body = (() => {
+    if (scanLoading) return "Your first scan is being processed. This takes about 30 seconds.";
+    if (scanFailed)  return "Your initial scan didn't save. Take a new scan to get your baseline score.";
+    if (scanCount === 1) return "You're one scan away from unlocking your progress dashboard.";
+    return "Scan your face to get your baseline score and start tracking progress.";
+  })();
+
+  const btnLabel = (() => {
+    if (scanLoading) return null; // no button while processing
+    if (scanCount === 1) return "Scan Again";
+    return "Scan Now";
+  })();
+
   return (
     <View style={styles.centeredState}>
       <Animated.View entering={FadeInDown.duration(500)}>
         <Text style={[TYPE.h3, { color: COLORS.text, textAlign: "center", marginBottom: SP[2] }]}>
-          Track Your Progress
+          {title}
         </Text>
         <Text style={[TYPE.body, { color: COLORS.muted, textAlign: "center", marginBottom: SP[6] }]}>
-          You need at least 2 scans to see your progress dashboard.
+          {body}
         </Text>
-        <View style={styles.btn3dOuter}>
-          <Pressable
-            onPress={() => router.push("/(tabs)/take-picture")}
-            onPressIn={() => { btnDepth.value = withSpring(4, { damping: 14, stiffness: 300 }); }}
-            onPressOut={() => { btnDepth.value = withSpring(0, { damping: 14, stiffness: 300 }); }}
-            style={{ borderRadius: 28, overflow: "hidden" }}
-          >
-            <Animated.View style={[{ borderRadius: 28 }, animStyle]}>
-              <LinearGradient
-                colors={["#CCFF6B", "#B4F34D"]}
-                start={{ x: 0.5, y: 0 }}
-                end={{ x: 0.5, y: 1 }}
-                style={styles.btn3dFace}
-              >
-                <Text style={[TYPE.button, { color: "#0B0B0B" }]}>Take First Scan</Text>
-              </LinearGradient>
-            </Animated.View>
-          </Pressable>
-          <View style={styles.btn3dBase} />
-        </View>
+        {btnLabel && (
+          <View style={styles.btn3dOuter}>
+            <Pressable
+              onPress={() => router.push("/(tabs)/take-picture")}
+              onPressIn={() => { btnDepth.value = withSpring(4, { damping: 14, stiffness: 300 }); }}
+              onPressOut={() => { btnDepth.value = withSpring(0, { damping: 14, stiffness: 300 }); }}
+              style={{ borderRadius: 28, overflow: "hidden" }}
+            >
+              <Animated.View style={[{ borderRadius: 28 }, animStyle]}>
+                <LinearGradient
+                  colors={["#CCFF6B", "#B4F34D"]}
+                  start={{ x: 0.5, y: 0 }}
+                  end={{ x: 0.5, y: 1 }}
+                  style={styles.btn3dFace}
+                >
+                  <Text style={[TYPE.button, { color: "#0B0B0B" }]}>{btnLabel}</Text>
+                </LinearGradient>
+              </Animated.View>
+            </Pressable>
+            <View style={styles.btn3dBase} />
+          </View>
+        )}
       </Animated.View>
     </View>
   );
@@ -1277,17 +1486,45 @@ function EmptyState({ router }: { router: ReturnType<typeof useRouter> }) {
 export default function DashboardScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { data, loading, error, loadInsights } = useInsights();
+  const { data, loading, error, loadInsights, invalidate, pollUntilInsight } = useInsights();
   const currentStreak = useTasksStore((s) => s.currentStreak);
   const advancedData = useAdvancedAnalysis((s) => s.data);
+  const authUser = useAuthStore((s) => s.user);
+  const displayName = useProfile((s) => s.displayName);
+  const scanLoading = useScores((s) => s.loading);
+  const scanError   = useScores((s) => s.error);
 
+  // Derive first name: prefer user-set display name, then auth fields, then email prefix
+  const userName = (() => {
+    if (displayName) return displayName;
+    const raw =
+      (authUser as any)?.fullName ||
+      (authUser as any)?.firstName ||
+      (authUser as any)?.name ||
+      (authUser as any)?.email ||
+      "";
+    if (!raw) return "there";
+    const first = raw.split(/[@\s]/)[0];
+    return first.charAt(0).toUpperCase() + first.slice(1).toLowerCase();
+  })();
+
+  useFocusEffect(
+    useCallback(() => {
+      loadInsights();
+    }, [loadInsights])
+  );
+
+  // When scan_count >= 2 but insight hasn't generated yet, poll until it arrives
   useEffect(() => {
-    loadInsights();
-  }, []);
+    if (data && data.scan_count >= 2 && data.insight === null) {
+      pollUntilInsight();
+    }
+  }, [data?.scan_count, data?.insight]);
 
   const onRefresh = useCallback(() => {
+    invalidate();
     loadInsights();
-  }, [loadInsights]);
+  }, [loadInsights, invalidate]);
 
   // Derived data
   const insight       = data?.insight ?? null;
@@ -1302,15 +1539,24 @@ export default function DashboardScreen() {
   const latestAdvanced   = data?.latest_advanced ?? null;
   const previousAdvanced = data?.previous_advanced ?? null;
 
-  // Overall delta
-  const overallDelta = content?.overall_delta ?? 0;
-  const verdict = content?.verdict ?? "same";
+  // Overall delta — use AI content when available, fall back to raw scan math
+  const overallDelta = content?.overall_delta
+    ?? (overall ? Math.round((overall.current - overall.baseline) * 10) / 10 : 0);
+  const verdict: "improved" | "same" | "declined" = content?.verdict
+    ?? (overallDelta > 1.5 ? "improved" : overallDelta < -1.5 ? "declined" : "same");
 
   // Render body
   const renderBody = () => {
     if (loading && !data) return <LoadingState />;
     if (error && !data) return <ErrorState message={error} />;
-    if (scanCount < 2) return <EmptyState router={router} />;
+    if (scanCount < 2) return (
+      <EmptyState
+        router={router}
+        scanCount={scanCount}
+        scanLoading={scanLoading}
+        scanFailed={!scanLoading && !!scanError && scanCount === 0}
+      />
+    );
 
     return (
       <>
@@ -1322,29 +1568,39 @@ export default function DashboardScreen() {
             verdict={verdict}
             scanCount={scanCount}
             joinedDaysAgo={joinedDaysAgo}
+            userName={userName}
           />
         </Animated.View>
 
-        {/* ── Section 3: Score Trend ── */}
+        {/* ── Section 3: Progress Over Time ── */}
         {graphPoints.length >= 2 && (
           <Animated.View entering={FadeInDown.delay(180).duration(450)}>
-            <GlassCard style={styles.trendCard}>
-              {/* Header */}
-              <View style={styles.trendHeader}>
-                <Text style={[TYPE.captionSemiBold, { color: COLORS.textHigh }]}>
-                  Score Trend
-                </Text>
-                {graphDates.length >= 2 && (
-                  <Text style={[TYPE.small, { color: COLORS.sub }]}>
-                    {formatDate(graphDates[0])} → {formatDate(graphDates[graphDates.length - 1])}
-                  </Text>
-                )}
+            <View style={styles.trendBase}>
+              <View style={styles.trendFace}>
+                <LinearGradient colors={["#1C1C1C", "#0F0F0F"]} style={StyleSheet.absoluteFill} />
+
+                {/* Header row: title+subtitle left, filter pill right */}
+                <View style={styles.trendHeader}>
+                  <View>
+                    <Text style={styles.trendTitle}>Progress Over Time</Text>
+                    <Text style={styles.trendSubtitle}>
+                      {scanCount} {scanCount === 1 ? "scan" : "scans"} · {joinedDaysAgo} days
+                    </Text>
+                  </View>
+                  <View style={styles.trendFilterPill}>
+                    <Text style={styles.trendFilterText}>Overall</Text>
+                  </View>
+                </View>
+
+                <MiniGraph points={graphPoints} height={120} />
+
+                {/* Day labels pinned bottom */}
+                <View style={styles.trendDayLabels}>
+                  <Text style={styles.trendDayLabel}>DAY 1</Text>
+                  <Text style={styles.trendDayLabel}>TODAY</Text>
+                </View>
               </View>
-              {/* Chart */}
-              <View style={styles.trendChart}>
-                <MiniGraph points={graphPoints} dates={graphDates} />
-              </View>
-            </GlassCard>
+            </View>
           </Animated.View>
         )}
 
@@ -1354,22 +1610,17 @@ export default function DashboardScreen() {
             Metric Breakdown
           </Text>
           <Text style={[TYPE.small, { color: COLORS.sub, marginBottom: SP[3] }]}>
-            7 facial metrics · tap a card to see sub-metrics below
+            7 facial metrics · tap a card for a detailed breakdown
           </Text>
         </Animated.View>
 
         {/* ── Section 5: Metric grid 2×4 ── */}
         {overall && (
-          <MetricGrid
-            metrics={metrics}
-            overall={overall}
-            overallDelta={overallDelta}
-            verdict={verdict}
-          />
+          <MetricGrid metrics={metrics} latestAdvanced={latestAdvanced} previousAdvanced={previousAdvanced} />
         )}
 
-        {/* ── Section 6: AI Coach ── */}
-        {content && (
+        {/* ── Section 6: AI Coach ── (removed) */}
+        {false && content && (
           <Animated.View entering={FadeInDown.delay(560).duration(450)}>
             <GlassCard style={styles.aiCard} accentLeft>
               {/* Subtle lime gradient overlay */}
@@ -1408,24 +1659,11 @@ export default function DashboardScreen() {
           </Animated.View>
         )}
 
-        {/* ── Section 7: Advanced Analysis collapsible ── */}
-        <Animated.View entering={FadeInDown.delay(620).duration(450)}>
-          <AdvancedSection
-            latestAdvanced={latestAdvanced}
-            previousAdvanced={previousAdvanced}
-          />
-        </Animated.View>
-
-        {/* ── Section 8: Scan History collapsible ── */}
-        <Animated.View entering={FadeInDown.delay(680).duration(450)}>
-          <ScanHistorySection history={history} />
-        </Animated.View>
-
-        {/* ── Section 9: New Scan CTA ── */}
+        {/* ── Section 9: Daily Workout CTA ── */}
         <Animated.View entering={FadeInDown.delay(740).duration(450)} style={styles.ctaContainer}>
           <LimeButton3D
-            label="New Scan"
-            onPress={() => router.push("/(tabs)/take-picture")}
+            label="Start Today's Workout"
+            onPress={() => router.push("/(tabs)/program")}
           />
         </Animated.View>
       </>
@@ -1457,18 +1695,12 @@ export default function DashboardScreen() {
         {/* ── Section 1: Header ── */}
         <Animated.View entering={FadeInDown.delay(0).duration(400)} style={styles.headerRow}>
           <View style={{ flex: 1 }}>
-            <Text style={[TYPE.h2, { color: COLORS.text }]}>Progress</Text>
-            <Text style={[TYPE.small, { color: COLORS.sub, marginTop: 2 }]}>
-              {scanCount} {scanCount === 1 ? "scan" : "scans"} · {joinedDaysAgo}d tracked
-            </Text>
+            <Text style={styles.headerWelcome}>WELCOME BACK!</Text>
+            <Text style={styles.headerName}>{userName}</Text>
           </View>
-          {currentStreak > 0 && (
-            <View style={styles.streakPill}>
-              <Text style={[TYPE.smallSemiBold, { color: "#FB923C" }]}>
-                🔥 {currentStreak}
-              </Text>
-            </View>
-          )}
+          <View style={styles.streakPill}>
+            <Text style={styles.streakText}>🔥 {currentStreak} day streak</Text>
+          </View>
         </Animated.View>
 
         {renderBody()}
@@ -1499,14 +1731,35 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: SP[1],
   },
+  headerWelcome: {
+    fontSize: 11,
+    fontFamily: "Poppins-SemiBold",
+    color: "rgba(255,255,255,0.40)",
+    letterSpacing: 1.4,
+    textTransform: "uppercase",
+    marginBottom: 2,
+  },
+  headerName: {
+    fontSize: 30,
+    fontFamily: "Poppins-SemiBold",
+    color: "#FFFFFF",
+    lineHeight: 34,
+  },
 
   streakPill: {
-    paddingHorizontal: SP[3],
-    paddingVertical: SP[1],
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: SP[4],
+    paddingVertical: SP[2],
     borderRadius: RADII.pill,
-    backgroundColor: "rgba(251,146,60,0.12)",
+    backgroundColor: "#1A1A1A",
     borderWidth: 1,
-    borderColor: "rgba(251,146,60,0.30)",
+    borderColor: "rgba(251,146,60,0.35)",
+  },
+  streakText: {
+    fontSize: 13,
+    fontFamily: "Poppins-SemiBold",
+    color: "#FB923C",
   },
 
   /* Glass card */
@@ -1534,60 +1787,100 @@ const styles = StyleSheet.create({
     borderRadius: 2,
   },
 
-  /* Hero card */
-  heroGlowBorder: {
-    borderRadius: RADII.card + 2,
-    borderWidth: 1.5,
-    borderColor: "rgba(180,243,77,0.35)",
+  /* Hero card — lime gradient, matches metric cards */
+  heroBase: {
+    borderRadius: RADII.card,
+    backgroundColor: LIME.dark,
+    paddingBottom: 6,
+    shadowColor: LIME.primary,
+    shadowOpacity: 0.55,
+    shadowRadius: 28,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 14,
   },
-  heroCard: {
-    padding: SP[5],
-    borderWidth: 0, // border handled by heroGlowBorder
-  },
-  heroDeltaRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SP[3],
-    marginBottom: SP[3],
-  },
-  heroDeltaBadge: {
-    paddingHorizontal: SP[4],
-    paddingVertical: SP[2],
-    borderRadius: RADII.pill,
+  heroFace: {
+    borderRadius: RADII.card,
+    overflow: "hidden",
     borderWidth: 1,
-  },
-  heroDeltaText: {
-    fontSize: 22,
-    fontFamily: "Poppins-Bold",
-    lineHeight: 28,
-  },
-  heroDeltaLabel: {
-    ...TYPE.small,
-    color: "rgba(255,255,255,0.50)",
-    flex: 1,
-    flexWrap: "wrap" as const,
-  },
-  heroDivider: {
-    height: 1,
-    backgroundColor: "rgba(255,255,255,0.06)",
-    marginBottom: SP[4],
+    borderColor: "rgba(255,255,255,0.15)",
+    paddingHorizontal: SP[5],
+    paddingTop: SP[5],
+    paddingBottom: SP[5],
   },
   heroRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: SP[4],
   },
-  heroLeft: {
+  heroRingCol: {
+    width: 148,
+    height: 148,
     alignItems: "center",
     justifyContent: "center",
-    width: 144,
-    height: 144,
   },
-  heroScore: {
-    fontSize: 34,
-    fontFamily: "Poppins-Bold",
-    color: COLORS.text,
-    lineHeight: 38,
+  heroInfoCol: {
+    flex: 1,
+    gap: SP[2],
+  },
+  heroInfoTitle: {
+    fontSize: 13,
+    fontFamily: "Poppins-SemiBold",
+    color: "rgba(255,255,255,0.45)",
+  },
+  heroDeltaRow: {
+    flexDirection: "row",
+    alignItems: "baseline",
+  },
+  heroDeltaNum: {
+    fontSize: 28,
+    fontFamily: "Poppins-SemiBold",
+    lineHeight: 32,
+  },
+  heroDeltaSince: {
+    fontSize: 13,
+    fontFamily: "Poppins-SemiBold",
+    color: "rgba(255,255,255,0.50)",
+  },
+  heroStatGrid: {
+    flexDirection: "row",
+    gap: SP[2],
+    marginTop: SP[1],
+  },
+  heroStatBox: {
+    flex: 1,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    borderRadius: RADII.md,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    paddingVertical: SP[3],
+    paddingHorizontal: SP[2],
+    alignItems: "center",
+  },
+  heroStatLabel: {
+    fontSize: 9,
+    fontFamily: "Poppins-SemiBold",
+    color: "rgba(255,255,255,0.35)",
+    letterSpacing: 0.8,
+    marginBottom: SP[1],
+  },
+  heroStatValue: {
+    fontSize: 22,
+    fontFamily: "Poppins-SemiBold",
+    color: "#FFFFFF",
+    lineHeight: 26,
+  },
+  heroScoreBig: {
+    fontSize: 40,
+    fontFamily: "Poppins-SemiBold",
+    color: "#FFFFFF",
+    lineHeight: 44,
+  },
+  heroScoreLabel: {
+    fontSize: 10,
+    fontFamily: "Poppins-SemiBold",
+    color: "rgba(255,255,255,0.40)",
+    letterSpacing: 1.2,
+    marginTop: -2,
   },
   tierPill: {
     marginTop: SP[1],
@@ -1601,161 +1894,310 @@ const styles = StyleSheet.create({
     fontFamily: "Poppins-SemiBold",
     letterSpacing: 0.6,
   },
-  heroStatsGrid: {
-    flex: 1,
-    flexDirection: "row",
-    flexWrap: "wrap" as const,
-    gap: SP[2],
-  },
-  heroStatCell: {
-    width: "46%",
-    backgroundColor: "rgba(255,255,255,0.04)",
-    borderRadius: RADII.md,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.06)",
-    paddingVertical: SP[2],
-    paddingHorizontal: SP[3],
-    gap: 2,
-  },
-  heroStatValue: {
-    ...TYPE.captionSemiBold,
-    color: COLORS.text,
-  },
-  heroStatLabel: {
-    ...TYPE.small,
-    color: COLORS.sub,
-    fontSize: 11,
-  },
-
-  /* Metric grid */
+  /* Metric grid — 2 columns */
   metricGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: SP[3],
   },
 
-  /* Metric 3D tile */
-  metricTileOuter: {
-    width: CARD_W,
-    height: CARD_H,
-    position: "relative",
-  },
-  metricTileBase: {
-    position: "absolute",
-    bottom: -4,
-    left: 4,
-    right: 4,
-    height: CARD_H,
+  /* Metric card — compact 3D half-width card */
+  metricRowBase: {
+    width: METRIC_COL_W,
     borderRadius: RADII.xl,
-    backgroundColor: "#0A0A0A",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.55,
+    backgroundColor: "#B0B0B0",
+    paddingBottom: METRIC_DEPTH,
+    shadowColor: "#ffffff",
+    shadowOpacity: 0.12,
     shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
     elevation: 8,
   },
-  metricTileFace: {
-    width: CARD_W,
-    height: CARD_H,
+  metricRowFace: {
+    flexDirection: "row",
+    alignItems: "center",
     borderRadius: RADII.xl,
     overflow: "hidden",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
-    borderTopWidth: 2,
-    borderTopColor: LIME.primary, // overridden per card
-    justifyContent: "flex-end",
+    paddingHorizontal: SP[2],
+    paddingVertical: SP[2],
+    gap: SP[2],
   },
-  metricTileImage: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+  metricRowThumb: {
+    width: 42,
+    height: 42,
+    borderRadius: RADII.md,
+    overflow: "hidden",
   },
-  metricTileImg: {
+  metricRowThumbImg: {
     width: "100%",
     height: "100%",
   },
-  metricTilePlaceholder: {
-    flex: 1,
+  metricRowThumbPlaceholder: {
+    width: "100%",
+    height: "100%",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.04)",
-  },
-  metricTileScoreBadge: {
-    position: "absolute",
-    top: SP[2],
-    right: SP[2],
-    backgroundColor: "rgba(0,0,0,0.55)",
+    backgroundColor: "rgba(0,0,0,0.12)",
     borderRadius: RADII.md,
-    paddingHorizontal: SP[2],
-    paddingVertical: 2,
   },
-  metricTileScore: {
-    fontSize: 13,
+  metricRowInfo: {
+    flex: 1,
+    gap: 1,
+  },
+  metricRowName: {
+    fontSize: 12,
     fontFamily: "Poppins-SemiBold",
+    color: "#0F0F0F",
   },
-  metricTileName: {
-    fontSize: 13,
+  metricRowTier: {
+    fontSize: 9,
+    fontFamily: "Poppins-Medium",
+    color: "rgba(0,0,0,0.55)",
+  },
+  metricRowArrowBtn: {
+    backgroundColor: "#0F0F0F",
+    borderRadius: RADII.md,
+    width: 30,
+    height: 30,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  metricRowArrowLabel: {
+    fontSize: 9,
     fontFamily: "Poppins-SemiBold",
-    color: "#FFFFFF",
-    paddingHorizontal: SP[3],
-    paddingTop: SP[2],
-    textShadowColor: "rgba(0,0,0,0.8)",
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4,
+    letterSpacing: 0.4,
   },
-  metricTileBottom: {
+  metricRowScoreCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: "rgba(0,0,0,0.25)",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.10)",
+  },
+  metricRowScoreText: {
+    fontSize: 11,
+    fontFamily: "Poppins-Bold",
+    color: "#0F0F0F",
+  },
+
+  /* Metric detail bottom sheet */
+  sheetBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.60)",
+  },
+  sheetContainer: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: "#141414",
+    borderTopLeftRadius: RADII.card,
+    borderTopRightRadius: RADII.card,
+    paddingHorizontal: SP[5],
+    paddingBottom: SP[8] ?? 32,
+    paddingTop: SP[3],
+    borderTopWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+  },
+  sheetHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "rgba(255,255,255,0.20)",
+    alignSelf: "center",
+    marginBottom: SP[4],
+  },
+  sheetHeader: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: SP[3],
-    paddingBottom: SP[3],
-    paddingTop: SP[1],
-    gap: SP[1],
+    gap: SP[3],
+    marginBottom: SP[4],
   },
-  metricDirPill: {
-    paddingHorizontal: SP[2],
-    paddingVertical: 2,
-    borderRadius: RADII.pill,
+  sheetThumb: {
+    width: 60,
+    height: 60,
+    borderRadius: RADII.lg,
+    overflow: "hidden",
+    backgroundColor: "rgba(255,255,255,0.06)",
+  },
+  sheetMetricName: {
+    fontSize: 18,
+    fontFamily: "Poppins-SemiBold",
+    color: "#FFFFFF",
+  },
+  sheetCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  sheetScoreRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "rgba(255,255,255,0.05)",
+    borderRadius: RADII.lg,
+    padding: SP[4],
+    marginBottom: SP[4],
+    gap: SP[2],
+  },
+  sheetScoreBox: {
+    alignItems: "center",
+    flex: 1,
+    borderRadius: RADII.md,
+    paddingVertical: SP[2],
     borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    backgroundColor: "rgba(255,255,255,0.04)",
   },
-  metricDirText: {
+  sheetScoreLabel: {
     fontSize: 8,
     fontFamily: "Poppins-SemiBold",
+    color: "rgba(255,255,255,0.40)",
     letterSpacing: 0.5,
+    marginBottom: 2,
   },
-  metricDeltaText: {
+  sheetScoreValue: {
+    fontSize: 18,
+    fontFamily: "Poppins-SemiBold",
+    color: "#FFFFFF",
+  },
+  sheetScoreArrow: {
+    alignItems: "center",
+    gap: 2,
+  },
+  sheetScoreDelta: {
     fontSize: 11,
     fontFamily: "Poppins-SemiBold",
   },
-
-  /* Overall card center */
-  overallCenter: {
-    flex: 1,
+  sheetSubList: {
+    gap: SP[3],
+  },
+  sheetSubRow: {
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
+    paddingVertical: SP[2],
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.06)",
   },
-  overallScoreNum: {
-    fontSize: 32,
-    fontFamily: "Poppins-Bold",
-    color: LIME.primary,
-    lineHeight: 36,
+  sheetSubLabel: {
+    flex: 1,
+    fontSize: 13,
+    fontFamily: "Poppins-Medium",
+    color: "rgba(255,255,255,0.70)",
+  },
+  sheetSubScore: {
+    fontSize: 13,
+    fontFamily: "Poppins-SemiBold",
+    color: "#FFFFFF",
+    marginRight: SP[2],
+  },
+  sheetNoSub: {
+    fontSize: 13,
+    fontFamily: "Poppins-Regular",
+    color: "rgba(255,255,255,0.40)",
+    textAlign: "center",
+    paddingVertical: SP[4],
   },
 
-  /* Trend card */
-  trendCard: {
-    padding: SP[5],
+  /* Sub-metric progress bar */
+  sheetSubBarWrap: {
+    flex: 1,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    marginHorizontal: SP[3],
+    overflow: "hidden",
+  },
+  sheetSubBarFill: {
+    height: "100%",
+    borderRadius: 3,
   },
 
+  /* 3D sub-metric tag pill */
+  subTag3dBase: {
+    borderRadius: RADII.pill,
+    paddingBottom: 3,
+  },
+  subTag3dFace: {
+    borderRadius: RADII.pill,
+    paddingHorizontal: SP[3],
+    paddingVertical: 4,
+  },
+  subTag3dText: {
+    fontSize: 10,
+    fontFamily: "Poppins-SemiBold",
+    color: "#0F0F0F",
+    letterSpacing: 0.3,
+  },
+
+  /* Trend card — 3D treatment */
+  trendBase: {
+    borderRadius: RADII.card,
+    backgroundColor: "#0A0A0A",
+    paddingBottom: 5,
+    shadowColor: LIME.primary,
+    shadowOpacity: 0.20,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 8,
+  },
+  trendFace: {
+    borderRadius: RADII.card,
+    overflow: "hidden",
+    borderTopWidth: 2,
+    borderTopColor: LIME.primary,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.07)",
+    paddingHorizontal: SP[5],
+    paddingTop: SP[4],
+    paddingBottom: SP[3],
+  },
   trendHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
+    alignItems: "flex-start",
     marginBottom: SP[3],
   },
-
-  trendChart: {
-    overflow: "hidden",
-    borderRadius: RADII.md,
+  trendTitle: {
+    fontSize: 17,
+    fontFamily: "Poppins-SemiBold",
+    color: "#FFFFFF",
+  },
+  trendSubtitle: {
+    fontSize: 12,
+    fontFamily: "Poppins-SemiBold",
+    color: "rgba(255,255,255,0.40)",
+    marginTop: 2,
+  },
+  trendFilterPill: {
+    backgroundColor: "#1E1E1E",
+    borderRadius: RADII.pill,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+    paddingHorizontal: SP[3],
+    paddingVertical: SP[1],
+  },
+  trendFilterText: {
+    fontSize: 12,
+    fontFamily: "Poppins-SemiBold",
+    color: LIME.primary,
+  },
+  trendDayLabels: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: SP[2],
+  },
+  trendDayLabel: {
+    fontSize: 10,
+    fontFamily: "Poppins-SemiBold",
+    color: "rgba(255,255,255,0.30)",
+    letterSpacing: 0.8,
   },
 
   /* Metric cards */

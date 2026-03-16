@@ -68,16 +68,22 @@ export default function TrustAccuracyScreen() {
     if (!hasPhotos) return;
     const frontal = scanFrontalUri!;
     const side = scanSideUri!;
+    // Safety net: unblock user after 15s regardless of API state
+    const timeout = setTimeout(() => setApiDone(true), 15_000);
     analyzePair(
       { uri: frontal, name: "front.jpg", mime: "image/jpeg" },
       { uri: side, name: "side.jpg", mime: "image/jpeg" }
     )
       .then((scores) => {
+        clearTimeout(timeout);
         setApiDone(true);
         // Fire-and-forget: start explanation analysis so score-teaser has real sub-metrics
         explainPair(frontal, side, scores).catch(() => {});
       })
-      .catch(() => setApiDone(true)); // fail silently — still proceed to teaser
+      .catch(() => {
+        clearTimeout(timeout);
+        setApiDone(true); // fail silently — still proceed to teaser
+      });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

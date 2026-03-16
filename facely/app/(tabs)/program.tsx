@@ -22,6 +22,8 @@ import Animated, {
   withSpring,
   withTiming,
   withSequence,
+  withRepeat,
+  Easing,
 } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
@@ -31,6 +33,7 @@ import MoodCheckModal from "@/components/ui/MoodCheckModal";
 import { useTasksStore, type DailyTask, type ProtocolTask, type DayRecord } from "@/store/tasks";
 import { useScores, type Scores } from "@/store/scores";
 import { useOnboarding } from "@/store/onboarding";
+import { useProfile } from "@/store/profile";
 import { getExerciseIcon } from "@/lib/exerciseIcons";
 
 // Module-level: only show intro splash once per day
@@ -72,11 +75,21 @@ function findWeakestField(scores: Scores | null): { label: string; value: number
 }
 
 function getConsecutiveMissed(history: DayRecord[]): number {
+  if (!history.length) return 0;
+
+  // Find the most recent completed day — anchor point for missed-day counting
+  const lastComplete = [...history]
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .find((r) => r.allComplete);
+  if (!lastComplete) return 0;
+
+  // Count days between yesterday and lastComplete that have no completed record
   let count = 0;
   const d = new Date();
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < 7; i++) {
     d.setUTCDate(d.getUTCDate() - 1);
     const ds = d.toISOString().slice(0, 10);
+    if (ds <= lastComplete.date) break; // reached the last completed day — stop
     const record = history.find((r) => r.date === ds);
     if (!record || !record.allComplete) count++;
     else break;
@@ -89,6 +102,7 @@ function buildLoadingPhrases(
   history: DayRecord[],
   scores: Scores | null,
   goals: string[] | null,
+  firstName: string | null,
 ): string[] {
   const missed = getConsecutiveMissed(history);
   const phrases: string[] = [];
@@ -117,8 +131,8 @@ function buildLoadingPhrases(
     phrases.push(`Building your personalized plan`);
   }
 
-  // Phrase 2 — ready
-  phrases.push(`Your plan is ready`);
+  // Phrase 2 — ready (personalized)
+  phrases.push(firstName ? `${firstName}'s plan is ready` : `Your plan is ready`);
 
   return phrases;
 }
@@ -131,11 +145,14 @@ function TasksLoadingScreen() {
   const { currentStreak, history } = useTasksStore();
   const { scores } = useScores();
   const { data: onboardingData } = useOnboarding();
+  const { displayName } = useProfile();
+  const firstName = displayName?.split(" ")[0] ?? null;
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   const phrases = useMemo(
-    () => buildLoadingPhrases(currentStreak, history, scores, onboardingData.goals ?? null),
-    [],
+    () => buildLoadingPhrases(currentStreak, history, scores, onboardingData.goals ?? null, firstName),
+    // Stable deps — all sourced from persisted stores, correct on first render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [currentStreak, scores, onboardingData.goals, firstName],
   );
 
   const [phraseIndex, setPhraseIndex] = useState(0);
@@ -156,7 +173,7 @@ function TasksLoadingScreen() {
   return (
     <SafeAreaView style={styles.safe}>
       <Animated.View entering={FadeIn.duration(300)} exiting={FadeOut.duration(250)} style={styles.loadingWrap}>
-        <Text style={styles.loadingTitle}>Today's Workout</Text>
+        <Text style={styles.loadingTitle}>{firstName ? `${firstName}'s Workout` : "Today's Workout"}</Text>
 
         <View style={styles.progressTrackLoading}>
           <Animated.View style={[styles.progressFillLoading, barStyle]} />
@@ -188,16 +205,180 @@ function formatDateHeader(): string {
 }
 
 // ---------------------------------------------------------------------------
+// Streak helpers
+// ---------------------------------------------------------------------------
+
+type DayStatus = "complete" | "missed" | "today_done" | "today_pending";
+
+type DaySlot = {
+  dateStr: string;
+  dayInitial: string;
+  dateNum: number;
+  status: DayStatus;
+};
+
+function buildLast7Days(history: DayRecord[], today: DayRecord | null): DaySlot[] {
+  const DAY_INITIALS = ["S", "M", "T", "W", "T", "F", "S"];
+  const slots: DaySlot[] = [];
+  const now = new Date();
+
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(now);
+    d.setUTCDate(d.getUTCDate() - i);
+    const y = d.getUTCFullYear();
+    const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+    const day = String(d.getUTCDate()).padStart(2, "0");
+    const dateStr = `${y}-${m}-${day}`;
+
+    let status: DayStatus;
+    if (i === 0) {
+      status = today?.allComplete ? "today_done" : "today_pending";
+    } else {
+      const record = history.find((r) => r.date === dateStr);
+      status = record?.allComplete ? "complete" : "missed";
+    }
+
+    slots.push({ dateStr, dayInitial: DAY_INITIALS[d.getUTCDay()], dateNum: d.getUTCDate(), status });
+  }
+  return slots;
+}
+
+function streakMotivationCopy(streak: number): string {
+  if (streak === 0) return "Complete today's workout to start your streak";
+  if (streak === 1) return "Day 1 — the hardest part is starting";
+  if (streak < 3)   return `${streak} days in — building the habit`;
+  if (streak < 7)   return `${streak} days strong — keep going`;
+  if (streak === 7) return "One full week — you're consistent";
+  if (streak < 14)  return `${streak} days — you're in the zone`;
+  if (streak === 14) return "Two weeks straight — elite consistency";
+  if (streak < 30)  return `${streak} days — serious commitment`;
+  return `${streak} days — legendary streak`;
+}
+
+// ---------------------------------------------------------------------------
+// Streak modal
+// ---------------------------------------------------------------------------
+
+function StreakModal({
+  visible,
+  onClose,
+}: {
+  visible: boolean;
+  onClose: () => void;
+}) {
+  const { currentStreak, history, today } = useTasksStore();
+  const slots = buildLast7Days(history, today);
+
+  return (
+    <Modal
+      transparent
+      visible={visible}
+      animationType="fade"
+      statusBarTranslucent
+      onRequestClose={onClose}
+    >
+      <Pressable style={styles.modalBackdrop} onPress={onClose}>
+        <Animated.View
+          entering={FadeInDown.duration(280).springify().damping(20).stiffness(180)}
+          style={styles.modalCard}
+        >
+          <Pressable onPress={() => {}} style={{ width: "100%" }}>
+
+            {/* Header label */}
+            <Text style={styles.modalTitle}>🔥  Streak</Text>
+
+            {/* Big streak number */}
+            <Text style={styles.streakBigNum}>{currentStreak}</Text>
+
+            {/* Motivation copy */}
+            <Text style={styles.modalHint}>{streakMotivationCopy(currentStreak)}</Text>
+
+            {/* Divider */}
+            <View style={styles.streakDivider} />
+
+            {/* 7-day calendar row */}
+            <View style={styles.streakDotRow}>
+              {slots.map((slot) => {
+                const isDone   = slot.status === "complete" || slot.status === "today_done";
+                const isToday  = slot.status === "today_done" || slot.status === "today_pending";
+                return (
+                  <View key={slot.dateStr} style={styles.streakDotCol}>
+                    <Text style={[styles.streakDotLabel, isToday && styles.streakDotLabelToday]}>
+                      {slot.dayInitial}
+                    </Text>
+                    <View style={[
+                      styles.streakDot,
+                      isDone  && styles.streakDotDone,
+                      isToday && !isDone && styles.streakDotToday,
+                    ]}>
+                      {isDone   && <Text style={styles.streakDotCheck}>✓</Text>}
+                      {isToday && !isDone && <View style={styles.streakDotPip} />}
+                    </View>
+                    <Text style={[styles.streakDotDate, isToday && styles.streakDotDateToday]}>
+                      {slot.dateNum}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
+
+            {/* Close */}
+            <Pressable style={[styles.modalBtnGhost, { marginTop: SP[2] }]} onPress={onClose}>
+              <Text style={styles.modalBtnGhostText}>Done</Text>
+            </Pressable>
+
+          </Pressable>
+        </Animated.View>
+      </Pressable>
+    </Modal>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Streak badge
 // ---------------------------------------------------------------------------
 
-function StreakBadge({ streak }: { streak: number }) {
-  if (streak <= 0) return null;
+function StreakBadge() {
+  const { currentStreak } = useTasksStore();
+  const [modalVisible, setModalVisible] = useState(false);
+  const scale = useSharedValue(1);
+  const glow = useSharedValue(0.3);
+
+  // Subtle pulse glow when streak is active
+  useEffect(() => {
+    if (currentStreak > 0) {
+      glow.value = withRepeat(
+        withTiming(1, { duration: 1200, easing: Easing.inOut(Easing.ease) }),
+        -1,
+        true,
+      );
+    }
+  }, [currentStreak]);
+
+  const badgeAnimStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+    shadowOpacity: glow.value * 0.45,
+  }));
+
   return (
-    <View style={styles.streakBadge}>
-      <Text style={styles.streakIcon}>🔥</Text>
-      <Text style={styles.streakText}>{streak}</Text>
-    </View>
+    <>
+      <Animated.View style={[styles.streakBadgeWrap, badgeAnimStyle]}>
+        <Pressable
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            setModalVisible(true);
+          }}
+          onPressIn={() => { scale.value = withSpring(0.90, { damping: 12, stiffness: 400 }); }}
+          onPressOut={() => { scale.value = withSpring(1, { damping: 10, stiffness: 200 }); }}
+          style={styles.streakBadge}
+        >
+          <Text style={styles.streakIcon}>🔥</Text>
+          <Text style={styles.streakText}>{currentStreak}</Text>
+        </Pressable>
+      </Animated.View>
+
+      <StreakModal visible={modalVisible} onClose={() => setModalVisible(false)} />
+    </>
   );
 }
 
@@ -211,12 +392,14 @@ function WorkoutCard({
   overloadLabel,
   completedCount,
   totalCount,
+  userName,
 }: {
   streak: number;
   focusSummary: string;
   overloadLabel: string;
   completedCount: number;
   totalCount: number;
+  userName: string | null;
 }) {
   const progress = totalCount > 0 ? completedCount / totalCount : 0;
   const barWidth = useSharedValue(0);
@@ -245,17 +428,24 @@ function WorkoutCard({
 
   const allDone = completedCount === totalCount && totalCount > 0;
 
-  const focusHero = allDone
-    ? "All done — great work"
-    : focusSummary
-      ? focusSummary
-          .split(/,\s*|\s*&\s*/)
-          .map((s) => s.trim())
-          .filter(Boolean)
-          .slice(0, 2)
-          .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
-          .join(" · ")
-      : "Today's Plan";
+  const firstName = userName?.split(" ")[0] ?? null;
+
+  let heroPrefix = "";
+  let heroTargets = "";
+  if (allDone) {
+    heroPrefix = firstName ? `${firstName}'s done — great work` : "All done — great work";
+  } else if (focusSummary) {
+    heroTargets = focusSummary
+      .split(/,\s*|\s*&\s*/)
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
+      .join(" · ");
+    heroPrefix = firstName ? `Workout for ${firstName}'s ` : "Workout for ";
+  } else {
+    heroPrefix = firstName ? `Workout for ${firstName}` : "Today's Workout";
+  }
 
   return (
     <LinearGradient
@@ -267,7 +457,7 @@ function WorkoutCard({
       {/* Date + streak */}
       <View style={styles.cardTopRow}>
         <Text style={styles.cardDate}>{formatDateHeader()}</Text>
-        <StreakBadge streak={streak} />
+        <StreakBadge />
       </View>
 
       {/* Hero: focus area */}
@@ -276,9 +466,11 @@ function WorkoutCard({
         entering={FadeInDown.duration(320).delay(80)}
         exiting={FadeOut.duration(150)}
         style={styles.heroFocus}
-        numberOfLines={1}
       >
-        {focusHero}
+        {heroPrefix}
+        {heroTargets ? (
+          <Text style={styles.heroFocusTargets}>{heroTargets}</Text>
+        ) : null}
       </Animated.Text>
 
       {/* Tier pill */}
@@ -305,43 +497,45 @@ function WorkoutCard({
 // Compact exercise row
 // ---------------------------------------------------------------------------
 
+const TASK_DEPTH = 5;
+
 function ExerciseRow({
   task,
-  onPress,
+  onStart,
+  onMarkDone,
 }: {
   task: DailyTask;
-  onPress: () => void;
+  onStart: () => void;
+  onMarkDone: () => void;
 }) {
   const isCompleted = task.status === "completed";
-  const scale = useSharedValue(1);
-
-  const cardAnimStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-  }));
-
-  const handlePressIn = () => {
-    if (!isCompleted) scale.value = withSpring(0.97, { damping: 15, stiffness: 300 });
-  };
-  const handlePressOut = () => {
-    scale.value = withSpring(1, { damping: 12, stiffness: 200 });
-  };
 
   return (
-    <Animated.View style={cardAnimStyle}>
+    <View style={[styles.taskCardBase, isCompleted && styles.taskCardBaseDone]}>
       <Pressable
-        onPress={onPress}
-        onPressIn={handlePressIn}
-        onPressOut={handlePressOut}
+        onPress={isCompleted ? undefined : onStart}
         disabled={isCompleted}
-        style={[styles.taskCard, isCompleted && styles.taskCardCompleted]}
+        style={({ pressed }) => [
+          styles.taskCardFace,
+          isCompleted && styles.taskCardFaceDone,
+          { transform: [{ translateY: !isCompleted && pressed ? TASK_DEPTH : 0 }] },
+        ]}
       >
+        {!isCompleted && (
+          <LinearGradient
+            colors={["#CCFF6B", "#B4F34D"]}
+            start={{ x: 0.5, y: 0 }}
+            end={{ x: 0.5, y: 1 }}
+            style={StyleSheet.absoluteFill}
+          />
+        )}
         <View style={styles.taskRow}>
           {/* Icon */}
           <View style={[styles.exerciseIconWrap, isCompleted && styles.exerciseIconDimmed]}>
             <Image source={getExerciseIcon(task.exerciseId)} style={styles.exerciseIconImg} />
           </View>
 
-          {/* Name + target + reason */}
+          {/* Name + target */}
           <View style={styles.taskLeft}>
             <Text style={[styles.taskTitle, isCompleted && styles.taskTitleDone]} numberOfLines={1}>
               {task.name}
@@ -351,28 +545,37 @@ function ExerciseRow({
             </Text>
           </View>
 
-          {/* Right: Start pill + status dot */}
+          {/* Right: Start pill + status circle */}
           <View style={styles.taskRight}>
             {!isCompleted && (
               <View style={styles.startPillDepth}>
-                <Pressable
-                  onPress={onPress}
-                  style={({ pressed }) => [
-                    styles.startPill,
-                    { transform: [{ translateY: pressed ? 3 : 0 }] },
-                  ]}
-                >
+                <View style={styles.startPill}>
                   <Text style={styles.startPillText}>Start</Text>
-                </Pressable>
+                </View>
               </View>
             )}
-            <View style={[styles.statusDot, isCompleted && styles.statusDotDone]}>
+
+            {/*
+              Circle is its own Pressable so it captures the touch before the
+              outer card Pressable does — no stopPropagation needed.
+              Disabled + non-interactive once completed.
+            */}
+            <Pressable
+              onPress={isCompleted ? undefined : onMarkDone}
+              disabled={isCompleted}
+              hitSlop={10}
+              style={({ pressed }) => [
+                styles.statusDot,
+                isCompleted ? styles.statusDotDone : styles.statusDotPending,
+                !isCompleted && pressed && styles.statusDotPressed,
+              ]}
+            >
               {isCompleted && <Text style={styles.statusCheck}>✓</Text>}
-            </View>
+            </Pressable>
           </View>
         </View>
       </Pressable>
-    </Animated.View>
+    </View>
   );
 }
 
@@ -417,17 +620,17 @@ function ProtocolRow({
   onPress: () => void;
 }) {
   const isDone = protocol.status === "done";
-  const scale = useSharedValue(1);
-  const cardAnimStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
 
   return (
-    <Animated.View style={cardAnimStyle}>
+    <View style={[styles.protocolCardBase, isDone && styles.protocolCardBaseDone]}>
       <Pressable
         onPress={isDone ? undefined : onPress}
-        onPressIn={() => { if (!isDone) scale.value = withSpring(0.97, { damping: 15, stiffness: 300 }); }}
-        onPressOut={() => { scale.value = withSpring(1, { damping: 12, stiffness: 200 }); }}
         disabled={isDone}
-        style={[styles.protocolCard, isDone && styles.protocolCardDone]}
+        style={({ pressed }) => [
+          styles.protocolCardFace,
+          isDone && styles.protocolCardFaceDone,
+          { transform: [{ translateY: !isDone && pressed ? TASK_DEPTH : 0 }] },
+        ]}
       >
         <View style={styles.taskRow}>
           <View style={[styles.protocolIconWrap, isDone && styles.exerciseIconDimmed]}>
@@ -448,7 +651,7 @@ function ProtocolRow({
           </View>
         </View>
       </Pressable>
-    </Animated.View>
+    </View>
   );
 }
 
@@ -502,6 +705,69 @@ function ProtocolConfirmModal({
                     style={styles.modalBtnGradient}
                   >
                     <Text style={styles.modalBtnPrimaryText}>Done ✓</Text>
+                  </LinearGradient>
+                </Pressable>
+              </View>
+            </View>
+          </Pressable>
+        </Animated.View>
+      </Pressable>
+    </Modal>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Mark-done confirmation modal
+// Shown when user taps the circle on an exercise row — skips the timer.
+// ---------------------------------------------------------------------------
+
+function MarkDoneModal({
+  visible,
+  task,
+  onConfirm,
+  onDismiss,
+}: {
+  visible: boolean;
+  task: DailyTask | null;
+  onConfirm: () => void;
+  onDismiss: () => void;
+}) {
+  if (!task) return null;
+  return (
+    <Modal
+      transparent
+      visible={visible}
+      animationType="fade"
+      statusBarTranslucent
+      onRequestClose={onDismiss}
+    >
+      <Pressable style={styles.modalBackdrop} onPress={onDismiss}>
+        <Animated.View entering={FadeInDown.duration(250).springify()} style={styles.modalCard}>
+          {/* Inner Pressable absorbs taps so backdrop doesn't close on card tap */}
+          <Pressable onPress={() => {}} style={{ width: "100%" }}>
+            <Text style={styles.modalTitle}>Done already?</Text>
+            <Text style={styles.modalExercise}>{task.name}</Text>
+            <Text style={styles.modalHint}>Mark as complete — skip the timer</Text>
+            <View style={styles.modalBtns}>
+              <Pressable style={styles.modalBtnGhost} onPress={onDismiss}>
+                <Text style={styles.modalBtnGhostText}>Cancel</Text>
+              </Pressable>
+              <View style={styles.modalBtnDepth}>
+                <Pressable
+                  onPress={onConfirm}
+                  style={({ pressed }) => [
+                    styles.modalBtnPressable,
+                    { transform: [{ translateY: pressed ? 5 : 0 }] },
+                  ]}
+                >
+                  <LinearGradient
+                    colors={["#CCFF6B", "#B4F34D"]}
+                    locations={[0, 1]}
+                    start={{ x: 0.5, y: 0 }}
+                    end={{ x: 0.5, y: 1 }}
+                    style={styles.modalBtnGradient}
+                  >
+                    <Text style={styles.modalBtnPrimaryText}>Mark Done ✓</Text>
                   </LinearGradient>
                 </Pressable>
               </View>
@@ -593,10 +859,12 @@ export default function TasksScreen() {
     completeProtocol,
     setMood,
   } = useTasksStore();
+  const { displayName } = useProfile();
 
   const [showDayComplete, setShowDayComplete]     = useState(false);
   const [showMoodCheck, setShowMoodCheck]         = useState(false);
   const [confirmTask, setConfirmTask]             = useState<DailyTask | null>(null);
+  const [markDoneTask, setMarkDoneTask]           = useState<DailyTask | null>(null);
   const [confirmProtocol, setConfirmProtocol]     = useState<ProtocolTask | null>(null);
 
   // Intro splash — once per day
@@ -649,20 +917,26 @@ export default function TasksScreen() {
     });
   }, [confirmTask]);
 
-  // Called from timer screen via route back — check for day completion
+  // Shared completion path — used by both timer callback and mark-done circle.
+  // Reads actual store state after update so day-complete check works with the
+  // 3-item streak threshold (not the old all-tasks logic).
   const handleTaskComplete = useCallback((exerciseId: string) => {
-    const alreadyCounted = today?.completedOnce;
-    const otherPending = today?.tasks.filter(
-      (t) => t.exerciseId !== exerciseId && t.status === "pending",
-    );
-    const willCompleteDay = !otherPending?.length;
-
+    const alreadyCounted = useTasksStore.getState().today?.completedOnce ?? false;
     completeTask(exerciseId);
-
-    if (willCompleteDay && !alreadyCounted) {
+    const nowCounted = useTasksStore.getState().today?.completedOnce ?? false;
+    if (!alreadyCounted && nowCounted) {
       setTimeout(() => setShowDayComplete(true), 150);
     }
-  }, [today, completeTask]);
+  }, [completeTask]);
+
+  // Circle tap → MarkDoneModal confirm
+  const handleMarkDoneConfirm = useCallback(() => {
+    if (!markDoneTask) return;
+    const task = markDoneTask;
+    setMarkDoneTask(null);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    handleTaskComplete(task.exerciseId);
+  }, [markDoneTask, handleTaskComplete]);
 
   if (introVisible || loading || !today) return <TasksLoadingScreen />;
 
@@ -684,6 +958,7 @@ export default function TasksScreen() {
           overloadLabel={today.tasks[0]?.overloadLabel ?? "Base"}
           completedCount={completedCount}
           totalCount={totalCount}
+          userName={displayName}
         />
       </Animated.View>
 
@@ -709,7 +984,8 @@ export default function TasksScreen() {
             >
               <ExerciseRow
                 task={task}
-                onPress={() => handleRowPress(task)}
+                onStart={() => handleRowPress(task)}
+                onMarkDone={() => setMarkDoneTask(task)}
               />
             </Animated.View>
           ))}
@@ -747,10 +1023,17 @@ export default function TasksScreen() {
         onDismiss={() => setConfirmTask(null)}
       />
 
+      <MarkDoneModal
+        visible={markDoneTask !== null}
+        task={markDoneTask}
+        onConfirm={handleMarkDoneConfirm}
+        onDismiss={() => setMarkDoneTask(null)}
+      />
+
       <DayCompleteModal
         visible={showDayComplete}
-        dayNumber={currentStreak + 1}
-        streak={currentStreak + 1}
+        dayNumber={currentStreak}
+        streak={currentStreak}
         autoDismissMs={0}
         dismissOnBackdropPress={false}
         particles
@@ -762,7 +1045,7 @@ export default function TasksScreen() {
 
       <MoodCheckModal
         visible={showMoodCheck}
-        dayNumber={1}
+        dayNumber={currentStreak}
         onSelect={(mood) => { setMood(mood); setShowMoodCheck(false); }}
         onSkip={() => setShowMoodCheck(false)}
       />
@@ -864,6 +1147,14 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     textTransform: "uppercase",
   },
+  // Streak badge
+  streakBadgeWrap: {
+    borderRadius: RADII.pill,
+    shadowColor: "#FF8C00",
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 0,
+  },
   streakBadge: {
     flexDirection: "row",
     alignItems: "center",
@@ -871,15 +1162,96 @@ const styles = StyleSheet.create({
     paddingHorizontal: SP[3],
     paddingVertical: SP[1],
     borderRadius: RADII.pill,
-    backgroundColor: "rgba(255,170,50,0.12)",
+    backgroundColor: "rgba(255,140,0,0.14)",
     borderWidth: 1,
-    borderColor: "rgba(255,170,50,0.3)",
+    borderColor: "rgba(255,140,0,0.35)",
   },
   streakIcon: { fontSize: 15 },
   streakText: { color: "#FFAA32", fontSize: 14, fontFamily: "Poppins-SemiBold" },
 
+  // Streak modal — reuses modalCard/modalBackdrop/modalBtnGhost
+  streakBigNum: {
+    color: "#FFAA32",
+    fontSize: 64,
+    fontFamily: "Poppins-SemiBold",
+    letterSpacing: -3,
+    textAlign: "center",
+    lineHeight: 70,
+    marginBottom: SP[1],
+  },
+  streakDivider: {
+    width: "100%",
+    height: 1,
+    backgroundColor: COLORS.cardBorder,
+    marginVertical: SP[4],
+  },
+  streakDotRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    width: "100%",
+    marginBottom: SP[3],
+  },
+  streakDotCol: {
+    alignItems: "center",
+    gap: 6,
+    flex: 1,
+  },
+  streakDotLabel: {
+    color: "rgba(255,255,255,0.25)",
+    fontSize: 11,
+    fontFamily: "Poppins-SemiBold",
+    textTransform: "uppercase",
+  },
+  streakDotLabelToday: {
+    color: COLORS.accent,
+  },
+  streakDot: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "rgba(255,255,255,0.05)",
+    borderWidth: 1.5,
+    borderColor: "rgba(255,255,255,0.10)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  streakDotDone: {
+    backgroundColor: COLORS.accent,
+    borderColor: COLORS.accent,
+  },
+  streakDotToday: {
+    borderColor: COLORS.accent,
+    borderWidth: 2,
+    backgroundColor: "rgba(180,243,77,0.08)",
+  },
+  streakDotPip: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: COLORS.accent,
+  },
+  streakDotCheck: {
+    color: "#0B0B0B",
+    fontSize: 12,
+    fontFamily: "Poppins-SemiBold",
+  },
+  streakDotDate: {
+    color: "rgba(255,255,255,0.25)",
+    fontSize: 10,
+    fontFamily: "Poppins-SemiBold",
+  },
+  streakDotDateToday: {
+    color: COLORS.accent,
+  },
+
   heroFocus: {
     color: COLORS.text,
+    fontSize: 22,
+    fontFamily: "Poppins-SemiBold",
+    letterSpacing: -0.3,
+  },
+  heroFocusTargets: {
+    color: COLORS.accent,
     fontSize: 22,
     fontFamily: "Poppins-SemiBold",
     letterSpacing: -0.3,
@@ -947,24 +1319,29 @@ const styles = StyleSheet.create({
   // Exercise list
   exerciseList: { gap: SP[3], paddingBottom: SP[2] },
 
-  // Task cards (old green card style)
-  taskCard: {
-    backgroundColor: "#B4F34D",
-    borderWidth: 1,
-    borderColor: "rgba(180,243,77,0.6)",
+  // Task cards — 3D depth style
+  taskCardBase: {
     borderRadius: RADII.lg,
-    padding: SP[4],
+    backgroundColor: "#6B9A1E",
+    paddingBottom: TASK_DEPTH,
     shadowColor: "#B4F34D",
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 6,
+    shadowOpacity: 0.35,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 8,
   },
-  taskCardCompleted: {
-    backgroundColor: "rgba(180,243,77,0.15)",
-    borderColor: "rgba(180,243,77,0.2)",
+  taskCardBaseDone: {
+    backgroundColor: "rgba(180,243,77,0.08)",
     shadowOpacity: 0,
     elevation: 0,
+  },
+  taskCardFace: {
+    borderRadius: RADII.lg,
+    padding: SP[4],
+    overflow: "hidden",
+  },
+  taskCardFaceDone: {
+    backgroundColor: "rgba(180,243,77,0.10)",
   },
   taskRow: {
     flexDirection: "row",
@@ -1025,17 +1402,25 @@ const styles = StyleSheet.create({
     fontFamily: "Poppins-SemiBold",
   },
   statusDot: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     borderWidth: 2,
-    borderColor: "rgba(11,11,11,0.25)",
     alignItems: "center",
     justifyContent: "center",
+  },
+  statusDotPending: {
+    borderColor: "rgba(11,11,11,0.30)",
+    backgroundColor: "transparent",
   },
   statusDotDone: {
     backgroundColor: "#0B0B0B",
     borderColor: "#0B0B0B",
+  },
+  statusDotPressed: {
+    borderColor: "rgba(11,11,11,0.70)",
+    backgroundColor: "rgba(11,11,11,0.10)",
+    transform: [{ scale: 0.88 }],
   },
   statusCheck: {
     color: "#B4F34D",
@@ -1043,16 +1428,31 @@ const styles = StyleSheet.create({
     fontFamily: "Poppins-SemiBold",
   },
 
-  // Protocol cards
-  protocolCard: {
-    backgroundColor: "rgba(255,255,255,0.07)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
+  // Protocol cards — 3D depth style
+  protocolCardBase: {
+    borderRadius: RADII.lg,
+    backgroundColor: "#2A2A2A",
+    paddingBottom: TASK_DEPTH,
+    shadowColor: "#000000",
+    shadowOpacity: 0.40,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
+  },
+  protocolCardBaseDone: {
+    backgroundColor: "#1A1A1A",
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  protocolCardFace: {
     borderRadius: RADII.lg,
     padding: SP[4],
+    backgroundColor: "#222222",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
   },
-  protocolCardDone: {
-    backgroundColor: "rgba(255,255,255,0.03)",
+  protocolCardFaceDone: {
+    backgroundColor: "#181818",
     borderColor: "rgba(255,255,255,0.05)",
   },
   protocolIconWrap: {
@@ -1079,8 +1479,8 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255,255,255,0.25)",
   },
   protocolStatusDotDone: {
-    backgroundColor: COLORS.accent,
-    borderColor: COLORS.accent,
+    backgroundColor: "#0B0B0B",
+    borderColor: "#0B0B0B",
   },
 
   // Protocols section header
@@ -1102,7 +1502,7 @@ const styles = StyleSheet.create({
   // Confirmation modal
   modalBackdrop: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.7)",
+    backgroundColor: "rgba(0,0,0,0.80)",
     alignItems: "center",
     justifyContent: "flex-end",
     paddingBottom: 40,

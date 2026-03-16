@@ -272,9 +272,19 @@ export default function TenByTenScreen() {
     }
   }, [effectiveGeneratedUri]);
 
-  // Pro gate
+  // Pro gate — always provide a back escape so user is never stranded
   if (!hasAccess) return (
-    <SafeAreaView style={styles.safe}><StatusBar barStyle="light-content" /><ProGate /></SafeAreaView>
+    <SafeAreaView style={styles.safe}>
+      <StatusBar barStyle="light-content" />
+      <Pressable
+        onPress={() => router.canGoBack() ? router.back() : router.replace("/(tabs)/program")}
+        style={{ padding: 16, alignSelf: "flex-start" }}
+        hitSlop={8}
+      >
+        <ChevronLeft size={24} color="rgba(255,255,255,0.70)" strokeWidth={2} />
+      </Pressable>
+      <ProGate />
+    </SafeAreaView>
   );
 
   return (

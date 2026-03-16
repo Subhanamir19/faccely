@@ -56,15 +56,9 @@ export default function GoalsScreen() {
   }, []);
 
   const handleNext = useCallback(() => {
-    setField("goals", selected);
-    router.push("/(onboarding)/use-case");
+    setField("goals", selected.length > 0 ? selected : ["overall"]);
+    router.push("/(onboarding)/gender");
   }, [selected, setField]);
-
-  const handleSkip = useCallback(() => {
-    // Store default goal when skipping
-    setField("goals", ["overall"]);
-    router.push("/(onboarding)/use-case");
-  }, [setField]);
 
   return (
     <OnboardingScreen
@@ -72,16 +66,10 @@ export default function GoalsScreen() {
       title="What do you want to improve?"
       subtitle="Select all that apply — we'll personalize your experience"
       onPrimary={handleNext}
-      primaryDisabled={selected.length === 0}
       primaryLabel="Continue"
-      showSecondary
-      secondaryLabel="Skip"
-      onSecondary={handleSkip}
     >
       <OptionsList
         options={GOAL_OPTIONS}
-        selected={null}
-        onSelect={() => {}}
         multiSelect
         selectedMulti={selected}
         onSelectMulti={handleSelectMulti}

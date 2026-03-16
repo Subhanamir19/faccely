@@ -24,9 +24,11 @@ export const COLORS = {
   accent: "#B4F34D",
   accentLight: "#C9FA69",
   accentDark: "#A6E03F",
+  accentDepth: "#6B9A1E",             // 3D button shadow / depth base
   accentShadow: "rgba(180,243,77,0.25)",
   accentGlow: "rgba(180,243,77,0.18)",
   accentBorder: "rgba(180,243,77,0.30)",
+  modalBackdrop: "rgba(0,0,0,0.80)",  // standard modal overlay
 
   // UI neutrals
   track: "#2A2A2A",                     // progress inactive

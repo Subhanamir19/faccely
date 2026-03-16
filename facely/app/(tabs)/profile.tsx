@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   SafeAreaView,
   ScrollView,
@@ -7,6 +7,7 @@ import {
   Image,
   Alert,
   Pressable,
+  TextInput,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
@@ -67,8 +68,10 @@ export default function ProfileScreen() {
   const onboardingData = useOnboarding((state) => state.data);
   const hydrateOnboarding = useOnboarding((state) => state.hydrate);
   const avatarUri = useProfile((state) => state.avatarUri);
+  const displayName = useProfile((state) => state.displayName);
   const hydrateProfile = useProfile((state) => state.hydrate);
   const setProfileAvatar = useProfile((state) => state.setAvatar);
+  const setDisplayName = useProfile((state) => state.setDisplayName);
   const revenueCatEntitlement = useSubscriptionStore((state) => state.revenueCatEntitlement);
   const promoActivated = useSubscriptionStore((state) => state.promoActivated);
   const setRevenueCatEntitlement = useSubscriptionStore((state) => state.setRevenueCatEntitlement);
@@ -79,6 +82,9 @@ export default function ProfileScreen() {
   const [restoringPurchases, setRestoringPurchases] = useState(false);
   const [isHydrating, setIsHydrating] = useState(true);
   const [codeCopied, setCodeCopied] = useState(false);
+  const [nameInput, setNameInput] = useState("");
+  const [nameSaved, setNameSaved] = useState(false);
+  const nameInputRef = useRef<TextInput>(null);
   const recoveryCode = useRecoveryCodeStore((s) => s.code);
   const generating = useRecoveryCodeStore((s) => s.generating);
   const ensureCode = useRecoveryCodeStore((s) => s.ensureCode);
@@ -98,6 +104,11 @@ export default function ProfileScreen() {
       cancelled = true;
     };
   }, [hydrateOnboarding, hydrateProfile]);
+
+  // Sync name input once store hydrates
+  useEffect(() => {
+    if (!isHydrating) setNameInput(displayName ?? "");
+  }, [isHydrating, displayName]);
 
   // Ensure recovery code exists for subscribed users (including those who purchased before this feature)
   useEffect(() => {
@@ -277,6 +288,37 @@ export default function ProfileScreen() {
           <View style={styles.cardHeader}>
             <T style={styles.cardLabel}>Demographics</T>
             <T style={styles.cardSubtext}>Basic profile details</T>
+          </View>
+          <View style={styles.row}>
+            <T style={styles.rowLabel}>Name</T>
+            <View style={styles.nameInputRow}>
+              <TextInput
+                ref={nameInputRef}
+                style={styles.nameInput}
+                value={nameInput}
+                onChangeText={(v) => { setNameInput(v); setNameSaved(false); }}
+                placeholder="Your name"
+                placeholderTextColor="rgba(255,255,255,0.25)"
+                returnKeyType="done"
+                onSubmitEditing={async () => {
+                  await setDisplayName(nameInput);
+                  setNameSaved(true);
+                  setTimeout(() => setNameSaved(false), 2000);
+                }}
+                maxLength={30}
+              />
+              <Pressable
+                style={styles.nameSaveBtn}
+                onPress={async () => {
+                  await setDisplayName(nameInput);
+                  setNameSaved(true);
+                  nameInputRef.current?.blur();
+                  setTimeout(() => setNameSaved(false), 2000);
+                }}
+              >
+                <T style={styles.nameSaveBtnText}>{nameSaved ? "Saved!" : "Save"}</T>
+              </Pressable>
+            </View>
           </View>
           <View style={styles.row}>
             <T style={styles.rowLabel}>Gender</T>
@@ -484,6 +526,34 @@ const styles = StyleSheet.create({
   rowValue: {
     color: COLORS.text,
     fontSize: 15,
+  },
+  nameInputRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    flex: 1,
+    justifyContent: "flex-end",
+  },
+  nameInput: {
+    color: COLORS.text,
+    fontSize: 15,
+    fontFamily: "Poppins-Regular",
+    textAlign: "right",
+    flex: 1,
+    paddingVertical: 0,
+  },
+  nameSaveBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    backgroundColor: "rgba(255,255,255,0.07)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+  },
+  nameSaveBtnText: {
+    color: COLORS.accent,
+    fontSize: 12,
+    fontFamily: "Poppins-SemiBold",
   },
   dangerZone: {
     marginTop: 10,

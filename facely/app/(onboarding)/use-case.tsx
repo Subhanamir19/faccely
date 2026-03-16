@@ -25,12 +25,12 @@ export default function UseCaseScreen() {
 
   const handleNext = useCallback(() => {
     if (!selected) return;
-    router.push("/(onboarding)/gender");
+    router.push("/(onboarding)/goals");
   }, [selected]);
 
   const handleSkip = useCallback(() => {
     setField("useCase", "scores");
-    router.push("/(onboarding)/gender");
+    router.push("/(onboarding)/goals");
   }, [setField]);
 
   return (

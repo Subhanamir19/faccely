@@ -4,7 +4,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
-import { buildDailyRoutine, buildDailyProtocols, type RoutineTaskPick } from "@/lib/taskBuilder";
+import { buildDailyRoutine, buildDailyProtocols, type RoutineTaskPick, type ProtocolSelectionInput } from "@/lib/taskBuilder";
 import type { ProtocolType } from "@/lib/protocolCatalog";
 import { summarizeFocusAreas } from "@/lib/taskSelection";
 import { logger } from '@/lib/logger';
@@ -58,6 +58,16 @@ type TasksState = {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/** Minimum combined completions (exercises + protocols) to count as a streak day */
+const STREAK_THRESHOLD = 3;
+
+function countCompletedItems(tasks: DailyTask[], protocols: ProtocolTask[]): number {
+  return (
+    tasks.filter((t) => t.status === "completed").length +
+    protocols.filter((p) => p.status === "done").length
+  );
+}
 
 function getUtcDateString(d?: Date): string {
   const now = d ?? new Date();
@@ -116,20 +126,42 @@ function getRecentExerciseIds(history: DayRecord[]): string[] {
   return ids;
 }
 
+function getRecentProtocolIds(history: DayRecord[]): string[] {
+  const today = getUtcDateString();
+  const yesterday = getPreviousDateString(today);
+  const dayBefore = getPreviousDateString(yesterday);
+  const recentDates = new Set([yesterday, dayBefore]);
+
+  const ids: string[] = [];
+  for (const record of history) {
+    if (recentDates.has(record.date)) {
+      for (const p of record.protocols ?? []) {
+        if (p.status === "done") ids.push(p.id);
+      }
+    }
+  }
+  return ids;
+}
+
 function getConsecutiveMissed(history: DayRecord[]): number {
+  if (!history.length) return 0;
+
+  // Find the most recent completed day — anchor point for missed-day counting
+  const lastComplete = [...history]
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .find((r) => r.allComplete);
+  if (!lastComplete) return 0;
+
+  // Count days between yesterday and lastComplete that have no completed record
   const today = getUtcDateString();
   let count = 0;
   let checkDate = getPreviousDateString(today);
 
   for (let i = 0; i < 7; i++) {
+    if (checkDate <= lastComplete.date) break; // reached the last completed day — stop
     const record = history.find((r) => r.date === checkDate);
-    if (!record) {
-      count++; // no record = missed day
-    } else if (!record.allComplete) {
-      count++;
-    } else {
-      break; // found a complete day, stop counting
-    }
+    if (!record || !record.allComplete) count++;
+    else break;
     checkDate = getPreviousDateString(checkDate);
   }
   return count;
@@ -163,7 +195,7 @@ export const useTasksStore = create<TasksState>()(
             !state.today.protocols ||
             state.today.protocols.some((p) => !p.quantity);
           if (needsProtocolBackfill) {
-            const fresh = buildDailyProtocols(currentDate);
+            const fresh = buildDailyProtocols({ dateStr: currentDate, scores: null, goals: null });
             const protocols: ProtocolTask[] = (state.today.protocols ?? []).map((existing) => {
               const updated = fresh.find((f) => f.id === existing.id);
               return updated ? { ...existing, quantity: updated.quantity } : existing;
@@ -208,6 +240,7 @@ export const useTasksStore = create<TasksState>()(
         }
 
         const recentExerciseIds = getRecentExerciseIds(history);
+        const recentProtocolIds = getRecentProtocolIds(history);
         const currentStreak = computeStreak(history);
         const consecutiveMissed = getConsecutiveMissed(history);
         const isNewUser = history.length === 0;
@@ -238,7 +271,13 @@ export const useTasksStore = create<TasksState>()(
 
         const focusSummary = summarizeFocusAreas(picks);
 
-        const protocols: ProtocolTask[] = buildDailyProtocols(currentDate).map((p) => ({
+        const protocolInput: ProtocolSelectionInput = {
+          dateStr: currentDate,
+          scores,
+          goals,
+          recentProtocolIds,
+        };
+        const protocols: ProtocolTask[] = buildDailyProtocols(protocolInput).map((p) => ({
           ...p,
           status: "pending" as ProtocolStatus,
         }));
@@ -267,12 +306,10 @@ export const useTasksStore = create<TasksState>()(
           t.exerciseId === exerciseId ? { ...t, status: "completed" as TaskStatus } : t
         );
 
-        // Check if all non-skipped tasks are completed
-        const allComplete = tasks
-          .filter((t) => t.status !== "skipped")
-          .every((t) => t.status === "completed");
+        // Day is complete once ≥ STREAK_THRESHOLD items (exercises + protocols) are done
+        const allComplete = countCompletedItems(tasks, state.today.protocols) >= STREAK_THRESHOLD;
 
-        // Only increment streak the very first time all tasks are completed today
+        // Only increment streak the very first time the threshold is reached today
         const alreadyCounted = state.today.completedOnce;
         const firstCompletion = allComplete && !alreadyCounted;
 
@@ -297,8 +334,9 @@ export const useTasksStore = create<TasksState>()(
           t.exerciseId === exerciseId ? { ...t, status: "pending" as TaskStatus } : t
         );
 
+        const allComplete = countCompletedItems(tasks, state.today.protocols) >= STREAK_THRESHOLD;
         set({
-          today: { ...state.today, tasks, allComplete: false },
+          today: { ...state.today, tasks, allComplete },
         });
       },
 
@@ -310,8 +348,9 @@ export const useTasksStore = create<TasksState>()(
           t.exerciseId === exerciseId ? { ...t, status: "skipped" as TaskStatus } : t
         );
 
+        const allComplete = countCompletedItems(tasks, state.today.protocols) >= STREAK_THRESHOLD;
         set({
-          today: { ...state.today, tasks, allComplete: false },
+          today: { ...state.today, tasks, allComplete },
         });
       },
 
@@ -321,7 +360,21 @@ export const useTasksStore = create<TasksState>()(
         const protocols = state.today.protocols.map((p) =>
           p.id === id ? { ...p, status: (done ? "done" : "pending") as ProtocolStatus } : p
         );
-        set({ today: { ...state.today, protocols } });
+
+        // Protocols also count toward the streak threshold
+        const allComplete = countCompletedItems(state.today.tasks, protocols) >= STREAK_THRESHOLD;
+        const alreadyCounted = state.today.completedOnce;
+        const firstCompletion = allComplete && !alreadyCounted;
+
+        set({
+          today: {
+            ...state.today,
+            protocols,
+            allComplete,
+            completedOnce: state.today.completedOnce || allComplete,
+          },
+          currentStreak: firstCompletion ? state.currentStreak + 1 : state.currentStreak,
+        });
       },
 
       setMood: (mood: string) => {
@@ -341,7 +394,7 @@ export const useTasksStore = create<TasksState>()(
     }),
     {
       name: "sigma_tasks_v1",
-      version: 6,
+      version: 7,
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({
         today: state.today,
@@ -401,6 +454,11 @@ export const useTasksStore = create<TasksState>()(
         // v5 → v6: added quantity field to ProtocolPick/ProtocolTask.
         // Wipe today so initToday regenerates with quantity populated.
         if (version <= 5 && persisted) {
+          persisted.today = null;
+        }
+        // v6 → v7: protocol selection is now score/goal-aware instead of date-rotation.
+        // Wipe today so existing users get a properly personalised protocol set on next open.
+        if (version <= 6 && persisted) {
           persisted.today = null;
         }
         return persisted as any;

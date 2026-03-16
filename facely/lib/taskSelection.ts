@@ -408,14 +408,18 @@ export function selectDailyTasks(input: SelectionInput): TaskPick[] {
   else if (_hasGoals)          tier = 3;
   else                         tier = 4;
 
-  // Tier 4: hardcoded fallback
+  // Tier 4: hardcoded starter set — used for new users (no scores, no goals yet)
+  // isNewUser is always true here in practice; keep the guard explicit for clarity.
   if (tier === 4) {
+    const newUserReason = input.isNewUser
+      ? "Perfect foundation exercise to start building your routine"
+      : "Great foundational exercise for all face areas";
     return UNIVERSAL_STARTER.map((id) => {
       const entry = EXERCISES_BY_ID.get(id)!;
       return {
         exerciseId: entry.id,
         name:       entry.name,
-        reason:     generateReason(entry, 4, null, null),
+        reason:     newUserReason,
         targets:    entry.targets,
         intensity:  entry.intensity,
       };
@@ -425,6 +429,13 @@ export function selectDailyTasks(input: SelectionInput): TaskPick[] {
   const recentSet = new Set(input.recentExerciseIds);
   const forceNeckCurls = shouldIncludeNeckCurlsToday(input.scores);
   const neckCurlsEntry = EXERCISES_BY_ID.get("neck-curls")!;
+
+  // Recovery mode: after 3+ consecutive missed days, progressively penalise
+  // high-intensity exercises so the returning user eases back in.
+  // missedPenalty goes from 0.8 (3 missed) down to 0.2 (7+ missed).
+  const missedPenalty = input.consecutiveMissed >= 3
+    ? Math.max(0.2, 1 - (input.consecutiveMissed - 2) * 0.2)
+    : 1;
 
   // Score all exercises except neck-curls (handled separately)
   const scored: ScoredExercise[] = EXERCISE_CATALOG
@@ -446,6 +457,8 @@ export function selectDailyTasks(input: SelectionInput): TaskPick[] {
       rank *= entry.weight / 7;
       // Small bonus for multi-target (more efficient sessions)
       if (entry.targets.length > 1 && !entry.targets.includes("all")) rank += 0.05;
+      // Recovery penalty: high-intensity exercises rank lower after missed days
+      if (entry.intensity === "high") rank *= missedPenalty;
 
       return { entry, rank };
     });
@@ -472,6 +485,8 @@ export function selectDailyTasks(input: SelectionInput): TaskPick[] {
     }
     neckRank *= recentSet.has("neck-curls") ? 0.5 : 1;
     neckRank *= neckCurlsEntry.weight / 7;
+    // neck-curls is high-intensity — apply recovery penalty in competition mode too
+    neckRank *= missedPenalty;
 
     scored.push({ entry: neckCurlsEntry, rank: neckRank });
     scored.sort((a, b) => b.rank - a.rank);

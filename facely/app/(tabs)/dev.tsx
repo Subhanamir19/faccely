@@ -21,7 +21,6 @@ import { ConsentModalInner } from "@/hooks/useAdvancedAnalysisConsent";
 // Constants
 // ---------------------------------------------------------------------------
 const CONSENT_KEY = "advanced_analysis_consent";
-const SCAN_GATE_BYPASS_KEY = "dev_bypass_scan_gate";
 
 const ONBOARDING_SCREENS: { label: string; route: string }[] = [
   { label: "Splash",           route: "/(onboarding)/splash" },
@@ -84,38 +83,15 @@ function SectionHeader({ title, subtitle }: { title: string; subtitle?: string }
 export default function DevScreen() {
   const [consentValue, setConsentValue] = useState<string | null | "…">("…");
   const [previewVisible, setPreviewVisible] = useState(false);
-  const [scanGateBypass, setScanGateBypass] = useState<boolean | null>(null);
 
   const refreshConsent = useCallback(async () => {
     const val = await AsyncStorage.getItem(CONSENT_KEY);
     setConsentValue(val);
   }, []);
 
-  const refreshScanGate = useCallback(async () => {
-    const val = await AsyncStorage.getItem(SCAN_GATE_BYPASS_KEY);
-    setScanGateBypass(val === "true");
-  }, []);
-
   useEffect(() => {
     void refreshConsent();
-    void refreshScanGate();
-  }, [refreshConsent, refreshScanGate]);
-
-  const handleToggleScanGate = async () => {
-    const next = !scanGateBypass;
-    if (next) {
-      await AsyncStorage.setItem(SCAN_GATE_BYPASS_KEY, "true");
-    } else {
-      await AsyncStorage.removeItem(SCAN_GATE_BYPASS_KEY);
-    }
-    setScanGateBypass(next);
-    Alert.alert(
-      next ? "Scan Gate Bypassed" : "Scan Gate Active",
-      next
-        ? "Weekly limit disabled — you can scan freely."
-        : "Weekly scan limit is now enforced."
-    );
-  };
+  }, [refreshConsent]);
 
   const handleResetConsent = async () => {
     await AsyncStorage.removeItem(CONSENT_KEY);
@@ -173,27 +149,6 @@ export default function DevScreen() {
               </TouchableOpacity>
             ))}
           </View>
-        </GlassCard>
-
-        {/* ── Scan Gate ──────────────────────────────────────────────── */}
-        <GlassCard style={styles.card}>
-          <SectionHeader
-            title="Scan Gate"
-            subtitle="Weekly rescan limit (7-day cooldown)"
-          />
-
-          <View style={styles.statusRow}>
-            <T style={styles.statusLabel}>Gate status</T>
-            <T style={[styles.statusValue, { color: scanGateBypass ? COLORS.accent : COLORS.sub }]}>
-              {scanGateBypass === null ? "Loading…" : scanGateBypass ? "BYPASSED" : "Active"}
-            </T>
-          </View>
-
-          <DevButton
-            label={scanGateBypass ? "✓ Bypass ON — tap to enforce" : "Bypass Gate (dev only)"}
-            accent={!!scanGateBypass}
-            onPress={handleToggleScanGate}
-          />
         </GlassCard>
 
         {/* ── Consent Modal ──────────────────────────────────────────── */}

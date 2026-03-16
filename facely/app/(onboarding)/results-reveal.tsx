@@ -257,10 +257,10 @@ const cr = StyleSheet.create({
 // Unlock Grid
 // ─────────────────────────────────────────────────────────────────────────────
 const GRID_ITEMS = [
-  { title: "Morning Routine",     subtitle: "Targeted exercises for your weakest areas",     Icon: Sun },
-  { title: "Evening Routine",     subtitle: "Recovery & muscle development exercises",        Icon: Moon },
-  { title: "Personalized Course", subtitle: "36 lessons tailored to your face structure",    Icon: BookOpen },
-  { title: "Daily Progress Scan", subtitle: "Track real changes with 3D analysis",           Icon: Scan },
+  { title: "Daily Workout",        subtitle: "Exercises targeted to your weakest metrics",    Icon: Sun },
+  { title: "Recovery Protocols",   subtitle: "Lifestyle, diet & skincare daily stack",        Icon: Moon },
+  { title: "Personalized Program", subtitle: "Routine built around your unique face data",    Icon: BookOpen },
+  { title: "Weekly Progress Scan", subtitle: "Measure real changes at your own pace",         Icon: Scan },
 ];
 
 function UnlockGrid() {
@@ -441,7 +441,7 @@ export default function ResultsRevealScreen() {
             )}
           </View>
           <View style={s.infoPill}>
-            <Text style={s.infoPillText}>35,000+ Faces Looksmaxxed With FaceKit</Text>
+            <Text style={s.infoPillText}>Thousands improving their look with Sigma Max</Text>
           </View>
         </View>
 

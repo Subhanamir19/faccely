@@ -29,9 +29,9 @@ export default function GenderScreen() {
   }, [selected]);
 
   const handleSkip = useCallback(() => {
-    // Don't store default for gender - it's optional
+    setField("gender", "Prefer not to say");
     router.push("/(onboarding)/age");
-  }, []);
+  }, [setField]);
 
   return (
     <OnboardingScreen

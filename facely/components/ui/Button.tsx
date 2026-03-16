@@ -128,7 +128,7 @@ export default function Button({
   // 3D base color — the dark "shadow" visible beneath the button face
   const getBaseColor = () => {
     if (isDisabled || isText) return "transparent";
-    if (isPrimary) return "#6B9A1E"; // dark olive-lime
+    if (isPrimary) return COLORS.accentDepth;
     if (isSecondary) return "#0A0A0A";
     if (isGhost) return "#1A1A1A";
     return "transparent";

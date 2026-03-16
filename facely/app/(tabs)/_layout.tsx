@@ -12,7 +12,7 @@ const BORDER = "rgba(255,255,255,0.06)";
 export default function TabsLayout() {
   return (
     <Tabs
-      initialRouteName="take-picture"
+      initialRouteName="program"
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: ACTIVE,
@@ -34,21 +34,21 @@ export default function TabsLayout() {
         },
       }}
     >
-      {/* Tab 1: scan */}
-      <Tabs.Screen
-        name="take-picture"
-        options={{
-          title: "scan",
-          tabBarIcon: ({ color, size }) => <Scan color={color} size={size ?? 22} />,
-        }}
-      />
-
-      {/* Tab 2: daily */}
+      {/* Tab 1: daily — primary daily action */}
       <Tabs.Screen
         name="program"
         options={{
           title: "daily",
           tabBarIcon: ({ color, size }) => <CircleCheckBig color={color} size={size ?? 22} />,
+        }}
+      />
+
+      {/* Tab 2: scan — periodic, not daily */}
+      <Tabs.Screen
+        name="take-picture"
+        options={{
+          title: "scan",
+          tabBarIcon: ({ color, size }) => <Scan color={color} size={size ?? 22} />,
         }}
       />
 
@@ -76,10 +76,11 @@ export default function TabsLayout() {
       {/* coach — hidden from tab bar */}
       <Tabs.Screen name="sigma" options={{ href: null }} />
 
-      {/* dev tab */}
+      {/* dev tab — hidden in production builds, visible in dev only */}
       <Tabs.Screen
         name="dev"
         options={{
+          href: null,
           title: "dev",
           tabBarIcon: ({ color, size }) => <Code2 color={color} size={size ?? 22} />,
         }}

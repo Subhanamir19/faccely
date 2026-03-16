@@ -250,6 +250,10 @@ export default function LoadingScreen() {
           return;
         }
 
+        // Fire explainPair in background so dashboard has full sub-metric
+        // data ready by the time user navigates there. User doesn't wait.
+        explainPair(frontMeta.uri, sideMeta.uri, scores).catch(() => {});
+
         setIsLoading(false);
         router.replace({
           pathname: "/(tabs)/score",

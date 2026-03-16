@@ -343,9 +343,7 @@ const DayCompleteModal: React.FC<DayCompleteModalProps> = ({
           {/* Day complete title */}
           <Animated.View style={[styles.titleContainer, titleStyle]}>
             <Text style={styles.titleText}>All Tasks Complete!</Text>
-            {streak != null && streak > 1 ? (
-              <Text style={styles.streakText}>🔥 {streak} day streak!</Text>
-            ) : null}
+            <Text style={styles.streakText}>🔥 {streak ?? 0} day streak!</Text>
           </Animated.View>
 
           {/* Typewriter motivational text */}

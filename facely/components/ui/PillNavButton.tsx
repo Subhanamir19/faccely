@@ -86,7 +86,7 @@ const styles = StyleSheet.create({
   depthWrap: {
     flex: 1,
     borderRadius: 30,
-    backgroundColor: "#6B9A1E",
+    backgroundColor: COLORS.accentDepth,
     paddingBottom: 5,
     shadowColor: "#B4F34D",
     shadowOpacity: 0.5,

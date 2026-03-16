@@ -173,6 +173,7 @@ function SubmetricRow({
   score,
   isLast,
   index,
+  error,
 }: {
   label: string;
   emoji: string;
@@ -180,6 +181,7 @@ function SubmetricRow({
   score: number | undefined;
   isLast: boolean;
   index: number;
+  error?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [typedText, setTypedText] = useState("");
@@ -299,12 +301,19 @@ function SubmetricRow({
         </Animated.View>
       )}
 
-      {/* Shimmer rows while loading */}
-      {!hasData && (
+      {/* Shimmer — only while genuinely loading, never on error */}
+      {!hasData && !error && (
         <View style={[styles.shimmerWrap, { marginTop: sh(6) }]}>
           <ShimmerLine width="88%" delay={index * 110} />
           <ShimmerLine width="60%" delay={index * 110 + 140} />
         </View>
+      )}
+
+      {/* Static placeholder when fetch failed and no commentary cached */}
+      {!hasData && error && (
+        <Text style={{ fontSize: 12, fontFamily: "Poppins-SemiBold", color: "rgba(255,255,255,0.20)", marginTop: 4 }}>
+          Unavailable — tap Retry above
+        </Text>
       )}
     </Animated.View>
   );
@@ -452,6 +461,7 @@ function CategoryCard({
               score={groupData?.[sm.key + "_score"] as number | undefined}
               isLast={i === group.submetrics.length - 1}
               index={i}
+              error={!!error}
             />
           ))
         )}

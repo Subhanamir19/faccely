@@ -118,7 +118,7 @@ export default function ScoreProjectionScreen() {
 
   const handleContinue = useCallback(() => {
     hapticSuccess();
-    router.push("/(onboarding)/paywall");
+    router.push("/(auth)/login");
   }, []);
 
   return (
@@ -223,7 +223,7 @@ export default function ScoreProjectionScreen() {
                   fill={COLORS.accent}
                   textAnchor="end"
                 >
-                  +32 pts
+                  +14 pts
                 </SvgText>
                 <SvgText
                   x={W - 8}
@@ -260,7 +260,7 @@ export default function ScoreProjectionScreen() {
 
         {/* ── Stat badge ── */}
         <Animated.View entering={FadeInDown.duration(400).delay(360)} style={styles.statBadge}>
-          <Text style={styles.statNumber}>+32 points</Text>
+          <Text style={styles.statNumber}>+14 points</Text>
           <Text style={styles.statText}>
             avg score improvement for users completing{" "}
             <Text style={styles.statBold}>80%+</Text> of daily tasks

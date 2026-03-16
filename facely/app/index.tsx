@@ -149,7 +149,7 @@ export default function IndexGate() {
   // Subscribed user — go straight to main app regardless of local onboarding data.
   // (On a reinstall/new device, age/gender won't be in local store but user is paid.)
   if (hasAccess) {
-    return <Redirect href="/(tabs)/take-picture" />;
+    return <Redirect href="/(tabs)/program" />;
   }
 
   // RC timed out — we can't confirm subscription status. Don't punish a returning

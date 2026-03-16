@@ -5,9 +5,9 @@ import { View, Text, Pressable, Platform, ActivityIndicator } from "react-native
 import { LinearGradient } from "expo-linear-gradient";
 import { COLORS } from "@/lib/tokens";
 
-const ACCENT       = COLORS.accent;       // #B4F34D
+const ACCENT       = COLORS.accent;
 const ACCENT_LIGHT = "#CCFF6B";
-const BASE         = "#6B9A1E";           // dark-olive shadow base
+const BASE         = COLORS.accentDepth;  // 3D button shadow base
 const BG_DARK      = "#0B0B0B";
 const DEPTH        = 5;
 

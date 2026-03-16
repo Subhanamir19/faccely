@@ -15,6 +15,7 @@ import {
 } from "../lib/api/analysis";
 import { mapBackendErrorToUserMessage } from "../lib/api/client";
 import { useInsights } from "./insights";
+import { useAdvancedAnalysis } from "./advancedAnalysis";
 
 type InputFile = string | { uri: string; name?: string; mime?: string };
 
@@ -250,6 +251,8 @@ export const useScores = create<State & Actions>((set, get) => ({
           ...deriveLegacyFlags(requests),
         };
       });
+      // New scan saved to DB — dashboard data is now stale
+      useInsights.getState().invalidate();
       return s;
     } catch (err) {
       const friendlyMessage = mapBackendErrorToUserMessage(err, "analyze");
@@ -368,6 +371,8 @@ export const useScores = create<State & Actions>((set, get) => ({
         };
       });
       useInsights.getState().invalidate();
+      // Kick off advanced analysis in the background so dashboard has sub-metric data
+      useAdvancedAnalysis.getState().fetch().catch(() => {});
       return true;
     } catch (e: any) {
       const message = mapBackendErrorToUserMessage(e, "explain");

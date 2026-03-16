@@ -40,7 +40,7 @@ export default function GlassBtn({
     );
   }
 
-  const baseColor = isPrimary ? "#6B9A1E" : "#1A1A1A";
+  const baseColor = isPrimary ? COLORS.accentDepth : "#1A1A1A";
 
   return (
     <View style={[styles.pressable, { marginHorizontal: 6 }]}>

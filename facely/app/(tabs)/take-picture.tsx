@@ -643,6 +643,7 @@ export default function TakePicture() {
               fontSize: 24,
               lineHeight: 28,
               marginBottom: 16,
+              textAlign: "center",
               fontFamily: Platform.select({
                 ios: "Poppins-SemiBold",
                 android: "Poppins-SemiBold",
@@ -672,6 +673,7 @@ export default function TakePicture() {
               marginTop: 12,
               color: TEXT_DIM,
               fontSize: 13,
+              textAlign: "center",
               fontFamily: Platform.select({
                 ios: "Poppins-Regular",
                 android: "Poppins-Regular",
@@ -820,7 +822,7 @@ export default function TakePicture() {
 
       {/* Chooser modal */}
       <Modal transparent visible={chooserOpen} animationType="fade" onRequestClose={() => setChooserOpen(false)}>
-        <Pressable style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center" }} onPress={() => setChooserOpen(false)}>
+        <Pressable style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.80)", justifyContent: "center" }} onPress={() => setChooserOpen(false)}>
           <View
             style={{
               marginHorizontal: 32,
@@ -871,55 +873,38 @@ export default function TakePicture() {
               <Svg pointerEvents="none" style={StyleSheet.absoluteFill} width={window.width} height={window.height}>
                 <FaceMeshOverlay
                   cx={window.width / 2}
-                  cy={window.height * 0.42}
+                  cy={window.height * 0.36}
                   rx={window.width * 0.33}
-                  ry={window.height * 0.27}
+                  ry={window.height * 0.26}
                 />
                 <Ellipse
                   cx={window.width / 2}
-                  cy={window.height * 0.42}
+                  cy={window.height * 0.36}
                   rx={window.width * 0.33}
-                  ry={window.height * 0.27}
-                  stroke="#4DD9FF"
+                  ry={window.height * 0.26}
+                  stroke={ACCENT}
                   strokeWidth={3}
                   fill="none"
                 />
               </Svg>
 
-              {/* Hold Steady card — top */}
+              {/* Instruction label — lightweight, no card background */}
               <View
                 pointerEvents="none"
                 style={{
                   position: "absolute",
-                  top: 52,
-                  left: 20,
-                  right: 20,
-                  backgroundColor: "rgba(38,34,28,0.86)",
-                  borderRadius: 20,
-                  paddingHorizontal: 20,
-                  paddingVertical: 18,
+                  top: 56,
+                  left: 0,
+                  right: 0,
                   alignItems: "center",
                 }}
               >
-                {/* Scan brackets */}
-                <View style={{ width: 38, height: 38, marginBottom: 10, position: "relative" }}>
-                  <View style={{ position: "absolute", top: 0, left: 0, width: 12, height: 12, borderTopWidth: 2.5, borderLeftWidth: 2.5, borderColor: "#fff" }} />
-                  <View style={{ position: "absolute", top: 0, right: 0, width: 12, height: 12, borderTopWidth: 2.5, borderRightWidth: 2.5, borderColor: "#fff" }} />
-                  <View style={{ position: "absolute", bottom: 0, left: 0, width: 12, height: 12, borderBottomWidth: 2.5, borderLeftWidth: 2.5, borderColor: "#fff" }} />
-                  <View style={{ position: "absolute", bottom: 0, right: 0, width: 12, height: 12, borderBottomWidth: 2.5, borderRightWidth: 2.5, borderColor: "#fff" }} />
-                </View>
-                <Text style={{ color: "#fff", fontSize: 22, fontFamily: "Poppins-SemiBold", marginBottom: 4 }}>
+                <Text style={{ color: "#fff", fontSize: 20, fontFamily: "Poppins-SemiBold", textShadowColor: "rgba(0,0,0,0.6)", textShadowRadius: 6, textShadowOffset: { width: 0, height: 1 } }}>
                   {pose === "frontal" ? "Hold Steady" : "Turn to your side"}
                 </Text>
-                <Text style={{ color: "rgba(255,255,255,0.72)", fontSize: 13, fontFamily: "Poppins-Regular", textAlign: "center", marginBottom: 14 }}>
+                <Text style={{ color: "rgba(255,255,255,0.65)", fontSize: 13, fontFamily: "Poppins-Regular", marginTop: 4, textShadowColor: "rgba(0,0,0,0.6)", textShadowRadius: 4, textShadowOffset: { width: 0, height: 1 } }}>
                   {pose === "frontal" ? "Keep your face centered and still" : "Align your profile with the oval"}
                 </Text>
-                {/* Progress bars */}
-                <View style={{ flexDirection: "row", gap: 8, width: "82%" }}>
-                  {[0, 1, 2, 3].map((i) => (
-                    <View key={i} style={{ flex: 1, height: 5, borderRadius: 3, backgroundColor: "#4CAF50" }} />
-                  ))}
-                </View>
               </View>
 
               {/* Bottom controls */}

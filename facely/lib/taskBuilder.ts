@@ -1,13 +1,13 @@
 // facely/lib/taskBuilder.ts
-// Builds the daily routine — 5 facial exercises, score-driven selection.
-// Also selects 2 daily protocols (1 lifestyle + 1 dietary) based on UTC date.
+// Builds the daily routine — 5 facial exercises + 2 protocols, both score/goal-driven.
 
 import {
   selectDailyTasks,
   type SelectionInput,
   type TaskPick,
+  type ScoreField,
 } from "./taskSelection";
-import { PROTOCOL_CATALOG, type ProtocolType } from "./protocolCatalog";
+import { PROTOCOL_CATALOG, type ProtocolType, type ProtocolEntry } from "./protocolCatalog";
 
 export type RoutineTaskPick = TaskPick & {
   protocolType: "facial_exercise";
@@ -19,8 +19,24 @@ export type BuildInput = SelectionInput & {
   skinScore?: number | null;
 };
 
+export type ProtocolSelectionInput = {
+  dateStr: string;
+  scores: Partial<Record<ScoreField, number>> | null;
+  goals: string[] | null;
+  /** IDs of protocols completed in the past 2 days — used for freshness rotation */
+  recentProtocolIds?: string[];
+};
+
+export type ProtocolPick = {
+  id: string;
+  name: string;
+  type: ProtocolType;
+  quantity: string;
+  reason: string;
+};
+
 // ---------------------------------------------------------------------------
-// Progressive overload tier (UI label only — no logic change needed)
+// Progressive overload tier (UI label only)
 // ---------------------------------------------------------------------------
 
 function computeOverloadTier(streak: number): number {
@@ -36,38 +52,20 @@ function getOverloadLabel(tier: number): string {
 }
 
 // ---------------------------------------------------------------------------
-// Main builder — returns exactly 5 exercises
+// Protocol selection — score/goal-aware
 // ---------------------------------------------------------------------------
 
-// ---------------------------------------------------------------------------
-// Daily protocol selection — 1 lifestyle + 1 dietary, deterministic from date
-// ---------------------------------------------------------------------------
+const BENCHMARK = 80;
 
-export type ProtocolPick = {
-  id: string;
-  name: string;
-  type: ProtocolType;
-  quantity: string;
-  reason: string;
+const GOAL_TO_SCORE_FIELDS_PROTO: Partial<Record<string, ScoreField[]>> = {
+  jawline:    ["jawline", "sexual_dimorphism"],
+  cheekbones: ["cheekbones"],
+  symmetry:   ["facial_symmetry"],
+  skin:       ["skin_quality"],
+  eyes:       ["eyes_symmetry"],
+  overall:    ["jawline", "cheekbones", "eyes_symmetry", "nose_harmony",
+               "facial_symmetry", "skin_quality", "sexual_dimorphism"],
 };
-
-const DAILY_LIFESTYLE_IDS = [
-  "sprint-session",
-  "facial-icing",
-  "high-intensity-exercise",
-] as const;
-
-const DAILY_DIETARY_IDS = [
-  "lemon-electrolytes",
-  "egg-yolk-banana",
-  "black-raisins",
-  "raw-banana",
-  "beef-liver",
-  "red-meat",
-  "unsalted-cheese",
-  "ashwagandha",
-  "raw-milk",
-] as const;
 
 function dayOfYear(dateStr: string): number {
   const d = new Date(dateStr + "T00:00:00Z");
@@ -75,18 +73,150 @@ function dayOfYear(dateStr: string): number {
   return Math.floor((d.getTime() - start.getTime()) / 86_400_000);
 }
 
-export function buildDailyProtocols(dateStr: string): ProtocolPick[] {
-  const day = dayOfYear(dateStr);
-  const lifestyleId = DAILY_LIFESTYLE_IDS[day % DAILY_LIFESTYLE_IDS.length];
-  const dietaryId   = DAILY_DIETARY_IDS[day % DAILY_DIETARY_IDS.length];
-  return [lifestyleId, dietaryId].map((id) => {
-    const entry = PROTOCOL_CATALOG.find((p) => p.id === id)!;
-    return { id: entry.id, name: entry.name, type: entry.type, quantity: entry.quantity, reason: entry.reason };
-  });
+/**
+ * A protocol is eligible if at least one trigger condition is satisfied,
+ * or if it is marked always=true.
+ */
+function isEligible(
+  entry: ProtocolEntry,
+  scores: Partial<Record<ScoreField, number>> | null,
+  goals: string[] | null,
+): boolean {
+  if (entry.always) return true;
+
+  if (entry.scoreTrigger && scores) {
+    const val = scores[entry.scoreTrigger.field];
+    if (typeof val === "number" && val > 0 && val < entry.scoreTrigger.below) return true;
+  }
+
+  if (entry.goalTrigger && goals?.length) {
+    if (goals.some((g) => entry.goalTrigger!.includes(g))) return true;
+  }
+
+  return false;
+}
+
+/**
+ * Score a single protocol entry for the given user context.
+ *
+ * Priority stack (additive):
+ *   +2..3  scoreTrigger fired (scaled by how severe the gap is)
+ *   +1     goalTrigger matched
+ *   +0.5   always (baseline) + score-gap bonus
+ *   +0.3   goal-field alignment bonus
+ *   ×0.4   freshness penalty if completed in the last 2 days
+ *   +tiny  deterministic day-hash tiebreaker to rotate tied entries
+ */
+function scoreProtocol(
+  entry: ProtocolEntry,
+  scores: Partial<Record<ScoreField, number>> | null,
+  goals: string[] | null,
+  dateSlot: number,
+  recentIds: Set<string>,
+): number {
+  let rank = 0;
+
+  // Score-trigger: boost proportional to how far below the threshold the user is
+  if (entry.scoreTrigger && scores) {
+    const val = scores[entry.scoreTrigger.field];
+    if (typeof val === "number" && val > 0 && val < entry.scoreTrigger.below) {
+      const severity = (entry.scoreTrigger.below - val) / entry.scoreTrigger.below;
+      rank += 2 + severity;
+    }
+  }
+
+  // Goal-trigger: direct goal match
+  if (entry.goalTrigger && goals?.length) {
+    if (goals.some((g) => entry.goalTrigger!.includes(g))) {
+      rank += 1;
+    }
+  }
+
+  // Always: give a base rank + bonus for how misaligned the user's scores are
+  if (entry.always) {
+    rank += 0.5;
+    if (scores) {
+      let totalGap = 0, count = 0;
+      for (const f of entry.scoreFields) {
+        const v = scores[f];
+        if (typeof v === "number" && v > 0) {
+          totalGap += Math.max(0, BENCHMARK - v) / BENCHMARK;
+          count++;
+        }
+      }
+      if (count > 0) rank += (totalGap / count) * 0.5;
+    }
+  }
+
+  // Goal-field alignment bonus (even for entries without explicit goalTrigger)
+  if (goals?.length) {
+    const goalFields = new Set<ScoreField>();
+    for (const g of goals) {
+      const mapped = GOAL_TO_SCORE_FIELDS_PROTO[g];
+      if (mapped) mapped.forEach((f) => goalFields.add(f));
+    }
+    if (entry.scoreFields.some((f) => goalFields.has(f))) rank += 0.3;
+  }
+
+  // Freshness penalty — halve rank if seen in the last 2 days
+  if (recentIds.has(entry.id)) rank *= 0.4;
+
+  // Deterministic per-entry tiebreaker so tied protocols rotate across days
+  const idHash = entry.id.split("").reduce((a, c) => a + c.charCodeAt(0), 0);
+  rank += ((dateSlot + idHash) % 7) * 0.01;
+
+  return rank;
+}
+
+function pickBestFromPool(
+  pool: ProtocolEntry[],
+  scores: Partial<Record<ScoreField, number>> | null,
+  goals: string[] | null,
+  dateSlot: number,
+  recentIds: Set<string>,
+): ProtocolEntry {
+  return pool
+    .map((e) => ({ entry: e, rank: scoreProtocol(e, scores, goals, dateSlot, recentIds) }))
+    .sort((a, b) => b.rank - a.rank)[0].entry;
+}
+
+/**
+ * Selects 1 lifestyle/skincare protocol + 1 dietary protocol for the day.
+ * Both are chosen based on the user's scores, goals, and recent history.
+ */
+export function buildDailyProtocols(input: ProtocolSelectionInput): ProtocolPick[] {
+  const { dateStr, scores, goals, recentProtocolIds = [] } = input;
+  const dateSlot = dayOfYear(dateStr);
+  const recentIds = new Set(recentProtocolIds);
+
+  // Skincare and lifestyle share the first slot — both are "habit" type actions
+  const habitPool = PROTOCOL_CATALOG.filter(
+    (p) => (p.type === "lifestyle" || p.type === "skincare") && isEligible(p, scores, goals),
+  );
+  const dietaryPool = PROTOCOL_CATALOG.filter(
+    (p) => p.type === "dietary" && isEligible(p, scores, goals),
+  );
+
+  // Safety fallbacks — should never be needed given the always=true entries in catalog
+  const habitFallback = PROTOCOL_CATALOG.filter(
+    (p) => p.type === "lifestyle" || p.type === "skincare",
+  );
+  const dietaryFallback = PROTOCOL_CATALOG.filter((p) => p.type === "dietary");
+
+  const habit   = pickBestFromPool(habitPool.length   > 0 ? habitPool   : habitFallback,   scores, goals, dateSlot, recentIds);
+  const dietary = pickBestFromPool(dietaryPool.length > 0 ? dietaryPool : dietaryFallback, scores, goals, dateSlot, recentIds);
+
+  return [habit, dietary].map((e) => ({
+    id:       e.id,
+    name:     e.name,
+    type:     e.type,
+    quantity: e.quantity,
+    reason:   e.reason,
+  }));
 }
 
 // ---------------------------------------------------------------------------
-// Main builder — returns exactly 5 exercises
+// buildDailyRoutine — returns exactly 5 exercises
 // ---------------------------------------------------------------------------
 
 export function buildDailyRoutine(input: BuildInput): RoutineTaskPick[] {

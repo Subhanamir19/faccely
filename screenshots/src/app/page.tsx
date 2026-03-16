@@ -200,12 +200,12 @@ function Slide1() {
         />
       </div>
 
-      {/* Phone — centered, bleeds off bottom */}
+      {/* Phone — centered, slight bleed */}
       <div style={{ position: "relative", zIndex: 10, flex: 1, display: "flex", justifyContent: "center", alignItems: "flex-end" }}>
         <Phone
           src="/ss/hero.jpeg"
           alt="Sigma Max hero"
-          style={{ width: W * 0.85, transform: `translateY(${H * 0.09}px)` }}
+          style={{ width: W * 0.76, transform: `translateY(${H * 0.03}px)` }}
         />
       </div>
     </div>
@@ -249,7 +249,7 @@ function Slide2() {
         <Phone
           src="/ss/scan.png"
           alt="Face scan"
-          style={{ width: W * 0.82, transform: `translateY(${H * 0.1}px)` }}
+          style={{ width: W * 0.76, transform: `translateY(${H * 0.03}px)` }}
         />
       </div>
     </div>
@@ -293,7 +293,7 @@ function Slide3() {
         <Phone
           src="/ss/routine.jpeg"
           alt="Daily routine"
-          style={{ width: W * 0.83, transform: `translateX(${W * 0.04}px) translateY(${H * 0.1}px)` }}
+          style={{ width: W * 0.76, transform: `translateX(${W * 0.03}px) translateY(${H * 0.03}px)` }}
         />
       </div>
     </div>

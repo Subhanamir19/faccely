@@ -98,38 +98,13 @@ function SkinIcon({ color }: { color: string }) {
   );
 }
 
-function MorningIcon({ color }: { color: string }) {
-  return (
-    <Svg width={S} height={S} viewBox="0 0 26 26">
-      {/* Horizon line */}
-      <Line x1="2" y1="18" x2="24" y2="18" stroke={color} strokeWidth="1.4" strokeLinecap="round" />
-      {/* Half-sun arc */}
-      <Path
-        d="M 5 18 A 8 8 0 0 1 21 18"
-        fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round"
-      />
-      {/* Rays above horizon */}
-      <Line x1="13" y1="2"  x2="13" y2="5"  stroke={color} strokeWidth="1.5" strokeLinecap="round" />
-      <Line x1="5"  y1="6"  x2="7"  y2="8"  stroke={color} strokeWidth="1.5" strokeLinecap="round" />
-      <Line x1="21" y1="6"  x2="19" y2="8"  stroke={color} strokeWidth="1.5" strokeLinecap="round" />
-      <Line x1="2"  y1="11" x2="4"  y2="12" stroke={color} strokeWidth="1.3" strokeLinecap="round" />
-      <Line x1="24" y1="11" x2="22" y2="12" stroke={color} strokeWidth="1.3" strokeLinecap="round" />
-    </Svg>
-  );
-}
 
-function EveningIcon({ color }: { color: string }) {
+function ProtocolStackIcon({ color }: { color: string }) {
   return (
     <Svg width={S} height={S} viewBox="0 0 26 26">
-      {/* Crescent moon — outer arc */}
-      <Path
-        d="M 20 8 A 10 10 0 1 1 8 20 A 7 7 0 0 0 20 8 Z"
-        fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
-      />
-      {/* Stars */}
-      <Ellipse cx="21" cy="5"  rx="1.2" ry="1.2" fill={color} />
-      <Ellipse cx="24" cy="11" rx="0.8" ry="0.8" fill={color} opacity="0.7" />
-      <Ellipse cx="18" cy="2"  rx="0.7" ry="0.7" fill={color} opacity="0.5" />
+      <Path d="M 4 8 L 13 4 L 22 8 L 13 12 Z" fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
+      <Path d="M 4 13 L 13 17 L 22 13" fill="none" stroke={color} strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" opacity="0.75" />
+      <Path d="M 4 18 L 13 22 L 22 18" fill="none" stroke={color} strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round" opacity="0.45" />
     </Svg>
   );
 }
@@ -159,12 +134,11 @@ type ItemDef = {
 };
 
 const ITEMS: ItemDef[] = [
-  { label: "Jawline Improvement",  sub: "12 exercises",  color: "#FF8C42", Icon: JawlineIcon    },
-  { label: "Facial Harmony",       sub: "8 exercises",   color: "#8B5CF6", Icon: HarmonyIcon    },
-  { label: "Facial Angularity",    sub: "10 exercises",  color: "#3B82F6", Icon: AngularityIcon },
-  { label: "Skin Enhancement",     sub: "6 techniques",  color: "#10B981", Icon: SkinIcon       },
-  { label: "Morning Protocol",     sub: "5 min / day",   color: "#F59E0B", Icon: MorningIcon    },
-  { label: "Evening Exercises",    sub: "10 min / day",  color: "#60A5FA", Icon: EveningIcon    },
+  { label: "Jawline Training",        sub: "Structural jaw exercises",    color: "#FF8C42", Icon: JawlineIcon       },
+  { label: "Cheekbone & Structure",   sub: "Midface definition work",     color: "#8B5CF6", Icon: HarmonyIcon       },
+  { label: "Facial Angularity",       sub: "Bone structure exercises",    color: "#3B82F6", Icon: AngularityIcon    },
+  { label: "Skin & Complexion",       sub: "Skincare protocols",          color: "#10B981", Icon: SkinIcon          },
+  { label: "Daily Protocol Stack",    sub: "Lifestyle & habit protocols", color: "#F59E0B", Icon: ProtocolStackIcon },
 ];
 
 /* ─── Timing ─────────────────────────────────────────────────────────── */
@@ -225,7 +199,7 @@ export default function BuildingPlanScreen() {
     hapticSuccess();
     if (devPreview) {
       setDevPreview(false);
-      router.replace("/(tabs)/take-picture");
+      router.replace("/(tabs)/program");
     } else {
       router.push("/(auth)/login");
     }
