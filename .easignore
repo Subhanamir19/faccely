@@ -1,0 +1,5 @@
+.agents
+screenshots
+.git
+*.log
+.DS_Store

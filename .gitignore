@@ -7,3 +7,7 @@ npm-cache-*/
 
 # Local agent settings
 .claude/settings.local.json
+
+# Skills/agents (contain symlinks that break EAS build uploads)
+.agents/
+screenshots/
