@@ -27,6 +27,7 @@ import { COLORS, RADII, SP } from "@/lib/tokens";
 import { ms, sw, sh } from "@/lib/responsive";
 import { useScores } from "@/store/scores";
 import { useAdvancedAnalysis } from "@/store/advancedAnalysis";
+import { useAdvancedAnalysisConsent } from "@/hooks/useAdvancedAnalysisConsent";
 import { router } from "expo-router";
 import type { AdvancedAnalysis } from "@/lib/api/advancedAnalysis";
 
@@ -532,6 +533,7 @@ export default function AnalysisScreen() {
 
   const { scores, imageUri } = useScores();
   const { data, loading, error, fetch } = useAdvancedAnalysis();
+  const { checkAndPromptConsent, ConsentModal } = useAdvancedAnalysisConsent();
 
   const hasScores = !!scores && !!imageUri;
   const isFirst = idx === 0;
@@ -552,13 +554,16 @@ export default function AnalysisScreen() {
     transform: [{ scale: badgeScale.value }],
   }));
 
-  // Fetch on every tab focus — catches: first mount, back-navigation, new scan
+  // Fetch on every tab focus — catches: first mount, back-navigation, new scan.
+  // Consent is required once (Apple Guidelines 5.1.1/5.1.2) before the API fires.
   useFocusEffect(
     useCallback(() => {
       if (hasScores && !data && !loading) {
-        fetch();
+        checkAndPromptConsent().then((agreed) => {
+          if (agreed) fetch();
+        });
       }
-    }, [hasScores, data, loading])
+    }, [hasScores, data, loading, checkAndPromptConsent])
   );
 
   const goTo = useCallback((page: number) => {
@@ -624,6 +629,9 @@ export default function AnalysisScreen() {
             })}
           </PagerView>
         )}
+
+        {/* Consent modal — shown once before first analysis fetch */}
+        <ConsentModal />
 
         {/* ── Footer nav ── */}
         {hasScores && (
