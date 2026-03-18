@@ -8,6 +8,8 @@ import { buildDailyRoutine, buildDailyProtocols, type RoutineTaskPick, type Prot
 import type { ProtocolType } from "@/lib/protocolCatalog";
 import { summarizeFocusAreas } from "@/lib/taskSelection";
 import { logger } from '@/lib/logger';
+import { getLocalDateString } from "@/lib/time/nextMidnight";
+import { syncTaskHistory, syncStreak, flushSyncQueue, fetchAndMergeStreak } from "@/lib/supabase/taskSync";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -30,13 +32,14 @@ export type ProtocolTask = {
 };
 
 export type DayRecord = {
-  date: string; // "YYYY-MM-DD" UTC
+  date: string; // "YYYY-MM-DD" in device local timezone
   tasks: DailyTask[];
   protocols: ProtocolTask[];
   mood: string | null;
-  allComplete: boolean;
-  completedOnce: boolean; // true once all tasks are checked off for the first time today
-  focusSummary: string; // e.g. "jawline & cheekbones"
+  allComplete: boolean;   // true only when EVERY exercise AND protocol is done
+  streakEarned: boolean;  // sticky — true once countCompleted >= STREAK_THRESHOLD (2)
+  completedOnce: boolean; // sticky version of allComplete — prevents modal showing twice
+  focusSummary: string;   // e.g. "jawline & cheekbones"
 };
 
 type TasksState = {
@@ -60,7 +63,7 @@ type TasksState = {
 // ---------------------------------------------------------------------------
 
 /** Minimum combined completions (exercises + protocols) to count as a streak day */
-const STREAK_THRESHOLD = 3;
+const STREAK_THRESHOLD = 2;
 
 function countCompletedItems(tasks: DailyTask[], protocols: ProtocolTask[]): number {
   return (
@@ -69,12 +72,12 @@ function countCompletedItems(tasks: DailyTask[], protocols: ProtocolTask[]): num
   );
 }
 
-function getUtcDateString(d?: Date): string {
-  const now = d ?? new Date();
-  const y = now.getUTCFullYear();
-  const m = String(now.getUTCMonth() + 1).padStart(2, "0");
-  const day = String(now.getUTCDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+function getUid(): string | null {
+  try {
+    return (require("./auth").useAuthStore.getState() as any).uid ?? null;
+  } catch {
+    return null;
+  }
 }
 
 function computeStreak(history: DayRecord[]): number {
@@ -83,7 +86,7 @@ function computeStreak(history: DayRecord[]): number {
   // Sort history by date descending
   const sorted = [...history].sort((a, b) => b.date.localeCompare(a.date));
 
-  const today = getUtcDateString();
+  const today = getLocalDateString();
   let expectedDate = today;
 
   for (const record of sorted) {
@@ -93,7 +96,7 @@ function computeStreak(history: DayRecord[]): number {
     // Walk backwards day by day
     const prevDay = getPreviousDateString(expectedDate);
     if (record.date !== prevDay) break; // gap in dates = streak broken
-    if (!record.allComplete) break; // incomplete day = streak broken
+    if (!record.streakEarned) break; // didn't hit threshold = streak broken
     streak++;
     expectedDate = prevDay;
   }
@@ -102,13 +105,14 @@ function computeStreak(history: DayRecord[]): number {
 }
 
 function getPreviousDateString(dateStr: string): string {
-  const d = new Date(dateStr + "T00:00:00Z");
-  d.setUTCDate(d.getUTCDate() - 1);
-  return getUtcDateString(d);
+  const [y, m, day] = dateStr.split("-").map(Number);
+  // Construct as local midnight then subtract one day
+  const d = new Date(y, m - 1, day - 1);
+  return getLocalDateString(d);
 }
 
 function getRecentExerciseIds(history: DayRecord[]): string[] {
-  const today = getUtcDateString();
+  const today = getLocalDateString();
   const yesterday = getPreviousDateString(today);
   const dayBefore = getPreviousDateString(yesterday);
   const recentDates = new Set([yesterday, dayBefore]);
@@ -127,7 +131,7 @@ function getRecentExerciseIds(history: DayRecord[]): string[] {
 }
 
 function getRecentProtocolIds(history: DayRecord[]): string[] {
-  const today = getUtcDateString();
+  const today = getLocalDateString();
   const yesterday = getPreviousDateString(today);
   const dayBefore = getPreviousDateString(yesterday);
   const recentDates = new Set([yesterday, dayBefore]);
@@ -149,18 +153,18 @@ function getConsecutiveMissed(history: DayRecord[]): number {
   // Find the most recent completed day — anchor point for missed-day counting
   const lastComplete = [...history]
     .sort((a, b) => b.date.localeCompare(a.date))
-    .find((r) => r.allComplete);
+    .find((r) => r.streakEarned);
   if (!lastComplete) return 0;
 
   // Count days between yesterday and lastComplete that have no completed record
-  const today = getUtcDateString();
+  const today = getLocalDateString();
   let count = 0;
   let checkDate = getPreviousDateString(today);
 
   for (let i = 0; i < 7; i++) {
     if (checkDate <= lastComplete.date) break; // reached the last completed day — stop
     const record = history.find((r) => r.date === checkDate);
-    if (!record || !record.allComplete) count++;
+    if (!record || !record.streakEarned) count++;
     else break;
     checkDate = getPreviousDateString(checkDate);
   }
@@ -181,7 +185,7 @@ export const useTasksStore = create<TasksState>()(
 
       initToday: () => {
         const state = get();
-        const currentDate = getUtcDateString();
+        const currentDate = getLocalDateString();
 
         // Already initialized for today — return early.
         // (v3 migration wipes today when upgrading from old formats, so this
@@ -289,6 +293,7 @@ export const useTasksStore = create<TasksState>()(
             protocols,
             mood: null,
             allComplete: false,
+            streakEarned: false,
             completedOnce: false,
             focusSummary,
           },
@@ -296,6 +301,13 @@ export const useTasksStore = create<TasksState>()(
           currentStreak,
           loading: false,
         });
+
+        // Background: flush any offline-queued writes, then pull remote streak
+        const uid = getUid();
+        if (uid) {
+          flushSyncQueue(uid).catch(() => {});
+          fetchAndMergeStreak(uid, currentStreak, (n) => set({ currentStreak: n })).catch(() => {});
+        }
       },
 
       completeTask: (exerciseId: string) => {
@@ -306,24 +318,38 @@ export const useTasksStore = create<TasksState>()(
           t.exerciseId === exerciseId ? { ...t, status: "completed" as TaskStatus } : t
         );
 
-        // Day is complete once ≥ STREAK_THRESHOLD items (exercises + protocols) are done
-        const allComplete = countCompletedItems(tasks, state.today.protocols) >= STREAK_THRESHOLD;
+        // allComplete = every single exercise AND protocol finished (triggers modal)
+        const allComplete =
+          tasks.every((t) => t.status === "completed") &&
+          state.today.protocols.every((p) => p.status === "done");
+
+        // streakEarned = sticky flag: once ≥ STREAK_THRESHOLD items done, day counts
+        const streakEarned =
+          state.today.streakEarned ||
+          countCompletedItems(tasks, state.today.protocols) >= STREAK_THRESHOLD;
 
         // Only increment streak the very first time the threshold is reached today
-        const alreadyCounted = state.today.completedOnce;
-        const firstCompletion = allComplete && !alreadyCounted;
+        const firstStreakEarned = streakEarned && !state.today.streakEarned;
 
         set({
           today: {
             ...state.today,
             tasks,
             allComplete,
+            streakEarned,
             completedOnce: state.today.completedOnce || allComplete,
           },
-          currentStreak: firstCompletion
+          currentStreak: firstStreakEarned
             ? state.currentStreak + 1
             : state.currentStreak,
         });
+
+        const uid = getUid();
+        const newState = get();
+        if (uid && newState.today) {
+          syncTaskHistory(uid, newState.today);
+          if (firstStreakEarned) syncStreak(uid, newState.currentStreak, newState.today.date);
+        }
       },
 
       uncompleteTask: (exerciseId: string) => {
@@ -334,7 +360,10 @@ export const useTasksStore = create<TasksState>()(
           t.exerciseId === exerciseId ? { ...t, status: "pending" as TaskStatus } : t
         );
 
-        const allComplete = countCompletedItems(tasks, state.today.protocols) >= STREAK_THRESHOLD;
+        // allComplete can drop back to false; streakEarned is sticky and stays
+        const allComplete =
+          tasks.every((t) => t.status === "completed") &&
+          state.today.protocols.every((p) => p.status === "done");
         set({
           today: { ...state.today, tasks, allComplete },
         });
@@ -348,7 +377,10 @@ export const useTasksStore = create<TasksState>()(
           t.exerciseId === exerciseId ? { ...t, status: "skipped" as TaskStatus } : t
         );
 
-        const allComplete = countCompletedItems(tasks, state.today.protocols) >= STREAK_THRESHOLD;
+        // Skipped ≠ completed — allComplete stays false if any task is skipped
+        const allComplete =
+          tasks.every((t) => t.status === "completed") &&
+          state.today.protocols.every((p) => p.status === "done");
         set({
           today: { ...state.today, tasks, allComplete },
         });
@@ -361,26 +393,44 @@ export const useTasksStore = create<TasksState>()(
           p.id === id ? { ...p, status: (done ? "done" : "pending") as ProtocolStatus } : p
         );
 
-        // Protocols also count toward the streak threshold
-        const allComplete = countCompletedItems(state.today.tasks, protocols) >= STREAK_THRESHOLD;
-        const alreadyCounted = state.today.completedOnce;
-        const firstCompletion = allComplete && !alreadyCounted;
+        // allComplete = every exercise AND protocol finished (triggers modal)
+        const allComplete =
+          state.today.tasks.every((t) => t.status === "completed") &&
+          protocols.every((p) => p.status === "done");
+
+        // streakEarned = sticky: once threshold hit, stays true
+        const streakEarned =
+          state.today.streakEarned ||
+          countCompletedItems(state.today.tasks, protocols) >= STREAK_THRESHOLD;
+
+        const firstStreakEarned = streakEarned && !state.today.streakEarned;
 
         set({
           today: {
             ...state.today,
             protocols,
             allComplete,
+            streakEarned,
             completedOnce: state.today.completedOnce || allComplete,
           },
-          currentStreak: firstCompletion ? state.currentStreak + 1 : state.currentStreak,
+          currentStreak: firstStreakEarned ? state.currentStreak + 1 : state.currentStreak,
         });
+
+        const uid = getUid();
+        const newState = get();
+        if (uid && newState.today) {
+          syncTaskHistory(uid, newState.today);
+          if (firstStreakEarned) syncStreak(uid, newState.currentStreak, newState.today.date);
+        }
       },
 
       setMood: (mood: string) => {
         const state = get();
         if (!state.today) return;
         set({ today: { ...state.today, mood } });
+        const uid = getUid();
+        const newState = get();
+        if (uid && newState.today) syncTaskHistory(uid, newState.today);
       },
 
       reset: () => {
@@ -394,7 +444,7 @@ export const useTasksStore = create<TasksState>()(
     }),
     {
       name: "sigma_tasks_v1",
-      version: 7,
+      version: 8,
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({
         today: state.today,
@@ -460,6 +510,19 @@ export const useTasksStore = create<TasksState>()(
         // Wipe today so existing users get a properly personalised protocol set on next open.
         if (version <= 6 && persisted) {
           persisted.today = null;
+        }
+        // v7 → v8: added streakEarned (separate from allComplete).
+        // Backfill from completedOnce (which was the old "hit threshold" flag).
+        if (version <= 7 && persisted) {
+          const addStreakEarned = (record: any) => {
+            if (record && record.streakEarned === undefined) {
+              record.streakEarned = record.completedOnce ?? record.allComplete ?? false;
+            }
+          };
+          if (persisted.today) addStreakEarned(persisted.today);
+          if (Array.isArray(persisted.history)) {
+            for (const record of persisted.history) addStreakEarned(record);
+          }
         }
         return persisted as any;
       },

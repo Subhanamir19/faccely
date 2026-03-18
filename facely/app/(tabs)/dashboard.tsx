@@ -267,6 +267,14 @@ function MetricDetailSheet({
   const placeholder = METRIC_PLACEHOLDER_EMOJI[metric.key] ?? "📊";
   const subMap    = SUBMETRIC_MAP[metric.key];
   const advGroup  = subMap && latestAdvanced ? (latestAdvanced as any)[subMap.groupKey] : null;
+
+  // --- DIAGNOSTIC LOGS (remove after debugging) ---
+  console.log("[MetricDetailSheet] opened for metric:", metric.key);
+  console.log("[MetricDetailSheet] latestAdvanced:", latestAdvanced ? JSON.stringify(latestAdvanced) : "NULL");
+  console.log("[MetricDetailSheet] subMap:", subMap ? `groupKey=${subMap.groupKey}` : "NO_SUBMAP (metric has no sub-metrics)");
+  console.log("[MetricDetailSheet] advGroup:", advGroup ? "FOUND" : "NULL", "→", advGroup ? JSON.stringify(advGroup) : "will show empty state");
+  // -------------------------------------------------
+
   const barColor  =
     metric.direction === "up"   ? LIME.primary :
     metric.direction === "down" ? "#EF4444"    : tier.color;
@@ -1486,7 +1494,7 @@ function EmptyState({
 export default function DashboardScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { data, loading, error, loadInsights, invalidate, pollUntilInsight } = useInsights();
+  const { data, loading, error, loadInsights, invalidate, pollUntilInsight, pollUntilAdvanced } = useInsights();
   const currentStreak = useTasksStore((s) => s.currentStreak);
   const advancedData = useAdvancedAnalysis((s) => s.data);
   const authUser = useAuthStore((s) => s.user);
@@ -1510,6 +1518,7 @@ export default function DashboardScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      console.log("[dashboard] focused — calling loadInsights()");
       loadInsights();
     }, [loadInsights])
   );
@@ -1520,6 +1529,15 @@ export default function DashboardScreen() {
       pollUntilInsight();
     }
   }, [data?.scan_count, data?.insight]);
+
+  // Fix C: When latest_advanced is null but we have scans, poll until it appears.
+  // Covers the case where the user is already on the dashboard when advanced analysis finishes.
+  useEffect(() => {
+    if (data && data.scan_count >= 1 && data.latest_advanced === null) {
+      const cancel = pollUntilAdvanced();
+      return cancel;
+    }
+  }, [data?.scan_count, data?.latest_advanced]);
 
   const onRefresh = useCallback(() => {
     invalidate();
@@ -1698,8 +1716,11 @@ export default function DashboardScreen() {
             <Text style={styles.headerWelcome}>WELCOME BACK!</Text>
             <Text style={styles.headerName}>{userName}</Text>
           </View>
-          <View style={styles.streakPill}>
-            <Text style={styles.streakText}>🔥 {currentStreak} day streak</Text>
+          {/* 3D streak pill — depth base peeks below the face */}
+          <View style={styles.streakPillBase}>
+            <View style={styles.streakPillFace}>
+              <Text style={styles.streakText}>🔥 {currentStreak} day streak</Text>
+            </View>
           </View>
         </Animated.View>
 
@@ -1746,7 +1767,12 @@ const styles = StyleSheet.create({
     lineHeight: 34,
   },
 
-  streakPill: {
+  streakPillBase: {
+    borderRadius: RADII.pill,
+    backgroundColor: "#7A2E00",   // burnt-orange depth — the "shadow" base
+    paddingBottom: 3,
+  },
+  streakPillFace: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: SP[4],
@@ -1754,7 +1780,7 @@ const styles = StyleSheet.create({
     borderRadius: RADII.pill,
     backgroundColor: "#1A1A1A",
     borderWidth: 1,
-    borderColor: "rgba(251,146,60,0.35)",
+    borderColor: "rgba(251,146,60,0.40)",
   },
   streakText: {
     fontSize: 13,

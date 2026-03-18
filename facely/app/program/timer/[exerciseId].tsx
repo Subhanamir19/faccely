@@ -13,6 +13,7 @@ import {
   StyleSheet,
   Text,
   View,
+  useWindowDimensions,
 } from "react-native";
 import { router, useLocalSearchParams, useFocusEffect } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
@@ -38,10 +39,7 @@ import { useTasksStore } from "@/store/tasks";
 // Ring timer constants
 // ---------------------------------------------------------------------------
 
-const RING_SIZE     = 240;
-const STROKE_W      = 14;
-const RADIUS        = (RING_SIZE - STROKE_W) / 2;
-const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
+const STROKE_W = 14;
 
 // ---------------------------------------------------------------------------
 // Ring component
@@ -50,34 +48,39 @@ const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 function TimerRing({
   progress,
   timeLeft,
+  size,
 }: {
   progress: number;
   timeLeft: number;
+  size: number;
 }) {
-  const strokeDashoffset = CIRCUMFERENCE * (1 - progress);
+  const radius        = (size - STROKE_W) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const strokeDashoffset = circumference * (1 - progress);
   const mins    = Math.floor(timeLeft / 60);
   const secs    = timeLeft % 60;
   const display = mins > 0
     ? `${mins}:${String(secs).padStart(2, "0")}`
     : `${secs}`;
+  const timeFontSize = Math.max(48, Math.round(size * 0.3));
 
   return (
-    <View style={styles.ringWrap}>
-      <Svg width={RING_SIZE} height={RING_SIZE} style={styles.ringSvg}>
+    <View style={[styles.ringWrap, { width: size, height: size }]}>
+      <Svg width={size} height={size} style={styles.ringSvg}>
         <Circle
-          cx={RING_SIZE / 2} cy={RING_SIZE / 2} r={RADIUS}
+          cx={size / 2} cy={size / 2} r={radius}
           stroke="rgba(255,255,255,0.06)" strokeWidth={STROKE_W} fill="none"
         />
         <Circle
-          cx={RING_SIZE / 2} cy={RING_SIZE / 2} r={RADIUS}
+          cx={size / 2} cy={size / 2} r={radius}
           stroke={COLORS.accent} strokeWidth={STROKE_W} fill="none"
-          strokeDasharray={CIRCUMFERENCE} strokeDashoffset={strokeDashoffset}
+          strokeDasharray={circumference} strokeDashoffset={strokeDashoffset}
           strokeLinecap="round" rotation="-90"
-          origin={`${RING_SIZE / 2}, ${RING_SIZE / 2}`}
+          origin={`${size / 2}, ${size / 2}`}
         />
       </Svg>
       <View style={styles.ringCenter}>
-        <Text style={styles.ringTime}>{display}</Text>
+        <Text style={[styles.ringTime, { fontSize: timeFontSize, lineHeight: timeFontSize + 4 }]}>{display}</Text>
         <Text style={styles.ringLabel}>{mins > 0 ? "min" : "sec"}</Text>
       </View>
     </View>
@@ -89,6 +92,11 @@ function TimerRing({
 // ---------------------------------------------------------------------------
 
 export default function TimerScreen() {
+  const { height } = useWindowDimensions();
+  // Scale video and ring proportionally; cap at original design sizes on large screens
+  const videoHeight = Math.min(Math.round(height * 0.31), 260);
+  const ringSize    = Math.min(Math.round(height * 0.28), 240);
+
   const { exerciseId } = useLocalSearchParams<{ exerciseId: string }>();
   const { today, completeTask } = useTasksStore();
 
@@ -252,7 +260,7 @@ export default function TimerScreen() {
       </Pressable>
 
       {/* ── Video + name overlay ── */}
-      <Animated.View entering={FadeInDown.duration(350)} style={styles.videoSection}>
+      <Animated.View entering={FadeInDown.duration(350)} style={[styles.videoSection, { height: videoHeight }]}>
         {videoSrc ? (
           <Video
             source={videoSrc}
@@ -280,7 +288,7 @@ export default function TimerScreen() {
 
       {/* ── Ring timer ── */}
       <Animated.View entering={FadeIn.duration(400).delay(100)} style={styles.ringSection}>
-        <TimerRing progress={progress} timeLeft={timeLeft} />
+        <TimerRing progress={progress} timeLeft={timeLeft} size={ringSize} />
         {isDone && (
           <Animated.Text entering={FadeInUp.duration(300)} style={styles.doneLabel}>
             Time's up!
@@ -476,10 +484,9 @@ const styles = StyleSheet.create({
     lineHeight: 36,
   },
 
-  // Video section
+  // Video section — height is set inline via useWindowDimensions
   videoSection: {
     width: "100%",
-    height: 260,
     borderRadius: RADII.xl,
     overflow: "hidden",
     marginTop: SP[2],
@@ -531,19 +538,17 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: SP[4],
   },
+  // ringWrap width/height set inline via ringSize prop
   ringWrap: {
-    width: RING_SIZE,
-    height: RING_SIZE,
     alignItems: "center",
     justifyContent: "center",
   },
   ringSvg: { position: "absolute" },
   ringCenter: { alignItems: "center", justifyContent: "center" },
+  // fontSize/lineHeight set inline in TimerRing via ringSize
   ringTime: {
     color: COLORS.text,
-    fontSize: 72,
     fontFamily: "Poppins-SemiBold",
-    lineHeight: 76,
   },
   ringLabel: {
     color: COLORS.sub,

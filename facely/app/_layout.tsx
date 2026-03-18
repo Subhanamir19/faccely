@@ -19,6 +19,8 @@ import { initializeRevenueCat, addCustomerInfoUpdateListener } from "@/lib/reven
 import { useSubscriptionStore } from "@/store/subscription";
 import { logger } from '@/lib/logger';
 import ErrorBoundary from "@/components/ErrorBoundary";
+import { flushSyncQueue, hasMigratedHistory, migrateLocalHistory } from "@/lib/supabase/taskSync";
+import { useTasksStore } from "@/store/tasks";
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -48,6 +50,24 @@ export default function RootLayout() {
     const stop = scheduleDaily(refresh);
     return stop;
   }, []);
+
+  // On auth ready: flush any offline-queued writes, then run one-time history migration
+  useEffect(() => {
+    if (!authInitialized) return;
+    const uid = useAuthStore.getState().uid;
+    if (!uid) return;
+
+    void flushSyncQueue(uid).catch(() => {});
+    void (async () => {
+      try {
+        const done = await hasMigratedHistory();
+        if (!done) {
+          const { today, history } = useTasksStore.getState();
+          await migrateLocalHistory(uid, history, today);
+        }
+      } catch {}
+    })();
+  }, [authInitialized]);
 
   useEffect(() => {
     if (!authInitialized || !idToken) return;

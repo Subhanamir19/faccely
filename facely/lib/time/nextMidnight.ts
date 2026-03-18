@@ -1,4 +1,14 @@
 // facely/lib/time/nextMidnight.ts
+
+/** Returns "YYYY-MM-DD" in the device's LOCAL timezone. */
+export function getLocalDateString(d?: Date): string {
+  const now = d ?? new Date();
+  const y   = now.getFullYear();
+  const m   = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 export function msUntilNextMidnight(): number {
     const now = new Date();
     const next = new Date(now);

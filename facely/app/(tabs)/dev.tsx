@@ -16,6 +16,8 @@ import T from "@/components/ui/T";
 import GlassCard from "@/components/ui/GlassCard";
 import { COLORS, SP, RADII } from "@/lib/tokens";
 import { ConsentModalInner } from "@/hooks/useAdvancedAnalysisConsent";
+import DayCompleteModal from "@/components/ui/DayCompleteModal";
+import { useTasksStore } from "@/store/tasks";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -80,18 +82,29 @@ function SectionHeader({ title, subtitle }: { title: string; subtitle?: string }
 // ---------------------------------------------------------------------------
 // Screen
 // ---------------------------------------------------------------------------
+const SCAN_BYPASS_KEY = "dev_bypass_scan_limit";
+
 export default function DevScreen() {
   const [consentValue, setConsentValue] = useState<string | null | "…">("…");
   const [previewVisible, setPreviewVisible] = useState(false);
+  const [dayCompleteVisible, setDayCompleteVisible] = useState(false);
+  const currentStreak = useTasksStore((s) => s.currentStreak);
+  const [scanBypass, setScanBypass] = useState<boolean | "…">("…");
 
   const refreshConsent = useCallback(async () => {
     const val = await AsyncStorage.getItem(CONSENT_KEY);
     setConsentValue(val);
   }, []);
 
+  const refreshScanBypass = useCallback(async () => {
+    const val = await AsyncStorage.getItem(SCAN_BYPASS_KEY);
+    setScanBypass(val === "true");
+  }, []);
+
   useEffect(() => {
     void refreshConsent();
-  }, [refreshConsent]);
+    void refreshScanBypass();
+  }, [refreshConsent, refreshScanBypass]);
 
   const handleResetConsent = async () => {
     await AsyncStorage.removeItem(CONSENT_KEY);
@@ -151,6 +164,19 @@ export default function DevScreen() {
           </View>
         </GlassCard>
 
+        {/* ── Day Complete Modal ─────────────────────────────────────── */}
+        <GlassCard style={styles.card}>
+          <SectionHeader
+            title="Day Complete Modal"
+            subtitle="Celebration shown when all tasks are finished"
+          />
+          <DevButton
+            label="▶  Preview Modal"
+            accent
+            onPress={() => setDayCompleteVisible(true)}
+          />
+        </GlassCard>
+
         {/* ── Consent Modal ──────────────────────────────────────────── */}
         <GlassCard style={styles.card}>
           <SectionHeader
@@ -174,7 +200,62 @@ export default function DevScreen() {
             <DevButton label="Reset Consent" onPress={handleResetConsent} />
           </View>
         </GlassCard>
+
+        {/* ── Scan Limit Bypass ──────────────────────────────────────── */}
+        <GlassCard style={styles.card}>
+          <SectionHeader
+            title="Scan Limit Bypass"
+            subtitle="Skip the 24-hour rolling window for testing"
+          />
+
+          <View style={styles.statusRow}>
+            <T style={styles.statusLabel}>Status</T>
+            <T
+              style={[
+                styles.statusValue,
+                {
+                  color:
+                    scanBypass === "…"
+                      ? COLORS.sub
+                      : scanBypass
+                      ? COLORS.success
+                      : COLORS.sub,
+                },
+              ]}
+              numberOfLines={1}
+            >
+              {scanBypass === "…" ? "Loading…" : scanBypass ? "Bypassed ✓" : "Enforced (normal)"}
+            </T>
+          </View>
+
+          <View style={styles.row}>
+            <DevButton
+              label="Enable Bypass"
+              accent
+              onPress={async () => {
+                await AsyncStorage.setItem(SCAN_BYPASS_KEY, "true");
+                await refreshScanBypass();
+              }}
+            />
+            <DevButton
+              label="Disable Bypass"
+              onPress={async () => {
+                await AsyncStorage.removeItem(SCAN_BYPASS_KEY);
+                await refreshScanBypass();
+              }}
+            />
+          </View>
+        </GlassCard>
       </ScrollView>
+
+      {/* Day Complete preview modal */}
+      <DayCompleteModal
+        visible={dayCompleteVisible}
+        dayNumber={1}
+        streak={currentStreak}
+        onClose={() => setDayCompleteVisible(false)}
+        dismissOnBackdropPress
+      />
 
       {/* Consent preview modal — no storage interaction */}
       <ConsentModalInner

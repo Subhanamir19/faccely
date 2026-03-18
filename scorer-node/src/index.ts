@@ -1149,12 +1149,19 @@ app.post("/analyze/advanced-explain", async (req, res) => {
     const { buffer, mime } = await toJpegBuffer(file);
     const result = await explainAdvancedBytes(openai, buffer, mime, scores);
 
-    // Persist to DB so the dashboard can read it without re-uploading the image
+    // Persist to DB before responding so GET /insights always sees the data
     const scanId = req.body?.scanId;
+    console.log("[advanced-explain] scanId from request body:", scanId ?? "MISSING");
     if (typeof scanId === "string" && scanId.trim()) {
-      saveAdvancedResult(scanId.trim(), result as unknown as Record<string, unknown>).catch((err) =>
-        console.error("[/analyze/advanced-explain] failed to save advanced_result:", err)
-      );
+      try {
+        await saveAdvancedResult(scanId.trim(), result as unknown as Record<string, unknown>);
+        console.log("[advanced-explain] DB write complete — now sending response");
+      } catch (err) {
+        // Non-fatal: log and continue — client still gets its result
+        console.error("[advanced-explain] failed to save advanced_result:", err);
+      }
+    } else {
+      console.warn("[advanced-explain] scanId missing — advanced_result will NOT be saved to DB");
     }
 
     return res.json(result);

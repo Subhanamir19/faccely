@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect } from "react";
 import {
   StyleSheet,
   Text,
@@ -17,23 +17,14 @@ import Animated, {
   withRepeat,
 } from "react-native-reanimated";
 import { BlurView } from "expo-blur";
-import { COLORS, RADII, SP } from "@/lib/tokens";
+import { COLORS, RADII, SP, TYPE } from "@/lib/tokens";
+import Button from "@/components/ui/Button";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
 // Video sizing
 const VIDEO_WIDTH = Math.min(SCREEN_WIDTH * 0.75, 300);
 const VIDEO_HEIGHT = VIDEO_WIDTH * 0.75; // 4:3 aspect ratio, adjust if needed
-
-// Motivational messages - rotates based on day number
-const COMPLETION_MESSAGES = [
-  { primary: "You did a great job today!", secondary: "Keep the momentum going!" },
-  { primary: "Another day conquered!", secondary: "Your consistency is inspiring." },
-  { primary: "You're on fire!", secondary: "Tomorrow awaits your greatness." },
-  { primary: "Day complete!", secondary: "Small steps lead to big changes." },
-  { primary: "Incredible dedication!", secondary: "You're building a better you." },
-  { primary: "Workout crushed!", secondary: "Rest well, champion." },
-];
 
 const VIDEO_SOURCE = require("@/assets/tasks-complete.mp4");
 
@@ -107,53 +98,6 @@ function Particle({
   );
 }
 
-// Typewriter text component
-function TypewriterText({
-  text,
-  style,
-  delay = 0,
-  speed = 30,
-  onComplete,
-}: {
-  text: string;
-  style?: any;
-  delay?: number;
-  speed?: number;
-  onComplete?: () => void;
-}) {
-  const [displayedText, setDisplayedText] = useState("");
-  const [started, setStarted] = useState(false);
-
-  useEffect(() => {
-    setDisplayedText("");
-    setStarted(false);
-
-    const startTimeout = setTimeout(() => {
-      setStarted(true);
-    }, delay);
-
-    return () => clearTimeout(startTimeout);
-  }, [text, delay]);
-
-  useEffect(() => {
-    if (!started) return;
-
-    let currentIndex = 0;
-    const interval = setInterval(() => {
-      if (currentIndex < text.length) {
-        setDisplayedText(text.slice(0, currentIndex + 1));
-        currentIndex++;
-      } else {
-        clearInterval(interval);
-        onComplete?.();
-      }
-    }, speed);
-
-    return () => clearInterval(interval);
-  }, [started, text, speed, onComplete]);
-
-  return <Text style={style}>{displayedText}</Text>;
-}
 
 const DayCompleteModal: React.FC<DayCompleteModalProps> = ({
   visible,
@@ -164,47 +108,24 @@ const DayCompleteModal: React.FC<DayCompleteModalProps> = ({
   dismissOnBackdropPress = false,
   particles = true,
 }) => {
-  // Get message based on day number (cycles through messages)
-  const messageIndex = (dayNumber - 1) % COMPLETION_MESSAGES.length;
-  const message = COMPLETION_MESSAGES[messageIndex];
-
-  // Animation values
   const modalScale = useSharedValue(0.9);
   const modalOpacity = useSharedValue(0);
   const videoOpacity = useSharedValue(0);
   const titleOpacity = useSharedValue(0);
   const buttonOpacity = useSharedValue(0);
 
-  const [showPrimaryText, setShowPrimaryText] = useState(false);
-  const [showSecondaryText, setShowSecondaryText] = useState(false);
-
   useEffect(() => {
-    let startTextTimeout: ReturnType<typeof setTimeout> | undefined;
     let autoDismissTimeout: ReturnType<typeof setTimeout> | undefined;
 
     if (visible) {
-      // Reset states
-      setShowPrimaryText(false);
-      setShowSecondaryText(false);
-
-      // Animate modal entrance
       modalOpacity.value = withTiming(1, { duration: 300 });
       modalScale.value = withTiming(1, {
         duration: 400,
         easing: Easing.out(Easing.back(1.1)),
       });
-
-      // Fade in video
       videoOpacity.value = withDelay(200, withTiming(1, { duration: 400 }));
-
-      // Show title after video appears
       titleOpacity.value = withDelay(500, withTiming(1, { duration: 300 }));
-
-      // Start typewriter after title
-      startTextTimeout = setTimeout(() => setShowPrimaryText(true), 750);
-
-      // Button appears last
-      buttonOpacity.value = withDelay(2200, withTiming(1, { duration: 300 }));
+      buttonOpacity.value = withDelay(700, withTiming(1, { duration: 300 }));
 
       if (autoDismissMs > 0) {
         autoDismissTimeout = setTimeout(() => onClose(), autoDismissMs);
@@ -215,19 +136,12 @@ const DayCompleteModal: React.FC<DayCompleteModalProps> = ({
       videoOpacity.value = 0;
       titleOpacity.value = 0;
       buttonOpacity.value = 0;
-      setShowPrimaryText(false);
-      setShowSecondaryText(false);
     }
 
     return () => {
-      if (startTextTimeout) clearTimeout(startTextTimeout);
       if (autoDismissTimeout) clearTimeout(autoDismissTimeout);
     };
   }, [visible, autoDismissMs, onClose]);
-
-  const handlePrimaryComplete = useCallback(() => {
-    setShowSecondaryText(true);
-  }, []);
 
   const modalContainerStyle = useAnimatedStyle(() => ({
     opacity: modalOpacity.value,
@@ -327,7 +241,6 @@ const DayCompleteModal: React.FC<DayCompleteModalProps> = ({
                 />
               </View>
             ) : null}
-            <View style={styles.videoGlow} />
             <View style={styles.videoContainer}>
               <Video
                 source={VIDEO_SOURCE}
@@ -343,40 +256,14 @@ const DayCompleteModal: React.FC<DayCompleteModalProps> = ({
           {/* Day complete title */}
           <Animated.View style={[styles.titleContainer, titleStyle]}>
             <Text style={styles.titleText}>All Tasks Complete!</Text>
-            <Text style={styles.streakText}>🔥 {streak ?? 0} day streak!</Text>
+            <View style={styles.streakBadge}>
+              <Text style={styles.streakText}>🔥 {streak ?? 0} day streak</Text>
+            </View>
           </Animated.View>
-
-          {/* Typewriter motivational text */}
-          <View style={styles.messageContainer}>
-            {showPrimaryText && (
-              <TypewriterText
-                text={message.primary}
-                style={styles.primaryText}
-                speed={22}
-                onComplete={handlePrimaryComplete}
-              />
-            )}
-            {showSecondaryText && (
-              <TypewriterText
-                text={message.secondary}
-                style={styles.secondaryText}
-                delay={120}
-                speed={18}
-              />
-            )}
-          </View>
 
           {/* Continue button */}
           <Animated.View style={[styles.buttonContainer, buttonStyle]}>
-            <Pressable
-              onPress={onClose}
-              style={({ pressed }) => [
-                styles.continueButton,
-                pressed && styles.continueButtonPressed,
-              ]}
-            >
-              <Text style={styles.continueButtonText}>Continue</Text>
-            </Pressable>
+            <Button label="Continue" onPress={onClose} variant="primary" size="md" />
           </Animated.View>
         </Animated.View>
         </Pressable>
@@ -398,10 +285,10 @@ const styles = StyleSheet.create({
     width: SCREEN_WIDTH - SP[4] * 2,
     maxWidth: 360,
     backgroundColor: COLORS.card,
-    borderRadius: RADII.lg,
+    borderRadius: RADII.card,
     borderWidth: 1,
     borderColor: COLORS.cardBorder,
-    padding: SP[4],
+    padding: SP[6],
     alignItems: "center",
     gap: SP[4],
   },
@@ -443,27 +330,12 @@ const styles = StyleSheet.create({
   particle: {
     position: "absolute",
   },
-  videoGlow: {
-    position: "absolute",
-    width: VIDEO_WIDTH + 40,
-    height: VIDEO_HEIGHT + 40,
-    borderRadius: RADII.lg + 10,
-    backgroundColor: COLORS.accent,
-    opacity: 0.15,
-    // Blur effect for glow
-    shadowColor: COLORS.accent,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.5,
-    shadowRadius: 30,
-  },
   videoContainer: {
     width: VIDEO_WIDTH,
     height: VIDEO_HEIGHT,
     borderRadius: RADII.lg,
     overflow: "hidden",
     backgroundColor: "#050505",
-    borderWidth: 1,
-    borderColor: "rgba(180,243,77,0.3)",
   },
   video: {
     width: VIDEO_WIDTH,
@@ -474,57 +346,25 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   titleText: {
-    fontSize: 28,
-    color: COLORS.accent,
-    fontFamily: "Poppins-SemiBold",
-    letterSpacing: 1,
+    ...TYPE.h2,
+    color: COLORS.text,
+    letterSpacing: 0.2,
+  },
+  streakBadge: {
+    marginTop: SP[1],
+    paddingHorizontal: SP[4],
+    paddingVertical: SP[1],
+    borderRadius: RADII.circle,
+    backgroundColor: "rgba(255,170,50,0.15)",
+    borderWidth: 1,
+    borderColor: "rgba(255,170,50,0.30)",
   },
   streakText: {
-    fontSize: 18,
+    ...TYPE.captionSemiBold,
     color: "#FFAA32",
-    fontFamily: "Poppins-SemiBold",
-    marginTop: 4,
-  },
-  messageContainer: {
-    minHeight: 70,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: SP[2],
-  },
-  primaryText: {
-    fontSize: 18,
-    color: COLORS.text,
-    fontFamily: "Poppins-SemiBold",
-    textAlign: "center",
-    lineHeight: 26,
-  },
-  secondaryText: {
-    fontSize: 15,
-    color: COLORS.sub,
-    fontFamily: "Poppins-SemiBold",
-    textAlign: "center",
-    marginTop: SP[1],
   },
   buttonContainer: {
     width: "100%",
     paddingTop: SP[2],
-  },
-  continueButton: {
-    width: "100%",
-    height: 52,
-    backgroundColor: COLORS.accent,
-    borderRadius: RADII.pill,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  continueButtonPressed: {
-    transform: [{ scale: 0.98 }],
-    opacity: 0.9,
-  },
-  continueButtonText: {
-    fontSize: 16,
-    color: "#0B0B0B",
-    fontFamily: "Poppins-SemiBold",
-    fontWeight: "700",
   },
 });

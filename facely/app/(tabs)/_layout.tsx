@@ -76,11 +76,11 @@ export default function TabsLayout() {
       {/* coach — hidden from tab bar */}
       <Tabs.Screen name="sigma" options={{ href: null }} />
 
-      {/* dev tab — hidden in production builds, visible in dev only */}
+      {/* dev tab — visible in __DEV__ builds only */}
       <Tabs.Screen
         name="dev"
         options={{
-          href: null,
+          href: __DEV__ ? undefined : null,
           title: "dev",
           tabBarIcon: ({ color, size }) => <Code2 color={color} size={size ?? 22} />,
         }}

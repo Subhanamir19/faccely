@@ -88,3 +88,54 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_insights_user_scan_unique
 
 CREATE INDEX IF NOT EXISTS idx_insights_user_id
   ON public.insights (user_id);
+
+-- ---------------------------------------------------------------------------
+-- User task history (daily adaptive task completion records)
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.user_task_history (
+  id                   uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id              text        NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  date                 date        NOT NULL,                          -- local date: YYYY-MM-DD
+  tasks_completed      jsonb       NOT NULL DEFAULT '[]'::jsonb,     -- array of exerciseId strings
+  protocols_completed  jsonb       NOT NULL DEFAULT '[]'::jsonb,     -- array of protocol id strings
+  mood                 integer     NULL CHECK (mood IN (1, 2, 3)),   -- 1=great 2=good 3=exhausted
+  all_complete         boolean     NOT NULL DEFAULT false,
+  completed_once       boolean     NOT NULL DEFAULT false,
+  created_at           timestamptz NOT NULL DEFAULT now(),
+  updated_at           timestamptz NOT NULL DEFAULT now(),
+
+  CONSTRAINT user_task_history_user_date_unique UNIQUE (user_id, date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_task_history_user_date
+  ON public.user_task_history (user_id, date DESC);
+
+-- ---------------------------------------------------------------------------
+-- User streaks (current + longest streak per user)
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.user_streaks (
+  user_id              text        PRIMARY KEY REFERENCES public.users(id) ON DELETE CASCADE,
+  current_streak       integer     NOT NULL DEFAULT 0,
+  longest_streak       integer     NOT NULL DEFAULT 0,
+  last_completed_date  date        NULL,    -- local date of last all_complete=true day
+  updated_at           timestamptz NOT NULL DEFAULT now()
+);
+
+-- ---------------------------------------------------------------------------
+-- updated_at trigger (shared by task history and streaks)
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.set_updated_at()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER user_task_history_updated_at
+  BEFORE UPDATE ON public.user_task_history
+  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+CREATE TRIGGER user_streaks_updated_at
+  BEFORE UPDATE ON public.user_streaks
+  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();

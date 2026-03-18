@@ -12,7 +12,8 @@ import {
   Text,
   View,
 } from "react-native";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
+import { getLocalDateString } from "@/lib/time/nextMidnight";
 import Animated, {
   FadeIn,
   FadeInDown,
@@ -30,6 +31,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { COLORS, RADII, SP } from "@/lib/tokens";
 import DayCompleteModal from "@/components/ui/DayCompleteModal";
 import MoodCheckModal from "@/components/ui/MoodCheckModal";
+import LimeButton from "@/components/ui/LimeButton";
 import { useTasksStore, type DailyTask, type ProtocolTask, type DayRecord } from "@/store/tasks";
 import { useScores, type Scores } from "@/store/scores";
 import { useOnboarding } from "@/store/onboarding";
@@ -77,21 +79,19 @@ function findWeakestField(scores: Scores | null): { label: string; value: number
 function getConsecutiveMissed(history: DayRecord[]): number {
   if (!history.length) return 0;
 
-  // Find the most recent completed day — anchor point for missed-day counting
   const lastComplete = [...history]
     .sort((a, b) => b.date.localeCompare(a.date))
-    .find((r) => r.allComplete);
+    .find((r) => r.streakEarned);
   if (!lastComplete) return 0;
 
-  // Count days between yesterday and lastComplete that have no completed record
   let count = 0;
   const d = new Date();
   for (let i = 0; i < 7; i++) {
-    d.setUTCDate(d.getUTCDate() - 1);
-    const ds = d.toISOString().slice(0, 10);
-    if (ds <= lastComplete.date) break; // reached the last completed day — stop
+    d.setDate(d.getDate() - 1); // local date arithmetic
+    const ds = getLocalDateString(d);
+    if (ds <= lastComplete.date) break;
     const record = history.find((r) => r.date === ds);
-    if (!record || !record.allComplete) count++;
+    if (!record || !record.streakEarned) count++;
     else break;
   }
   return count;
@@ -224,21 +224,18 @@ function buildLast7Days(history: DayRecord[], today: DayRecord | null): DaySlot[
 
   for (let i = 6; i >= 0; i--) {
     const d = new Date(now);
-    d.setUTCDate(d.getUTCDate() - i);
-    const y = d.getUTCFullYear();
-    const m = String(d.getUTCMonth() + 1).padStart(2, "0");
-    const day = String(d.getUTCDate()).padStart(2, "0");
-    const dateStr = `${y}-${m}-${day}`;
+    d.setDate(d.getDate() - i); // local date arithmetic
+    const dateStr = getLocalDateString(d);
 
     let status: DayStatus;
     if (i === 0) {
-      status = today?.allComplete ? "today_done" : "today_pending";
+      status = today?.streakEarned ? "today_done" : "today_pending";
     } else {
       const record = history.find((r) => r.date === dateStr);
-      status = record?.allComplete ? "complete" : "missed";
+      status = record?.streakEarned ? "complete" : "missed";
     }
 
-    slots.push({ dateStr, dayInitial: DAY_INITIALS[d.getUTCDay()], dateNum: d.getUTCDate(), status });
+    slots.push({ dateStr, dayInitial: DAY_INITIALS[d.getDay()], dateNum: d.getDate(), status });
   }
   return slots;
 }
@@ -846,6 +843,146 @@ function StartModal({
 }
 
 // ---------------------------------------------------------------------------
+// AllDoneOverlay — shown every visit when today's tasks are all complete
+// ---------------------------------------------------------------------------
+
+function AllDoneOverlay({
+  streak,
+  onGotIt,
+  onViewTasks,
+}: {
+  streak: number;
+  onGotIt: () => void;
+  onViewTasks: () => void;
+}) {
+  return (
+    <Animated.View entering={FadeIn.duration(300)} style={overlayStyles.root}>
+      {/* Dark blurred backdrop */}
+      <LinearGradient
+        colors={["rgba(0,0,0,0.97)", "rgba(11,11,11,0.97)"]}
+        style={StyleSheet.absoluteFill}
+      />
+
+      <View style={overlayStyles.inner}>
+        {/* Icon */}
+        <View style={overlayStyles.iconWrap}>
+          <Text style={overlayStyles.iconEmoji}>🏆</Text>
+        </View>
+
+        {/* Headline */}
+        <Text style={overlayStyles.headline}>You're done for today.</Text>
+
+        {/* Sub-copy */}
+        <Text style={overlayStyles.body}>
+          Every rep counts. Every day compounds.{"\n"}
+          Come back tomorrow to keep your{" "}
+          <Text style={overlayStyles.streakHighlight}>
+            {streak}-day streak
+          </Text>{" "}
+          alive.
+        </Text>
+
+        {/* Streak pill */}
+        <View style={overlayStyles.streakPill}>
+          <Text style={overlayStyles.streakPillText}>🔥 {streak} day{streak !== 1 ? "s" : ""} strong</Text>
+        </View>
+
+        {/* Buttons */}
+        <View style={overlayStyles.btnRow}>
+          <LimeButton label="Got it" onPress={onGotIt} />
+
+          {/* Secondary: View tasks anyway */}
+          <Pressable
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              onViewTasks();
+            }}
+            style={({ pressed }) => [overlayStyles.btnSecondary, pressed && { opacity: 0.7 }]}
+          >
+            <Text style={overlayStyles.btnSecondaryText}>View tasks anyway</Text>
+          </Pressable>
+        </View>
+      </View>
+    </Animated.View>
+  );
+}
+
+const overlayStyles = StyleSheet.create({
+  root: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 100,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: SP[6],
+  },
+  inner: {
+    width: "100%",
+    alignItems: "center",
+    gap: SP[4],
+  },
+  iconWrap: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: COLORS.accentGlow,
+    borderWidth: 1,
+    borderColor: COLORS.accentBorder,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: SP[2],
+  },
+  iconEmoji: {
+    fontSize: 38,
+  },
+  headline: {
+    fontSize: 28,
+    fontFamily: "Poppins-SemiBold",
+    color: COLORS.text,
+    textAlign: "center",
+    letterSpacing: -0.5,
+  },
+  body: {
+    fontSize: 15,
+    fontFamily: "Poppins-Regular",
+    color: COLORS.sub,
+    textAlign: "center",
+    lineHeight: 24,
+  },
+  streakHighlight: {
+    color: COLORS.accent,
+    fontFamily: "Poppins-SemiBold",
+  },
+  streakPill: {
+    paddingHorizontal: SP[5],
+    paddingVertical: SP[2],
+    borderRadius: RADII.pill,
+    backgroundColor: "rgba(251,146,60,0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(251,146,60,0.30)",
+  },
+  streakPillText: {
+    fontSize: 13,
+    fontFamily: "Poppins-SemiBold",
+    color: "#FB923C",
+  },
+  btnRow: {
+    width: "100%",
+    gap: SP[3],
+    marginTop: SP[2],
+  },
+  btnSecondary: {
+    paddingVertical: SP[3],
+    alignItems: "center",
+  },
+  btnSecondaryText: {
+    fontSize: 14,
+    fontFamily: "Poppins-Regular",
+    color: COLORS.sub,
+    textDecorationLine: "underline",
+  },
+});
+
+// ---------------------------------------------------------------------------
 // Main screen
 // ---------------------------------------------------------------------------
 
@@ -866,9 +1003,19 @@ export default function TasksScreen() {
   const [confirmTask, setConfirmTask]             = useState<DailyTask | null>(null);
   const [markDoneTask, setMarkDoneTask]           = useState<DailyTask | null>(null);
   const [confirmProtocol, setConfirmProtocol]     = useState<ProtocolTask | null>(null);
+  const [showAllDoneOverlay, setShowAllDoneOverlay] = useState(false);
+
+  // Show overlay every time the screen is focused if all tasks are done
+  useFocusEffect(
+    useCallback(() => {
+      if (useTasksStore.getState().today?.allComplete) {
+        setShowAllDoneOverlay(true);
+      }
+    }, [])
+  );
 
   // Intro splash — once per day
-  const todayDateStr = new Date().toISOString().slice(0, 10);
+  const todayDateStr = getLocalDateString();
   const [introVisible, setIntroVisible] = useState(lastIntroDate !== todayDateStr);
   const introTimerDoneRef = useRef(false);
 
@@ -892,12 +1039,10 @@ export default function TasksScreen() {
     setIntroVisible(false);
   }, [loading, introVisible]);
 
-  // Midnight refresh
+  // Midnight refresh — polls every 60s using local date so rollover matches local midnight
   useEffect(() => {
     const interval = setInterval(() => {
-      const now = new Date();
-      const utc = `${now.getUTCFullYear()}-${String(now.getUTCMonth()+1).padStart(2,"0")}-${String(now.getUTCDate()).padStart(2,"0")}`;
-      if (today?.date !== utc) initToday();
+      if (today?.date !== getLocalDateString()) initToday();
     }, 60_000);
     return () => clearInterval(interval);
   }, [today?.date, initToday]);
@@ -1055,13 +1200,27 @@ export default function TasksScreen() {
         protocol={confirmProtocol}
         onDone={() => {
           if (confirmProtocol) {
+            const alreadyCounted = useTasksStore.getState().today?.completedOnce ?? false;
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
             completeProtocol(confirmProtocol.id, true);
+            const nowCounted = useTasksStore.getState().today?.completedOnce ?? false;
+            if (!alreadyCounted && nowCounted) {
+              setTimeout(() => setShowDayComplete(true), 150);
+            }
           }
           setConfirmProtocol(null);
         }}
         onDismiss={() => setConfirmProtocol(null)}
       />
+
+      {/* All-done overlay — shown every visit when today is fully complete */}
+      {showAllDoneOverlay && (
+        <AllDoneOverlay
+          streak={currentStreak}
+          onGotIt={() => setShowAllDoneOverlay(false)}
+          onViewTasks={() => setShowAllDoneOverlay(false)}
+        />
+      )}
     </SafeAreaView>
   );
 }

@@ -29,6 +29,9 @@ import RecoveryCodeHint from "@/components/ui/RecoveryCodeHint";
 // NEW: shared pre-upload compressor (JPEG, max 1080px)
 import { ensureJpegCompressed } from "../../lib/api/media";
 import { logger } from '@/lib/logger';
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useAuthStore } from "@/store/auth";
+import { getLastScanTime, canScanNow } from "@/lib/supabase/scanLimit";
 
 /* ============================== TOKENS ============================== */
 const ACCENT = "#B4F34D"; // Sigma Max lime
@@ -355,7 +358,34 @@ export default function TakePicture() {
 
   const canContinue = !!frontalUri && !!sideUri && !submitting;
 
-  const beginScan = () => {
+  const beginScan = async () => {
+    const bypass = await AsyncStorage.getItem("dev_bypass_scan_limit");
+    if (bypass === "true") {
+      logger.log("[scanLimit] dev bypass active — skipping check");
+    } else {
+      const uid = useAuthStore.getState().uid;
+      if (uid) {
+        logger.log("[scanLimit] checking limit for user:", uid);
+        const lastScan = await getLastScanTime(uid);
+        const { allowed } = canScanNow(lastScan);
+        logger.log(
+          "[scanLimit] last scan:",
+          lastScan?.toISOString() ?? "none",
+          "| hours ago:",
+          lastScan ? ((Date.now() - lastScan.getTime()) / 3_600_000).toFixed(1) : "n/a"
+        );
+        logger.log("[scanLimit] allowed:", allowed);
+        if (!allowed) {
+          Alert.alert(
+            "Daily Limit Reached",
+            "You've used your daily scan. Come back tomorrow.",
+            [{ text: "OK" }]
+          );
+          return;
+        }
+      }
+    }
+
     setFrontalUri(null);
     setSideUri(null);
     setPose("frontal");
