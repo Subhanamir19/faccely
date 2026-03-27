@@ -76,15 +76,8 @@ export default function TabsLayout() {
       {/* coach — hidden from tab bar */}
       <Tabs.Screen name="sigma" options={{ href: null }} />
 
-      {/* dev tab — visible in __DEV__ builds only */}
-      <Tabs.Screen
-        name="dev"
-        options={{
-          href: __DEV__ ? undefined : null,
-          title: "dev",
-          tabBarIcon: ({ color, size }) => <Code2 color={color} size={size ?? 22} />,
-        }}
-      />
+      {/* dev — hidden from tab bar, screen + functionality intact */}
+      <Tabs.Screen name="dev" options={{ href: null }} />
 
       {/* Keep routes but hide them from the tab bar */}
       <Tabs.Screen name="history" options={{ href: null }} />

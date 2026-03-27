@@ -53,15 +53,6 @@ insightsRouter.get("/", async (_req, res) => {
       previous ? getAnalysisForScan(previous.id) : Promise.resolve(null),
     ]);
 
-    // DIAGNOSTIC LOGS — remove after debugging
-    console.log("[insights GET] latest scan id:", latest?.id ?? "NONE");
-    console.log("[insights GET] latestAnalysis row exists:", !!latestAnalysis);
-    console.log("[insights GET] latestAnalysis.advanced_result:", latestAnalysis?.advanced_result ? "PRESENT" : "NULL");
-    if (latestAnalysis?.advanced_result) {
-      console.log("[insights GET] advanced_result keys:", Object.keys(latestAnalysis.advanced_result));
-    }
-    // ---
-
     const latestAdvanced = (latestAnalysis?.advanced_result as Record<string, unknown> | null) ?? null;
     const previousAdvanced = (previousAnalysis?.advanced_result as Record<string, unknown> | null) ?? null;
 

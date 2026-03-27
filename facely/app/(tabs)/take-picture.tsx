@@ -23,8 +23,10 @@ import Svg, { Line, Circle, Rect, Path, Ellipse } from "react-native-svg";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { Sparkles } from "lucide-react-native";
+import { useSubscriptionStore } from "@/store/subscription";
 import { useTenByTen } from "@/store/tenByTen";
 import RecoveryCodeHint from "@/components/ui/RecoveryCodeHint";
+import ProGateModal from "@/components/ui/ProGateModal";
 
 // NEW: shared pre-upload compressor (JPEG, max 1080px)
 import { ensureJpegCompressed } from "../../lib/api/media";
@@ -264,10 +266,15 @@ function FaceMeshOverlay({ cx, cy, rx, ry }: { cx: number; cy: number; rx: numbe
   );
 }
 
+
 /* ============================== SCREEN ============================== */
 export default function TakePicture() {
   const [perm, requestPerm] = useCameraPermissions();
   const permissionDenied = perm?.granted === false;
+
+  const revenueCatEntitlement = useSubscriptionStore((s) => s.revenueCatEntitlement);
+  const promoActivated = useSubscriptionStore((s) => s.promoActivated);
+  const hasAccess = revenueCatEntitlement || promoActivated;
 
   const [step, setStep] = useState<Step>("intro");
   const [pose, setPose] = useState<"frontal" | "side">("frontal");
@@ -281,6 +288,7 @@ export default function TakePicture() {
 
   const window = useWindowDimensions();
   const [activePage, setActivePage] = useState(0);
+  const [proGateVisible, setProGateVisible] = useState(false);
   const { generatedUri, generatedAt } = useTenByTen();
   const [genImgValid, setGenImgValid] = useState(false);
 
@@ -350,7 +358,7 @@ export default function TakePicture() {
       const raw = photo?.uri ?? photo?.path ?? photo?.assets?.[0]?.uri;
       await handleChosen(raw || null);
     } catch (e: any) {
-      Alert.alert("Camera error", String(e?.message || e));
+      Alert.alert("Camera error", "Something went wrong. Please try again.");
     } finally {
       setCameraOpen(false);
     }
@@ -359,6 +367,12 @@ export default function TakePicture() {
   const canContinue = !!frontalUri && !!sideUri && !submitting;
 
   const beginScan = async () => {
+    // Free users can view the scan screen but cannot start a scan.
+    if (!hasAccess) {
+      setProGateVisible(true);
+      return;
+    }
+
     const bypass = await AsyncStorage.getItem("dev_bypass_scan_limit");
     if (bypass === "true") {
       logger.log("[scanLimit] dev bypass active — skipping check");
@@ -996,6 +1010,12 @@ export default function TakePicture() {
           )}
         </View>
       </Modal>
+
+      {/* Pro gate modal — shown when free user taps Begin Scan */}
+      <ProGateModal
+        visible={proGateVisible}
+        onClose={() => setProGateVisible(false)}
+      />
     </>
   );
 }

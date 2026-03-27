@@ -43,6 +43,9 @@ import Svg, {
   Text as SvgText,
 } from "react-native-svg";
 import { useRouter, useFocusEffect } from "expo-router";
+import { TrendingUp } from "lucide-react-native";
+import { useSubscriptionStore } from "@/store/subscription";
+import ProGateModal from "@/components/ui/ProGateModal";
 import Text from "@/components/ui/T";
 import { COLORS, SP, RADII, TYPE, SHADOWS } from "@/lib/tokens";
 import { useInsights } from "@/store/insights";
@@ -1488,6 +1491,52 @@ function EmptyState({
 }
 
 /* -------------------------------------------------------------------------- */
+/*  Pro Gate                                                                   */
+/* -------------------------------------------------------------------------- */
+
+function DashboardProGate() {
+  const insets = useSafeAreaInsets();
+  const [modalVisible, setModalVisible] = React.useState(true);
+  return (
+    <View style={[proGateStyles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+      <ProGateModal
+        visible={modalVisible}
+        onClose={() => setModalVisible(false)}
+      />
+      {/* Re-open modal if user dismisses without upgrading */}
+      {!modalVisible && (
+        <Pressable
+          style={proGateStyles.reopenBtn}
+          onPress={() => setModalVisible(true)}
+        >
+          <TrendingUp size={32} color={LIME.primary} />
+          <Text style={proGateStyles.reopenLabel}>Unlock Progress</Text>
+        </Pressable>
+      )}
+    </View>
+  );
+}
+
+const proGateStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: "#0B0B0B",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  reopenBtn: {
+    alignItems: "center",
+    gap: 12,
+    padding: 24,
+  },
+  reopenLabel: {
+    color: LIME.primary,
+    fontSize: 15,
+    fontFamily: "Poppins-SemiBold",
+  },
+});
+
+/* -------------------------------------------------------------------------- */
 /*  Main Screen                                                                */
 /* -------------------------------------------------------------------------- */
 
@@ -1501,6 +1550,10 @@ export default function DashboardScreen() {
   const displayName = useProfile((s) => s.displayName);
   const scanLoading = useScores((s) => s.loading);
   const scanError   = useScores((s) => s.error);
+
+  const revenueCatEntitlement = useSubscriptionStore((s) => s.revenueCatEntitlement);
+  const promoActivated = useSubscriptionStore((s) => s.promoActivated);
+  const hasAccess = revenueCatEntitlement || promoActivated;
 
   // Derive first name: prefer user-set display name, then auth fields, then email prefix
   const userName = (() => {
@@ -1687,6 +1740,8 @@ export default function DashboardScreen() {
       </>
     );
   };
+
+  if (!hasAccess) return <DashboardProGate />;
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>

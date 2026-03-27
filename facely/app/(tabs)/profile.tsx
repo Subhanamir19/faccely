@@ -342,10 +342,21 @@ export default function ProfileScreen() {
                 ? promoActivated
                   ? "Active (Promo Code)"
                   : "Active - Sigma Max Pro"
-                : "No active subscription"}
+                : "Free tier — routine only"}
             </T>
           </View>
           <View style={styles.subscriptionActions}>
+            {!hasAccess && (
+              <Pressable
+                style={styles.upgradeBanner}
+                onPress={() => router.push("/(onboarding)/paywall")}
+              >
+                <T style={styles.upgradeBannerText}>Unlock All Features →</T>
+                <T style={styles.upgradeBannerSub}>
+                  Scans · Progress · AI Score · 10/10 Enhancement
+                </T>
+              </Pressable>
+            )}
             <View style={styles.subscriptionBtn}>
               <GlassBtn
                 label={restoringPurchases ? "Restoring..." : "Restore Purchases"}
@@ -584,6 +595,25 @@ const styles = StyleSheet.create({
   },
   subscriptionBtn: {
     width: "100%",
+  },
+  upgradeBanner: {
+    backgroundColor: "rgba(180,243,77,0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(180,243,77,0.22)",
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    gap: 4,
+  },
+  upgradeBannerText: {
+    color: COLORS.accent,
+    fontSize: 15,
+    fontFamily: "Poppins-SemiBold",
+  },
+  upgradeBannerSub: {
+    color: "rgba(255,255,255,0.45)",
+    fontSize: 12,
+    fontFamily: "Poppins-Regular",
   },
   recoveryRow: {
     flexDirection: "row",

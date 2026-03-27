@@ -1,5 +1,6 @@
 // app/(onboarding)/score-teaser.tsx
-// Free results reveal — reuses ScoresSummaryCard, adaptive layout, 3D CTA button.
+// Score reveal screen. Shows blurred placeholder scores for free users with a
+// "Subscribe to unlock" overlay. Post-purchase: shows real scores after analyzePair.
 
 import React, { useCallback, useMemo } from "react";
 import {
@@ -15,6 +16,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { router } from "expo-router";
+import { Lock } from "lucide-react-native";
+import { useSubscriptionStore } from "@/store/subscription";
 
 import CinematicLoader from "@/components/ui/CinematicLoader";
 import MetricCardShell from "@/components/layout/MetricCardShell";
@@ -73,6 +76,14 @@ export default function ScoreTeaserScreen() {
   const { imageUri, scores, loading } = useScores();
   const sizing   = useMetricSizing();
 
+  const revenueCatEntitlement = useSubscriptionStore((s) => s.revenueCatEntitlement);
+  const promoActivated = useSubscriptionStore((s) => s.promoActivated);
+  const hasAccess = revenueCatEntitlement || promoActivated;
+
+  // If user is paid and scores just arrived → real reveal.
+  // Otherwise → blurred placeholder (free path through onboarding).
+  const isRevealed = hasAccess && !!scores;
+
   // Extra bottom clearance so the card scrolls fully clear of the button
   const footerH  = insets.bottom + 88;
 
@@ -85,12 +96,24 @@ export default function ScoreTeaserScreen() {
 
   const totalScore = useMemo(() => calculateTotal(metrics), [metrics]);
 
+  // Post-purchase: enter the app after seeing real scores.
+  // Pre-purchase (free path): continue through onboarding to improve-areas.
   const handleCTA = useCallback(() => {
     hapticSuccess();
-    router.replace("/(tabs)/program");
+    if (isRevealed) {
+      router.replace("/(tabs)/program");
+    } else {
+      router.push("/(onboarding)/improve-areas");
+    }
+  }, [isRevealed]);
+
+  const handleSkip = useCallback(() => {
+    hapticLight();
+    router.push("/(onboarding)/improve-areas");
   }, []);
 
-  if (loading) return <CinematicLoader loading />;
+  // Only show cinematic loader post-purchase (when we expect real scores to arrive)
+  if (loading && hasAccess) return <CinematicLoader loading />;
 
   return (
     <View style={styles.screen}>
@@ -129,21 +152,37 @@ export default function ScoreTeaserScreen() {
             showsVerticalScrollIndicator={false}
             alwaysBounceVertical={false}
           >
-            <MetricCardShell
-              withOuterPadding={false}
-              renderSurface={false}
-              sizing={sizing}
-            >
-              {(usableWidth) => (
-                <ScoresSummaryCard
-                  metrics={metrics}
-                  totalScore={totalScore}
-                  width={usableWidth}
-                  active={true}
-                  imageUri={imageUri}
-                />
+            {/* Score card — always rendered but blurred when not revealed */}
+            <View style={styles.cardWrapper}>
+              <MetricCardShell
+                withOuterPadding={false}
+                renderSurface={false}
+                sizing={sizing}
+              >
+                {(usableWidth) => (
+                  <ScoresSummaryCard
+                    metrics={metrics}
+                    totalScore={totalScore}
+                    width={usableWidth}
+                    active={true}
+                    imageUri={imageUri}
+                  />
+                )}
+              </MetricCardShell>
+
+              {/* Blur overlay — shown only for free users (no subscription) */}
+              {!isRevealed && (
+                <View style={styles.blurOverlay} pointerEvents="none">
+                  <View style={styles.lockBadge}>
+                    <Lock size={20} color="#0B0B0B" strokeWidth={2.5} />
+                  </View>
+                  <Text style={styles.blurTitle}>Your Score Is Ready</Text>
+                  <Text style={styles.blurSub}>
+                    Subscribe to reveal your exact score and unlock all features
+                  </Text>
+                </View>
               )}
-            </MetricCardShell>
+            </View>
           </ScrollView>
         </Animated.View>
       </View>
@@ -161,7 +200,7 @@ export default function ScoreTeaserScreen() {
           pointerEvents="none"
         />
 
-        {/* Raised 3D button — identical pattern to take-picture.tsx */}
+        {/* Raised 3D button */}
         <View style={styles.btnDepth}>
           <Pressable
             onPress={handleCTA}
@@ -171,9 +210,18 @@ export default function ScoreTeaserScreen() {
               { transform: [{ translateY: pressed ? DEPTH - 1 : 0 }] },
             ]}
           >
-            <Text style={styles.btnText}>Get My Custom Plan</Text>
+            <Text style={styles.btnText}>
+              {isRevealed ? "Enter App" : "Continue"}
+            </Text>
           </Pressable>
         </View>
+
+        {/* Skip link — only shown on free path */}
+        {!isRevealed && (
+          <Pressable onPress={handleSkip} style={styles.skipBtn}>
+            <Text style={styles.skipText}>Skip for now</Text>
+          </Pressable>
+        )}
       </Animated.View>
 
     </View>
@@ -254,5 +302,58 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "#0B0B0B",
     letterSpacing: -0.1,
+  },
+
+  // Skip link
+  skipBtn: {
+    alignSelf: "center",
+    marginTop: SP[3],
+    paddingVertical: SP[2],
+  },
+  skipText: {
+    fontFamily: FONT,
+    fontSize: 13,
+    color: "rgba(255,255,255,0.38)",
+    letterSpacing: -0.1,
+  },
+
+  // Card wrapper — needed to position the blur overlay over the score card
+  cardWrapper: {
+    width: "100%",
+    alignItems: "center",
+  },
+
+  // Blur overlay — sits on top of the score card for free users
+  blurOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(11,11,11,0.72)",
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: SP[6],
+    gap: SP[3],
+  },
+  lockBadge: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: COLORS.accent,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: SP[1],
+  },
+  blurTitle: {
+    fontFamily: FONT,
+    fontSize: 20,
+    color: "#FFFFFF",
+    textAlign: "center",
+    letterSpacing: -0.3,
+  },
+  blurSub: {
+    fontFamily: "Poppins-Regular",
+    fontSize: 13,
+    color: "rgba(255,255,255,0.55)",
+    textAlign: "center",
+    lineHeight: 19,
   },
 });

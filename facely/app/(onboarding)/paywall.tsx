@@ -27,6 +27,7 @@ import { router } from "expo-router";
 import { Check, Gift } from "lucide-react-native";
 import { useOnboarding } from "@/store/onboarding";
 import { useAuthStore } from "@/store/auth";
+import { useScores } from "@/store/scores";
 import { useSubscriptionStore } from "@/store/subscription";
 import { syncUserProfile } from "@/lib/api/user";
 import {
@@ -193,6 +194,7 @@ const PlanCard: React.FC<{
 const PaywallScreen: React.FC = () => {
   const navigation = useNavigation();
   const [selected, setSelected] = useState<PlanKey>("yearly");
+  const analyzePair = useScores((s) => s.analyzePair);
   const [showPromoInput, setShowPromoInput] = useState(false);
   const [promoCode, setPromoCode] = useState("");
   const [showRecoveryInput, setShowRecoveryInput] = useState(false);
@@ -211,6 +213,8 @@ const PaywallScreen: React.FC = () => {
   const setOnboardingCompletedFromOnboarding = useAuthStore(
     (state) => state.setOnboardingCompletedFromOnboarding
   );
+  // Individual selectors — consistent with the pattern below, avoids stale closures
+  const clearScanPhotos = useOnboarding((state) => state.clearScanPhotos);
 
   // Use individual selectors instead of getting entire store to avoid stale closures
   const offerings = useSubscriptionStore((state) => state.offerings);
@@ -426,8 +430,24 @@ const PaywallScreen: React.FC = () => {
       const hasEntitlement = await checkSubscriptionStatus();
       setRevenueCatEntitlement(hasEntitlement);
 
-      // Show score reveal before entering the main app.
-      router.replace("/(onboarding)/score-teaser");
+      // Fire real face analysis non-blocking using the stored onboarding photos.
+      // score-teaser will show CinematicLoader until scores arrive, then reveal.
+      const frontal = useOnboarding.getState().scanFrontalUri;
+      const side = useOnboarding.getState().scanSideUri;
+      if (frontal && side) {
+        analyzePair(
+          { uri: frontal, name: "front.jpg", mime: "image/jpeg" },
+          { uri: side,    name: "side.jpg",  mime: "image/jpeg" }
+        )
+          .then(() => clearScanPhotos())
+          .catch(() => clearScanPhotos());
+        // Show score reveal — real scores will arrive via analyzePair above.
+        router.replace("/(onboarding)/score-teaser");
+      } else {
+        // No scan photos (user upgraded from free tier without scanning).
+        // Skip score-teaser and go straight to the main app.
+        navigateToMainApp();
+      }
     } catch (error: any) {
       logger.error("[Paywall] Purchase error:", error);
       if (isMountedRef.current) {
@@ -442,7 +462,7 @@ const PaywallScreen: React.FC = () => {
         setLoading(false);
       }
     }
-  }, [selected, packages, setLoading, setCurrentPackage, setRevenueCatEntitlement, completeOnboarding, navigateToMainApp]);
+  }, [selected, packages, setLoading, setCurrentPackage, setRevenueCatEntitlement, completeOnboarding, analyzePair, clearScanPhotos, ensureCode]);
 
   const onRestorePurchases = useCallback(async () => {
     setIsLoading(true);
@@ -484,6 +504,14 @@ const PaywallScreen: React.FC = () => {
       }
     }
   }, [setLoading, setRevenueCatEntitlement, completeOnboarding, navigateToMainApp]);
+
+  // Free path — user skips subscription. Mark onboarding done and enter app.
+  // Photos are cleared since they'll never be analyzed (no subscription).
+  const onSkipForFree = useCallback(async () => {
+    await completeOnboarding();
+    clearScanPhotos();
+    navigateToMainApp();
+  }, [completeOnboarding, clearScanPhotos, navigateToMainApp]);
 
   const onApplyPromoCode = useCallback(async () => {
     if (!promoCode.trim()) {
@@ -581,6 +609,11 @@ const PaywallScreen: React.FC = () => {
                 disabled={isLoading}
               />
             </View>
+
+            {/* SKIP — free tier entry */}
+            <Pressable style={styles.skipButton} onPress={onSkipForFree} disabled={isLoading}>
+              <Text style={styles.skipText}>Start for free (routine only)</Text>
+            </Pressable>
 
             {/* RESTORE PURCHASES */}
             <Pressable style={styles.restoreButton} onPress={onRestorePurchases} disabled={isLoading}>
@@ -856,6 +889,16 @@ const styles = StyleSheet.create({
   primaryButtonWrap: {
     width: CONTENT_WIDTH,
     marginTop: 32,
+  },
+  skipButton: {
+    marginTop: 14,
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+  skipText: {
+    fontFamily: "Poppins-Regular",
+    fontSize: 13,
+    color: "rgba(200,200,200,0.45)",
   },
   restoreButton: {
     marginTop: 16,

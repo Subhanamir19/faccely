@@ -1,5 +1,6 @@
 // app/(onboarding)/trust.tsx
-// Accuracy/trust screen — also triggers background face analysis if scan photos exist
+// Accuracy/trust screen — shows precision animation. Photos are stored locally
+// for post-purchase analysis but NOT sent to the backend here.
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AccessibilityInfo,
@@ -25,8 +26,6 @@ import T from "@/components/ui/T";
 import LimeButton from "@/components/ui/LimeButton";
 import { COLORS, SP, RADII, getProgressForStep } from "@/lib/tokens";
 import { hapticLight, hapticSuccess } from "@/lib/haptics";
-import { useOnboarding } from "@/store/onboarding";
-import { useScores } from "@/store/scores";
 
 const RAW_TARGET_ACCURACY = 98.5;
 const ANIMATION_DURATION = 1400;
@@ -52,49 +51,8 @@ export default function TrustAccuracyScreen() {
   const prefersReducedMotion = useReducedMotion();
   const progress = getProgressForStep("trust");
 
-  const { scanFrontalUri, scanSideUri, clearScanPhotos } = useOnboarding();
-  const analyzePair = useScores((s) => s.analyzePair);
-  const explainPair = useScores((s) => s.explainPair);
-  const hasPhotos = !!(scanFrontalUri && scanSideUri);
-
-  // Track when animation finishes and when API finishes
   const [animDone, setAnimDone] = useState(false);
-  const [apiDone, setApiDone] = useState(!hasPhotos); // if no photos, treat as done
-  const [userPressedContinue, setUserPressedContinue] = useState(false);
   const navigated = useRef(false);
-
-  // Kick off background API call if we have photos
-  useEffect(() => {
-    if (!hasPhotos) return;
-    const frontal = scanFrontalUri!;
-    const side = scanSideUri!;
-    // Safety net: unblock user after 15s regardless of API state
-    const timeout = setTimeout(() => setApiDone(true), 15_000);
-    analyzePair(
-      { uri: frontal, name: "front.jpg", mime: "image/jpeg" },
-      { uri: side, name: "side.jpg", mime: "image/jpeg" }
-    )
-      .then((scores) => {
-        clearTimeout(timeout);
-        setApiDone(true);
-        // Fire-and-forget: start explanation analysis so score-teaser has real sub-metrics
-        explainPair(frontal, side, scores).catch(() => {});
-      })
-      .catch(() => {
-        clearTimeout(timeout);
-        setApiDone(true); // fail silently — still proceed to teaser
-      });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Navigate as soon as scores arrive IF the user already pressed Continue
-  useEffect(() => {
-    if (!userPressedContinue || !apiDone) return;
-    if (navigated.current) return;
-    navigated.current = true;
-    clearScanPhotos();
-    router.push("/(onboarding)/improve-areas");
-  }, [userPressedContinue, apiDone, clearScanPhotos]);
 
   const targetAccuracy = useMemo(
     () => sanitizeAccuracy(RAW_TARGET_ACCURACY),
@@ -180,17 +138,12 @@ export default function TrustAccuracyScreen() {
 
   const handleContinue = useCallback(() => {
     hapticSuccess();
-    if (apiDone) {
-      // Scores already in — navigate immediately
-      if (navigated.current) return;
-      navigated.current = true;
-      clearScanPhotos();
-      router.push("/(onboarding)/improve-areas");
-    } else {
-      // Scores still loading — flag intent; useEffect navigates when they arrive
-      setUserPressedContinue(true);
-    }
-  }, [apiDone, clearScanPhotos]);
+    if (navigated.current) return;
+    navigated.current = true;
+    // Navigate to score-teaser which shows a blurred preview —
+    // real analysis fires only after the user subscribes.
+    router.push("/(onboarding)/score-teaser");
+  }, []);
 
   const handleBack = useCallback(() => {
     hapticLight();
@@ -245,9 +198,7 @@ export default function TrustAccuracyScreen() {
           </T>
 
           <T variant="body" color="sub" style={styles.subtitle}>
-            {hasPhotos
-              ? "Analyzing your facial structure with near-perfect precision…"
-              : "Every symmetry, contour, and ratio analyzed with near-perfect precision."}
+            Every symmetry, contour, and ratio analyzed with near-perfect precision.
           </T>
 
           <View style={styles.metricBlock}>
@@ -263,11 +214,10 @@ export default function TrustAccuracyScreen() {
           </View>
         </View>
 
-        {/* CTA — always visible; shows loading state while awaiting scores */}
         <LimeButton
-          label={userPressedContinue && !apiDone ? "Analyzing…" : "Continue"}
+          label={animDone ? "Continue" : "…"}
           onPress={handleContinue}
-          disabled={userPressedContinue && !apiDone}
+          disabled={!animDone}
         />
       </View>
     </View>

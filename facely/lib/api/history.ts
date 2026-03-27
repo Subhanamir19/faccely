@@ -25,6 +25,24 @@ export interface ScanDetail {
   analysisCreatedAt: string | null;
 }
 
+/** Extract a user-facing message from a non-ok response body. */
+async function extractErrorMessage(res: Response): Promise<string> {
+  // Railway-level 404 ("Application not found") means the service is down —
+  // always show a friendly message regardless of the body content.
+  if (res.status === 404 || res.status === 503) {
+    return "Server temporarily unavailable. Please try again later.";
+  }
+  const raw = await res.text().catch(() => "");
+  // For other error codes, try to surface the app's own message field.
+  try {
+    const parsed = JSON.parse(raw);
+    if (typeof parsed?.message === "string") return parsed.message;
+  } catch {
+    // not JSON — fall through
+  }
+  return raw || `Request failed (${res.status})`;
+}
+
 export async function fetchScanHistory(limit = 20): Promise<ScanHistoryItem[]> {
   const { uid, deviceId } = getAuthState();
   if (!uid) throw new Error("Not authenticated");
@@ -40,9 +58,8 @@ export async function fetchScanHistory(limit = 20): Promise<ScanHistoryItem[]> {
   const res = await fetchWithRetry(url, { method: "GET", headers });
 
   if (!res.ok) {
-    const detail = await res.text().catch(() => "");
-    const suffix = detail ? ` - ${detail}` : "";
-    throw new Error(`History request failed (HTTP ${res.status})${suffix}`);
+    const message = await extractErrorMessage(res);
+    throw new Error(message);
   }
 
   const payload = await res.json().catch(() => null);
@@ -68,9 +85,8 @@ export async function fetchScanDetail(scanId: string): Promise<ScanDetail> {
   const res = await fetchWithRetry(url, { method: "GET", headers });
 
   if (!res.ok) {
-    const detail = await res.text().catch(() => "");
-    const suffix = detail ? ` - ${detail}` : "";
-    throw new Error(`History detail request failed (HTTP ${res.status})${suffix}`);
+    const message = await extractErrorMessage(res);
+    throw new Error(message);
   }
 
   const payload = await res.json().catch(() => null);

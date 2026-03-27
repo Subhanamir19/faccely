@@ -39,6 +39,7 @@ import { useOnboarding } from "@/store/onboarding";
 import { useSubscriptionStore } from "@/store/subscription";
 import { useTenByTen } from "@/store/tenByTen";
 import { useTenByTenConsent } from "@/hooks/useTenByTenConsent";
+import ProGateModal from "@/components/ui/ProGateModal";
 
 // ---------------------------------------------------------------------------
 // Loading pulse animation
@@ -121,22 +122,23 @@ function ShimmerPlaceholder() {
 // ---------------------------------------------------------------------------
 
 function ProGate() {
+  const [modalVisible, setModalVisible] = React.useState(true);
   return (
-    <Animated.View entering={FadeIn.duration(400)} style={styles.gateWrap}>
-      <View style={styles.gateIconWrap}>
-        <Sparkles size={32} color={COLORS.accent} strokeWidth={1.5} />
-      </View>
-      <Text style={styles.gateTitle}>Pro Feature</Text>
-      <Text style={styles.gateSub}>
-        Unlock "You as a 10/10" with a Sigma Max Pro subscription.
-      </Text>
-      <Pressable
-        style={({ pressed }) => [styles.ctaBtn, pressed && { opacity: 0.85 }]}
-        onPress={() => router.push("/(paywall)")}
-      >
-        <Text style={styles.ctaBtnText}>Upgrade to Pro</Text>
-      </Pressable>
-    </Animated.View>
+    <View style={styles.gateWrap}>
+      <ProGateModal
+        visible={modalVisible}
+        onClose={() => setModalVisible(false)}
+      />
+      {!modalVisible && (
+        <Pressable style={styles.gateReopenBtn} onPress={() => setModalVisible(true)}>
+          <View style={styles.gateIconWrap}>
+            <Sparkles size={32} color={COLORS.accent} strokeWidth={1.5} />
+          </View>
+          <Text style={styles.gateTitle}>Pro Feature</Text>
+          <Text style={styles.gateSub}>Tap to unlock with Sigma Max Pro</Text>
+        </Pressable>
+      )}
+    </View>
   );
 }
 
@@ -1193,10 +1195,14 @@ const styles = StyleSheet.create({
   // Gates
   gateWrap: {
     flex: 1,
+    backgroundColor: "#0B0B0B",
     alignItems: "center",
     justifyContent: "center",
+  },
+  gateReopenBtn: {
+    alignItems: "center",
     paddingHorizontal: SP[6],
-    gap: SP[4],
+    gap: SP[3],
   },
   gateIconWrap: {
     width: 72,
@@ -1207,7 +1213,6 @@ const styles = StyleSheet.create({
     borderColor: "rgba(180,243,77,0.2)",
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: SP[2],
   },
   gateTitle: {
     color: "#FFFFFF",
