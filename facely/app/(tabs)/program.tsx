@@ -32,6 +32,16 @@ import { COLORS, RADII, SP } from "@/lib/tokens";
 import DayCompleteModal from "@/components/ui/DayCompleteModal";
 import MoodCheckModal from "@/components/ui/MoodCheckModal";
 import LimeButton from "@/components/ui/LimeButton";
+import ComebackModal from "@/components/ui/ComebackModal";
+import StreakCelebrationModal from "@/components/ui/StreakCelebrationModal";
+import HalfwayHypeModal from "@/components/ui/HalfwayHypeModal";
+import DidYouKnowModal from "@/components/ui/DidYouKnowModal";
+import {
+  canShowDidYouKnow,
+  canShowHalfway,
+  getShownMilestones,
+  markMilestoneShown,
+} from "@/lib/lifeModals";
 import { useTasksStore, type DailyTask, type ProtocolTask, type DayRecord } from "@/store/tasks";
 import { useScores, type Scores } from "@/store/scores";
 import { useOnboarding } from "@/store/onboarding";
@@ -40,6 +50,10 @@ import { getExerciseIcon } from "@/lib/exerciseIcons";
 
 // Module-level: only show intro splash once per day
 let lastIntroDate: string | null = null;
+
+// Module-level: life modal session flags (same pattern as lastIntroDate)
+let _comebackChecked = false;
+let _didYouKnowChecked = false;
 
 // ---------------------------------------------------------------------------
 // Loading screen — helpers
@@ -1005,6 +1019,28 @@ export default function TasksScreen() {
   const [confirmProtocol, setConfirmProtocol]     = useState<ProtocolTask | null>(null);
   const [showAllDoneOverlay, setShowAllDoneOverlay] = useState(false);
 
+  // Life modals
+  type LifeModal = "comeback" | "streak" | "halfway" | "didyouknow";
+  const [activeLifeModal, setActiveLifeModal]     = useState<LifeModal | null>(null);
+  const activeLifeModalRef                        = useRef<LifeModal | null>(null);
+  const [missedDays, setMissedDays]               = useState(0);
+  const [celebMilestone, setCelebMilestone]       = useState(0);
+  const [currentFact, setCurrentFact]             = useState("");
+  // Streak celebration is deferred until after DayComplete + MoodCheck flow
+  const [pendingStreakMilestone, setPendingStreakMilestone] = useState(0);
+
+  const showLifeModal = useCallback((type: LifeModal) => {
+    if (activeLifeModalRef.current !== null) return;
+    if (introVisibleRef.current) return; // never interrupt the intro splash
+    activeLifeModalRef.current = type;
+    setActiveLifeModal(type);
+  }, []);
+
+  const closeLifeModal = useCallback(() => {
+    activeLifeModalRef.current = null;
+    setActiveLifeModal(null);
+  }, []);
+
   // Show overlay every time the screen is focused if all tasks are done
   useFocusEffect(
     useCallback(() => {
@@ -1014,9 +1050,58 @@ export default function TasksScreen() {
     }, [])
   );
 
+  // Life modal: comeback + did-you-know (once per session each)
+  useFocusEffect(
+    useCallback(() => {
+      setTimeout(() => {
+        // Never interrupt intro splash or show over the all-done overlay
+        if (introVisibleRef.current) return;
+        if (useTasksStore.getState().today?.allComplete) return;
+
+        // Priority 1: Comeback — user missed 2+ days
+        if (!_comebackChecked) {
+          _comebackChecked = true;
+          const history = useTasksStore.getState().history ?? [];
+          const missed = getConsecutiveMissed(history);
+          if (missed >= 2) {
+            setMissedDays(missed);
+            showLifeModal("comeback");
+            return;
+          }
+        }
+        // Priority 2: Did You Know — at most once per 2 days
+        if (!_didYouKnowChecked) {
+          _didYouKnowChecked = true;
+          canShowDidYouKnow(getLocalDateString()).then(({ show, fact }) => {
+            if (show) {
+              setCurrentFact(fact);
+              showLifeModal("didyouknow");
+            }
+          });
+        }
+      }, 600);
+    }, [showLifeModal])
+  );
+
+  // Life modal: streak milestone (3 or 7 days) — queued for after DayComplete+MoodCheck flow
+  useEffect(() => {
+    if (currentStreak !== 3 && currentStreak !== 7) return;
+    getShownMilestones().then((shown) => {
+      if (shown.includes(currentStreak)) return;
+      markMilestoneShown(currentStreak);
+      setCelebMilestone(currentStreak);
+      // Don't show immediately — DayCompleteModal is about to appear.
+      // pendingStreakMilestone is flushed after MoodCheck closes.
+      setPendingStreakMilestone(currentStreak);
+    });
+  }, [currentStreak]);
+
   // Intro splash — once per day
   const todayDateStr = getLocalDateString();
   const [introVisible, setIntroVisible] = useState(lastIntroDate !== todayDateStr);
+  // Ref so event callbacks (showLifeModal, useFocusEffect) can read intro state without stale closures
+  const introVisibleRef = useRef(introVisible);
+  useEffect(() => { introVisibleRef.current = introVisible; }, [introVisible]);
   const introTimerDoneRef = useRef(false);
 
   useEffect(() => { initToday(); }, []);
@@ -1083,11 +1168,24 @@ export default function TasksScreen() {
     handleTaskComplete(task.exerciseId);
   }, [markDoneTask, handleTaskComplete]);
 
-  if (introVisible || loading || !today) return <TasksLoadingScreen />;
-
-  const tasks          = today.tasks;
+  // Compute before early return so halfway effect can use these values
+  const tasks          = today?.tasks ?? [];
   const completedCount = tasks.filter((t) => t.status === "completed").length;
   const totalCount     = tasks.length;
+  const halfwayReached = totalCount > 0 && completedCount >= totalCount / 2;
+
+  // Life modal: halfway hype — once per day when 50% of exercises are done.
+  // Guard: don't fire while intro is showing or tasks are still loading.
+  // Including introVisible + loading in deps means the effect re-evaluates when
+  // intro clears — so if halfway was reached during loading it shows right after.
+  useEffect(() => {
+    if (!halfwayReached || introVisible || loading || !today) return;
+    canShowHalfway(getLocalDateString()).then((can) => {
+      if (can) showLifeModal("halfway");
+    });
+  }, [halfwayReached, introVisible, loading, today, showLifeModal]);
+
+  if (introVisible || loading || !today) return <TasksLoadingScreen />;
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -1191,8 +1289,21 @@ export default function TasksScreen() {
       <MoodCheckModal
         visible={showMoodCheck}
         dayNumber={currentStreak}
-        onSelect={(mood) => { setMood(mood); setShowMoodCheck(false); }}
-        onSkip={() => setShowMoodCheck(false)}
+        onSelect={(mood) => {
+          setMood(mood);
+          setShowMoodCheck(false);
+          if (pendingStreakMilestone > 0) {
+            setPendingStreakMilestone(0);
+            setTimeout(() => showLifeModal("streak"), 300);
+          }
+        }}
+        onSkip={() => {
+          setShowMoodCheck(false);
+          if (pendingStreakMilestone > 0) {
+            setPendingStreakMilestone(0);
+            setTimeout(() => showLifeModal("streak"), 300);
+          }
+        }}
       />
 
       <ProtocolConfirmModal
@@ -1221,6 +1332,29 @@ export default function TasksScreen() {
           onViewTasks={() => setShowAllDoneOverlay(false)}
         />
       )}
+
+      {/* ── Life moment modals ── */}
+      <ComebackModal
+        visible={activeLifeModal === "comeback"}
+        missedDays={missedDays}
+        onClose={closeLifeModal}
+      />
+      <StreakCelebrationModal
+        visible={activeLifeModal === "streak"}
+        streakDays={celebMilestone}
+        onClose={closeLifeModal}
+      />
+      <HalfwayHypeModal
+        visible={activeLifeModal === "halfway"}
+        completedCount={completedCount}
+        totalCount={totalCount}
+        onClose={closeLifeModal}
+      />
+      <DidYouKnowModal
+        visible={activeLifeModal === "didyouknow"}
+        fact={currentFact}
+        onClose={closeLifeModal}
+      />
     </SafeAreaView>
   );
 }

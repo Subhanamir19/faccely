@@ -47,6 +47,7 @@ import { restoreWithCode } from "@/lib/api/recoveryCodes";
 
 const { width } = Dimensions.get("window");
 
+
 const CONTENT_WIDTH = Math.round(width * 0.86);
 
 const FEATURE_ITEMS = [
@@ -213,9 +214,6 @@ const PaywallScreen: React.FC = () => {
   const setOnboardingCompletedFromOnboarding = useAuthStore(
     (state) => state.setOnboardingCompletedFromOnboarding
   );
-  // Individual selectors — consistent with the pattern below, avoids stale closures
-  const clearScanPhotos = useOnboarding((state) => state.clearScanPhotos);
-
   // Use individual selectors instead of getting entire store to avoid stale closures
   const offerings = useSubscriptionStore((state) => state.offerings);
   const setLoading = useSubscriptionStore((state) => state.setLoading);
@@ -431,9 +429,11 @@ const PaywallScreen: React.FC = () => {
       setRevenueCatEntitlement(hasEntitlement);
 
       // Fire real face analysis non-blocking using the stored onboarding photos.
-      // score-teaser will show CinematicLoader until scores arrive, then reveal.
+      // score-teaser shows CinematicLoader until scores arrive, then reveals them.
+      // If no photos exist (dev/test flow), score-teaser's fallback handles it.
       const frontal = useOnboarding.getState().scanFrontalUri;
       const side = useOnboarding.getState().scanSideUri;
+      const clearScanPhotos = useOnboarding.getState().clearScanPhotos;
       if (frontal && side) {
         analyzePair(
           { uri: frontal, name: "front.jpg", mime: "image/jpeg" },
@@ -441,13 +441,8 @@ const PaywallScreen: React.FC = () => {
         )
           .then(() => clearScanPhotos())
           .catch(() => clearScanPhotos());
-        // Show score reveal — real scores will arrive via analyzePair above.
-        router.replace("/(onboarding)/score-teaser");
-      } else {
-        // No scan photos (user upgraded from free tier without scanning).
-        // Skip score-teaser and go straight to the main app.
-        navigateToMainApp();
       }
+      router.replace("/(onboarding)/score-teaser");
     } catch (error: any) {
       logger.error("[Paywall] Purchase error:", error);
       if (isMountedRef.current) {
@@ -462,7 +457,7 @@ const PaywallScreen: React.FC = () => {
         setLoading(false);
       }
     }
-  }, [selected, packages, setLoading, setCurrentPackage, setRevenueCatEntitlement, completeOnboarding, analyzePair, clearScanPhotos, ensureCode]);
+  }, [selected, packages, setLoading, setCurrentPackage, setRevenueCatEntitlement, completeOnboarding, analyzePair, ensureCode, navigateToMainApp]);
 
   const onRestorePurchases = useCallback(async () => {
     setIsLoading(true);
@@ -504,14 +499,6 @@ const PaywallScreen: React.FC = () => {
       }
     }
   }, [setLoading, setRevenueCatEntitlement, completeOnboarding, navigateToMainApp]);
-
-  // Free path — user skips subscription. Mark onboarding done and enter app.
-  // Photos are cleared since they'll never be analyzed (no subscription).
-  const onSkipForFree = useCallback(async () => {
-    await completeOnboarding();
-    clearScanPhotos();
-    navigateToMainApp();
-  }, [completeOnboarding, clearScanPhotos, navigateToMainApp]);
 
   const onApplyPromoCode = useCallback(async () => {
     if (!promoCode.trim()) {
@@ -609,11 +596,6 @@ const PaywallScreen: React.FC = () => {
                 disabled={isLoading}
               />
             </View>
-
-            {/* SKIP — free tier entry */}
-            <Pressable style={styles.skipButton} onPress={onSkipForFree} disabled={isLoading}>
-              <Text style={styles.skipText}>Start for free (routine only)</Text>
-            </Pressable>
 
             {/* RESTORE PURCHASES */}
             <Pressable style={styles.restoreButton} onPress={onRestorePurchases} disabled={isLoading}>
@@ -889,16 +871,6 @@ const styles = StyleSheet.create({
   primaryButtonWrap: {
     width: CONTENT_WIDTH,
     marginTop: 32,
-  },
-  skipButton: {
-    marginTop: 14,
-    paddingVertical: 10,
-    alignItems: "center",
-  },
-  skipText: {
-    fontFamily: "Poppins-Regular",
-    fontSize: 13,
-    color: "rgba(200,200,200,0.45)",
   },
   restoreButton: {
     marginTop: 16,

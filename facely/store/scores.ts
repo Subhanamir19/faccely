@@ -107,6 +107,9 @@ type Actions = {
   setImage: (uri: string) => void;
   setSideImage: (uri: string) => void;
 
+  /** Directly set scores without a backend call (e.g. neutral scores for free users). */
+  setScores: (scores: Scores) => void;
+
   /** Analyze single image. Accepts string or { uri, name?, mime? }. */
   analyze: (input: InputFile) => Promise<Scores>;
 
@@ -149,6 +152,7 @@ export const useScores = create<State & Actions>((set, get) => ({
 
   setImage: (uri) => set({ imageUri: uri }),
   setSideImage: (uri) => set({ sideImageUri: uri }),
+  setScores: (scores) => set({ scores }),
 
   analyze: async (input: InputFile) => {
     const originalUri = getUri(input);

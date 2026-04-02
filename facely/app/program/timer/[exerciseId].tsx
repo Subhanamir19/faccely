@@ -403,13 +403,13 @@ export default function TimerScreen() {
       <Modal
         transparent
         visible={showHowTo}
-        animationType="slide"
+        animationType="fade"
         statusBarTranslucent
         onRequestClose={handleCloseHowTo}
       >
         <Pressable style={styles.howToBackdrop} onPress={handleCloseHowTo}>
-          <Animated.View entering={FadeInUp.duration(280)} style={styles.howToSheet}>
-            <Pressable onPress={() => {}} style={{ flex: 1 }}>
+          <View style={styles.howToSheet}>
+            <Pressable onPress={() => {}} style={{ width: "100%" }}>
               <View style={styles.howToHandle} />
               <View style={styles.howToHeader}>
                 <Text style={styles.howToTitle}>How to Perform</Text>
@@ -452,7 +452,7 @@ export default function TimerScreen() {
                 )}
               </ScrollView>
             </Pressable>
-          </Animated.View>
+          </View>
         </Pressable>
       </Modal>
 

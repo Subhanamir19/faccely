@@ -36,10 +36,8 @@ import { router } from "expo-router";
 import { COLORS, RADII, SP } from "@/lib/tokens";
 import { useScores } from "@/store/scores";
 import { useOnboarding } from "@/store/onboarding";
-import { useSubscriptionStore } from "@/store/subscription";
 import { useTenByTen } from "@/store/tenByTen";
 import { useTenByTenConsent } from "@/hooks/useTenByTenConsent";
-import ProGateModal from "@/components/ui/ProGateModal";
 
 // ---------------------------------------------------------------------------
 // Loading pulse animation
@@ -118,41 +116,12 @@ function ShimmerPlaceholder() {
 }
 
 // ---------------------------------------------------------------------------
-// Pro gate
-// ---------------------------------------------------------------------------
-
-function ProGate() {
-  const [modalVisible, setModalVisible] = React.useState(true);
-  return (
-    <View style={styles.gateWrap}>
-      <ProGateModal
-        visible={modalVisible}
-        onClose={() => setModalVisible(false)}
-      />
-      {!modalVisible && (
-        <Pressable style={styles.gateReopenBtn} onPress={() => setModalVisible(true)}>
-          <View style={styles.gateIconWrap}>
-            <Sparkles size={32} color={COLORS.accent} strokeWidth={1.5} />
-          </View>
-          <Text style={styles.gateTitle}>Pro Feature</Text>
-          <Text style={styles.gateSub}>Tap to unlock with Sigma Max Pro</Text>
-        </Pressable>
-      )}
-    </View>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Main screen
 // ---------------------------------------------------------------------------
 
 export default function TenByTenScreen() {
   const scanImageUri = useScores((s) => s.imageUri);
   const onboardingData = useOnboarding((s) => s.data);
-  const revenueCatEntitlement = useSubscriptionStore((s) => s.revenueCatEntitlement);
-  const promoActivated = useSubscriptionStore((s) => s.promoActivated);
-  const hasAccess = revenueCatEntitlement || promoActivated;
-
   const { generatedUri, generatedAt, loading, error, generate, clear, canGenerate } = useTenByTen();
   const { checkAndPromptConsent, ConsentModal } = useTenByTenConsent();
 
@@ -273,21 +242,6 @@ export default function TenByTenScreen() {
       setFullscreenVisible(true);
     }
   }, [effectiveGeneratedUri]);
-
-  // Pro gate — always provide a back escape so user is never stranded
-  if (!hasAccess) return (
-    <SafeAreaView style={styles.safe}>
-      <StatusBar barStyle="light-content" />
-      <Pressable
-        onPress={() => router.canGoBack() ? router.back() : router.replace("/(tabs)/program")}
-        style={{ padding: 16, alignSelf: "flex-start" }}
-        hitSlop={8}
-      >
-        <ChevronLeft size={24} color="rgba(255,255,255,0.70)" strokeWidth={2} />
-      </Pressable>
-      <ProGate />
-    </SafeAreaView>
-  );
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -1192,39 +1146,4 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.88)",
   },
 
-  // Gates
-  gateWrap: {
-    flex: 1,
-    backgroundColor: "#0B0B0B",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  gateReopenBtn: {
-    alignItems: "center",
-    paddingHorizontal: SP[6],
-    gap: SP[3],
-  },
-  gateIconWrap: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: "rgba(180,243,77,0.08)",
-    borderWidth: 1,
-    borderColor: "rgba(180,243,77,0.2)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  gateTitle: {
-    color: "#FFFFFF",
-    fontSize: 22,
-    fontFamily: "Poppins-SemiBold",
-    textAlign: "center",
-  },
-  gateSub: {
-    color: "rgba(255,255,255,0.5)",
-    fontSize: 14,
-    fontFamily: "Poppins-Regular",
-    textAlign: "center",
-    lineHeight: 20,
-  },
 });

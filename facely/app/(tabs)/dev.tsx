@@ -17,6 +17,11 @@ import GlassCard from "@/components/ui/GlassCard";
 import { COLORS, SP, RADII } from "@/lib/tokens";
 import { ConsentModalInner } from "@/hooks/useAdvancedAnalysisConsent";
 import DayCompleteModal from "@/components/ui/DayCompleteModal";
+import ComebackModal from "@/components/ui/ComebackModal";
+import StreakCelebrationModal from "@/components/ui/StreakCelebrationModal";
+import HalfwayHypeModal from "@/components/ui/HalfwayHypeModal";
+import DidYouKnowModal from "@/components/ui/DidYouKnowModal";
+import { resetAllLifeModalFlags, DID_YOU_KNOW_FACTS } from "@/lib/lifeModals";
 import { useTasksStore } from "@/store/tasks";
 
 // ---------------------------------------------------------------------------
@@ -90,6 +95,14 @@ export default function DevScreen() {
   const [dayCompleteVisible, setDayCompleteVisible] = useState(false);
   const currentStreak = useTasksStore((s) => s.currentStreak);
   const [scanBypass, setScanBypass] = useState<boolean | "…">("…");
+
+  // Life modal previews
+  type LifeModal = "comeback" | "streak" | "halfway" | "didyouknow";
+  const [lifeModal, setLifeModal] = useState<LifeModal | null>(null);
+  const [celebMilestone, setCelebMilestone] = useState(3);
+  const [previewFact] = useState(
+    DID_YOU_KNOW_FACTS[Math.floor(Math.random() * DID_YOU_KNOW_FACTS.length)],
+  );
 
   const refreshConsent = useCallback(async () => {
     const val = await AsyncStorage.getItem(CONSENT_KEY);
@@ -201,6 +214,50 @@ export default function DevScreen() {
           </View>
         </GlassCard>
 
+        {/* ── Life Moment Modals ─────────────────────────────────────── */}
+        <GlassCard style={styles.card}>
+          <SectionHeader
+            title="Life Moment Modals"
+            subtitle="Pose overlays that appear on the daily routine screen"
+          />
+
+          <DevButton
+            label="😬  Comeback  (2+ days absent)"
+            accent
+            onPress={() => setLifeModal("comeback")}
+          />
+          <DevButton
+            label="🎉  Streak — Day 3"
+            accent
+            onPress={() => { setCelebMilestone(3); setLifeModal("streak"); }}
+          />
+          <DevButton
+            label="🔥  Streak — Day 7"
+            accent
+            onPress={() => { setCelebMilestone(7); setLifeModal("streak"); }}
+          />
+          <DevButton
+            label="👍  Halfway Hype  (50% tasks done)"
+            accent
+            onPress={() => setLifeModal("halfway")}
+          />
+          <DevButton
+            label="💡  Did You Know"
+            accent
+            onPress={() => setLifeModal("didyouknow")}
+          />
+
+          <View style={styles.divider} />
+
+          <DevButton
+            label="Reset All Life Modal Flags"
+            onPress={async () => {
+              await resetAllLifeModalFlags();
+              Alert.alert("Reset", "All life modal flags cleared.\nSession flags reset on next app restart.");
+            }}
+          />
+        </GlassCard>
+
         {/* ── Scan Limit Bypass ──────────────────────────────────────── */}
         <GlassCard style={styles.card}>
           <SectionHeader
@@ -265,6 +322,29 @@ export default function DevScreen() {
           Alert.alert("Preview only", '"I Agree" tapped — nothing was saved.');
         }}
         onCancel={() => setPreviewVisible(false)}
+      />
+
+      {/* Life moment modal previews */}
+      <ComebackModal
+        visible={lifeModal === "comeback"}
+        missedDays={3}
+        onClose={() => setLifeModal(null)}
+      />
+      <StreakCelebrationModal
+        visible={lifeModal === "streak"}
+        streakDays={celebMilestone}
+        onClose={() => setLifeModal(null)}
+      />
+      <HalfwayHypeModal
+        visible={lifeModal === "halfway"}
+        completedCount={3}
+        totalCount={5}
+        onClose={() => setLifeModal(null)}
+      />
+      <DidYouKnowModal
+        visible={lifeModal === "didyouknow"}
+        fact={previewFact}
+        onClose={() => setLifeModal(null)}
       />
     </SafeAreaView>
   );

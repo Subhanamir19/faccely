@@ -140,9 +140,7 @@ export default function TrustAccuracyScreen() {
     hapticSuccess();
     if (navigated.current) return;
     navigated.current = true;
-    // Navigate to score-teaser which shows a blurred preview —
-    // real analysis fires only after the user subscribes.
-    router.push("/(onboarding)/score-teaser");
+    router.push("/(onboarding)/improve-areas");
   }, []);
 
   const handleBack = useCallback(() => {

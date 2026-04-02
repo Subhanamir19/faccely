@@ -44,8 +44,6 @@ import Svg, {
 } from "react-native-svg";
 import { useRouter, useFocusEffect } from "expo-router";
 import { TrendingUp } from "lucide-react-native";
-import { useSubscriptionStore } from "@/store/subscription";
-import ProGateModal from "@/components/ui/ProGateModal";
 import Text from "@/components/ui/T";
 import { COLORS, SP, RADII, TYPE, SHADOWS } from "@/lib/tokens";
 import { useInsights } from "@/store/insights";
@@ -70,14 +68,14 @@ const AnimatedTextInput = Animated.createAnimatedComponent(TextInput);
 /* -------------------------------------------------------------------------- */
 
 const LIME = {
-  primary: "#B4F34D",
-  light:   "#CCFF6B",
-  dark:    "#6B9A1E",
-  dim:     "rgba(180,243,77,0.60)",
-  glow:    "rgba(180,243,77,0.18)",
-  border:  "rgba(180,243,77,0.30)",
-  bg:      "rgba(180,243,77,0.10)",
-  track:   "rgba(180,243,77,0.15)",
+  primary: COLORS.accent,
+  light:   COLORS.accentLight,
+  dark:    COLORS.accentDepth,
+  dim:     "rgba(180,243,77,0.60)",   // 60% accent — no exact token
+  glow:    COLORS.accentGlow,
+  border:  COLORS.accentBorder,
+  bg:      "rgba(180,243,77,0.10)",   // 10% accent — no exact token
+  track:   "rgba(180,243,77,0.15)",   // 15% accent — no exact token
 };
 
 const DIR_COLOR: Record<string, string> = {
@@ -1490,51 +1488,7 @@ function EmptyState({
   );
 }
 
-/* -------------------------------------------------------------------------- */
-/*  Pro Gate                                                                   */
-/* -------------------------------------------------------------------------- */
 
-function DashboardProGate() {
-  const insets = useSafeAreaInsets();
-  const [modalVisible, setModalVisible] = React.useState(true);
-  return (
-    <View style={[proGateStyles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
-      <ProGateModal
-        visible={modalVisible}
-        onClose={() => setModalVisible(false)}
-      />
-      {/* Re-open modal if user dismisses without upgrading */}
-      {!modalVisible && (
-        <Pressable
-          style={proGateStyles.reopenBtn}
-          onPress={() => setModalVisible(true)}
-        >
-          <TrendingUp size={32} color={LIME.primary} />
-          <Text style={proGateStyles.reopenLabel}>Unlock Progress</Text>
-        </Pressable>
-      )}
-    </View>
-  );
-}
-
-const proGateStyles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#0B0B0B",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  reopenBtn: {
-    alignItems: "center",
-    gap: 12,
-    padding: 24,
-  },
-  reopenLabel: {
-    color: LIME.primary,
-    fontSize: 15,
-    fontFamily: "Poppins-SemiBold",
-  },
-});
 
 /* -------------------------------------------------------------------------- */
 /*  Main Screen                                                                */
@@ -1543,17 +1497,13 @@ const proGateStyles = StyleSheet.create({
 export default function DashboardScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { data, loading, error, loadInsights, invalidate, pollUntilInsight, pollUntilAdvanced } = useInsights();
+  const { data, loading, error, isDirty, loadInsights, invalidate, pollUntilInsight, pollUntilAdvanced } = useInsights();
   const currentStreak = useTasksStore((s) => s.currentStreak);
   const advancedData = useAdvancedAnalysis((s) => s.data);
   const authUser = useAuthStore((s) => s.user);
   const displayName = useProfile((s) => s.displayName);
   const scanLoading = useScores((s) => s.loading);
   const scanError   = useScores((s) => s.error);
-
-  const revenueCatEntitlement = useSubscriptionStore((s) => s.revenueCatEntitlement);
-  const promoActivated = useSubscriptionStore((s) => s.promoActivated);
-  const hasAccess = revenueCatEntitlement || promoActivated;
 
   // Derive first name: prefer user-set display name, then auth fields, then email prefix
   const userName = (() => {
@@ -1571,15 +1521,19 @@ export default function DashboardScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      console.log("[dashboard] focused — calling loadInsights()");
-      loadInsights();
-    }, [loadInsights])
+      if (isDirty) {
+        console.log("[dashboard] focused — isDirty=true, calling loadInsights()");
+        loadInsights();
+      } else {
+        console.log("[dashboard] focused — data is fresh, skipping fetch");
+      }
+    }, [loadInsights, isDirty])
   );
 
   // When scan_count >= 2 but insight hasn't generated yet, poll until it arrives
   useEffect(() => {
     if (data && data.scan_count >= 2 && data.insight === null) {
-      pollUntilInsight();
+      return pollUntilInsight();
     }
   }, [data?.scan_count, data?.insight]);
 
@@ -1741,7 +1695,6 @@ export default function DashboardScreen() {
     );
   };
 
-  if (!hasAccess) return <DashboardProGate />;
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>

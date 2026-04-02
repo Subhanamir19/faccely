@@ -2,7 +2,7 @@
 import React from "react";
 import { Tabs } from "expo-router";
 import { Platform } from "react-native";
-import { Scan, CircleCheckBig, UserRound, Code2, TrendingUp } from "lucide-react-native";
+import { Scan, CircleCheckBig, UserRound, TrendingUp } from "lucide-react-native";
 
 const ACTIVE = "#FFFFFF";
 const INACTIVE = "rgba(255,255,255,0.40)";
@@ -38,7 +38,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="program"
         options={{
-          title: "daily",
+          title: "Daily",
           tabBarIcon: ({ color, size }) => <CircleCheckBig color={color} size={size ?? 22} />,
         }}
       />
@@ -47,7 +47,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="take-picture"
         options={{
-          title: "scan",
+          title: "Scan",
           tabBarIcon: ({ color, size }) => <Scan color={color} size={size ?? 22} />,
         }}
       />
@@ -59,7 +59,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="dashboard"
         options={{
-          title: "progress",
+          title: "Progress",
           tabBarIcon: ({ color, size }) => <TrendingUp color={color} size={size ?? 22} />,
         }}
       />
@@ -68,7 +68,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="profile"
         options={{
-          title: "profile",
+          title: "Profile",
           tabBarIcon: ({ color, size }) => <UserRound color={color} size={size ?? 22} />,
         }}
       />
@@ -76,7 +76,7 @@ export default function TabsLayout() {
       {/* coach — hidden from tab bar */}
       <Tabs.Screen name="sigma" options={{ href: null }} />
 
-      {/* dev — hidden from tab bar, screen + functionality intact */}
+      {/* dev — hidden from tab bar in all builds */}
       <Tabs.Screen name="dev" options={{ href: null }} />
 
       {/* Keep routes but hide them from the tab bar */}

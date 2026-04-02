@@ -23,10 +23,8 @@ import Svg, { Line, Circle, Rect, Path, Ellipse } from "react-native-svg";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { Sparkles } from "lucide-react-native";
-import { useSubscriptionStore } from "@/store/subscription";
 import { useTenByTen } from "@/store/tenByTen";
 import RecoveryCodeHint from "@/components/ui/RecoveryCodeHint";
-import ProGateModal from "@/components/ui/ProGateModal";
 
 // NEW: shared pre-upload compressor (JPEG, max 1080px)
 import { ensureJpegCompressed } from "../../lib/api/media";
@@ -34,14 +32,16 @@ import { logger } from '@/lib/logger';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAuthStore } from "@/store/auth";
 import { getLastScanTime, canScanNow } from "@/lib/supabase/scanLimit";
+import { COLORS } from "@/lib/tokens";
+import LimeButton from "@/components/ui/LimeButton";
 
 /* ============================== TOKENS ============================== */
-const ACCENT = "#B4F34D"; // Sigma Max lime
-const ACCENT_LIGHT = "#CCFF6B"; // lighter lime for gradient top
-const TEXT = "#FFFFFF";
-const TEXT_DIM = "rgba(255,255,255,0.72)";
-const CARD_BORDER = "rgba(255,255,255,0.08)";
-const BG = "#0B0B0B";
+const ACCENT       = COLORS.accent;
+const ACCENT_LIGHT = COLORS.accentLight;
+const TEXT         = COLORS.text;
+const TEXT_DIM     = COLORS.dim;
+const CARD_BORDER  = COLORS.cardBorder;
+const BG           = COLORS.bgBottom;
 
 /* ============================== HELPERS ============================== */
 function toFileUri(u: string) {
@@ -77,67 +77,6 @@ type Step = "intro" | "capture" | "review";
 
 
 /* ============================== UI ============================== */
-function LimeButton({
-  title,
-  onPress,
-  disabled,
-  style,
-}: {
-  title: string;
-  onPress: () => void;
-  disabled?: boolean;
-  style?: any;
-}) {
-  const DEPTH = 5;
-  if (disabled) {
-    return (
-      <Pressable
-        onPress={onPress}
-        disabled
-        style={[{ alignSelf: "center", width: "86%", borderRadius: 26, paddingVertical: 16, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.10)" }, style]}
-      >
-        <Text style={{ color: TEXT_DIM, fontSize: 16, fontFamily: "Poppins-SemiBold" }}>{title}</Text>
-      </Pressable>
-    );
-  }
-  return (
-    <View style={[{ alignSelf: "center", width: "86%", borderRadius: 28, backgroundColor: "#6B9A1E", paddingBottom: DEPTH, shadowColor: ACCENT, shadowOpacity: 0.5, shadowRadius: 24, shadowOffset: { width: 0, height: 10 }, elevation: 12 }, style]}>
-      <Pressable
-        onPress={onPress}
-        hitSlop={8}
-        style={({ pressed }) => ({
-          height: 56,
-          borderRadius: 28,
-          overflow: "hidden",
-          transform: [{ translateY: pressed ? DEPTH : 0 }],
-        })}
-      >
-        <LinearGradient
-          colors={[ACCENT_LIGHT, ACCENT]}
-          locations={[0, 1]}
-          start={{ x: 0.5, y: 0 }}
-          end={{ x: 0.5, y: 1 }}
-          style={{ flex: 1, alignItems: "center", justifyContent: "center", borderRadius: 28 }}
-        >
-          <Text
-            style={{
-              color: BG,
-              fontSize: 18,
-              lineHeight: 22,
-              fontFamily: Platform.select({
-                ios: "Poppins-SemiBold",
-                android: "Poppins-SemiBold",
-                default: "Poppins-SemiBold",
-              }),
-            }}
-          >
-            {title}
-          </Text>
-        </LinearGradient>
-      </Pressable>
-    </View>
-  );
-}
 
 /* A rounded neon frame with soft glow, sized by parent using absolute fill */
 function NeonFrame() {
@@ -272,9 +211,6 @@ export default function TakePicture() {
   const [perm, requestPerm] = useCameraPermissions();
   const permissionDenied = perm?.granted === false;
 
-  const revenueCatEntitlement = useSubscriptionStore((s) => s.revenueCatEntitlement);
-  const promoActivated = useSubscriptionStore((s) => s.promoActivated);
-  const hasAccess = revenueCatEntitlement || promoActivated;
 
   const [step, setStep] = useState<Step>("intro");
   const [pose, setPose] = useState<"frontal" | "side">("frontal");
@@ -288,7 +224,6 @@ export default function TakePicture() {
 
   const window = useWindowDimensions();
   const [activePage, setActivePage] = useState(0);
-  const [proGateVisible, setProGateVisible] = useState(false);
   const { generatedUri, generatedAt } = useTenByTen();
   const [genImgValid, setGenImgValid] = useState(false);
 
@@ -367,12 +302,6 @@ export default function TakePicture() {
   const canContinue = !!frontalUri && !!sideUri && !submitting;
 
   const beginScan = async () => {
-    // Free users can view the scan screen but cannot start a scan.
-    if (!hasAccess) {
-      setProGateVisible(true);
-      return;
-    }
-
     const bypass = await AsyncStorage.getItem("dev_bypass_scan_limit");
     if (bypass === "true") {
       logger.log("[scanLimit] dev bypass active — skipping check");
@@ -728,7 +657,9 @@ export default function TakePicture() {
             Align your face with the guides. Good lighting, neutral expression.
           </Text>
 
-          <LimeButton title="Capture Photo" onPress={() => void startCamera()} style={{ marginTop: 18 }} />
+          <View style={{ marginTop: 18 }}>
+            <LimeButton label="Capture Photo" onPress={() => void startCamera()} />
+          </View>
 
           {/* dots */}
           <View style={{ flexDirection: "row", gap: 6, marginTop: 12 }}>
@@ -854,12 +785,14 @@ export default function TakePicture() {
               </View>
             </View>
 
-            <LimeButton
-              title={submitting ? "Analyzing…" : "Proceed to score"}
-              onPress={useBoth}
-              disabled={!canContinue}
-              style={{ marginTop: 22, width: "92%" }}
-            />
+            <View style={{ marginTop: 22 }}>
+              <LimeButton
+                label={submitting ? "Analyzing…" : "Proceed to score"}
+                onPress={useBoth}
+                disabled={!canContinue}
+                loading={submitting}
+              />
+            </View>
           </SafeAreaView>
         </ImageBackground>
       )}
@@ -878,7 +811,7 @@ export default function TakePicture() {
               borderColor: CARD_BORDER,
             }}
           >
-            <LimeButton title="Take Photo" onPress={startCamera} />
+            <LimeButton label="Take Photo" onPress={startCamera} />
             <Pressable onPress={pickFromGallery} style={{ alignSelf: "center", marginTop: 6 }}>
               <Text
                 style={{
@@ -904,7 +837,7 @@ export default function TakePicture() {
           {permissionDenied ? (
             <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
               <Text style={{ color: TEXT, marginBottom: 12 }}>Camera permission required.</Text>
-              <LimeButton title="Grant Permission" onPress={() => void requestPerm()} />
+              <LimeButton label="Grant Permission" onPress={() => void requestPerm()} />
               <Pressable onPress={() => setCameraOpen(false)} style={{ marginTop: 10 }}>
                 <Text style={{ color: TEXT_DIM }}>Close</Text>
               </Pressable>
@@ -1011,11 +944,6 @@ export default function TakePicture() {
         </View>
       </Modal>
 
-      {/* Pro gate modal — shown when free user taps Begin Scan */}
-      <ProGateModal
-        visible={proGateVisible}
-        onClose={() => setProGateVisible(false)}
-      />
     </>
   );
 }

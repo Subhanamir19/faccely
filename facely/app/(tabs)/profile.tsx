@@ -72,10 +72,7 @@ export default function ProfileScreen() {
   const hydrateProfile = useProfile((state) => state.hydrate);
   const setProfileAvatar = useProfile((state) => state.setAvatar);
   const setDisplayName = useProfile((state) => state.setDisplayName);
-  const revenueCatEntitlement = useSubscriptionStore((state) => state.revenueCatEntitlement);
-  const promoActivated = useSubscriptionStore((state) => state.promoActivated);
   const setRevenueCatEntitlement = useSubscriptionStore((state) => state.setRevenueCatEntitlement);
-  const hasAccess = revenueCatEntitlement || promoActivated;
   const [changingPhoto, setChangingPhoto] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
@@ -110,12 +107,10 @@ export default function ProfileScreen() {
     if (!isHydrating) setNameInput(displayName ?? "");
   }, [isHydrating, displayName]);
 
-  // Ensure recovery code exists for subscribed users (including those who purchased before this feature)
+  // Ensure recovery code exists
   useEffect(() => {
-    if (hasAccess) {
-      ensureCode().catch(() => {});
-    }
-  }, [hasAccess, ensureCode]);
+    ensureCode().catch(() => {});
+  }, [ensureCode]);
 
   const name =
     (authUser as any)?.fullName ||
@@ -337,26 +332,9 @@ export default function ProfileScreen() {
         <GlassCard style={styles.card}>
           <View style={styles.cardHeader}>
             <T style={styles.cardLabel}>Subscription</T>
-            <T style={styles.cardSubtext}>
-              {hasAccess
-                ? promoActivated
-                  ? "Active (Promo Code)"
-                  : "Active - Sigma Max Pro"
-                : "Free tier — routine only"}
-            </T>
+            <T style={styles.cardSubtext}>Active - Sigma Max Pro</T>
           </View>
           <View style={styles.subscriptionActions}>
-            {!hasAccess && (
-              <Pressable
-                style={styles.upgradeBanner}
-                onPress={() => router.push("/(onboarding)/paywall")}
-              >
-                <T style={styles.upgradeBannerText}>Unlock All Features →</T>
-                <T style={styles.upgradeBannerSub}>
-                  Scans · Progress · AI Score · 10/10 Enhancement
-                </T>
-              </Pressable>
-            )}
             <View style={styles.subscriptionBtn}>
               <GlassBtn
                 label={restoringPurchases ? "Restoring..." : "Restore Purchases"}
@@ -378,14 +356,13 @@ export default function ProfileScreen() {
           </T>
         </GlassCard>
 
-        {hasAccess ? (
-          <GlassCard style={styles.card}>
-            <View style={styles.cardHeader}>
-              <T style={styles.cardLabel}>Recovery Code</T>
-              <T style={styles.cardSubtext}>
-                Save this — use it to restore your subscription if you ever reinstall the app.
-              </T>
-            </View>
+        <GlassCard style={styles.card}>
+          <View style={styles.cardHeader}>
+            <T style={styles.cardLabel}>Recovery Code</T>
+            <T style={styles.cardSubtext}>
+              Save this — use it to restore your subscription if you ever reinstall the app.
+            </T>
+          </View>
             {recoveryCode ? (
               <View style={styles.recoveryRow}>
                 <T style={styles.recoveryCode}>{recoveryCode}</T>
@@ -408,7 +385,6 @@ export default function ProfileScreen() {
               </T>
             )}
           </GlassCard>
-        ) : null}
 
         <View style={styles.dangerZone}>
           <GlassCard style={styles.dangerCard}>
