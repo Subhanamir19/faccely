@@ -25,7 +25,13 @@ import Animated, {
   interpolate,
   Easing,
 } from "react-native-reanimated";
-import { Sparkles, Target, AlertCircle, ChevronDown, ChevronRight } from "lucide-react-native";
+import {
+  Sparkles, Target, AlertCircle, ChevronDown, ChevronRight,
+  MoveHorizontal, Layers, Diamond, Droplets,
+  Shield, Triangle, Compass,
+  Eye, ScanEye, Layers2, FlipHorizontal,
+  Sun,
+} from "lucide-react-native";
 
 import Text from "@/components/ui/T";
 import { COLORS, SP, RADII } from "@/lib/tokens";
@@ -89,22 +95,23 @@ type SubDef = {
   key:      string;
   label:    string;
   category: CategoryChip;
+  icon:     React.ComponentType<{ size: number; color: string; strokeWidth: number }>;
 };
 
 const SUBMETRIC_DEFS: SubDef[] = [
-  { id: "cheekbones.width",          group: "cheekbones", key: "width",          label: "Cheekbones Width",  category: "CHEEKS" },
-  { id: "cheekbones.maxilla",        group: "cheekbones", key: "maxilla",        label: "Maxilla",           category: "CHEEKS" },
-  { id: "cheekbones.bone_structure", group: "cheekbones", key: "bone_structure", label: "Bone Structure",    category: "CHEEKS" },
-  { id: "cheekbones.face_fat",       group: "cheekbones", key: "face_fat",       label: "Face Fat",          category: "CHEEKS" },
-  { id: "jawline.development",       group: "jawline",    key: "development",    label: "Jaw Development",   category: "JAW"    },
-  { id: "jawline.gonial_angle",      group: "jawline",    key: "gonial_angle",   label: "Gonial Angle",      category: "JAW"    },
-  { id: "jawline.projection",        group: "jawline",    key: "projection",     label: "Chin Projection",   category: "JAW"    },
-  { id: "eyes.canthal_tilt",         group: "eyes",       key: "canthal_tilt",   label: "Canthal Tilt",      category: "EYES"   },
-  { id: "eyes.eye_type",             group: "eyes",       key: "eye_type",       label: "Eye Type",          category: "EYES"   },
-  { id: "eyes.brow_volume",          group: "eyes",       key: "brow_volume",    label: "Brow Volume",       category: "EYES"   },
-  { id: "eyes.symmetry",             group: "eyes",       key: "symmetry",       label: "Eye Symmetry",      category: "EYES"   },
-  { id: "skin.color",                group: "skin",       key: "color",          label: "Skin Color",        category: "SKIN"   },
-  { id: "skin.quality",              group: "skin",       key: "quality",        label: "Skin Quality",      category: "SKIN"   },
+  { id: "cheekbones.width",          group: "cheekbones", key: "width",          label: "Cheekbones Width",  category: "CHEEKS", icon: MoveHorizontal  },
+  { id: "cheekbones.maxilla",        group: "cheekbones", key: "maxilla",        label: "Maxilla",           category: "CHEEKS", icon: Layers          },
+  { id: "cheekbones.bone_structure", group: "cheekbones", key: "bone_structure", label: "Bone Structure",    category: "CHEEKS", icon: Diamond         },
+  { id: "cheekbones.face_fat",       group: "cheekbones", key: "face_fat",       label: "Face Fat",          category: "CHEEKS", icon: Droplets        },
+  { id: "jawline.development",       group: "jawline",    key: "development",    label: "Jaw Development",   category: "JAW",    icon: Shield          },
+  { id: "jawline.gonial_angle",      group: "jawline",    key: "gonial_angle",   label: "Gonial Angle",      category: "JAW",    icon: Triangle        },
+  { id: "jawline.projection",        group: "jawline",    key: "projection",     label: "Chin Projection",   category: "JAW",    icon: Compass         },
+  { id: "eyes.canthal_tilt",         group: "eyes",       key: "canthal_tilt",   label: "Canthal Tilt",      category: "EYES",   icon: Eye             },
+  { id: "eyes.eye_type",             group: "eyes",       key: "eye_type",       label: "Eye Type",          category: "EYES",   icon: ScanEye         },
+  { id: "eyes.brow_volume",          group: "eyes",       key: "brow_volume",    label: "Brow Volume",       category: "EYES",   icon: Layers2         },
+  { id: "eyes.symmetry",             group: "eyes",       key: "symmetry",       label: "Eye Symmetry",      category: "EYES",   icon: FlipHorizontal  },
+  { id: "skin.color",                group: "skin",       key: "color",          label: "Skin Color",        category: "SKIN",   icon: Sun             },
+  { id: "skin.quality",              group: "skin",       key: "quality",        label: "Skin Quality",      category: "SKIN",   icon: Sparkles        },
 ];
 
 // ---------------------------------------------------------------------------
@@ -121,6 +128,7 @@ type FlatMetric = {
   section:    SectionKey;
   status:     StatusKind;
   globalIdx:  number;
+  icon:       React.ComponentType<{ size: number; color: string; strokeWidth: number }>;
 };
 
 function classifyScore(score: number): { section: SectionKey; status: StatusKind } {
@@ -139,15 +147,29 @@ function tierLabel(score: number): string {
   return "Developing";
 }
 
+// Metrics whose verdict is always derived client-side as a percentage of their score.
+// These map 1-to-1 with the 0-100 score — no text label adds meaning.
+const PERCENT_VERDICT_IDS = new Set(["skin.color", "skin.quality"]);
+
+function resolveVerdict(def: SubDef, score: number, rawVerdict: string): string {
+  // Skin metrics: always show score as a percentage
+  if (PERCENT_VERDICT_IDS.has(def.id)) return `${score}%`;
+  // Degree metrics (canthal_tilt, gonial_angle): backend returns e.g. "+4°" or "108°".
+  // Accept if it looks like a degree value; fall back to tier label if backend failed.
+  const cleaned = rawVerdict.trim();
+  if (cleaned) return cleaned;
+  return tierLabel(score);
+}
+
 function flattenData(data: AdvancedAnalysis): FlatMetric[] {
   return SUBMETRIC_DEFS.map((def, i) => {
-    const group = data[def.group] as Record<string, any>;
+    const group      = data[def.group] as Record<string, any>;
     const score      = (group[`${def.key}_score`]   as number | undefined) ?? 50;
     const commentary = (group[def.key]               as string | undefined) ?? "";
     const rawVerdict = (group[`${def.key}_verdict`]  as string | undefined) ?? "";
-    const verdict    = rawVerdict.trim() || tierLabel(score);
+    const verdict    = resolveVerdict(def, score, rawVerdict);
     const { section, status } = classifyScore(score);
-    return { id: def.id, label: def.label, category: def.category, score, verdict, commentary, section, status, globalIdx: i };
+    return { id: def.id, label: def.label, category: def.category, score, verdict, commentary, section, status, globalIdx: i, icon: def.icon };
   });
 }
 
@@ -230,7 +252,7 @@ function ShimmerCard({ index }: { index: number }) {
 
 function MetricCard({ item }: { item: FlatMetric }) {
   const cfg = STATUS_CONFIG[item.status];
-  const Icon = cfg.icon;
+  const Icon = item.icon;
 
   const [expanded, setExpanded]   = useState(false);
   const [typedText, setTypedText] = useState("");
@@ -244,8 +266,8 @@ function MetricCard({ item }: { item: FlatMetric }) {
     if (!hasCommentary) return;
     const next = !expanded;
     setExpanded(next);
-    chevronRot.value     = withSpring(next ? 1 : 0, { damping: 14, stiffness: 180 });
-    revealProgress.value = withSpring(next ? 1 : 0, { damping: 18, stiffness: 160 });
+    chevronRot.value     = withSpring(next ? 1 : 0, { damping: 12, stiffness: 220 });
+    revealProgress.value = withSpring(next ? 1 : 0, { damping: 16, stiffness: 200 });
   }, [expanded, hasCommentary]);
 
   // Typewriter — runs once per open; thereafter shows full text instantly
@@ -276,19 +298,22 @@ function MetricCard({ item }: { item: FlatMetric }) {
 
   return (
     <Animated.View
-      entering={FadeInDown.duration(360).delay(Math.min(item.globalIdx * 65, 520)).springify()}
+      entering={FadeInDown.duration(420).delay(Math.min(item.globalIdx * 60, 480))}
       style={sx.card}
     >
       {/* ── Header row ── */}
       <Pressable
         onPress={toggle}
-        style={({ pressed }) => [sx.cardHeader, pressed && { opacity: 0.85 }]}
+        style={({ pressed }) => [
+          sx.cardHeader,
+          pressed && { opacity: 0.82, transform: [{ scale: 0.984 }] },
+        ]}
         accessibilityRole="button"
         accessibilityLabel={`${item.label}, ${item.verdict}. ${expanded ? "Collapse" : "Expand"} details`}
       >
         {/* Icon box */}
         <View style={[sx.iconBox, { borderBottomColor: C.iconDepth }]}>
-          <Icon size={ms(21)} color={cfg.iconColor} strokeWidth={1.9} />
+          <Icon size={ms(18)} color={cfg.iconColor} strokeWidth={1.9} />
         </View>
 
         {/* Label + category chip */}
@@ -363,7 +388,7 @@ function SectionBlock({
     <View style={sx.section}>
       {/* Section header */}
       <Animated.View
-        entering={FadeInDown.duration(340).delay(sectionKey === "working" ? 80 : sectionKey === "okay" ? 180 : 280)}
+        entering={FadeInDown.duration(380).delay(sectionKey === "working" ? 60 : sectionKey === "okay" ? 160 : 260)}
         style={sx.sectionHeader}
       >
         <View style={sx.sectionTitleRow}>
@@ -393,6 +418,12 @@ function AnalysisContent({ data }: { data: AdvancedAnalysis }) {
   const okay      = useMemo(() => metrics.filter((m) => m.section === "okay"),       [metrics]);
   const needsWork = useMemo(() => metrics.filter((m) => m.section === "needs_work"), [metrics]);
 
+  // Average of all sub-metric scores — shown in the score pill
+  const avgScore = useMemo(
+    () => Math.round(metrics.reduce((s, m) => s + m.score, 0) / (metrics.length || 1)),
+    [metrics]
+  );
+
   const workingFraction = metrics.length > 0 ? working.length / metrics.length : 0;
 
   // Animate the progress bar fill
@@ -407,17 +438,44 @@ function AnalysisContent({ data }: { data: AdvancedAnalysis }) {
 
   return (
     <>
-      {/* ── Overview bar ── */}
-      <Animated.View
-        entering={FadeInDown.duration(380).delay(40)}
-        style={sx.overviewRow}
-      >
-        <View style={sx.barTrack}>
-          <Animated.View style={[sx.barFill, barStyle]} />
+      {/* ── Reference-style page header ── */}
+      <Animated.View entering={FadeInDown.duration(340)} style={sx.refHeader}>
+
+        {/* Row 1: score pill + ANALYSIS RESULTS label */}
+        <View style={sx.refTopRow}>
+          <View style={sx.refPillDepth}>
+            <View style={sx.refPill}>
+              <Text style={sx.refPillFire}>🔥</Text>
+              <Text style={sx.refPillScore}>{avgScore}</Text>
+            </View>
+          </View>
+          <View style={sx.refLabelRow}>
+            <View style={sx.refLabelDot} />
+            <Text style={sx.refLabelText}>ANALYSIS RESULTS</Text>
+          </View>
         </View>
-        <Text style={sx.overviewCount}>
-          {working.length} / {metrics.length}
-        </Text>
+
+        {/* Row 2: description */}
+        <Animated.Text
+          entering={FadeInDown.duration(340).delay(80)}
+          style={sx.refDesc}
+        >
+          A balanced aesthetic breakdown to highlight your striking features, and identify areas for structural improvement and refinement.
+        </Animated.Text>
+
+        {/* Row 3: progress bar + count */}
+        <Animated.View
+          entering={FadeInDown.duration(340).delay(140)}
+          style={sx.refBarRow}
+        >
+          <View style={sx.barTrack}>
+            <Animated.View style={[sx.barFill, barStyle]} />
+          </View>
+          <Text style={sx.overviewCount}>
+            {working.length} / {metrics.length}
+          </Text>
+        </Animated.View>
+
       </Animated.View>
 
       {/* ── Three sections ── */}
@@ -516,9 +574,14 @@ export default function AnalysisScreen() {
 
   const hasScores = !!scores && !!imageUri;
 
+  // Bump on every focus so AnalysisContent remounts and re-animates.
+  // Data is cached in Zustand so there's no loading flash — just fresh entrance.
+  const [focusKey, setFocusKey] = useState(0);
+
   // Fetch on every focus — consent gate runs once per install (Apple 5.1.1/5.1.2)
   useFocusEffect(
     useCallback(() => {
+      setFocusKey((k) => k + 1);
       if (hasScores && !data && !loading) {
         checkAndPromptConsent().then((agreed) => {
           if (agreed) fetch();
@@ -544,27 +607,16 @@ export default function AnalysisScreen() {
       {/* Safe-area container */}
       <View style={[sx.safeArea, { paddingTop: insets.top }]}>
 
-        {/* ── Header ── */}
-        <Animated.View
-          entering={FadeInDown.duration(360)}
-          style={sx.header}
-        >
-          <View>
+        {/* ── Header — only shown for non-content states ── */}
+        {!showContent && (
+          <Animated.View
+            entering={FadeInDown.duration(360)}
+            style={sx.header}
+          >
             <Text style={sx.headerTitle}>Advanced Analysis</Text>
-            <Text style={sx.headerSub}>
-              {showContent
-                ? "Tap any metric to read the full breakdown."
-                : "Your detailed facial breakdown"}
-            </Text>
-          </View>
-          {/* Live dot when data is loaded */}
-          {showContent && (
-            <View style={sx.liveRow}>
-              <View style={sx.liveDot} />
-              <Text style={sx.liveLabel}>RESULTS</Text>
-            </View>
-          )}
-        </Animated.View>
+            <Text style={sx.headerSub}>Your detailed facial breakdown</Text>
+          </Animated.View>
+        )}
 
         {/* ── Body ── */}
         <ScrollView
@@ -589,7 +641,7 @@ export default function AnalysisScreen() {
             </View>
           )}
 
-          {showContent && <AnalysisContent data={data!} />}
+          {showContent && <AnalysisContent key={focusKey} data={data!} />}
         </ScrollView>
       </View>
 
@@ -603,9 +655,9 @@ export default function AnalysisScreen() {
 // StyleSheet
 // ---------------------------------------------------------------------------
 
-const CARD_RADIUS   = ms(20);
-const ICON_BOX_SIZE = ms(52);
-const ICON_RADIUS   = ms(14);
+const CARD_RADIUS   = ms(18);
+const ICON_BOX_SIZE = ms(44);
+const ICON_RADIUS   = ms(12);
 const PILL_RADIUS   = ms(999);
 
 const sx = StyleSheet.create({
@@ -656,11 +708,80 @@ const sx = StyleSheet.create({
   scroll: { flex: 1 },
   scrollContent: {
     paddingHorizontal: sw(16),
-    paddingTop: sh(4),
+    paddingTop: sh(2),
     gap: sh(2),
   },
 
-  // ── Overview bar ──
+  // ── Reference-style header (inside AnalysisContent) ──
+  refHeader: {
+    paddingHorizontal: sw(4),
+    paddingTop: sh(10),
+    paddingBottom: sh(22),
+    gap: sh(14),
+  },
+  refTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: sw(12),
+  },
+  // Score pill — 3D press feel matching the card language
+  refPillDepth: {
+    borderRadius: 999,
+    backgroundColor: "#0A0A0A",
+    paddingBottom: 3,
+  },
+  refPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: sw(6),
+    backgroundColor: "#1A1A1A",
+    borderRadius: 999,
+    paddingHorizontal: sw(14),
+    paddingVertical: sh(7),
+  },
+  refPillFire: {
+    fontSize: ms(13),
+    lineHeight: ms(16),
+  },
+  refPillScore: {
+    fontSize: ms(14, 0.3),
+    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
+    color: C.textPrimary,
+    letterSpacing: -0.2,
+  },
+  // "• ANALYSIS RESULTS" label
+  refLabelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: sw(7),
+  },
+  refLabelDot: {
+    width: sw(7),
+    height: sw(7),
+    borderRadius: 999,
+    backgroundColor: C.fineIcon,
+  },
+  refLabelText: {
+    fontSize: ms(10.5, 0.3),
+    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
+    color: C.textMuted,
+    letterSpacing: 1.8,
+  },
+  // Description paragraph
+  refDesc: {
+    fontSize: ms(14, 0.3),
+    fontFamily: Platform.select({ ios: "Poppins-Regular", android: "Poppins-Regular", default: "Poppins-Regular" }),
+    color: C.textBody,
+    lineHeight: ms(21),
+  },
+  // Progress bar row
+  refBarRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: sw(12),
+  },
+
+  // ── Overview bar (kept for style references) ──
   overviewRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -712,17 +833,17 @@ const sx = StyleSheet.create({
     fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
     color: C.textMuted,
   },
-  cardList: { gap: sh(10) },
+  cardList: { gap: sh(8) },
 
   // ── Metric card ──
   card: {
     backgroundColor: C.card,
     borderRadius: CARD_RADIUS,
-    borderBottomWidth: 5,
+    borderBottomWidth: 6,
     borderBottomColor: C.cardDepth,
     paddingHorizontal: sw(12),
-    paddingTop: sh(12),
-    paddingBottom: sh(10),
+    paddingTop: sh(9),
+    paddingBottom: sh(7),
     overflow: "hidden",
   },
   cardHeader: {
@@ -737,7 +858,7 @@ const sx = StyleSheet.create({
     height: ICON_BOX_SIZE,
     borderRadius: ICON_RADIUS,
     backgroundColor: C.iconBox,
-    borderBottomWidth: 3,
+    borderBottomWidth: 4,
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
@@ -746,7 +867,7 @@ const sx = StyleSheet.create({
   // Label + chip
   labelBlock: {
     flex: 1,
-    gap: sh(4),
+    gap: sh(3),
   },
   metricLabel: {
     fontSize: ms(14.5, 0.3),
@@ -778,12 +899,12 @@ const sx = StyleSheet.create({
   },
   pillDepth: {
     borderRadius: PILL_RADIUS,
-    paddingBottom: sh(3),
+    paddingBottom: 4,
   },
   pillFace: {
     borderRadius: PILL_RADIUS,
     paddingHorizontal: sw(11),
-    paddingVertical: sh(5),
+    paddingVertical: sh(4),
     minWidth: sw(68),
     alignItems: "center",
     justifyContent: "center",
@@ -796,16 +917,16 @@ const sx = StyleSheet.create({
 
   // Expanded commentary
   expandedWrap: {
-    paddingTop: sh(10),
+    paddingTop: sh(8),
     paddingBottom: sh(2),
   },
   expandedCard: {
     backgroundColor: C.expandedBg,
-    borderRadius: ms(14),
+    borderRadius: ms(12),
     borderBottomWidth: 2,
     borderBottomColor: C.expandDepth,
-    paddingHorizontal: sw(14),
-    paddingVertical: sh(12),
+    paddingHorizontal: sw(12),
+    paddingVertical: sh(9),
   },
   expandedText: {
     fontSize: ms(13, 0.3),
@@ -830,10 +951,10 @@ const sx = StyleSheet.create({
   shimmerCard: {
     backgroundColor: C.card,
     borderRadius: CARD_RADIUS,
-    borderBottomWidth: 5,
+    borderBottomWidth: 6,
     borderBottomColor: C.cardDepth,
     paddingHorizontal: sw(12),
-    paddingVertical: sh(14),
+    paddingVertical: sh(10),
   },
   shimmerRow: { flexDirection: "row", alignItems: "center", gap: sw(12) },
   shimmerIconBox: {

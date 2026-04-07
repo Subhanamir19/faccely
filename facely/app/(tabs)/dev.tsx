@@ -100,12 +100,14 @@ export default function DevScreen() {
   const [insightPreviewVisible, setInsightPreviewVisible] = useState(false);
   const [insightPreviewKey, setInsightPreviewKey] = useState(0); // bump to replay
   const currentStreak = useTasksStore((s) => s.currentStreak);
+  const history       = useTasksStore((s) => s.history);
+  const dayNumber     = history.length + 1; // total days since user started
   const [scanBypass, setScanBypass] = useState<boolean | "…">("…");
 
   // Life modal previews
   type LifeModal = "comeback" | "streak" | "halfway" | "didyouknow";
   const [lifeModal, setLifeModal] = useState<LifeModal | null>(null);
-  const [celebMilestone, setCelebMilestone] = useState(3);
+  const [celebMilestone, setCelebMilestone] = useState(0);
   const [previewFact] = useState(
     DID_YOU_KNOW_FACTS[Math.floor(Math.random() * DID_YOU_KNOW_FACTS.length)],
   );
@@ -183,6 +185,19 @@ export default function DevScreen() {
           </View>
         </GlassCard>
 
+        {/* ── Advanced Analysis UI Preview ─────────────────────────── */}
+        <GlassCard style={styles.card}>
+          <SectionHeader
+            title="Advanced Analysis"
+            subtitle="3-section accordion breakdown — What's Working / Just Okay / Needs Work"
+          />
+          <DevButton
+            label="▶  Preview UI"
+            accent
+            onPress={() => router.push("/(tabs)/analysis")}
+          />
+        </GlassCard>
+
         {/* ── Insight Reveal Preview ────────────────────────────────── */}
         <GlassCard style={styles.card}>
           <SectionHeader
@@ -249,14 +264,9 @@ export default function DevScreen() {
             onPress={() => setLifeModal("comeback")}
           />
           <DevButton
-            label="🎉  Streak — Day 3"
+            label={`🔥  Streak — Day ${currentStreak} (real)`}
             accent
-            onPress={() => { setCelebMilestone(3); setLifeModal("streak"); }}
-          />
-          <DevButton
-            label="🔥  Streak — Day 7"
-            accent
-            onPress={() => { setCelebMilestone(7); setLifeModal("streak"); }}
+            onPress={() => { setCelebMilestone(currentStreak); setLifeModal("streak"); }}
           />
           <DevButton
             label="👍  Halfway Hype  (50% tasks done)"
@@ -412,7 +422,7 @@ export default function DevScreen() {
       {/* Day Complete preview modal */}
       <DayCompleteModal
         visible={dayCompleteVisible}
-        dayNumber={1}
+        dayNumber={dayNumber}
         streak={currentStreak}
         onClose={() => setDayCompleteVisible(false)}
         dismissOnBackdropPress

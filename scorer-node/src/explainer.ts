@@ -752,26 +752,37 @@ function normalizeResponse(raw: string | null | undefined): Record<MetricKey, st
 
 // Bump this string whenever the advanced prompt or JSON shape changes — it
 // busts any in-process cached responses that were built under the old schema.
-const PROMPT_VERSION_ADVANCED = "adv.v2.0";
+const PROMPT_VERSION_ADVANCED = "adv.v2.1";
 
 const ADVANCED_VERDICT_OPTIONS = `
-VERDICT LABELS — for each sub-metric also return a "verdict" field: pick EXACTLY ONE label
-from the allowed list below (1–3 words, case-sensitive). Choose the closest match to what
-you see. If genuinely uncertain default to the middle option for that sub-metric.
+VERDICT LABELS — for each sub-metric also return a "verdict" field as described below.
+
+LABEL-BASED sub-metrics: pick EXACTLY ONE label from the allowed list (1–3 words, case-sensitive).
 
 cheekbones.width_verdict:          Ideal Width | Well Spaced | Moderate Width | Narrow | Too Wide
 cheekbones.maxilla_verdict:        Well Developed | Forward Set | Adequate | Underdeveloped | Recessed
 cheekbones.bone_structure_verdict: Sculpted | Well Defined | Defined | Moderate | Flat
 cheekbones.face_fat_verdict:       Very Lean | Lean | Athletic | Moderate | Full | Puffy
 jawline.development_verdict:       Razor Sharp | Well Defined | Chiseled | Moderate | Minimal | Weak
-jawline.gonial_angle_verdict:      Optimal Angle | Ideal Angle | Defined | Moderate | Obtuse | Wide Angle
 jawline.projection_verdict:        Strong | Good Projection | Proportional | Moderate | Weak | Recessed
-eyes.canthal_tilt_verdict:         Positive Tilt | Neutral Positive | Level | Slight Negative | Negative
 eyes.eye_type_verdict:             Hunter | Almond | Upturned | Neutral | Slightly Hooded | Downturned | Prey Eyes
 eyes.brow_volume_verdict:          Full | Well Defined | Adequate | Moderate | Sparse | Thin
 eyes.symmetry_verdict:             Symmetrical | Well Balanced | Minimal Asymmetry | Slight Asymmetry | Noticeable
 skin.color_verdict:                Even Tone | Clear | Mostly Even | Slight Uneven | Uneven | Discolored
 skin.quality_verdict:              Flawless | Very Smooth | Smooth | Moderate | Rough | Damaged
+
+NUMERICAL sub-metrics: return a measured value, not a label.
+
+eyes.canthal_tilt_verdict:
+  - Estimate the outer-corner tilt angle in degrees from the image.
+  - Positive = outer corner tilts upward. Negative = downward. Zero = level.
+  - Format: signed integer followed by ° symbol. Examples: +5°, +2°, 0°, -3°, -7°
+  - Realistic range: -8° to +8°. Do NOT exceed this range.
+
+jawline.gonial_angle_verdict:
+  - Estimate the gonial angle (jaw corner angle) in degrees from the image.
+  - Format: integer followed by ° symbol. Examples: 98°, 108°, 118°, 128°
+  - Realistic range: 90° to 140°. Ideal is 95–115°. Do NOT exceed this range.
 `.trim();
 
 const ADVANCED_SYSTEM_PROMPT = `

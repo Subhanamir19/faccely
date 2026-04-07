@@ -5,7 +5,7 @@ import { Tabs } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import * as Haptics from "expo-haptics";
-import { Scan, CircleCheckBig, UserRound, TrendingUp } from "lucide-react-native";
+import { Scan, CircleCheckBig, UserRound, TrendingUp, Wrench } from "lucide-react-native";
 
 const ACTIVE_ICON   = "#FFFFFF";
 const INACTIVE_ICON = "rgba(255,255,255,0.38)";
@@ -167,8 +167,14 @@ export default function TabsLayout() {
       {/* hidden */}
       <Tabs.Screen name="sigma" options={{ href: null }} />
 
-      {/* hidden — dev screen never exposed in tab bar */}
-      <Tabs.Screen name="dev" options={{ href: null }} />
+      {/* Tab 5: dev */}
+      <Tabs.Screen
+        name="dev"
+        options={{
+          title: "Dev",
+          tabBarIcon: ({ color, size }) => <Wrench color={color} size={size ?? 24} />,
+        }}
+      />
 
       {/* Keep routes, hide from bar */}
       <Tabs.Screen name="history"    options={{ href: null }} />
