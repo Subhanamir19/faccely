@@ -1,491 +1,455 @@
 // app/(tabs)/analysis.tsx
-// Advanced Analysis — 4 swipeable category cards with AI commentary per sub-metric.
+// Advanced Analysis — flat 3-section accordion list (What's Working / Just Okay / Needs Work).
+// Design ref: new-advanced analysis-refernce.md
 
-import React, { useRef, useState, useCallback, useEffect } from "react";
+import React, { useCallback, useEffect, useRef, useState, useMemo } from "react";
+import {
+  View,
+  ScrollView,
+  StyleSheet,
+  Pressable,
+  Platform,
+} from "react-native";
 import { useFocusEffect } from "expo-router";
-import { View, ScrollView, StyleSheet, Pressable, Image } from "react-native";
-import PagerView from "react-native-pager-view";
-import { LinearGradient } from "expo-linear-gradient";
+import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { LinearGradient } from "expo-linear-gradient";
 import Animated, {
-  FadeIn,
   FadeInDown,
-  ZoomIn,
   useSharedValue,
   useAnimatedStyle,
+  withSpring,
   withRepeat,
   withSequence,
   withTiming,
-  withSpring,
   interpolate,
   Easing,
 } from "react-native-reanimated";
-import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Gem, Triangle, Eye, Sparkles } from "lucide-react-native";
+import { Sparkles, Target, AlertCircle, ChevronDown, ChevronRight } from "lucide-react-native";
 
 import Text from "@/components/ui/T";
-import { COLORS, RADII, SP } from "@/lib/tokens";
+import { COLORS, SP, RADII } from "@/lib/tokens";
 import { ms, sw, sh } from "@/lib/responsive";
 import { useScores } from "@/store/scores";
 import { useAdvancedAnalysis } from "@/store/advancedAnalysis";
 import { useAdvancedAnalysisConsent } from "@/hooks/useAdvancedAnalysisConsent";
-import { router } from "expo-router";
 import type { AdvancedAnalysis } from "@/lib/api/advancedAnalysis";
 
 // ---------------------------------------------------------------------------
-// Card group definitions
+// Design constants — matched to reference
 // ---------------------------------------------------------------------------
 
-type ScoreKey = "cheekbones" | "jawline" | "eyes_symmetry" | "skin_quality";
-
-type SubmetricDef = { key: string; label: string; emoji: string };
-
-type CardGroup = {
-  key: keyof AdvancedAnalysis;
-  label: string;
-  subtitle: string;
-  scoreKey: ScoreKey;
-  Icon: React.ComponentType<{ size: number; color: string; strokeWidth: number }>;
-  image: ReturnType<typeof require>;
-  submetrics: readonly SubmetricDef[];
+const C = {
+  bg:          "#000000",
+  card:        "#1A1A1A",
+  cardDepth:   "#0A0A0A",
+  iconBox:     "#222222",
+  iconDepth:   "#111111",
+  expandedBg:  "#222222",
+  expandDepth: "#111111",
+  textPrimary: "#FFFFFF",
+  textMuted:   "#808080",
+  textBody:    "#A0A0A0",
+  // working (fine) — lime
+  fineText:    "#2D3B1F",
+  fineBg:      "#B4F34D",
+  fineBorder:  "#8ECA45",
+  fineIcon:    "#B4F34D",
+  // okay (neutral) — off-white
+  neutralText: "#1A1A1A",
+  neutralBg:   "#E8E8E8",
+  neutralBorder:"#C8C8C8",
+  neutralIcon: "#A0A0A0",
+  // needs work (alarming) — red
+  alarmText:   "#4A0D0D",
+  alarmBg:     "#FF6B6B",
+  alarmBorder: "#D94A4A",
+  alarmIcon:   "#FF6B6B",
 };
 
-const CARD_GROUPS: CardGroup[] = [
-  {
-    key: "cheekbones",
-    label: "CHEEKBONES",
-    subtitle: "Midface structure",
-    scoreKey: "cheekbones",
-    Icon: Gem,
-    image: require("@/assets/analysis-image-new/cheekbones analysis.jpeg"),
-    submetrics: [
-      { key: "width",          label: "Cheekbones Width",    emoji: "↔️" },
-      { key: "maxilla",        label: "Maxilla Development", emoji: "💀" },
-      { key: "bone_structure", label: "Bone Structure",      emoji: "🦴" },
-      { key: "face_fat",       label: "Face Fat",            emoji: "⭕" },
-    ],
-  },
-  {
-    key: "jawline",
-    label: "JAWLINE",
-    subtitle: "Lower face definition",
-    scoreKey: "jawline",
-    Icon: Triangle,
-    image: require("@/assets/analysis-image-new/jawline analysis.jpeg"),
-    submetrics: [
-      { key: "development",  label: "Development",  emoji: "💪" },
-      { key: "gonial_angle", label: "Gonial Angle", emoji: "📐" },
-      { key: "projection",   label: "Chin Projection", emoji: "🔺" },
-    ],
-  },
-  {
-    key: "eyes",
-    label: "EYES",
-    subtitle: "Orbital & lid structure",
-    scoreKey: "eyes_symmetry",
-    Icon: Eye,
-    image: require("@/assets/analysis-image-new/eye area naalysis.jpeg"),
-    submetrics: [
-      { key: "canthal_tilt", label: "Canthal Tilt", emoji: "📐" },
-      { key: "eye_type",     label: "Eye Type",     emoji: "👁️" },
-      { key: "brow_volume",  label: "Brow Volume",  emoji: "🤨" },
-      { key: "symmetry",     label: "Symmetry",     emoji: "⚖️" },
-    ],
-  },
-  {
-    key: "skin",
-    label: "SKIN",
-    subtitle: "Surface quality",
-    scoreKey: "skin_quality",
-    Icon: Sparkles,
-    image: require("@/assets/analysis-image-new/skin analysis.jpeg"),
-    submetrics: [
-      { key: "color",   label: "Color",   emoji: "🎨" },
-      { key: "quality", label: "Quality", emoji: "✨" },
-    ],
-  },
+// ---------------------------------------------------------------------------
+// Section thresholds
+// ---------------------------------------------------------------------------
+
+const T_WORKING  = 72; // score >= 72  → What's Working
+const T_OKAY_LOW = 55; // score 55–71  → Just Okay
+                       // score  < 55  → Needs Work
+
+// ---------------------------------------------------------------------------
+// Sub-metric definitions — source of truth, maps to AdvancedAnalysis shape
+// ---------------------------------------------------------------------------
+
+type CategoryChip = "CHEEKS" | "JAW" | "EYES" | "SKIN";
+type StatusKind   = "fine" | "neutral" | "alarming";
+type SectionKey   = "working" | "okay" | "needs_work";
+
+type SubDef = {
+  id:       string;
+  group:    keyof AdvancedAnalysis;
+  key:      string;
+  label:    string;
+  category: CategoryChip;
+};
+
+const SUBMETRIC_DEFS: SubDef[] = [
+  { id: "cheekbones.width",          group: "cheekbones", key: "width",          label: "Cheekbones Width",  category: "CHEEKS" },
+  { id: "cheekbones.maxilla",        group: "cheekbones", key: "maxilla",        label: "Maxilla",           category: "CHEEKS" },
+  { id: "cheekbones.bone_structure", group: "cheekbones", key: "bone_structure", label: "Bone Structure",    category: "CHEEKS" },
+  { id: "cheekbones.face_fat",       group: "cheekbones", key: "face_fat",       label: "Face Fat",          category: "CHEEKS" },
+  { id: "jawline.development",       group: "jawline",    key: "development",    label: "Jaw Development",   category: "JAW"    },
+  { id: "jawline.gonial_angle",      group: "jawline",    key: "gonial_angle",   label: "Gonial Angle",      category: "JAW"    },
+  { id: "jawline.projection",        group: "jawline",    key: "projection",     label: "Chin Projection",   category: "JAW"    },
+  { id: "eyes.canthal_tilt",         group: "eyes",       key: "canthal_tilt",   label: "Canthal Tilt",      category: "EYES"   },
+  { id: "eyes.eye_type",             group: "eyes",       key: "eye_type",       label: "Eye Type",          category: "EYES"   },
+  { id: "eyes.brow_volume",          group: "eyes",       key: "brow_volume",    label: "Brow Volume",       category: "EYES"   },
+  { id: "eyes.symmetry",             group: "eyes",       key: "symmetry",       label: "Eye Symmetry",      category: "EYES"   },
+  { id: "skin.color",                group: "skin",       key: "color",          label: "Skin Color",        category: "SKIN"   },
+  { id: "skin.quality",              group: "skin",       key: "quality",        label: "Skin Quality",      category: "SKIN"   },
 ];
 
 // ---------------------------------------------------------------------------
-// Score → visual helpers
+// Flat metric type (derived from AdvancedAnalysis + thresholds)
 // ---------------------------------------------------------------------------
 
-function getScoreColor(score: number | undefined): string {
-  if (score === undefined) return COLORS.sub;
-  if (score >= 65) return COLORS.success;
-  if (score >= 40) return COLORS.warning;
-  return COLORS.error;
+type FlatMetric = {
+  id:         string;
+  label:      string;
+  category:   CategoryChip;
+  score:      number;
+  verdict:    string;   // from backend; falls back to score tier if empty
+  commentary: string;
+  section:    SectionKey;
+  status:     StatusKind;
+  globalIdx:  number;
+};
+
+function classifyScore(score: number): { section: SectionKey; status: StatusKind } {
+  if (score >= T_WORKING)  return { section: "working",    status: "fine"     };
+  if (score >= T_OKAY_LOW) return { section: "okay",       status: "neutral"  };
+  return                          { section: "needs_work", status: "alarming" };
 }
 
-function getRating(score: number | undefined): string {
-  if (score === undefined) return "";
-  if (score >= 90) return "Exceptional";
+// Score-tier fallback when backend returns empty verdict
+function tierLabel(score: number): string {
+  if (score >= 85) return "Exceptional";
   if (score >= 75) return "Strong";
-  if (score >= 60) return "Above Average";
-  if (score >= 40) return "Average";
-  return "Needs Work";
+  if (score >= 65) return "Above Avg";
+  if (score >= 55) return "Moderate";
+  if (score >= 40) return "Below Avg";
+  return "Developing";
 }
 
+function flattenData(data: AdvancedAnalysis): FlatMetric[] {
+  return SUBMETRIC_DEFS.map((def, i) => {
+    const group = data[def.group] as Record<string, any>;
+    const score      = (group[`${def.key}_score`]   as number | undefined) ?? 50;
+    const commentary = (group[def.key]               as string | undefined) ?? "";
+    const rawVerdict = (group[`${def.key}_verdict`]  as string | undefined) ?? "";
+    const verdict    = rawVerdict.trim() || tierLabel(score);
+    const { section, status } = classifyScore(score);
+    return { id: def.id, label: def.label, category: def.category, score, verdict, commentary, section, status, globalIdx: i };
+  });
+}
 
 // ---------------------------------------------------------------------------
-// Shimmer line — pulsing placeholder while commentary loads
+// Status visual config
+// ---------------------------------------------------------------------------
+
+type StatusConfig = {
+  icon:        React.ComponentType<{ size: number; color: string; strokeWidth: number }>;
+  iconColor:   string;
+  pillBg:      string;
+  pillBorder:  string;
+  pillText:    string;
+  dotColor:    string;
+};
+
+const STATUS_CONFIG: Record<StatusKind, StatusConfig> = {
+  fine:     { icon: Sparkles,     iconColor: C.fineIcon,    pillBg: C.fineBg,    pillBorder: C.fineBorder,    pillText: C.fineText,    dotColor: C.fineIcon    },
+  neutral:  { icon: Target,       iconColor: C.neutralIcon, pillBg: C.neutralBg, pillBorder: C.neutralBorder, pillText: C.neutralText, dotColor: C.neutralIcon },
+  alarming: { icon: AlertCircle,  iconColor: C.alarmIcon,   pillBg: C.alarmBg,   pillBorder: C.alarmBorder,   pillText: C.alarmText,   dotColor: C.alarmIcon   },
+};
+
+// ---------------------------------------------------------------------------
+// Section display config
+// ---------------------------------------------------------------------------
+
+const SECTION_CONFIG: Record<SectionKey, { title: string; emptyLabel: string }> = {
+  working:    { title: "What's Working",  emptyLabel: "No standout strengths yet" },
+  okay:       { title: "Just Okay",       emptyLabel: "Nothing in this range"    },
+  needs_work: { title: "Needs Work",      emptyLabel: "Nothing needs attention"  },
+};
+
+// ---------------------------------------------------------------------------
+// Shimmer line — loading placeholder
 // ---------------------------------------------------------------------------
 
 function ShimmerLine({ width = "100%", delay = 0 }: { width?: string | number; delay?: number }) {
-  const opacity = useSharedValue(0.25);
-
+  const opacity = useSharedValue(0.2);
   useEffect(() => {
     opacity.value = withRepeat(
       withSequence(
-        withTiming(0.65, { duration: 750, easing: Easing.inOut(Easing.sin) }),
-        withTiming(0.25, { duration: 750, easing: Easing.inOut(Easing.sin) })
+        withTiming(0.55, { duration: 700, easing: Easing.inOut(Easing.sin) }),
+        withTiming(0.2,  { duration: 700, easing: Easing.inOut(Easing.sin) })
       ),
       -1,
       false
     );
   }, []);
+  const style = useAnimatedStyle(() => ({ opacity: opacity.value }));
+  return <Animated.View style={[sx.shimmerLine, { width: width as any }, style]} />;
+}
 
-  const animStyle = useAnimatedStyle(() => ({ opacity: opacity.value }));
+// ---------------------------------------------------------------------------
+// Shimmer card — shown while loading
+// ---------------------------------------------------------------------------
 
+function ShimmerCard({ index }: { index: number }) {
   return (
-    <Animated.View style={[styles.shimmerLine, { width: width as any }, animStyle]} />
+    <Animated.View
+      entering={FadeInDown.duration(300).delay(index * 60)}
+      style={sx.shimmerCard}
+    >
+      <View style={sx.shimmerRow}>
+        <View style={sx.shimmerIconBox} />
+        <View style={{ flex: 1, gap: sh(6) }}>
+          <ShimmerLine width="55%" delay={index * 80} />
+          <ShimmerLine width="35%" delay={index * 80 + 120} />
+        </View>
+        <View style={sx.shimmerPill}>
+          <ShimmerLine width="100%" delay={index * 80 + 60} />
+        </View>
+      </View>
+    </Animated.View>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Sub-metric row
+// Metric card — the main accordion item
 // ---------------------------------------------------------------------------
 
-type TagDef = { label: string; color: string; light: string; dark: string };
+function MetricCard({ item }: { item: FlatMetric }) {
+  const cfg = STATUS_CONFIG[item.status];
+  const Icon = cfg.icon;
 
-function getTag(score: number): TagDef {
-  if (score >= 91) return { label: "EXCEPTIONAL", color: "#10B981", light: "#34D399", dark: "#065F46" };
-  if (score >= 76) return { label: "STRONG",      color: "#B4F34D", light: "#CCFF6B", dark: "#4A6A10" };
-  if (score >= 61) return { label: "ACCEPTABLE",  color: "#7DD3FC", light: "#BAE6FD", dark: "#0C4A6E" };
-  if (score >= 46) return { label: "AVERAGE",     color: "#F59E0B", light: "#FCD34D", dark: "#78350F" };
-  if (score >= 31) return { label: "BELOW AVG",   color: "#F97316", light: "#FB923C", dark: "#7C2D12" };
-  if (score >= 16) return { label: "WEAK",        color: "#EF4444", light: "#F87171", dark: "#7F1D1D" };
-  return               { label: "POOR",        color: "#DC2626", light: "#EF4444", dark: "#7F1D1D" };
-}
-
-function SubmetricRow({
-  label,
-  emoji,
-  commentary,
-  score,
-  isLast,
-  index,
-  error,
-}: {
-  label: string;
-  emoji: string;
-  commentary: string | undefined;
-  score: number | undefined;
-  isLast: boolean;
-  index: number;
-  error?: boolean;
-}) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded]   = useState(false);
   const [typedText, setTypedText] = useState("");
-  const hasAnimated = useRef(false);
-  const tag = score !== undefined ? getTag(score) : null;
-  const hasData = commentary && commentary.length > 0;
+  const hasAnimated               = useRef(false);
+  const hasCommentary             = item.commentary.length > 0;
 
-  // Chevron rotation: 0 = down, 1 = up (180°)
-  const chevronRot = useSharedValue(0);
-  // Commentary reveal: maxHeight + opacity
+  const chevronRot     = useSharedValue(0);
   const revealProgress = useSharedValue(0);
 
-  // Typewriter effect — only runs the very first time this row is opened
-  useEffect(() => {
-    if (!expanded || !commentary) return;
-
-    // Already animated once — show full text instantly
-    if (hasAnimated.current) {
-      setTypedText(commentary);
-      return;
-    }
-
-    setTypedText("");
-    let i = 0;
-    const timer = setInterval(() => {
-      i += 1;
-      setTypedText(commentary.slice(0, i));
-      if (i >= commentary.length) {
-        clearInterval(timer);
-        hasAnimated.current = true;
-      }
-    }, 32);
-    return () => clearInterval(timer);
-  }, [expanded, commentary]);
-
-  const toggle = () => {
-    if (!hasData) return;
+  const toggle = useCallback(() => {
+    if (!hasCommentary) return;
     const next = !expanded;
     setExpanded(next);
-    chevronRot.value = withSpring(next ? 1 : 0, { damping: 14, stiffness: 180 });
+    chevronRot.value     = withSpring(next ? 1 : 0, { damping: 14, stiffness: 180 });
     revealProgress.value = withSpring(next ? 1 : 0, { damping: 18, stiffness: 160 });
-  };
+  }, [expanded, hasCommentary]);
+
+  // Typewriter — runs once per open; thereafter shows full text instantly
+  useEffect(() => {
+    if (!expanded || !item.commentary) return;
+    if (hasAnimated.current) { setTypedText(item.commentary); return; }
+    setTypedText("");
+    let i = 0;
+    // Speed scales with length: cap total duration at ~3.5s
+    const msPerChar = Math.min(18, Math.max(7, Math.round(3500 / item.commentary.length)));
+    const timer = setInterval(() => {
+      i += 1;
+      setTypedText(item.commentary.slice(0, i));
+      if (i >= item.commentary.length) { clearInterval(timer); hasAnimated.current = true; }
+    }, msPerChar);
+    return () => clearInterval(timer);
+  }, [expanded, item.commentary]);
 
   const chevronStyle = useAnimatedStyle(() => ({
     transform: [{ rotate: `${interpolate(chevronRot.value, [0, 1], [0, 180])}deg` }],
   }));
 
-  const commentaryStyle = useAnimatedStyle(() => ({
-    maxHeight: interpolate(revealProgress.value, [0, 1], [0, 200]),
-    opacity: interpolate(revealProgress.value, [0, 0.4], [0, 1]),
-    overflow: "hidden" as const,
+  const expandStyle = useAnimatedStyle(() => ({
+    maxHeight: interpolate(revealProgress.value, [0, 1], [0, 300]),
+    opacity:   interpolate(revealProgress.value, [0, 0.35], [0, 1]),
+    overflow:  "hidden" as const,
   }));
 
   return (
     <Animated.View
-      entering={FadeInDown.duration(340).delay(80 + index * 55)}
-      style={[styles.subRow, !isLast && styles.subRowBorder]}
+      entering={FadeInDown.duration(360).delay(Math.min(item.globalIdx * 65, 520)).springify()}
+      style={sx.card}
     >
-      {/* Header row */}
-      <View style={styles.subLabelRow}>
-        {/* Left group: bullet + emoji + pill + chevron */}
-        <View style={styles.subLabelLeft}>
-          <View style={styles.subBullet} />
-          <Text style={styles.subEmoji}>{emoji}</Text>
-          <View style={styles.subLabelPill}>
-            <Text style={styles.subLabel} numberOfLines={1}>{label}</Text>
-          </View>
-          {hasData && (
-            <Pressable onPress={toggle} hitSlop={10}>
-              <Animated.View style={chevronStyle}>
-                <ChevronDown size={ms(13)} color="rgba(255,255,255,0.45)" strokeWidth={2.2} />
-              </Animated.View>
-            </Pressable>
-          )}
+      {/* ── Header row ── */}
+      <Pressable
+        onPress={toggle}
+        style={({ pressed }) => [sx.cardHeader, pressed && { opacity: 0.85 }]}
+        accessibilityRole="button"
+        accessibilityLabel={`${item.label}, ${item.verdict}. ${expanded ? "Collapse" : "Expand"} details`}
+      >
+        {/* Icon box */}
+        <View style={[sx.iconBox, { borderBottomColor: C.iconDepth }]}>
+          <Icon size={ms(21)} color={cfg.iconColor} strokeWidth={1.9} />
         </View>
 
-        {/* Tag chip — colored 3D button */}
-        {tag && hasData ? (
-          <Animated.View
-            entering={ZoomIn.springify().damping(14).stiffness(160).delay(120 + index * 70)}
-            style={[styles.tagDepth, { backgroundColor: tag.dark, shadowColor: tag.color }]}
-          >
-            <Pressable
-              onPress={toggle}
-              style={({ pressed }) => ({
-                borderRadius: 20,
-                overflow: "hidden",
-                transform: [{ translateY: pressed ? 4 : 0 }],
-              })}
-            >
-              <LinearGradient
-                colors={[tag.light, tag.color]}
-                start={{ x: 0.5, y: 0 }}
-                end={{ x: 0.5, y: 1 }}
-                style={styles.tagFace}
-              >
-                <Text style={styles.tagText}>{tag.label}</Text>
-              </LinearGradient>
-            </Pressable>
-          </Animated.View>
-        ) : !hasData ? (
-          <View style={styles.tagChipShimmer}>
-            <ShimmerLine width={sw(52)} delay={index * 110} />
+        {/* Label + category chip */}
+        <View style={sx.labelBlock}>
+          <Text style={sx.metricLabel} numberOfLines={1}>{item.label}</Text>
+          <View style={[sx.categoryChip, { borderColor: C.cardDepth }]}>
+            <Text style={sx.categoryChipText}>{item.category}</Text>
           </View>
-        ) : null}
-      </View>
+        </View>
 
-      {/* Commentary — animated slide-down + typewriter */}
-      {hasData && (
-        <Animated.View style={[styles.subCommentaryWrap, commentaryStyle]}>
-          <Text style={styles.subCommentary}>
-            {typedText}
-            {expanded && typedText.length < (commentary?.length ?? 0) && (
-              <Text style={styles.subCursor}>|</Text>
-            )}
-          </Text>
+        {/* Verdict pill + chevron */}
+        <View style={sx.rightGroup}>
+          <View style={[sx.pillDepth, { backgroundColor: cfg.pillBorder }]}>
+            <View style={[sx.pillFace, { backgroundColor: cfg.pillBg }]}>
+              <Text style={[sx.pillText, { color: cfg.pillText }]} numberOfLines={1}>
+                {item.verdict}
+              </Text>
+            </View>
+          </View>
+          {hasCommentary && (
+            <Animated.View style={chevronStyle}>
+              <ChevronDown size={ms(16)} color={C.textMuted} strokeWidth={2.2} />
+            </Animated.View>
+          )}
+        </View>
+      </Pressable>
+
+      {/* ── Expanded commentary ── */}
+      {hasCommentary && (
+        <Animated.View style={expandStyle}>
+          <View style={sx.expandedWrap}>
+            <View style={sx.expandedCard}>
+              <Text style={sx.expandedText}>
+                {typedText}
+                {expanded && typedText.length < item.commentary.length && (
+                  <Text style={sx.cursor}>|</Text>
+                )}
+              </Text>
+            </View>
+          </View>
         </Animated.View>
       )}
 
-      {/* Shimmer — only while genuinely loading, never on error */}
-      {!hasData && !error && (
-        <View style={[styles.shimmerWrap, { marginTop: sh(6) }]}>
-          <ShimmerLine width="88%" delay={index * 110} />
-          <ShimmerLine width="60%" delay={index * 110 + 140} />
+      {/* Shimmer — commentary not yet loaded */}
+      {!hasCommentary && (
+        <View style={sx.commentaryShimmer}>
+          <ShimmerLine width="90%" delay={item.globalIdx * 90} />
+          <ShimmerLine width="65%" delay={item.globalIdx * 90 + 130} />
         </View>
-      )}
-
-      {/* Static placeholder when fetch failed and no commentary cached */}
-      {!hasData && error && (
-        <Text style={{ fontSize: 12, fontFamily: "Poppins-SemiBold", color: "rgba(255,255,255,0.20)", marginTop: 4 }}>
-          Unavailable — tap Retry above
-        </Text>
       )}
     </Animated.View>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Category card (one full page)
+// Section block
 // ---------------------------------------------------------------------------
 
-function CategoryCard({
-  group,
-  score,
-  groupData,
-  error,
-  onRetry,
+function SectionBlock({
+  sectionKey,
+  metrics,
 }: {
-  group: CardGroup;
-  score: number | undefined;
-  groupData: Record<string, any> | undefined;
-  error: string | null;
-  onRetry: () => void;
+  sectionKey: SectionKey;
+  metrics: FlatMetric[];
 }) {
-  const { Icon } = group;
-  const scoreColor = getScoreColor(score);
-  // Use tag color for rating text — guarantees it matches the chips exactly
-  const ratingColor = score !== undefined ? getTag(score).color : scoreColor;
+  if (metrics.length === 0) return null;
 
-  // Micro-interaction 1: count-up score number
-  const [displayScore, setDisplayScore] = useState(0);
-  useEffect(() => {
-    if (score === undefined) return;
-    const target = Math.round(score);
-    const steps = 36;
-    const stepVal = target / steps;
-    let current = 0;
-    const timer = setInterval(() => {
-      current = Math.min(current + stepVal, target);
-      setDisplayScore(Math.round(current));
-      if (current >= target) clearInterval(timer);
-    }, 28);
-    return () => clearInterval(timer);
-  }, [score]);
-
-  // Micro-interaction 2: progress bar fill
-  const barWidth = useSharedValue(0);
-  useEffect(() => {
-    barWidth.value = withTiming(score ?? 0, {
-      duration: 1100,
-      easing: Easing.out(Easing.cubic),
-    });
-  }, [score]);
-  const barStyle = useAnimatedStyle(() => ({
-    width: `${barWidth.value}%` as any,
-  }));
+  const cfg    = STATUS_CONFIG[metrics[0].status];
+  const config = SECTION_CONFIG[sectionKey];
 
   return (
-    <ScrollView
-      style={styles.cardScroll}
-      contentContainerStyle={styles.cardScrollContent}
-      showsVerticalScrollIndicator={false}
-    >
-      <Animated.View entering={FadeIn.duration(280)} style={styles.cardShadow}>
-      <View style={styles.card}>
-
-        {/* ── Card header: icon + title ── */}
-        <View style={styles.cardTop}>
-          <View
-            style={[
-              styles.iconWrap,
-              { borderColor: COLORS.accent + "55", backgroundColor: COLORS.accent + "18" },
-            ]}
-          >
-            <Icon size={ms(14)} color={COLORS.accent} strokeWidth={1.8} />
-          </View>
-          <View style={styles.cardTitleBlock}>
-            <Text style={styles.cardCategoryLabel}>{group.label}</Text>
-            <Text style={styles.cardSubtitle}>{group.subtitle}</Text>
-          </View>
+    <View style={sx.section}>
+      {/* Section header */}
+      <Animated.View
+        entering={FadeInDown.duration(340).delay(sectionKey === "working" ? 80 : sectionKey === "okay" ? 180 : 280)}
+        style={sx.sectionHeader}
+      >
+        <View style={sx.sectionTitleRow}>
+          <View style={[sx.sectionDot, { backgroundColor: cfg.dotColor }]} />
+          <Text style={sx.sectionTitle}>{config.title}</Text>
         </View>
-
-        {/* ── Split row: image left · score panel right ── */}
-        <View style={styles.cardSplit}>
-
-          {/* Image square */}
-          <View style={styles.splitImageWrap}>
-            <Image source={group.image} style={styles.splitImage} resizeMode="cover" />
-            <LinearGradient
-              colors={["rgba(180,243,77,0.22)", "transparent"]}
-              style={StyleSheet.absoluteFill}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 0, y: 0.5 }}
-            />
-          </View>
-
-          {/* Score panel */}
-          <View style={styles.splitScorePanel}>
-            {/* Big number — count-up */}
-            <View style={styles.splitScoreRow}>
-              <Text style={[styles.splitScoreValue, { color: ratingColor }]}>
-                {score !== undefined ? displayScore : "—"}
-              </Text>
-              <Text style={styles.splitScoreDenom}>/100</Text>
-            </View>
-
-            {/* Progress bar — fill animation */}
-            <View style={styles.splitBarTrack}>
-              <Animated.View
-                style={[
-                  styles.splitBarFill,
-                  { backgroundColor: ratingColor },
-                  barStyle,
-                ]}
-              />
-            </View>
-
-            {/* Rating label — delayed fade-slide */}
-            <Animated.View entering={FadeInDown.duration(400).delay(700)}>
-              <Text style={[styles.splitRating, { color: ratingColor }]}>
-                {getRating(score)}
-              </Text>
-            </Animated.View>
-          </View>
-        </View>
-
-        {/* ── Divider ── */}
-        <View style={styles.cardDivider} />
-
-        {/* ── Error state — single card-level message ── */}
-        {error && !groupData ? (
-          <View style={styles.cardError}>
-            <Text style={styles.cardErrorText}>Analysis unavailable</Text>
-            <Text style={styles.cardErrorSub}>Could not load commentary for this category.</Text>
-            <Pressable onPress={onRetry} style={({ pressed }) => [styles.cardRetryBtn, pressed && { opacity: 0.75 }]}>
-              <Text style={styles.cardRetryText}>Retry</Text>
-            </Pressable>
-          </View>
-        ) : (
-          /* ── Sub-metric rows (shimmer until commentary arrives) ── */
-          group.submetrics.map((sm, i) => (
-            <SubmetricRow
-              key={sm.key}
-              label={sm.label}
-              emoji={sm.emoji}
-              commentary={groupData?.[sm.key] as string | undefined}
-              score={groupData?.[sm.key + "_score"] as number | undefined}
-              isLast={i === group.submetrics.length - 1}
-              index={i}
-              error={!!error}
-            />
-          ))
-        )}
-      </View>
+        <Text style={sx.sectionCount}>{metrics.length} {metrics.length === 1 ? "item" : "items"}</Text>
       </Animated.View>
-    </ScrollView>
+
+      {/* Cards */}
+      <View style={sx.cardList}>
+        {metrics.map((item) => (
+          <MetricCard key={item.id} item={item} />
+        ))}
+      </View>
+    </View>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Page dots — active dot is wider pill
+// Analysis content — rendered once we have data
 // ---------------------------------------------------------------------------
 
-function PageDots({ total, active }: { total: number; active: number }) {
+function AnalysisContent({ data }: { data: AdvancedAnalysis }) {
+  const metrics   = useMemo(() => flattenData(data), [data]);
+  const working   = useMemo(() => metrics.filter((m) => m.section === "working"),    [metrics]);
+  const okay      = useMemo(() => metrics.filter((m) => m.section === "okay"),       [metrics]);
+  const needsWork = useMemo(() => metrics.filter((m) => m.section === "needs_work"), [metrics]);
+
+  const workingFraction = metrics.length > 0 ? working.length / metrics.length : 0;
+
+  // Animate the progress bar fill
+  const barWidth = useSharedValue(0);
+  useEffect(() => {
+    barWidth.value = withTiming(workingFraction * 100, {
+      duration: 1200,
+      easing: Easing.out(Easing.cubic),
+    });
+  }, [workingFraction]);
+  const barStyle = useAnimatedStyle(() => ({ width: `${barWidth.value}%` as any }));
+
   return (
-    <View style={styles.dotsRow}>
-      {Array.from({ length: total }).map((_, i) => (
-        <View
-          key={i}
-          style={[styles.dot, i === active ? styles.dotActive : styles.dotInactive]}
-        />
-      ))}
-    </View>
+    <>
+      {/* ── Overview bar ── */}
+      <Animated.View
+        entering={FadeInDown.duration(380).delay(40)}
+        style={sx.overviewRow}
+      >
+        <View style={sx.barTrack}>
+          <Animated.View style={[sx.barFill, barStyle]} />
+        </View>
+        <Text style={sx.overviewCount}>
+          {working.length} / {metrics.length}
+        </Text>
+      </Animated.View>
+
+      {/* ── Three sections ── */}
+      <SectionBlock sectionKey="working"    metrics={working}   />
+      <SectionBlock sectionKey="okay"       metrics={okay}      />
+      <SectionBlock sectionKey="needs_work" metrics={needsWork} />
+
+      {/* ── Footer CTA ── */}
+      <Animated.View
+        entering={FadeInDown.duration(340).delay(600)}
+        style={sx.footerCta}
+      >
+        <View style={sx.ctaDepth}>
+          <Pressable
+            onPress={() => router.push("/(tabs)/program")}
+            style={({ pressed }) => [
+              sx.ctaBtn,
+              { transform: [{ translateY: pressed ? 5 : 0 }] },
+            ]}
+          >
+            <LinearGradient
+              colors={[COLORS.accentLight, COLORS.accent]}
+              start={{ x: 0.5, y: 0 }}
+              end={{ x: 0.5, y: 1 }}
+              style={StyleSheet.absoluteFill}
+            />
+            <Text style={sx.ctaBtnText}>View Program</Text>
+            <ChevronRight size={ms(16)} color="#0B1A00" strokeWidth={2.5} />
+          </Pressable>
+        </View>
+      </Animated.View>
+    </>
   );
 }
 
@@ -495,29 +459,46 @@ function PageDots({ total, active }: { total: number; active: number }) {
 
 function EmptyState() {
   return (
-    <View style={styles.emptyWrap}>
-      <Text style={styles.emptyIcon}>🔬</Text>
-      <Text style={styles.emptyTitle}>No scan data</Text>
-      <Text style={styles.emptySub}>
+    <View style={sx.emptyWrap}>
+      <Text style={sx.emptyIcon}>🔬</Text>
+      <Text style={sx.emptyTitle}>No scan data</Text>
+      <Text style={sx.emptySub}>
         Run a face scan to unlock your full advanced analysis.
       </Text>
-      <View style={styles.emptyBtnDepth}>
+      <View style={sx.ctaDepth}>
         <Pressable
           onPress={() => router.push("/(tabs)/take-picture")}
           style={({ pressed }) => [
-            styles.emptyBtn,
+            sx.ctaBtn,
             { transform: [{ translateY: pressed ? 5 : 0 }] },
           ]}
         >
           <LinearGradient
-            colors={["#CCFF6B", COLORS.accent]}
+            colors={[COLORS.accentLight, COLORS.accent]}
             start={{ x: 0.5, y: 0 }}
             end={{ x: 0.5, y: 1 }}
             style={StyleSheet.absoluteFill}
           />
-          <Text style={styles.emptyBtnText}>Scan Now</Text>
+          <Text style={sx.ctaBtnText}>Scan Now</Text>
         </Pressable>
       </View>
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Error state
+// ---------------------------------------------------------------------------
+
+function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <View style={sx.errorWrap}>
+      <AlertCircle size={ms(32)} color={COLORS.error} strokeWidth={1.8} />
+      <Text style={sx.errorTitle}>Analysis unavailable</Text>
+      <Text style={sx.errorSub}>{message}</Text>
+      <Pressable onPress={onRetry} style={({ pressed }) => [sx.retryBtn, pressed && { opacity: 0.75 }]}>
+        <Text style={sx.retryText}>Retry</Text>
+      </Pressable>
     </View>
   );
 }
@@ -528,34 +509,14 @@ function EmptyState() {
 
 export default function AnalysisScreen() {
   const insets = useSafeAreaInsets();
-  const pagerRef = useRef<PagerView>(null);
-  const [idx, setIdx] = useState(0);
 
-  const { scores, imageUri } = useScores();
-  const { data, loading, error, fetch } = useAdvancedAnalysis();
+  const { scores, imageUri }               = useScores();
+  const { data, loading, error, fetch }    = useAdvancedAnalysis();
   const { checkAndPromptConsent, ConsentModal } = useAdvancedAnalysisConsent();
 
   const hasScores = !!scores && !!imageUri;
-  const isFirst = idx === 0;
-  const isLast = idx === CARD_GROUPS.length - 1;
 
-  const currentGroup = CARD_GROUPS[idx];
-  const topGlowColor = COLORS.accentGlow;
-
-  // Micro-interaction 4: badge bounce on page change
-  const badgeScale = useSharedValue(1);
-  useEffect(() => {
-    badgeScale.value = withSequence(
-      withSpring(1.2, { damping: 5, stiffness: 300 }),
-      withSpring(1,   { damping: 8, stiffness: 200 })
-    );
-  }, [idx]);
-  const badgeAnimStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: badgeScale.value }],
-  }));
-
-  // Fetch on every tab focus — catches: first mount, back-navigation, new scan.
-  // Consent is required once (Apple Guidelines 5.1.1/5.1.2) before the API fires.
+  // Fetch on every focus — consent gate runs once per install (Apple 5.1.1/5.1.2)
   useFocusEffect(
     useCallback(() => {
       if (hasScores && !data && !loading) {
@@ -563,584 +524,428 @@ export default function AnalysisScreen() {
           if (agreed) fetch();
         });
       }
-    }, [hasScores, data, loading, checkAndPromptConsent])
+    }, [hasScores, data, loading, checkAndPromptConsent, fetch])
   );
 
-  const goTo = useCallback((page: number) => {
-    pagerRef.current?.setPage(page);
-  }, []);
+  const showLoading  = loading && !data;
+  const showError    = !!error && !data;
+  const showEmpty    = !hasScores;
+  const showContent  = !!data;
 
   return (
-    <View style={styles.screen}>
+    <View style={[sx.screen, { backgroundColor: C.bg }]}>
       {/* Background gradient */}
       <LinearGradient
         colors={[COLORS.bgTop, COLORS.bgBottom]}
         style={StyleSheet.absoluteFill}
+        pointerEvents="none"
       />
 
-      {/* Dynamic top glow — color follows current card's score */}
-      <LinearGradient
-        colors={[topGlowColor, "transparent"]}
-        style={styles.topGlow}
-      />
-
-      <View style={[styles.container, { paddingTop: insets.top }]}>
+      {/* Safe-area container */}
+      <View style={[sx.safeArea, { paddingTop: insets.top }]}>
 
         {/* ── Header ── */}
-        <Animated.View entering={FadeInDown.duration(380)} style={styles.header}>
-          <Text style={styles.headerTitle}>Advanced Analysis</Text>
-          {hasScores && (
-            <Animated.View style={[styles.positionBadge, badgeAnimStyle]}>
-              <Text style={styles.positionText}>{idx + 1} of {CARD_GROUPS.length}</Text>
-            </Animated.View>
+        <Animated.View
+          entering={FadeInDown.duration(360)}
+          style={sx.header}
+        >
+          <View>
+            <Text style={sx.headerTitle}>Advanced Analysis</Text>
+            <Text style={sx.headerSub}>
+              {showContent
+                ? "Tap any metric to read the full breakdown."
+                : "Your detailed facial breakdown"}
+            </Text>
+          </View>
+          {/* Live dot when data is loaded */}
+          {showContent && (
+            <View style={sx.liveRow}>
+              <View style={sx.liveDot} />
+              <Text style={sx.liveLabel}>RESULTS</Text>
+            </View>
           )}
         </Animated.View>
 
-        {/* ── Page dots ── */}
-        {hasScores && <PageDots total={CARD_GROUPS.length} active={idx} />}
+        {/* ── Body ── */}
+        <ScrollView
+          style={sx.scroll}
+          contentContainerStyle={[
+            sx.scrollContent,
+            { paddingBottom: insets.bottom + SP[8] },
+          ]}
+          showsVerticalScrollIndicator={false}
+        >
+          {showEmpty && <EmptyState />}
 
-        {/* ── Content ── */}
-        {!hasScores ? (
-          <EmptyState />
-        ) : (
-          <PagerView
-            ref={pagerRef}
-            style={styles.pager}
-            initialPage={0}
-            onPageSelected={(e) => setIdx(e.nativeEvent.position)}
-          >
-            {CARD_GROUPS.map((group) => {
-              const score = scores?.[group.scoreKey] as number | undefined;
-              const groupData = data
-                ? (data[group.key] as Record<string, any>)
-                : undefined;
+          {showError && (
+            <ErrorState message={error!} onRetry={fetch} />
+          )}
 
-              return (
-                <View key={group.key} style={styles.page}>
-                  <CategoryCard
-                    group={group}
-                    score={score}
-                    groupData={groupData}
-                    error={error}
-                    onRetry={fetch}
-                  />
-                </View>
-              );
-            })}
-          </PagerView>
-        )}
-
-        {/* Consent modal — shown once before first analysis fetch */}
-        <ConsentModal />
-
-        {/* ── Footer nav ── */}
-        {hasScores && (
-          <View style={[styles.footer, { paddingBottom: insets.bottom + SP[2] }]}>
-
-            {/* Prev — ghost 3D button */}
-            <View style={[styles.navDepthGhost, isFirst && styles.navBtnDisabled]}>
-              <Pressable
-                onPress={() => !isFirst && goTo(idx - 1)}
-                disabled={isFirst}
-                style={({ pressed }) => [
-                  styles.navBtn,
-                  styles.navBtnGhostFace,
-                  { transform: [{ translateY: pressed && !isFirst ? 4 : 0 }] },
-                ]}
-              >
-                <ChevronLeft
-                  size={ms(17)}
-                  color={isFirst ? COLORS.sub : COLORS.text}
-                  strokeWidth={2}
-                />
-                <Text style={[styles.navBtnText, isFirst && { color: COLORS.sub }]}>
-                  Prev
-                </Text>
-              </Pressable>
+          {showLoading && !showEmpty && (
+            <View style={sx.shimmerList}>
+              {Array.from({ length: 8 }).map((_, i) => (
+                <ShimmerCard key={i} index={i} />
+              ))}
             </View>
+          )}
 
-            {/* Next / Go to Program — lime 3D button */}
-            <View style={styles.navDepthSolid}>
-              <Pressable
-                onPress={() =>
-                  isLast ? router.push("/(tabs)/program") : goTo(idx + 1)
-                }
-                style={({ pressed }) => [
-                  styles.navBtn,
-                  styles.navBtnSolidFace,
-                  { transform: [{ translateY: pressed ? 5 : 0 }] },
-                ]}
-              >
-                <LinearGradient
-                  colors={["#CCFF6B", COLORS.accent]}
-                  start={{ x: 0.5, y: 0 }}
-                  end={{ x: 0.5, y: 1 }}
-                  style={StyleSheet.absoluteFill}
-                />
-                <Text style={styles.navBtnSolidText}>
-                  {isLast ? "Go to Program" : "Next"}
-                </Text>
-                <ChevronRight size={ms(17)} color="#0B0B0B" strokeWidth={2.5} />
-              </Pressable>
-            </View>
-
-          </View>
-        )}
+          {showContent && <AnalysisContent data={data!} />}
+        </ScrollView>
       </View>
+
+      {/* Consent modal — shown once before first fetch */}
+      <ConsentModal />
     </View>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Styles
+// StyleSheet
 // ---------------------------------------------------------------------------
 
-const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: COLORS.bgTop,
-  },
-  topGlow: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    height: sh(280),
-  },
-  container: {
-    flex: 1,
-  },
+const CARD_RADIUS   = ms(20);
+const ICON_BOX_SIZE = ms(52);
+const ICON_RADIUS   = ms(14);
+const PILL_RADIUS   = ms(999);
 
-  // Header
+const sx = StyleSheet.create({
+  screen: { flex: 1 },
+  safeArea: { flex: 1 },
+
+  // ── Header ──
   header: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     justifyContent: "space-between",
     paddingHorizontal: sw(20),
-    paddingTop: sh(8),
-    paddingBottom: sh(4),
-  },
-  headerTitle: {
-    color: COLORS.text,
-    fontSize: ms(20, 0.3),
-    fontFamily: "Poppins-SemiBold",
-  },
-  positionBadge: {
-    backgroundColor: COLORS.whiteGlass,
-    paddingHorizontal: sw(10),
-    paddingVertical: sh(3),
-    borderRadius: RADII.circle,
-    borderWidth: 1,
-    borderColor: COLORS.cardBorder,
-  },
-  positionText: {
-    color: COLORS.sub,
-    fontSize: ms(11, 0.3),
-    fontFamily: "Poppins-SemiBold",
-  },
-
-  // Page dots
-  dotsRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: sw(6),
-    paddingTop: sh(6),
+    paddingTop: sh(14),
     paddingBottom: sh(10),
   },
-  dot: {
-    height: sh(4),
-    borderRadius: 2,
+  headerTitle: {
+    fontSize: ms(24, 0.3),
+    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
+    color: C.textPrimary,
+    letterSpacing: -0.4,
   },
-  dotActive: {
-    width: sw(22),
-    backgroundColor: COLORS.accent,
+  headerSub: {
+    fontSize: ms(12.5, 0.3),
+    fontFamily: Platform.select({ ios: "Poppins-Regular", android: "Poppins-Regular", default: "Poppins-Regular" }),
+    color: C.textMuted,
+    marginTop: sh(2),
   },
-  dotInactive: {
-    width: sw(6),
-    backgroundColor: "rgba(255,255,255,0.18)",
-  },
-
-  // Pager
-  pager: { flex: 1 },
-  page: { flex: 1 },
-
-  // Card scroll wrapper
-  cardScroll: { flex: 1 },
-  cardScrollContent: {
-    paddingHorizontal: sw(20),
-    paddingTop: sh(2),
-    paddingBottom: sh(16),
-  },
-
-  // Card shadow wrapper (no overflow — shadows can't render inside overflow:hidden)
-  cardShadow: {
-    borderRadius: RADII.card,
-    shadowColor: COLORS.accent,
-    shadowOpacity: 0.13,
-    shadowRadius: 22,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 9,
-  },
-
-  // Card surface (overflow:hidden clips image/content)
-  card: {
-    backgroundColor: COLORS.card,
-    borderRadius: RADII.card,
-    borderWidth: 1,
-    borderColor: COLORS.cardBorder,
-    overflow: "hidden",
-  },
-
-  // Card header (icon + title row)
-  cardTop: {
+  liveRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: SP[4],
-    paddingTop: SP[4],
-    paddingBottom: SP[3],
-    gap: sw(10),
+    gap: sw(5),
+    marginTop: sh(4),
   },
-  iconWrap: {
-    width: ms(36),
-    height: ms(36),
-    borderRadius: RADII.md,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
+  liveDot: {
+    width: sw(7),
+    height: sw(7),
+    borderRadius: 999,
+    backgroundColor: C.fineIcon,
   },
-  cardTitleBlock: {
-    gap: sh(1),
-  },
-  cardCategoryLabel: {
-    color: "rgba(255,255,255,0.55)",
+  liveLabel: {
     fontSize: ms(10, 0.3),
-    fontFamily: "Poppins-SemiBold",
-    letterSpacing: 1.6,
-  },
-  cardSubtitle: {
-    color: COLORS.text,
-    fontSize: ms(15, 0.3),
-    fontFamily: "Poppins-SemiBold",
+    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
+    color: C.textMuted,
+    letterSpacing: 1.4,
   },
 
-  // Split row
-  cardSplit: {
+  // ── Scroll ──
+  scroll: { flex: 1 },
+  scrollContent: {
+    paddingHorizontal: sw(16),
+    paddingTop: sh(4),
+    gap: sh(2),
+  },
+
+  // ── Overview bar ──
+  overviewRow: {
     flexDirection: "row",
-    paddingHorizontal: SP[4],
-    paddingBottom: SP[4],
-    gap: sw(12),
     alignItems: "center",
+    gap: sw(12),
+    marginBottom: sh(20),
+    paddingHorizontal: sw(4),
   },
-  splitImageWrap: {
-    width: sw(120),
-    height: sw(120),
-    borderRadius: RADII.md,
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: COLORS.cardBorder,
-  },
-  splitImage: {
-    width: "100%",
-    height: "100%",
-  },
-  splitScorePanel: {
+  barTrack: {
     flex: 1,
-    gap: sh(6),
-    justifyContent: "center",
-  },
-  splitScoreRow: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    gap: sw(2),
-  },
-  splitScoreValue: {
-    fontSize: ms(44, 0.4),
-    fontFamily: "Poppins-SemiBold",
-    lineHeight: ms(50, 0.4),
-  },
-  splitScoreDenom: {
-    fontSize: ms(14, 0.3),
-    fontFamily: "Poppins-Regular",
-    color: COLORS.sub,
-    marginBottom: sh(6),
-  },
-  splitBarTrack: {
     height: sh(5),
-    backgroundColor: "rgba(255,255,255,0.09)",
-    borderRadius: 3,
+    backgroundColor: "#1A1A1A",
+    borderRadius: 999,
     overflow: "hidden",
   },
-  splitBarFill: {
+  barFill: {
     height: "100%",
-    borderRadius: 3,
+    backgroundColor: C.fineIcon,
+    borderRadius: 999,
   },
-  splitRating: {
-    fontSize: ms(11, 0.3),
-    fontFamily: "Poppins-SemiBold",
-    letterSpacing: 0.6,
-  },
-
-  // Hairline under split row
-  cardDivider: {
-    height: 1,
-    backgroundColor: COLORS.cardBorder,
-    marginHorizontal: SP[4],
+  overviewCount: {
+    fontSize: ms(13, 0.3),
+    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
+    color: C.textMuted,
   },
 
-  // Sub-metric rows
-  subRow: {
-    paddingHorizontal: SP[4],
-    paddingVertical: sh(16),
-  },
-  subRowBorder: {
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.cardHairline,
-  },
-  subLabelRow: {
+  // ── Section ──
+  section: { gap: sh(10), marginBottom: sh(28) },
+  sectionHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: sh(6),
+    paddingHorizontal: sw(4),
+    marginBottom: sh(4),
   },
-  subLabelLeft: {
+  sectionTitleRow: { flexDirection: "row", alignItems: "center", gap: sw(7) },
+  sectionDot: {
+    width: sw(7),
+    height: sw(7),
+    borderRadius: 999,
+  },
+  sectionTitle: {
+    fontSize: ms(17, 0.3),
+    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
+    color: C.textPrimary,
+    letterSpacing: -0.1,
+  },
+  sectionCount: {
+    fontSize: ms(12.5, 0.3),
+    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
+    color: C.textMuted,
+  },
+  cardList: { gap: sh(10) },
+
+  // ── Metric card ──
+  card: {
+    backgroundColor: C.card,
+    borderRadius: CARD_RADIUS,
+    borderBottomWidth: 5,
+    borderBottomColor: C.cardDepth,
+    paddingHorizontal: sw(12),
+    paddingTop: sh(12),
+    paddingBottom: sh(10),
+    overflow: "hidden",
+  },
+  cardHeader: {
     flexDirection: "row",
     alignItems: "center",
-    gap: sw(6),
-    flexShrink: 1,
+    gap: sw(12),
+  },
+
+  // Icon box
+  iconBox: {
+    width: ICON_BOX_SIZE,
+    height: ICON_BOX_SIZE,
+    borderRadius: ICON_RADIUS,
+    backgroundColor: C.iconBox,
+    borderBottomWidth: 3,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+
+  // Label + chip
+  labelBlock: {
     flex: 1,
-    marginRight: sw(8),
+    gap: sh(4),
   },
-  subBullet: {
-    width: sw(6),
-    height: sw(6),
-    borderRadius: 3,
-    backgroundColor: COLORS.accent,
-  },
-  subEmoji: {
-    fontSize: ms(14),
+  metricLabel: {
+    fontSize: ms(14.5, 0.3),
+    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
+    color: C.textPrimary,
     lineHeight: ms(18),
   },
-  subLabelPill: {
-    backgroundColor: "rgba(255,255,255,0.07)",
+  categoryChip: {
+    alignSelf: "flex-start",
+    borderRadius: ms(6),
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
-    borderRadius: 20,
-    paddingHorizontal: sw(9),
-    paddingVertical: sh(3),
+    paddingHorizontal: sw(6),
+    paddingVertical: sh(1),
+    backgroundColor: "rgba(255,255,255,0.04)",
   },
-  subLabel: {
-    color: "#B4F34D",
-    fontSize: ms(11, 0.3),
-    fontFamily: "Poppins-SemiBold",
-    letterSpacing: 1.4,
-    textTransform: "uppercase",
-  },
-  subCommentary: {
-    color: COLORS.text,
-    fontSize: ms(13, 0.3),
-    fontFamily: "Poppins-SemiBold",
-    lineHeight: ms(20, 0.3),
-  },
-  subCursor: {
-    color: COLORS.accent,
-    fontSize: ms(13, 0.3),
-    fontFamily: "Poppins-SemiBold",
-    opacity: 0.85,
-  },
-  // Card-level error state (replaces per-row empty text)
-  cardError: {
-    alignItems: "center",
-    paddingVertical: sh(36),
-    paddingHorizontal: SP[5],
-    gap: SP[2],
-  },
-  cardErrorText: {
-    color: COLORS.text,
-    fontSize: ms(15, 0.3),
-    fontFamily: "Poppins-SemiBold",
-    textAlign: "center",
-  },
-  cardErrorSub: {
-    color: COLORS.sub,
-    fontSize: ms(13, 0.3),
-    fontFamily: "Poppins-Regular",
-    textAlign: "center",
-    lineHeight: ms(19, 0.3),
-  },
-  cardRetryBtn: {
-    marginTop: SP[2],
-    paddingHorizontal: SP[5],
-    paddingVertical: sh(8),
-    borderRadius: RADII.pill,
-    borderWidth: 1,
-    borderColor: COLORS.accent + "70",
-    backgroundColor: COLORS.accent + "12",
-  },
-  cardRetryText: {
-    color: COLORS.accent,
-    fontSize: ms(13, 0.3),
-    fontFamily: "Poppins-SemiBold",
+  categoryChipText: {
+    fontSize: ms(9.5, 0.3),
+    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
+    color: C.textMuted,
+    letterSpacing: 0.8,
   },
 
-  // Tag chip — 3D dark button
-  subRowRight: {
+  // Right group: pill + chevron
+  rightGroup: {
     flexDirection: "row",
     alignItems: "center",
-    gap: sw(6),
+    gap: sw(8),
+    flexShrink: 0,
   },
-  tagDepth: {
-    borderRadius: 20,
-    // backgroundColor set inline to tag.dark (per-tag colored underside)
-    paddingBottom: 4,
-    shadowOpacity: 0.55,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 7,
+  pillDepth: {
+    borderRadius: PILL_RADIUS,
+    paddingBottom: sh(3),
   },
-  tagFace: {
-    // overflow:hidden is on inner Pressable — just padding here
-    paddingHorizontal: sw(10),
+  pillFace: {
+    borderRadius: PILL_RADIUS,
+    paddingHorizontal: sw(11),
     paddingVertical: sh(5),
+    minWidth: sw(68),
     alignItems: "center",
     justifyContent: "center",
   },
-  tagText: {
-    fontSize: ms(9, 0.3),
-    fontFamily: "Poppins-SemiBold",
-    letterSpacing: 1,
-    color: "#fff",
+  pillText: {
+    fontSize: ms(12, 0.3),
+    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
+    lineHeight: ms(15),
   },
-  tagChipShimmer: {
-    height: sh(20),
+
+  // Expanded commentary
+  expandedWrap: {
+    paddingTop: sh(10),
+    paddingBottom: sh(2),
+  },
+  expandedCard: {
+    backgroundColor: C.expandedBg,
+    borderRadius: ms(14),
+    borderBottomWidth: 2,
+    borderBottomColor: C.expandDepth,
+    paddingHorizontal: sw(14),
+    paddingVertical: sh(12),
+  },
+  expandedText: {
+    fontSize: ms(13, 0.3),
+    fontFamily: Platform.select({ ios: "Poppins-Regular", android: "Poppins-Regular", default: "Poppins-Regular" }),
+    color: C.textBody,
+    lineHeight: ms(20),
+  },
+  cursor: {
+    color: C.fineIcon,
+    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
+  },
+
+  // Commentary shimmer (while card present but text not loaded)
+  commentaryShimmer: {
+    gap: sh(5),
+    paddingTop: sh(10),
+    paddingBottom: sh(4),
+  },
+
+  // ── Shimmer loading ──
+  shimmerList: { gap: sh(10) },
+  shimmerCard: {
+    backgroundColor: C.card,
+    borderRadius: CARD_RADIUS,
+    borderBottomWidth: 5,
+    borderBottomColor: C.cardDepth,
+    paddingHorizontal: sw(12),
+    paddingVertical: sh(14),
+  },
+  shimmerRow: { flexDirection: "row", alignItems: "center", gap: sw(12) },
+  shimmerIconBox: {
+    width: ICON_BOX_SIZE,
+    height: ICON_BOX_SIZE,
+    borderRadius: ICON_RADIUS,
+    backgroundColor: C.iconBox,
+    flexShrink: 0,
+  },
+  shimmerPill: {
+    width: sw(72),
+    height: sh(30),
+    borderRadius: PILL_RADIUS,
+    backgroundColor: "#2A2A2A",
+    overflow: "hidden",
     justifyContent: "center",
-  },
-
-  // Commentary expand area
-  subCommentaryWrap: {
-    paddingTop: sh(6),
-    paddingLeft: sw(14),
-  },
-
-  // Shimmer
-  shimmerWrap: {
-    gap: sh(7),
+    paddingHorizontal: sw(10),
   },
   shimmerLine: {
-    height: sh(11),
-    backgroundColor: "rgba(255,255,255,0.55)",
-    borderRadius: RADII.xs,
+    height: sh(10),
+    borderRadius: 6,
+    backgroundColor: "#2A2A2A",
   },
 
-  // Empty state
-  emptyWrap: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: sw(40),
-    gap: SP[3],
+  // ── Footer CTA ──
+  footerCta: {
+    marginTop: sh(10),
+    marginBottom: sh(4),
   },
-  emptyIcon: {
-    fontSize: ms(44),
-    lineHeight: ms(52),
-  },
-  emptyTitle: {
-    color: COLORS.text,
-    fontSize: ms(20, 0.3),
-    fontFamily: "Poppins-SemiBold",
-    textAlign: "center",
-  },
-  emptySub: {
-    color: COLORS.sub,
-    fontSize: ms(14, 0.3),
-    fontFamily: "Poppins-Regular",
-    textAlign: "center",
-    lineHeight: ms(21, 0.3),
-  },
-  // 3D depth wrapper for Scan Now
-  emptyBtnDepth: {
-    marginTop: SP[2],
-    width: sw(200),
+  ctaDepth: {
     borderRadius: RADII.pill,
-    backgroundColor: "#4A6A10",
-    paddingBottom: 5,
+    backgroundColor: COLORS.accentDepth,
+    paddingBottom: sh(5),
     shadowColor: COLORS.accent,
-    shadowOpacity: 0.45,
-    shadowRadius: 22,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 10,
-  },
-  emptyBtn: {
-    height: sh(52),
-    borderRadius: RADII.pill,
-    alignItems: "center",
-    justifyContent: "center",
-    overflow: "hidden",
-  },
-  emptyBtnText: {
-    color: "#0B0B0B",
-    fontSize: ms(15, 0.3),
-    fontFamily: "Poppins-SemiBold",
-  },
-
-  // Footer nav
-  footer: {
-    flexDirection: "row",
-    gap: sw(12),
-    paddingHorizontal: sw(20),
-    paddingTop: sh(12),
-    borderTopWidth: 1,
-    borderTopColor: COLORS.divider,
-  },
-  navBtn: {
-    height: sh(52),
-    borderRadius: RADII.pill,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: sw(4),
-    overflow: "hidden",
-  },
-  // Ghost (Prev) depth wrapper
-  navDepthGhost: {
-    flex: 1,
-    borderRadius: RADII.pill,
-    backgroundColor: "rgba(255,255,255,0.06)",
-    paddingBottom: 4,
-  },
-  // Ghost face (inside the Pressable)
-  navBtnGhostFace: {
-    backgroundColor: "#1C1C1E",
-    borderWidth: 1,
-    borderColor: COLORS.outline,
-  },
-  navBtnDisabled: {
-    opacity: 0.28,
-  },
-  navBtnText: {
-    color: COLORS.text,
-    fontSize: ms(14, 0.3),
-    fontFamily: "Poppins-SemiBold",
-  },
-  // Solid (Next) depth wrapper
-  navDepthSolid: {
-    flex: 2,
-    borderRadius: RADII.pill,
-    backgroundColor: "#4A6A10",
-    paddingBottom: 5,
-    shadowColor: COLORS.accent,
-    shadowOpacity: 0.45,
+    shadowOpacity: 0.3,
     shadowRadius: 20,
     shadowOffset: { width: 0, height: 8 },
     elevation: 10,
   },
-  // Solid face fills the pressable (LinearGradient handles bg)
-  navBtnSolidFace: {
-    // background handled by LinearGradient absoluteFill
+  ctaBtn: {
+    height: sh(54),
+    borderRadius: RADII.pill,
+    overflow: "hidden",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: sw(6),
   },
-  navBtnSolidText: {
-    color: "#0B0B0B",
+  ctaBtnText: {
+    fontSize: ms(16, 0.3),
+    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
+    color: "#0B1A00",
+  },
+
+  // ── Empty state ──
+  emptyWrap: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingTop: sh(80),
+    gap: sh(14),
+    paddingHorizontal: sw(8),
+  },
+  emptyIcon: { fontSize: ms(44), lineHeight: ms(52) },
+  emptyTitle: {
+    fontSize: ms(22, 0.3),
+    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
+    color: C.textPrimary,
+    textAlign: "center",
+  },
+  emptySub: {
     fontSize: ms(14, 0.3),
-    fontFamily: "Poppins-SemiBold",
+    fontFamily: Platform.select({ ios: "Poppins-Regular", android: "Poppins-Regular", default: "Poppins-Regular" }),
+    color: C.textMuted,
+    textAlign: "center",
+    lineHeight: ms(21),
+    marginBottom: sh(8),
+  },
+
+  // ── Error state ──
+  errorWrap: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingTop: sh(80),
+    gap: sh(12),
+    paddingHorizontal: sw(8),
+  },
+  errorTitle: {
+    fontSize: ms(20, 0.3),
+    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
+    color: C.textPrimary,
+    textAlign: "center",
+  },
+  errorSub: {
+    fontSize: ms(13.5, 0.3),
+    fontFamily: Platform.select({ ios: "Poppins-Regular", android: "Poppins-Regular", default: "Poppins-Regular" }),
+    color: C.textMuted,
+    textAlign: "center",
+    lineHeight: ms(20),
+  },
+  retryBtn: {
+    marginTop: sh(4),
+    paddingHorizontal: sw(28),
+    paddingVertical: sh(11),
+    borderRadius: RADII.pill,
+    borderWidth: 1.5,
+    borderColor: COLORS.outline,
+  },
+  retryText: {
+    fontSize: ms(14, 0.3),
+    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
+    color: C.textPrimary,
   },
 });

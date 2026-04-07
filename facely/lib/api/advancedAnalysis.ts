@@ -19,30 +19,33 @@ import { logger } from "@/lib/logger";
 // ---------------------------------------------------------------------------
 
 // Allow empty strings — UI shows shimmer for "" instead of crashing the parse
-const Line  = z.string().max(400).default("");
-const Score = z.number().min(0).max(100).default(50);
+const Line    = z.string().max(400).default("");
+const Score   = z.number().min(0).max(100).default(50);
+// Verdict: 1-3 word label from the backend; empty string triggers client-side
+// score-tier fallback so the pill always shows something meaningful.
+const Verdict = z.string().max(30).default("");
 
 const AdvancedAnalysisSchema = z.object({
   cheekbones: z.object({
-    width: Line,          width_score: Score,
-    maxilla: Line,        maxilla_score: Score,
-    bone_structure: Line, bone_structure_score: Score,
-    face_fat: Line,       face_fat_score: Score,
+    width: Line,          width_score: Score,          width_verdict: Verdict,
+    maxilla: Line,        maxilla_score: Score,        maxilla_verdict: Verdict,
+    bone_structure: Line, bone_structure_score: Score, bone_structure_verdict: Verdict,
+    face_fat: Line,       face_fat_score: Score,       face_fat_verdict: Verdict,
   }),
   jawline: z.object({
-    development: Line,  development_score: Score,
-    gonial_angle: Line, gonial_angle_score: Score,
-    projection: Line,   projection_score: Score,
+    development: Line,  development_score: Score,  development_verdict: Verdict,
+    gonial_angle: Line, gonial_angle_score: Score, gonial_angle_verdict: Verdict,
+    projection: Line,   projection_score: Score,   projection_verdict: Verdict,
   }),
   eyes: z.object({
-    canthal_tilt: Line, canthal_tilt_score: Score,
-    eye_type: Line,     eye_type_score: Score,
-    brow_volume: Line,  brow_volume_score: Score,
-    symmetry: Line,     symmetry_score: Score,
+    canthal_tilt: Line, canthal_tilt_score: Score, canthal_tilt_verdict: Verdict,
+    eye_type: Line,     eye_type_score: Score,     eye_type_verdict: Verdict,
+    brow_volume: Line,  brow_volume_score: Score,  brow_volume_verdict: Verdict,
+    symmetry: Line,     symmetry_score: Score,     symmetry_verdict: Verdict,
   }),
   skin: z.object({
-    color: Line,   color_score: Score,
-    quality: Line, quality_score: Score,
+    color: Line,   color_score: Score,   color_verdict: Verdict,
+    quality: Line, quality_score: Score, quality_verdict: Verdict,
   }),
 });
 

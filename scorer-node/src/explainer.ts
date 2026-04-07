@@ -750,6 +750,30 @@ function normalizeResponse(raw: string | null | undefined): Record<MetricKey, st
  *     skin:{color,quality} }
  * ─────────────────────────────────────────────────────────────────────────── */
 
+// Bump this string whenever the advanced prompt or JSON shape changes — it
+// busts any in-process cached responses that were built under the old schema.
+const PROMPT_VERSION_ADVANCED = "adv.v2.0";
+
+const ADVANCED_VERDICT_OPTIONS = `
+VERDICT LABELS — for each sub-metric also return a "verdict" field: pick EXACTLY ONE label
+from the allowed list below (1–3 words, case-sensitive). Choose the closest match to what
+you see. If genuinely uncertain default to the middle option for that sub-metric.
+
+cheekbones.width_verdict:          Ideal Width | Well Spaced | Moderate Width | Narrow | Too Wide
+cheekbones.maxilla_verdict:        Well Developed | Forward Set | Adequate | Underdeveloped | Recessed
+cheekbones.bone_structure_verdict: Sculpted | Well Defined | Defined | Moderate | Flat
+cheekbones.face_fat_verdict:       Very Lean | Lean | Athletic | Moderate | Full | Puffy
+jawline.development_verdict:       Razor Sharp | Well Defined | Chiseled | Moderate | Minimal | Weak
+jawline.gonial_angle_verdict:      Optimal Angle | Ideal Angle | Defined | Moderate | Obtuse | Wide Angle
+jawline.projection_verdict:        Strong | Good Projection | Proportional | Moderate | Weak | Recessed
+eyes.canthal_tilt_verdict:         Positive Tilt | Neutral Positive | Level | Slight Negative | Negative
+eyes.eye_type_verdict:             Hunter | Almond | Upturned | Neutral | Slightly Hooded | Downturned | Prey Eyes
+eyes.brow_volume_verdict:          Full | Well Defined | Adequate | Moderate | Sparse | Thin
+eyes.symmetry_verdict:             Symmetrical | Well Balanced | Minimal Asymmetry | Slight Asymmetry | Noticeable
+skin.color_verdict:                Even Tone | Clear | Mostly Even | Slight Uneven | Uneven | Discolored
+skin.quality_verdict:              Flawless | Very Smooth | Smooth | Moderate | Rough | Damaged
+`.trim();
+
 const ADVANCED_SYSTEM_PROMPT = `
 You are a calibrated facial-aesthetics analyst. Score and describe each sub-metric based strictly on what is visible in the image.
 
@@ -765,54 +789,56 @@ COMMENTARY RULES:
 - Lead with the dominant visible cue. Add one concrete direction only if improvement is realistic.
 - If a feature is genuinely strong, confirm it plainly without filler praise.
 
+${ADVANCED_VERDICT_OPTIONS}
+
 Return STRICT JSON with this exact shape and no other text:
 
 {
   "cheekbones": {
-    "width":                "<sentence>", "width_score":          <integer 0-100>,
-    "maxilla":              "<sentence>", "maxilla_score":        <integer 0-100>,
-    "bone_structure":       "<sentence>", "bone_structure_score": <integer 0-100>,
-    "face_fat":             "<sentence>", "face_fat_score":       <integer 0-100>
+    "width":                "<sentence>", "width_score":          <integer 0-100>, "width_verdict":          "<label>",
+    "maxilla":              "<sentence>", "maxilla_score":        <integer 0-100>, "maxilla_verdict":        "<label>",
+    "bone_structure":       "<sentence>", "bone_structure_score": <integer 0-100>, "bone_structure_verdict": "<label>",
+    "face_fat":             "<sentence>", "face_fat_score":       <integer 0-100>, "face_fat_verdict":       "<label>"
   },
   "jawline": {
-    "development":          "<sentence>", "development_score":    <integer 0-100>,
-    "gonial_angle":         "<sentence>", "gonial_angle_score":   <integer 0-100>,
-    "projection":           "<sentence>", "projection_score":     <integer 0-100>
+    "development":          "<sentence>", "development_score":    <integer 0-100>, "development_verdict":    "<label>",
+    "gonial_angle":         "<sentence>", "gonial_angle_score":   <integer 0-100>, "gonial_angle_verdict":   "<label>",
+    "projection":           "<sentence>", "projection_score":     <integer 0-100>, "projection_verdict":     "<label>"
   },
   "eyes": {
-    "canthal_tilt":         "<sentence>", "canthal_tilt_score":   <integer 0-100>,
-    "eye_type":             "<sentence>", "eye_type_score":       <integer 0-100>,
-    "brow_volume":          "<sentence>", "brow_volume_score":    <integer 0-100>,
-    "symmetry":             "<sentence>", "symmetry_score":       <integer 0-100>
+    "canthal_tilt":         "<sentence>", "canthal_tilt_score":   <integer 0-100>, "canthal_tilt_verdict":   "<label>",
+    "eye_type":             "<sentence>", "eye_type_score":       <integer 0-100>, "eye_type_verdict":       "<label>",
+    "brow_volume":          "<sentence>", "brow_volume_score":    <integer 0-100>, "brow_volume_verdict":    "<label>",
+    "symmetry":             "<sentence>", "symmetry_score":       <integer 0-100>, "symmetry_verdict":       "<label>"
   },
   "skin": {
-    "color":                "<sentence>", "color_score":          <integer 0-100>,
-    "quality":              "<sentence>", "quality_score":        <integer 0-100>
+    "color":                "<sentence>", "color_score":          <integer 0-100>, "color_verdict":          "<label>",
+    "quality":              "<sentence>", "quality_score":        <integer 0-100>, "quality_verdict":        "<label>"
   }
 }
 `.trim();
 
 export type AdvancedExplainResult = {
   cheekbones: {
-    width: string; width_score: number;
-    maxilla: string; maxilla_score: number;
-    bone_structure: string; bone_structure_score: number;
-    face_fat: string; face_fat_score: number;
+    width: string; width_score: number; width_verdict: string;
+    maxilla: string; maxilla_score: number; maxilla_verdict: string;
+    bone_structure: string; bone_structure_score: number; bone_structure_verdict: string;
+    face_fat: string; face_fat_score: number; face_fat_verdict: string;
   };
   jawline: {
-    development: string; development_score: number;
-    gonial_angle: string; gonial_angle_score: number;
-    projection: string; projection_score: number;
+    development: string; development_score: number; development_verdict: string;
+    gonial_angle: string; gonial_angle_score: number; gonial_angle_verdict: string;
+    projection: string; projection_score: number; projection_verdict: string;
   };
   eyes: {
-    canthal_tilt: string; canthal_tilt_score: number;
-    eye_type: string; eye_type_score: number;
-    brow_volume: string; brow_volume_score: number;
-    symmetry: string; symmetry_score: number;
+    canthal_tilt: string; canthal_tilt_score: number; canthal_tilt_verdict: string;
+    eye_type: string; eye_type_score: number; eye_type_verdict: string;
+    brow_volume: string; brow_volume_score: number; brow_volume_verdict: string;
+    symmetry: string; symmetry_score: number; symmetry_verdict: string;
   };
   skin: {
-    color: string; color_score: number;
-    quality: string; quality_score: number;
+    color: string; color_score: number; color_verdict: string;
+    quality: string; quality_score: number; quality_verdict: string;
   };
 };
 
@@ -841,7 +867,7 @@ Remember: most people score 35–65. Do not inflate. JSON only.
         model: MODEL,
         temperature: 0.45,
         top_p: 0.9,
-        max_tokens: 900,
+        max_tokens: 1150,
         response_format: { type: "json_object" },
         messages: [
           { role: "system", content: ADVANCED_SYSTEM_PROMPT },
@@ -877,41 +903,59 @@ Remember: most people score 35–65. Do not inflate. JSON only.
     typeof v === "string" && v.trim().length > 0 ? v.trim() : fallback;
   const num = (v: unknown): number =>
     typeof v === "number" && isFinite(v) ? Math.round(Math.min(100, Math.max(0, v))) : 50;
+  // Clamp verdict to 30 chars and ensure it's a non-empty string; fall back to "".
+  const vrd = (v: unknown): string => {
+    if (typeof v !== "string" || !v.trim()) return "";
+    return v.trim().slice(0, 30);
+  };
 
   return {
     cheekbones: {
       width:                str(data?.cheekbones?.width,                ""),
       width_score:          num(data?.cheekbones?.width_score),
+      width_verdict:        vrd(data?.cheekbones?.width_verdict),
       maxilla:              str(data?.cheekbones?.maxilla,              ""),
       maxilla_score:        num(data?.cheekbones?.maxilla_score),
+      maxilla_verdict:      vrd(data?.cheekbones?.maxilla_verdict),
       bone_structure:       str(data?.cheekbones?.bone_structure,       ""),
       bone_structure_score: num(data?.cheekbones?.bone_structure_score),
+      bone_structure_verdict: vrd(data?.cheekbones?.bone_structure_verdict),
       face_fat:             str(data?.cheekbones?.face_fat,             ""),
       face_fat_score:       num(data?.cheekbones?.face_fat_score),
+      face_fat_verdict:     vrd(data?.cheekbones?.face_fat_verdict),
     },
     jawline: {
-      development:       str(data?.jawline?.development,       ""),
-      development_score: num(data?.jawline?.development_score),
-      gonial_angle:      str(data?.jawline?.gonial_angle,      ""),
-      gonial_angle_score:num(data?.jawline?.gonial_angle_score),
-      projection:        str(data?.jawline?.projection,        ""),
-      projection_score:  num(data?.jawline?.projection_score),
+      development:          str(data?.jawline?.development,       ""),
+      development_score:    num(data?.jawline?.development_score),
+      development_verdict:  vrd(data?.jawline?.development_verdict),
+      gonial_angle:         str(data?.jawline?.gonial_angle,      ""),
+      gonial_angle_score:   num(data?.jawline?.gonial_angle_score),
+      gonial_angle_verdict: vrd(data?.jawline?.gonial_angle_verdict),
+      projection:           str(data?.jawline?.projection,        ""),
+      projection_score:     num(data?.jawline?.projection_score),
+      projection_verdict:   vrd(data?.jawline?.projection_verdict),
     },
     eyes: {
-      canthal_tilt:      str(data?.eyes?.canthal_tilt,      ""),
-      canthal_tilt_score:num(data?.eyes?.canthal_tilt_score),
-      eye_type:          str(data?.eyes?.eye_type,          ""),
-      eye_type_score:    num(data?.eyes?.eye_type_score),
-      brow_volume:       str(data?.eyes?.brow_volume,       ""),
-      brow_volume_score: num(data?.eyes?.brow_volume_score),
-      symmetry:          str(data?.eyes?.symmetry,          ""),
-      symmetry_score:    num(data?.eyes?.symmetry_score),
+      canthal_tilt:         str(data?.eyes?.canthal_tilt,      ""),
+      canthal_tilt_score:   num(data?.eyes?.canthal_tilt_score),
+      canthal_tilt_verdict: vrd(data?.eyes?.canthal_tilt_verdict),
+      eye_type:             str(data?.eyes?.eye_type,          ""),
+      eye_type_score:       num(data?.eyes?.eye_type_score),
+      eye_type_verdict:     vrd(data?.eyes?.eye_type_verdict),
+      brow_volume:          str(data?.eyes?.brow_volume,       ""),
+      brow_volume_score:    num(data?.eyes?.brow_volume_score),
+      brow_volume_verdict:  vrd(data?.eyes?.brow_volume_verdict),
+      symmetry:             str(data?.eyes?.symmetry,          ""),
+      symmetry_score:       num(data?.eyes?.symmetry_score),
+      symmetry_verdict:     vrd(data?.eyes?.symmetry_verdict),
     },
     skin: {
-      color:         str(data?.skin?.color,         ""),
-      color_score:   num(data?.skin?.color_score),
-      quality:       str(data?.skin?.quality,       ""),
-      quality_score: num(data?.skin?.quality_score),
+      color:           str(data?.skin?.color,         ""),
+      color_score:     num(data?.skin?.color_score),
+      color_verdict:   vrd(data?.skin?.color_verdict),
+      quality:         str(data?.skin?.quality,       ""),
+      quality_score:   num(data?.skin?.quality_score),
+      quality_verdict: vrd(data?.skin?.quality_verdict),
     },
   };
 }
