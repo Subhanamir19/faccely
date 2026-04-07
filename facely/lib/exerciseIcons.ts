@@ -33,6 +33,10 @@ export const EXERCISE_ICONS: Record<string, any> = {
   // All areas
   "lymphatic-drainage": ICON_ALL,
   "gua-sha":            ICON_ALL,
+
+  // Midface & Lower Face
+  "midface-exercise":   ICON_CHEEKBONES,
+  "lowerface-exercise": ICON_JAWLINE,
 };
 
 export function getExerciseIcon(exerciseId: string): any {

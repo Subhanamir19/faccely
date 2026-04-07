@@ -27,8 +27,10 @@ import Animated, {
   Easing,
 } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
+import { Flame, Check } from "lucide-react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { COLORS, RADII, SP } from "@/lib/tokens";
+import { sw, sh, ms } from "@/lib/responsive";
 import DayCompleteModal from "@/components/ui/DayCompleteModal";
 import MoodCheckModal from "@/components/ui/MoodCheckModal";
 import LimeButton from "@/components/ui/LimeButton";
@@ -42,18 +44,42 @@ import {
   getShownMilestones,
   markMilestoneShown,
 } from "@/lib/lifeModals";
-import { useTasksStore, type DailyTask, type ProtocolTask, type DayRecord } from "@/store/tasks";
+import { useTasksStore, getConsecutiveMissed, type DailyTask, type ProtocolTask, type DayRecord } from "@/store/tasks";
 import { useScores, type Scores } from "@/store/scores";
 import { useOnboarding } from "@/store/onboarding";
 import { useProfile } from "@/store/profile";
 import { getExerciseIcon } from "@/lib/exerciseIcons";
+import { useExerciseSettings } from "@/store/exerciseSettings";
+import { getJSON, setJSON } from "@/lib/storage";
 
 // Module-level: only show intro splash once per day
 let lastIntroDate: string | null = null;
 
+// In-session guard — prevents double-navigation within the same JS runtime.
+// Persisted date in AsyncStorage is the cross-session guard.
+let lastStreakNavDate: string | null = null;
+
+const DAILY_FLOW_KEY = "daily_flow_shown_date";
+
+/** Returns true only if the daily flow hasn't been shown today (checks storage). */
+async function shouldShowDailyFlow(todayStr: string): Promise<boolean> {
+  if (lastStreakNavDate === todayStr) return false;
+  const stored = await getJSON<string | null>(DAILY_FLOW_KEY, null);
+  return stored !== todayStr;
+}
+
+/** Mark the daily flow as shown for today in both memory and storage. */
+async function markDailyFlowShown(todayStr: string): Promise<void> {
+  lastStreakNavDate = todayStr;
+  await setJSON(DAILY_FLOW_KEY, todayStr);
+}
+
 // Module-level: life modal session flags (same pattern as lastIntroDate)
 let _comebackChecked = false;
 let _didYouKnowChecked = false;
+
+// NOTE: DayCompleteModal dedup is now handled via tasks store's
+// completionModalShownDate (persisted), so it survives app force-kills.
 
 // ---------------------------------------------------------------------------
 // Loading screen — helpers
@@ -90,26 +116,6 @@ function findWeakestField(scores: Scores | null): { label: string; value: number
   return worst;
 }
 
-function getConsecutiveMissed(history: DayRecord[]): number {
-  if (!history.length) return 0;
-
-  const lastComplete = [...history]
-    .sort((a, b) => b.date.localeCompare(a.date))
-    .find((r) => r.streakEarned);
-  if (!lastComplete) return 0;
-
-  let count = 0;
-  const d = new Date();
-  for (let i = 0; i < 7; i++) {
-    d.setDate(d.getDate() - 1); // local date arithmetic
-    const ds = getLocalDateString(d);
-    if (ds <= lastComplete.date) break;
-    const record = history.find((r) => r.date === ds);
-    if (!record || !record.streakEarned) count++;
-    else break;
-  }
-  return count;
-}
 
 function buildLoadingPhrases(
   streak: number,
@@ -383,7 +389,7 @@ function StreakBadge() {
           onPressOut={() => { scale.value = withSpring(1, { damping: 10, stiffness: 200 }); }}
           style={styles.streakBadge}
         >
-          <Text style={styles.streakIcon}>🔥</Text>
+          <Flame size={18} color="#FF6B1A" strokeWidth={1.5} fill="#FF8C42" />
           <Text style={styles.streakText}>{currentStreak}</Text>
         </Pressable>
       </Animated.View>
@@ -394,113 +400,165 @@ function StreakBadge() {
 }
 
 // ---------------------------------------------------------------------------
-// Top workout card (the 70% section)
+// Face target card — images + info
 // ---------------------------------------------------------------------------
 
+const AREA_LABELS: Record<string, string> = {
+  cheekbones: "Cheekbones",
+  jawline:    "Jawline",
+  eyes:       "Eye Area",
+  skin:       "Skin",
+  nose:       "Nasolabial Area",
+  all:        "Full Face",
+};
+
+const AREA_BENEFIT: Record<string, string> = {
+  jawline:    "sharpen lower face definition and jawline structure",
+  cheekbones: "lift and sculpt mid-face cheekbone prominence",
+  eyes:       "improve eye area symmetry and orbital muscle tone",
+  nose:       "refine nasolabial harmony and nose bridge contour",
+  skin:       "boost skin circulation and surface quality",
+  all:        "activate all major facial regions for overall balance",
+};
+
+function parseFocusAreas(focusSummary: string): string[] {
+  if (!focusSummary) return [];
+  return focusSummary
+    .split(/,|\s*&\s*/)
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean)
+    .slice(0, 2); // cap at 2 for layout
+}
+
+/** Collapses 5 task intensities into one session-level descriptor. */
+function aggregateIntensity(tasks: DailyTask[]): "high" | "medium" | "low" {
+  if (!tasks.length) return "medium";
+  const counts = { high: 0, medium: 0, low: 0 };
+  for (const t of tasks) counts[t.intensity] = (counts[t.intensity] ?? 0) + 1;
+  if (counts.high >= 3) return "high";
+  if (counts.low >= 3)  return "low";
+  return "medium";
+}
+
+const INTENSITY_VERB: Record<string, string> = {
+  high:   "high-intensity resistance training",
+  medium: "balanced sculpting",
+  low:    "gentle activation",
+};
+
+const OVERLOAD_SUFFIX: Record<string, string> = {
+  "Base":   "",
+  "Week 2": ", progressively overloaded from last week",
+  "Week 4": ", at peak advanced intensity",
+};
+
+function buildRoutineDescription(
+  tasks: DailyTask[],
+  focusSummary: string,
+  overloadLabel: string,
+): string {
+  const areas = parseFocusAreas(focusSummary);
+  const intensity = aggregateIntensity(tasks);
+  const verb = INTENSITY_VERB[intensity] ?? "balanced sculpting";
+  const overloadNote = OVERLOAD_SUFFIX[overloadLabel] ?? "";
+
+  if (areas.length === 0) {
+    return `A full-face ${verb} session${overloadNote}.`;
+  }
+
+  if (areas.length === 1) {
+    const benefit = AREA_BENEFIT[areas[0]] ?? `target your ${AREA_LABELS[areas[0]] ?? areas[0]}`;
+    return `A ${verb} session designed to ${benefit}${overloadNote}.`;
+  }
+
+  // Two areas
+  const b0 = AREA_BENEFIT[areas[0]] ?? `target your ${AREA_LABELS[areas[0]] ?? areas[0]}`;
+  const b1 = AREA_BENEFIT[areas[1]] ?? `improve your ${AREA_LABELS[areas[1]] ?? areas[1]}`;
+  return `A ${verb} session to ${b0}, and ${b1}${overloadNote}.`;
+}
+
 function WorkoutCard({
-  streak,
+  tasks,
   focusSummary,
   overloadLabel,
   completedCount,
   totalCount,
-  userName,
 }: {
-  streak: number;
+  tasks: DailyTask[];
   focusSummary: string;
   overloadLabel: string;
   completedCount: number;
   totalCount: number;
-  userName: string | null;
 }) {
-  const progress = totalCount > 0 ? completedCount / totalCount : 0;
-  const barWidth = useSharedValue(0);
   const numScale = useSharedValue(1);
-
-  useEffect(() => {
-    barWidth.value = withSpring(progress, { damping: 18, stiffness: 100 });
-  }, [progress]);
+  const progressAnim = useSharedValue(0);
 
   useEffect(() => {
     if (completedCount > 0) {
       numScale.value = withSequence(
-        withSpring(1.3, { damping: 5, stiffness: 500 }),
+        withSpring(1.25, { damping: 5, stiffness: 500 }),
         withSpring(1.0, { damping: 10, stiffness: 200 }),
       );
     }
-  }, [completedCount]);
-
-  const barStyle = useAnimatedStyle(() => ({
-    width: `${barWidth.value * 100}%`,
-  }));
+    const pct = totalCount > 0 ? completedCount / totalCount : 0;
+    progressAnim.value = withTiming(pct, { duration: 700, easing: Easing.out(Easing.cubic) });
+  }, [completedCount, totalCount]);
 
   const numStyle = useAnimatedStyle(() => ({
     transform: [{ scale: numScale.value }],
   }));
 
+  const progressBarStyle = useAnimatedStyle(() => ({
+    width: `${progressAnim.value * 100}%`,
+  }));
+
   const allDone = completedCount === totalCount && totalCount > 0;
-
-  const firstName = userName?.split(" ")[0] ?? null;
-
-  let heroPrefix = "";
-  let heroTargets = "";
-  if (allDone) {
-    heroPrefix = firstName ? `${firstName}'s done — great work` : "All done — great work";
-  } else if (focusSummary) {
-    heroTargets = focusSummary
-      .split(/,\s*|\s*&\s*/)
-      .map((s) => s.trim())
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
-      .join(" · ");
-    heroPrefix = firstName ? `Workout for ${firstName}'s ` : "Workout for ";
-  } else {
-    heroPrefix = firstName ? `Workout for ${firstName}` : "Today's Workout";
-  }
+  const description = useMemo(
+    () => buildRoutineDescription(tasks, focusSummary, overloadLabel),
+    [tasks, focusSummary, overloadLabel],
+  );
 
   return (
-    <LinearGradient
-      colors={["#282828", "#161616"]}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 0, y: 1 }}
-      style={styles.workoutCard}
-    >
-      {/* Date + streak */}
-      <View style={styles.cardTopRow}>
-        <Text style={styles.cardDate}>{formatDateHeader()}</Text>
-        <StreakBadge />
-      </View>
+    <View style={styles.workoutCard}>
 
-      {/* Hero: focus area */}
-      <Animated.Text
-        key={allDone ? 1 : 0}
-        entering={FadeInDown.duration(320).delay(80)}
-        exiting={FadeOut.duration(150)}
-        style={styles.heroFocus}
-      >
-        {heroPrefix}
-        {heroTargets ? (
-          <Text style={styles.heroFocusTargets}>{heroTargets}</Text>
-        ) : null}
-      </Animated.Text>
-
-      {/* Tier pill */}
-      {overloadLabel !== "Base" && (
-        <Animated.View entering={FadeIn.duration(400).delay(220)} style={styles.tierPill}>
-          <Text style={styles.tierPillText}>{overloadLabel}</Text>
-        </Animated.View>
-      )}
-
-      {/* Progress bar + inline count */}
-      <View style={styles.progressSection}>
-        <View style={styles.progressTrack}>
-          <Animated.View style={[styles.progressFill, barStyle]} />
+<View style={styles.cardContent}>
+        <View style={styles.cardTopRow}>
+          {/* Centred label — absolutely positioned so the streak badge doesn't shift it */}
+          <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
+            <View style={styles.eyebrowRowCentered}>
+              <View style={styles.eyebrowDot} />
+              <Text style={styles.eyebrowLabel}>
+                {allDone ? "COMPLETED" : "TODAY'S WORKOUT"}
+              </Text>
+            </View>
+          </View>
+          <StreakBadge />
         </View>
-        <Animated.Text style={[styles.progressCount, numStyle]}>
-          {completedCount}/{totalCount}
-        </Animated.Text>
+
+        <Animated.View
+          key={allDone ? "done" : focusSummary}
+          entering={FadeInDown.duration(380).delay(60).springify().damping(22)}
+        >
+          <Text style={allDone ? styles.cardDescriptionDone : styles.cardDescription}>
+            {allDone
+              ? "All done — great work today."
+              : description}
+          </Text>
+        </Animated.View>
+
+        <View style={styles.targetDivider} />
+
+        {/* ── Animated progress bar ── */}
+        <View style={styles.progressRow}>
+          <View style={styles.progressTrack}>
+            <Animated.View style={[styles.progressFill, progressBarStyle]} />
+          </View>
+          <Animated.Text style={[styles.progressCount, numStyle]}>
+            {completedCount} / {totalCount}
+          </Animated.Text>
+        </View>
       </View>
-    </LinearGradient>
+    </View>
   );
 }
 
@@ -509,6 +567,63 @@ function WorkoutCard({
 // ---------------------------------------------------------------------------
 
 const TASK_DEPTH = 5;
+
+// Formats seconds → "0:30" / "1:00" / "1:30"
+function formatDuration(secs: number): string {
+  const m = Math.floor(secs / 60);
+  const s = secs % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+function DurationStepper({
+  exerciseId,
+  isPending,
+}: {
+  exerciseId: string;
+  isPending: boolean;
+}) {
+  const { getDuration, incrementDuration, decrementDuration } = useExerciseSettings();
+  const secs = getDuration(exerciseId);
+  const atMin = secs <= 15;
+  const atMax = secs >= 90;
+
+  return (
+    <View style={styles.durationWrap}>
+      {/* Decrease */}
+      <Pressable
+        onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); decrementDuration(exerciseId); }}
+        disabled={!isPending || atMin}
+        hitSlop={8}
+        style={({ pressed }) => [
+          styles.durationBtn,
+          (!isPending || atMin) && styles.durationBtnDisabled,
+          pressed && isPending && !atMin && styles.durationBtnPressed,
+        ]}
+      >
+        <Text style={styles.durationBtnText}>−</Text>
+      </Pressable>
+
+      {/* Time display */}
+      <Text style={[styles.durationText, !isPending && styles.durationTextDark]}>
+        {formatDuration(secs)}
+      </Text>
+
+      {/* Increase */}
+      <Pressable
+        onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); incrementDuration(exerciseId); }}
+        disabled={!isPending || atMax}
+        hitSlop={8}
+        style={({ pressed }) => [
+          styles.durationBtn,
+          (!isPending || atMax) && styles.durationBtnDisabled,
+          pressed && isPending && !atMax && styles.durationBtnPressed,
+        ]}
+      >
+        <Text style={styles.durationBtnText}>+</Text>
+      </Pressable>
+    </View>
+  );
+}
 
 function ExerciseRow({
   task,
@@ -519,74 +634,174 @@ function ExerciseRow({
   onStart: () => void;
   onMarkDone: () => void;
 }) {
+  const { uncompleteTask } = useTasksStore();
+  const [confirmVisible, setConfirmVisible] = useState(false);
+
   const isCompleted = task.status === "completed";
+  const isSkipped   = task.status === "skipped";
+  const isPending   = !isCompleted && !isSkipped;
+
+  const confirmCopy = isCompleted
+    ? {
+        emoji: "↩️",
+        title: "Undo completion?",
+        body: "This exercise will go back to pending so you can redo it.",
+        confirmText: "Yes, undo",
+      }
+    : {
+        emoji: "🔥",
+        title: "Add back to list?",
+        body: `Add ${task.name} back to today's exercises and complete it for full credit.`,
+        confirmText: "Add back",
+      };
+
+  const handleStatusPress = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setConfirmVisible(true);
+  };
+
+  const handleSkippedCardPress = () => {
+    if (!isSkipped) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setConfirmVisible(true);
+  };
+
+  const handleConfirm = () => {
+    setConfirmVisible(false);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    uncompleteTask(task.exerciseId);
+  };
+
+  const handleCancel = () => {
+    setConfirmVisible(false);
+  };
 
   return (
-    <View style={[styles.taskCardBase, isCompleted && styles.taskCardBaseDone]}>
-      <Pressable
-        onPress={isCompleted ? undefined : onStart}
-        disabled={isCompleted}
-        style={({ pressed }) => [
-          styles.taskCardFace,
-          isCompleted && styles.taskCardFaceDone,
-          { transform: [{ translateY: !isCompleted && pressed ? TASK_DEPTH : 0 }] },
-        ]}
-      >
-        {!isCompleted && (
-          <LinearGradient
-            colors={["#CCFF6B", "#B4F34D"]}
-            start={{ x: 0.5, y: 0 }}
-            end={{ x: 0.5, y: 1 }}
-            style={StyleSheet.absoluteFill}
-          />
-        )}
-        <View style={styles.taskRow}>
-          {/* Icon */}
-          <View style={[styles.exerciseIconWrap, isCompleted && styles.exerciseIconDimmed]}>
-            <Image source={getExerciseIcon(task.exerciseId)} style={styles.exerciseIconImg} />
-          </View>
+    <>
+      <View style={[
+        styles.taskCardBase,
+        isCompleted && styles.taskCardBaseDone,
+        isSkipped   && styles.taskCardBaseSkipped,
+      ]}>
+        <Pressable
+          onPress={isPending ? onStart : isSkipped ? handleSkippedCardPress : undefined}
+          disabled={isCompleted}
+          style={({ pressed }) => [
+            styles.taskCardFace,
+            isCompleted && styles.taskCardFaceDone,
+            isSkipped   && styles.taskCardFaceSkipped,
+            { transform: [{ translateY: isPending && pressed ? TASK_DEPTH : 0 }] },
+          ]}
+        >
+          <View style={styles.taskRow}>
+            {/* Icon */}
+            <View style={[
+              styles.exerciseIconWrap,
+              !isPending && styles.exerciseIconDimmed,
+            ]}>
+              <Image source={getExerciseIcon(task.exerciseId)} style={styles.exerciseIconImg} />
+            </View>
 
-          {/* Name + target */}
-          <View style={styles.taskLeft}>
-            <Text style={[styles.taskTitle, isCompleted && styles.taskTitleDone]} numberOfLines={1}>
-              {task.name}
-            </Text>
-            <Text style={styles.taskSummary} numberOfLines={1}>
-              {task.targets.map((t) => (t === "all" ? "Full Face" : t)).join(", ")}
-            </Text>
-          </View>
+            {/* Name + target */}
+            <View style={styles.taskLeft}>
+              <Text
+                style={[
+                  styles.taskTitle,
+                  isPending   && styles.taskTitlePending,
+                  isCompleted && styles.taskTitleDone,
+                  isSkipped   && styles.taskTitleSkipped,
+                ]}
+                numberOfLines={1}
+              >
+                {task.name}
+              </Text>
+              <Text
+                style={[
+                  styles.taskSummary,
+                  isPending && styles.taskSummaryPending,
+                ]}
+                numberOfLines={1}
+              >
+                {task.targets.map((t) => (t === "all" ? "Full Face" : t)).join(", ")}
+              </Text>
+            </View>
 
-          {/* Right: Start pill + status circle */}
-          <View style={styles.taskRight}>
-            {!isCompleted && (
-              <View style={styles.startPillDepth}>
-                <View style={styles.startPill}>
-                  <Text style={styles.startPillText}>Start</Text>
+            {/* Duration stepper — only for pending */}
+            {isPending && (
+              <DurationStepper exerciseId={task.exerciseId} isPending={isPending} />
+            )}
+
+            {/* Status button — only for completed or skipped */}
+            {!isPending && (
+              <View style={styles.taskRight}>
+                <View style={[
+                  styles.statusBtnDepth,
+                  isCompleted && styles.statusBtnDepthDone,
+                  isSkipped   && styles.statusBtnDepthSkipped,
+                ]}>
+                  <Pressable
+                    onPress={handleStatusPress}
+                    hitSlop={10}
+                    style={({ pressed }) => [
+                      styles.statusBtnFace,
+                      isCompleted && styles.statusBtnFaceDone,
+                      isSkipped   && styles.statusBtnFaceSkipped,
+                      { transform: [{ translateY: pressed ? 3 : 0 }] },
+                    ]}
+                  >
+                    <Text style={[
+                      styles.statusBtnGlyph,
+                      isCompleted && styles.statusBtnGlyphDone,
+                      isSkipped   && styles.statusBtnGlyphSkipped,
+                    ]}>
+                      {isCompleted ? "✓" : "✗"}
+                    </Text>
+                  </Pressable>
                 </View>
               </View>
             )}
-
-            {/*
-              Circle is its own Pressable so it captures the touch before the
-              outer card Pressable does — no stopPropagation needed.
-              Disabled + non-interactive once completed.
-            */}
-            <Pressable
-              onPress={isCompleted ? undefined : onMarkDone}
-              disabled={isCompleted}
-              hitSlop={10}
-              style={({ pressed }) => [
-                styles.statusDot,
-                isCompleted ? styles.statusDotDone : styles.statusDotPending,
-                !isCompleted && pressed && styles.statusDotPressed,
-              ]}
-            >
-              {isCompleted && <Text style={styles.statusCheck}>✓</Text>}
-            </Pressable>
           </View>
-        </View>
-      </Pressable>
-    </View>
+        </Pressable>
+      </View>
+
+      {/* Confirmation bottom sheet */}
+      <Modal
+        transparent
+        visible={confirmVisible}
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={handleCancel}
+      >
+        <Pressable style={styles.confirmBackdrop} onPress={handleCancel}>
+          <Animated.View entering={FadeInDown.duration(240).springify()} style={styles.confirmSheet}>
+            <Pressable onPress={() => {}} style={{ width: "100%" }}>
+              <View style={styles.confirmHandle} />
+              <Text style={styles.confirmEmoji}>{confirmCopy.emoji}</Text>
+              <Text style={styles.confirmTitle}>{confirmCopy.title}</Text>
+              <Text style={styles.confirmBody}>{confirmCopy.body}</Text>
+              <View style={styles.confirmBtns}>
+                {/* Confirm */}
+                <Pressable
+                  onPress={handleConfirm}
+                  style={({ pressed }) => [
+                    isSkipped ? styles.confirmBtnLime : styles.confirmBtnPrimary,
+                    { opacity: pressed ? 0.82 : 1 },
+                  ]}
+                >
+                  <Text style={isSkipped ? styles.confirmBtnLimeText : styles.confirmBtnPrimaryText}>
+                    {confirmCopy.confirmText}
+                  </Text>
+                </Pressable>
+                {/* Cancel */}
+                <Pressable onPress={handleCancel} style={styles.confirmBtnGhost}>
+                  <Text style={styles.confirmBtnGhostText}>{isSkipped ? "Keep skipped" : "Keep it"}</Text>
+                </Pressable>
+              </View>
+            </Pressable>
+          </Animated.View>
+        </Pressable>
+      </Modal>
+    </>
   );
 }
 
@@ -791,72 +1006,6 @@ function MarkDoneModal({
 }
 
 // ---------------------------------------------------------------------------
-// Start confirmation modal
-// ---------------------------------------------------------------------------
-
-function StartModal({
-  visible,
-  exerciseName,
-  onConfirm,
-  onDismiss,
-}: {
-  visible: boolean;
-  exerciseName: string;
-  onConfirm: () => void;
-  onDismiss: () => void;
-}) {
-  return (
-    <Modal
-      transparent
-      visible={visible}
-      animationType="fade"
-      statusBarTranslucent
-      onRequestClose={onDismiss}
-    >
-      <Pressable style={styles.modalBackdrop} onPress={onDismiss}>
-        <Animated.View
-          entering={FadeInDown.duration(250).springify()}
-          style={styles.modalCard}
-        >
-          <Pressable onPress={() => {}} style={{ width: "100%" }}>
-            <Text style={styles.modalTitle}>Ready?</Text>
-            <Text style={styles.modalExercise}>{exerciseName}</Text>
-            <Text style={styles.modalHint}>Timer will start immediately</Text>
-
-            <View style={styles.modalBtns}>
-              <Pressable style={styles.modalBtnGhost} onPress={onDismiss}>
-                <Text style={styles.modalBtnGhostText}>Not now</Text>
-              </Pressable>
-
-              {/* Lime 3D depth button */}
-              <View style={styles.modalBtnDepth}>
-                <Pressable
-                  onPress={onConfirm}
-                  style={({ pressed }) => [
-                    styles.modalBtnPressable,
-                    { transform: [{ translateY: pressed ? 5 : 0 }] },
-                  ]}
-                >
-                  <LinearGradient
-                    colors={["#CCFF6B", "#B4F34D"]}
-                    locations={[0, 1]}
-                    start={{ x: 0.5, y: 0 }}
-                    end={{ x: 0.5, y: 1 }}
-                    style={styles.modalBtnGradient}
-                  >
-                    <Text style={styles.modalBtnPrimaryText}>Start</Text>
-                  </LinearGradient>
-                </Pressable>
-              </View>
-            </View>
-          </Pressable>
-        </Animated.View>
-      </Pressable>
-    </Modal>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // AllDoneOverlay — shown every visit when today's tasks are all complete
 // ---------------------------------------------------------------------------
 
@@ -927,69 +1076,69 @@ const overlayStyles = StyleSheet.create({
     zIndex: 100,
     justifyContent: "center",
     alignItems: "center",
-    paddingHorizontal: SP[6],
+    paddingHorizontal: sw(SP[6]),
   },
   inner: {
     width: "100%",
     alignItems: "center",
-    gap: SP[4],
+    gap: sh(SP[4]),
   },
   iconWrap: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: sw(80),
+    height: sw(80),
+    borderRadius: sw(40),
     backgroundColor: COLORS.accentGlow,
     borderWidth: 1,
     borderColor: COLORS.accentBorder,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: SP[2],
+    marginBottom: sh(SP[2]),
   },
   iconEmoji: {
-    fontSize: 38,
+    fontSize: ms(38),
   },
   headline: {
-    fontSize: 28,
+    fontSize: ms(28),
     fontFamily: "Poppins-SemiBold",
     color: COLORS.text,
     textAlign: "center",
     letterSpacing: -0.5,
   },
   body: {
-    fontSize: 15,
+    fontSize: ms(15),
     fontFamily: "Poppins-Regular",
     color: COLORS.sub,
     textAlign: "center",
-    lineHeight: 24,
+    lineHeight: ms(24),
   },
   streakHighlight: {
     color: COLORS.accent,
     fontFamily: "Poppins-SemiBold",
   },
   streakPill: {
-    paddingHorizontal: SP[5],
-    paddingVertical: SP[2],
-    borderRadius: RADII.pill,
+    paddingHorizontal: sw(SP[5]),
+    paddingVertical: sh(SP[2]),
+    borderRadius: sw(RADII.pill),
     backgroundColor: "rgba(251,146,60,0.12)",
     borderWidth: 1,
     borderColor: "rgba(251,146,60,0.30)",
   },
   streakPillText: {
-    fontSize: 13,
+    fontSize: ms(13),
     fontFamily: "Poppins-SemiBold",
     color: "#FB923C",
   },
   btnRow: {
     width: "100%",
-    gap: SP[3],
-    marginTop: SP[2],
+    gap: sh(SP[3]),
+    marginTop: sh(SP[2]),
   },
   btnSecondary: {
-    paddingVertical: SP[3],
+    paddingVertical: sh(SP[3]),
     alignItems: "center",
   },
   btnSecondaryText: {
-    fontSize: 14,
+    fontSize: ms(14),
     fontFamily: "Poppins-Regular",
     color: COLORS.sub,
     textDecorationLine: "underline",
@@ -1009,12 +1158,13 @@ export default function TasksScreen() {
     completeTask,
     completeProtocol,
     setMood,
+    markCompletionModalShown,
+    completionModalShownDate,
   } = useTasksStore();
   const { displayName } = useProfile();
 
   const [showDayComplete, setShowDayComplete]     = useState(false);
   const [showMoodCheck, setShowMoodCheck]         = useState(false);
-  const [confirmTask, setConfirmTask]             = useState<DailyTask | null>(null);
   const [markDoneTask, setMarkDoneTask]           = useState<DailyTask | null>(null);
   const [confirmProtocol, setConfirmProtocol]     = useState<ProtocolTask | null>(null);
   const [showAllDoneOverlay, setShowAllDoneOverlay] = useState(false);
@@ -1041,11 +1191,26 @@ export default function TasksScreen() {
     setActiveLifeModal(null);
   }, []);
 
-  // Show overlay every time the screen is focused if all tasks are done
+  // On screen focus: show AllDoneOverlay if tasks are all done, and also detect
+  // when exercises were completed in the session screen (show DayCompleteModal).
   useFocusEffect(
     useCallback(() => {
-      if (useTasksStore.getState().today?.allComplete) {
+      const state = useTasksStore.getState();
+
+      if (state.today?.allComplete) {
         setShowAllDoneOverlay(true);
+      }
+
+      // If completedOnce became true while we were in the session screen and we
+      // haven't shown DayCompleteModal for today yet, show it now.
+      // Uses persisted completionModalShownDate so force-kill + reopen doesn't
+      // re-show the modal.
+      if (
+        state.today?.completedOnce &&
+        state.completionModalShownDate !== state.today.date
+      ) {
+        state.markCompletionModalShown(state.today.date);
+        setTimeout(() => setShowDayComplete(true), 300);
       }
     }, [])
   );
@@ -1113,6 +1278,13 @@ export default function TasksScreen() {
       if (!useTasksStore.getState().loading) {
         lastIntroDate = todayDateStr;
         setIntroVisible(false);
+        // Navigate to streak screen only on the first app open of the day
+        shouldShowDailyFlow(todayDateStr).then((should) => {
+          if (should) {
+            markDailyFlowShown(todayDateStr);
+            router.push("/program/streak");
+          }
+        });
       }
     }, 2700);
     return () => clearTimeout(t);
@@ -1122,6 +1294,13 @@ export default function TasksScreen() {
     if (!introVisible || !introTimerDoneRef.current || loading) return;
     lastIntroDate = todayDateStr;
     setIntroVisible(false);
+    // Navigate to streak screen only on the first app open of the day
+    shouldShowDailyFlow(todayDateStr).then((should) => {
+      if (should) {
+        markDailyFlowShown(todayDateStr);
+        router.push("/program/streak");
+      }
+    });
   }, [loading, introVisible]);
 
   // Midnight refresh — polls every 60s using local date so rollover matches local midnight
@@ -1132,32 +1311,19 @@ export default function TasksScreen() {
     return () => clearInterval(interval);
   }, [today?.date, initToday]);
 
-  const handleRowPress = useCallback((task: DailyTask) => {
-    if (task.status === "completed") return;
-    setConfirmTask(task);
-  }, []);
-
-  const handleConfirm = useCallback(() => {
-    if (!confirmTask) return;
-    setConfirmTask(null);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    router.push({
-      pathname: "/program/timer/[exerciseId]",
-      params: { exerciseId: confirmTask.exerciseId },
-    });
-  }, [confirmTask]);
-
   // Shared completion path — used by both timer callback and mark-done circle.
   // Reads actual store state after update so day-complete check works with the
   // 3-item streak threshold (not the old all-tasks logic).
   const handleTaskComplete = useCallback((exerciseId: string) => {
     const alreadyCounted = useTasksStore.getState().today?.completedOnce ?? false;
     completeTask(exerciseId);
-    const nowCounted = useTasksStore.getState().today?.completedOnce ?? false;
-    if (!alreadyCounted && nowCounted) {
+    const newState = useTasksStore.getState();
+    const nowCounted = newState.today?.completedOnce ?? false;
+    if (!alreadyCounted && nowCounted && newState.today) {
+      markCompletionModalShown(newState.today.date);
       setTimeout(() => setShowDayComplete(true), 150);
     }
-  }, [completeTask]);
+  }, [completeTask, markCompletionModalShown]);
 
   // Circle tap → MarkDoneModal confirm
   const handleMarkDoneConfirm = useCallback(() => {
@@ -1196,12 +1362,11 @@ export default function TasksScreen() {
         style={styles.topSection}
       >
         <WorkoutCard
-          streak={currentStreak}
+          tasks={tasks}
           focusSummary={today.focusSummary}
           overloadLabel={today.tasks[0]?.overloadLabel ?? "Base"}
           completedCount={completedCount}
           totalCount={totalCount}
-          userName={displayName}
         />
       </Animated.View>
 
@@ -1218,7 +1383,10 @@ export default function TasksScreen() {
 
         <ScrollView
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.exerciseList}
+          contentContainerStyle={[
+            styles.exerciseList,
+            tasks.some((t) => t.status === "pending") && styles.exerciseListWithBtn,
+          ]}
         >
           {tasks.map((task, idx) => (
             <Animated.View
@@ -1227,7 +1395,13 @@ export default function TasksScreen() {
             >
               <ExerciseRow
                 task={task}
-                onStart={() => handleRowPress(task)}
+                onStart={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  router.push({
+                    pathname: "/program/guide/[exerciseId]",
+                    params: { exerciseId: task.exerciseId },
+                  });
+                }}
                 onMarkDone={() => setMarkDoneTask(task)}
               />
             </Animated.View>
@@ -1237,7 +1411,7 @@ export default function TasksScreen() {
           {today.protocols?.length > 0 && (
             <>
               <View style={styles.protocolsHeader}>
-                <Text style={styles.protocolsTitle}>Daily Stack</Text>
+                <Text style={styles.protocolsTitle}>Diet</Text>
                 <Text style={styles.sectionHint}>
                   {today.protocols.every((p) => p.status === "done") ? "All done" : `${today.protocols.filter((p) => p.status === "pending").length} left`}
                 </Text>
@@ -1256,16 +1430,37 @@ export default function TasksScreen() {
             </>
           )}
         </ScrollView>
+
+        {/* ── Floating Start Session button ── */}
+        {tasks.some((t) => t.status === "pending") && (
+          <View style={styles.floatingBtnWrap} pointerEvents="box-none">
+            <View style={styles.startSessionDepth}>
+              <Pressable
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  router.push("/program/session");
+                }}
+                style={({ pressed }) => [
+                  styles.startSessionBtn,
+                  { transform: [{ translateY: pressed ? 4 : 0 }] },
+                ]}
+              >
+                <LinearGradient
+                  colors={["#CCFF6B", "#B4F34D"]}
+                  locations={[0, 1]}
+                  start={{ x: 0.5, y: 0 }}
+                  end={{ x: 0.5, y: 1 }}
+                  style={styles.startSessionGradient}
+                >
+                  <Text style={styles.startSessionText}>▶  Start Session</Text>
+                </LinearGradient>
+              </Pressable>
+            </View>
+          </View>
+        )}
       </View>
 
       {/* ── Modals ── */}
-      <StartModal
-        visible={confirmTask !== null}
-        exerciseName={confirmTask?.name ?? ""}
-        onConfirm={handleConfirm}
-        onDismiss={() => setConfirmTask(null)}
-      />
-
       <MarkDoneModal
         visible={markDoneTask !== null}
         task={markDoneTask}
@@ -1314,8 +1509,10 @@ export default function TasksScreen() {
             const alreadyCounted = useTasksStore.getState().today?.completedOnce ?? false;
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
             completeProtocol(confirmProtocol.id, true);
-            const nowCounted = useTasksStore.getState().today?.completedOnce ?? false;
-            if (!alreadyCounted && nowCounted) {
+            const newState = useTasksStore.getState();
+            const nowCounted = newState.today?.completedOnce ?? false;
+            if (!alreadyCounted && nowCounted && newState.today) {
+              markCompletionModalShown(newState.today.date);
               setTimeout(() => setShowDayComplete(true), 150);
             }
           }
@@ -1368,31 +1565,31 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: COLORS.bgBottom },
 
   // Loading
-  loadingWrap: { flex: 1, alignItems: "center", justifyContent: "center", gap: SP[4] },
-  loadingTitle: { color: COLORS.text, fontSize: 22, fontFamily: "Poppins-SemiBold" },
+  loadingWrap: { flex: 1, alignItems: "center", justifyContent: "center", gap: sh(SP[4]) },
+  loadingTitle: { color: COLORS.text, fontSize: ms(22), fontFamily: "Poppins-SemiBold" },
   progressTrackLoading: {
-    width: 120,
-    height: 2,
-    borderRadius: 1,
+    width: sw(120),
+    height: sh(2),
+    borderRadius: sw(1),
     backgroundColor: "rgba(255,255,255,0.10)",
     overflow: "hidden",
   },
   progressFillLoading: {
     height: "100%",
-    borderRadius: 1,
+    borderRadius: sw(1),
     backgroundColor: COLORS.accent,
   },
   phraseContainer: {
-    height: 18,
+    height: sh(18),
     alignItems: "center",
     justifyContent: "center",
     width: "100%",
-    paddingHorizontal: SP[6],
+    paddingHorizontal: sw(SP[6]),
   },
   loadingPhrase: {
     position: "absolute",
     color: COLORS.sub,
-    fontSize: 13,
+    fontSize: ms(13),
     fontFamily: "Poppins-SemiBold",
     textAlign: "center",
     width: "100%",
@@ -1400,98 +1597,276 @@ const styles = StyleSheet.create({
 
   // Layout
   topSection: {
-    paddingHorizontal: SP[4],
-    paddingTop: SP[3],
-    paddingBottom: SP[2],
+    paddingHorizontal: sw(SP[4]),
+    paddingTop: sh(SP[3]),
+    paddingBottom: sh(SP[2]),
   },
   bottomSection: {
     flex: 1,
-    paddingHorizontal: SP[4],
-    paddingBottom: SP[2],
+    paddingHorizontal: sw(SP[4]),
+    paddingBottom: sh(SP[2]),
     borderTopWidth: 1,
     borderTopColor: COLORS.divider,
   },
 
-  // Workout card
-  workoutCard: {
-    borderRadius: RADII.card,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
-    borderTopWidth: 2,
-    borderTopColor: COLORS.accent,
-    padding: SP[4],
-    gap: SP[3],
+  // Start Session button
+  startSessionDepth: {
+    borderRadius: sw(RADII.pill),
+    backgroundColor: COLORS.accentDepth,
+    paddingBottom: sh(4),
+    marginBottom: sh(SP[3]),
     shadowColor: COLORS.accent,
-    shadowOpacity: 0.30,
-    shadowRadius: 36,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 14,
+    shadowOpacity: 0.35,
+    shadowRadius: sw(16),
+    shadowOffset: { width: 0, height: sh(6) },
+    elevation: 10,
+  },
+  startSessionBtn: {
+    height: sh(48),
+    borderRadius: sw(RADII.pill),
     overflow: "hidden",
+  },
+  startSessionGradient: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: sw(RADII.pill),
+  },
+  startSessionText: {
+    color: "#0B0B0B",
+    fontSize: ms(15),
+    fontFamily: "Poppins-SemiBold",
+    letterSpacing: 0.2,
+  },
+
+  // ── Face target card ────────────────────────────────────────────────────────
+  workoutCard: {
+    borderRadius: sw(20),
+    overflow: "hidden",
+    backgroundColor: "#0F0F0F",
+    shadowColor: "#000000",
+    shadowOpacity: 0.55,
+    shadowRadius: sw(28),
+    shadowOffset: { width: 0, height: sh(10) },
+    elevation: 14,
+  },
+
+  // Images
+  targetImagesRow: {
+    flexDirection: "row",
+    height: sh(148),
+    position: "relative",
+  },
+  targetImageWrap: {
+    flex: 1,
+    overflow: "hidden",
+  },
+  targetImageGap: {
+    marginLeft: sw(2),
+  },
+  targetImage: {
+    width: "100%",
+    height: "100%",
+  },
+
+  // Area chip overlay on each image (bottom-left)
+  areaChip: {
+    position: "absolute",
+    bottom: sh(10),
+    left: sw(10),
+    flexDirection: "row",
+    alignItems: "center",
+    gap: sw(5),
+    backgroundColor: "rgba(0,0,0,0.62)",
+    borderRadius: sw(20),
+    paddingHorizontal: sw(10),
+    paddingVertical: sh(4),
+    borderWidth: 1,
+    borderColor: "rgba(180,243,77,0.25)",
+  },
+  areaChipDot: {
+    width: sw(5),
+    height: sw(5),
+    borderRadius: sw(3),
+    backgroundColor: COLORS.accent,
+  },
+  areaChipText: {
+    color: "#FFFFFF",
+    fontSize: ms(11),
+    fontFamily: "Poppins-SemiBold",
+    letterSpacing: 0.2,
+  },
+
+  allDoneImgOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.50)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  allDoneCircle: {
+    width: sw(52),
+    height: sw(52),
+    borderRadius: sw(26),
+    backgroundColor: COLORS.accent,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  // Content section
+  cardContent: {
+    paddingHorizontal: sw(18),
+    paddingTop: sh(14),
+    paddingBottom: sh(16),
+    gap: sh(10),
   },
   cardTopRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
-  cardDate: {
-    color: COLORS.sub,
-    fontSize: 13,
+
+  // Label row (● TODAY'S WORKOUT)
+  eyebrowRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: sw(6),
+  },
+  eyebrowRowCentered: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: sw(6),
+  },
+  eyebrowDot: {
+    width: sw(5),
+    height: sw(5),
+    borderRadius: sw(3),
+    backgroundColor: COLORS.accent,
+  },
+  eyebrowLabel: {
+    color: "rgba(255,255,255,0.55)",
+    fontSize: ms(13),
     fontFamily: "Poppins-SemiBold",
-    letterSpacing: 0.5,
+    letterSpacing: 1.8,
     textTransform: "uppercase",
+  },
+
+  // Description line
+  cardDescription: {
+    color: "rgba(255,255,255,0.72)",
+    fontSize: ms(13),
+    fontFamily: "Poppins-Regular",
+    lineHeight: ms(20),
+  },
+  cardDescriptionDone: {
+    color: COLORS.accent,
+    fontSize: ms(13),
+    fontFamily: "Poppins-SemiBold",
+    lineHeight: ms(20),
+  },
+
+  // Divider
+  targetDivider: {
+    height: 1,
+    backgroundColor: "rgba(255,255,255,0.07)",
+    marginTop: sh(2),
+  },
+
+  // Progress row
+  progressRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: sh(2),
+  },
+  progressTrack: {
+    flex: 1,
+    height: sh(4),
+    borderRadius: sw(2),
+    backgroundColor: "rgba(255,255,255,0.10)",
+    overflow: "hidden",
+    marginRight: sw(12),
+  },
+  progressFill: {
+    height: "100%",
+    borderRadius: sw(2),
+    backgroundColor: COLORS.accent,
+  },
+  segDotsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: sw(7),
+  },
+  segDot: {
+    width: sw(11),
+    height: sw(11),
+    borderRadius: sw(6),
+    backgroundColor: "rgba(255,255,255,0.10)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.15)",
+  },
+  segDotFilled: {
+    backgroundColor: COLORS.accent,
+    borderColor: COLORS.accent,
+    shadowColor: COLORS.accent,
+    shadowOpacity: 0.7,
+    shadowRadius: sw(5),
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 3,
   },
   // Streak badge
   streakBadgeWrap: {
-    borderRadius: RADII.pill,
-    shadowColor: "#FF8C00",
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 0 },
-    elevation: 0,
+    borderRadius: sw(RADII.pill),
+    shadowColor: "#000000",
+    shadowRadius: sw(8),
+    shadowOffset: { width: 0, height: sh(2) },
+    shadowOpacity: 0.4,
+    elevation: 4,
   },
   streakBadge: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
-    paddingHorizontal: SP[3],
-    paddingVertical: SP[1],
-    borderRadius: RADII.pill,
-    backgroundColor: "rgba(255,140,0,0.14)",
+    gap: sw(6),
+    paddingHorizontal: sw(SP[3]),
+    paddingVertical: sh(SP[1] + 1),
+    borderRadius: sw(RADII.pill),
+    backgroundColor: "#1C1C1C",
     borderWidth: 1,
-    borderColor: "rgba(255,140,0,0.35)",
+    borderColor: "rgba(255,255,255,0.08)",
   },
-  streakIcon: { fontSize: 15 },
-  streakText: { color: "#FFAA32", fontSize: 14, fontFamily: "Poppins-SemiBold" },
+  streakText: { color: COLORS.text, fontSize: ms(15), fontFamily: "Poppins-SemiBold" },
 
-  // Streak modal — reuses modalCard/modalBackdrop/modalBtnGhost
+  // Streak modal
   streakBigNum: {
     color: "#FFAA32",
-    fontSize: 64,
+    fontSize: ms(64),
     fontFamily: "Poppins-SemiBold",
     letterSpacing: -3,
     textAlign: "center",
-    lineHeight: 70,
-    marginBottom: SP[1],
+    lineHeight: ms(70),
+    marginBottom: sh(SP[1]),
   },
   streakDivider: {
     width: "100%",
     height: 1,
     backgroundColor: COLORS.cardBorder,
-    marginVertical: SP[4],
+    marginVertical: sh(SP[4]),
   },
   streakDotRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     width: "100%",
-    marginBottom: SP[3],
+    marginBottom: sh(SP[3]),
   },
   streakDotCol: {
     alignItems: "center",
-    gap: 6,
+    gap: sh(6),
     flex: 1,
   },
   streakDotLabel: {
     color: "rgba(255,255,255,0.25)",
-    fontSize: 11,
+    fontSize: ms(11),
     fontFamily: "Poppins-SemiBold",
     textTransform: "uppercase",
   },
@@ -1499,9 +1874,9 @@ const styles = StyleSheet.create({
     color: COLORS.accent,
   },
   streakDot: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: sw(28),
+    height: sw(28),
+    borderRadius: sw(14),
     backgroundColor: "rgba(255,255,255,0.05)",
     borderWidth: 1.5,
     borderColor: "rgba(255,255,255,0.10)",
@@ -1518,75 +1893,46 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(180,243,77,0.08)",
   },
   streakDotPip: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
+    width: sw(7),
+    height: sw(7),
+    borderRadius: sw(4),
     backgroundColor: COLORS.accent,
   },
   streakDotCheck: {
     color: "#0B0B0B",
-    fontSize: 12,
+    fontSize: ms(12),
     fontFamily: "Poppins-SemiBold",
   },
   streakDotDate: {
     color: "rgba(255,255,255,0.25)",
-    fontSize: 10,
+    fontSize: ms(10),
     fontFamily: "Poppins-SemiBold",
   },
   streakDotDateToday: {
     color: COLORS.accent,
   },
 
-  heroFocus: {
-    color: COLORS.text,
-    fontSize: 22,
-    fontFamily: "Poppins-SemiBold",
-    letterSpacing: -0.3,
-  },
-  heroFocusTargets: {
-    color: COLORS.accent,
-    fontSize: 22,
-    fontFamily: "Poppins-SemiBold",
-    letterSpacing: -0.3,
-  },
   tierPill: {
     alignSelf: "flex-start",
-    paddingHorizontal: SP[3],
-    paddingVertical: 4,
-    borderRadius: RADII.pill,
+    paddingHorizontal: sw(SP[3]),
+    paddingVertical: sh(4),
+    borderRadius: sw(RADII.pill),
     borderWidth: 1,
     borderColor: COLORS.accentBorder,
     backgroundColor: COLORS.accentGlow,
   },
   tierPillText: {
     color: COLORS.accent,
-    fontSize: 11,
+    fontSize: ms(11),
     fontFamily: "Poppins-SemiBold",
     letterSpacing: 0.6,
     textTransform: "uppercase",
   },
-  progressSection: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SP[3],
-  },
-  progressTrack: {
-    flex: 1,
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: "rgba(255,255,255,0.08)",
-    overflow: "hidden",
-  },
-  progressFill: {
-    height: "100%",
-    borderRadius: 3,
-    backgroundColor: COLORS.accent,
-  },
   progressCount: {
     color: COLORS.sub,
-    fontSize: 13,
+    fontSize: ms(13),
     fontFamily: "Poppins-SemiBold",
-    minWidth: 28,
+    minWidth: sw(28),
     textAlign: "right",
   },
 
@@ -1594,142 +1940,298 @@ const styles = StyleSheet.create({
   sectionHeader: {
     flexDirection: "row",
     alignItems: "center",
-    paddingTop: SP[3],
-    paddingBottom: SP[2],
+    paddingTop: sh(SP[3]),
+    paddingBottom: sh(SP[2]),
   },
   sectionTitle: {
     flex: 1,
     color: COLORS.text,
-    fontSize: 15,
+    fontSize: ms(15),
     fontFamily: "Poppins-SemiBold",
   },
   sectionHint: {
     color: COLORS.sub,
-    fontSize: 12,
+    fontSize: ms(12),
     fontFamily: "Poppins-SemiBold",
   },
 
   // Exercise list
-  exerciseList: { gap: SP[3], paddingBottom: SP[2] },
+  exerciseList: { gap: sh(SP[1]), paddingBottom: sh(SP[2]) },
+  exerciseListWithBtn: { paddingBottom: sh(80) },
+  floatingBtnWrap: {
+    position: "absolute",
+    bottom: sh(SP[4]),
+    left: sw(SP[4]),
+    right: sw(SP[4]),
+  },
 
   // Task cards — 3D depth style
   taskCardBase: {
-    borderRadius: RADII.lg,
-    backgroundColor: "#6B9A1E",
+    borderRadius: sw(RADII.lg),
+    backgroundColor: "#CCCCCC",
     paddingBottom: TASK_DEPTH,
-    shadowColor: "#B4F34D",
-    shadowOpacity: 0.35,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 8,
+    shadowColor: "#000000",
+    shadowOpacity: 0.12,
+    shadowRadius: sw(10),
+    shadowOffset: { width: 0, height: sh(4) },
+    elevation: 4,
   },
   taskCardBaseDone: {
-    backgroundColor: "rgba(180,243,77,0.08)",
+    backgroundColor: "rgba(180,243,77,0.20)",
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  taskCardBaseSkipped: {
+    backgroundColor: "rgba(239,68,68,0.15)",
     shadowOpacity: 0,
     elevation: 0,
   },
   taskCardFace: {
-    borderRadius: RADII.lg,
-    padding: SP[4],
-    overflow: "hidden",
+    borderRadius: sw(RADII.lg),
+    paddingVertical: sh(6),
+    paddingHorizontal: sw(SP[3]),
+    backgroundColor: "#FFFFFF",
   },
   taskCardFaceDone: {
-    backgroundColor: "rgba(180,243,77,0.10)",
+    backgroundColor: "rgba(180,243,77,0.08)",
+  },
+  taskCardFaceSkipped: {
+    backgroundColor: "rgba(239,68,68,0.07)",
   },
   taskRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: SP[3],
+    gap: sw(SP[2]),
   },
   exerciseIconWrap: {
-    width: 52,
-    height: 52,
-    borderRadius: 14,
-    backgroundColor: "rgba(11,11,11,0.1)",
+    width: sw(34),
+    height: sw(34),
+    borderRadius: sw(8),
+    backgroundColor: "rgba(0,0,0,0.05)",
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
   },
-  exerciseIconDimmed: { opacity: 0.5 },
-  exerciseIconImg: { width: 52, height: 52, resizeMode: "cover" },
-  taskLeft: { flex: 1, gap: 3 },
+  exerciseIconDimmed: { opacity: 0.45 },
+  exerciseIconImg: { width: sw(34), height: sw(34), resizeMode: "cover" },
+  taskLeft: { flex: 1, gap: sh(1) },
   taskTitle: {
-    color: "#0B0B0B",
-    fontSize: 15,
+    fontSize: ms(13),
     fontFamily: "Poppins-SemiBold",
+    color: COLORS.text,
   },
-  taskTitleDone: { color: "rgba(11,11,11,0.45)" },
+  taskTitlePending: { color: "#111111" },
+  taskTitleDone:    { color: COLORS.sub },
+  taskTitleSkipped: { color: COLORS.sub },
   taskSummary: {
-    color: "rgba(11,11,11,0.55)",
-    fontSize: 12,
+    fontSize: ms(11),
     fontFamily: "Poppins-SemiBold",
     textTransform: "capitalize",
+    color: COLORS.sub,
   },
+  taskSummaryPending: { color: "rgba(0,0,0,0.50)" },
   taskReason: {
     color: "rgba(11,11,11,0.40)",
-    fontSize: 11,
+    fontSize: ms(10),
     fontFamily: "Poppins-SemiBold",
-    marginTop: 1,
+    marginTop: 0,
   },
   taskRight: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SP[2],
-  },
-  startPillDepth: {
-    borderRadius: 16,
-    backgroundColor: "#1A1A1A",
-    paddingBottom: 3,
-  },
-  startPill: {
-    height: 32,
-    paddingHorizontal: SP[3],
-    borderRadius: 16,
-    backgroundColor: "#0B0B0B",
     alignItems: "center",
     justifyContent: "center",
   },
-  startPillText: {
-    color: "#FFFFFF",
-    fontSize: 13,
+
+  // Duration stepper: − 0:30 +
+  durationWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: sw(6),
+    marginRight: sw(SP[1]),
+  },
+  durationBtn: {
+    width: sw(26),
+    height: sw(26),
+    borderRadius: sw(13),
+    backgroundColor: "rgba(0,0,0,0.10)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  durationBtnPressed: {
+    backgroundColor: "rgba(0,0,0,0.18)",
+  },
+  durationBtnDisabled: {
+    opacity: 0.30,
+  },
+  durationBtnText: {
+    color: "rgba(0,0,0,0.65)",
+    fontSize: ms(16),
+    fontFamily: "Poppins-SemiBold",
+    lineHeight: ms(19),
+  },
+  durationText: {
+    color: "rgba(0,0,0,0.50)",
+    fontSize: ms(12),
+    fontFamily: "Poppins-SemiBold",
+    letterSpacing: 0.4,
+    minWidth: sw(28),
+    textAlign: "center",
+  },
+  durationTextDark: {
+    color: COLORS.sub,
+  },
+
+  // Undo confirmation bottom sheet
+  confirmBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.70)",
+    justifyContent: "flex-end",
+  },
+  confirmSheet: {
+    backgroundColor: "#141414",
+    borderTopLeftRadius: sw(RADII.xl),
+    borderTopRightRadius: sw(RADII.xl),
+    borderWidth: 1,
+    borderBottomWidth: 0,
+    borderColor: COLORS.cardBorder,
+    paddingHorizontal: sw(SP[5]),
+    paddingBottom: sh(40),
+    alignItems: "center",
+  },
+  confirmHandle: {
+    width: sw(36),
+    height: sh(4),
+    borderRadius: sw(2),
+    backgroundColor: "rgba(255,255,255,0.15)",
+    alignSelf: "center",
+    marginTop: sh(SP[3]),
+    marginBottom: sh(SP[4]),
+  },
+  confirmEmoji: {
+    fontSize: ms(36),
+    textAlign: "center",
+    marginBottom: sh(SP[2]),
+  },
+  confirmTitle: {
+    color: COLORS.text,
+    fontSize: ms(18),
+    fontFamily: "Poppins-SemiBold",
+    textAlign: "center",
+    marginBottom: sh(SP[2]),
+  },
+  confirmBody: {
+    color: COLORS.sub,
+    fontSize: ms(13),
+    fontFamily: "Poppins-SemiBold",
+    textAlign: "center",
+    lineHeight: ms(20),
+    marginBottom: sh(SP[5]),
+    paddingHorizontal: sw(SP[2]),
+  },
+  confirmBtns: {
+    width: "100%",
+    gap: sh(SP[2]),
+  },
+  confirmBtnPrimary: {
+    height: sh(50),
+    borderRadius: sw(RADII.pill),
+    backgroundColor: "rgba(255,255,255,0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  confirmBtnPrimaryText: {
+    color: COLORS.text,
+    fontSize: ms(15),
     fontFamily: "Poppins-SemiBold",
   },
+  confirmBtnLime: {
+    height: sh(50),
+    borderRadius: sw(RADII.pill),
+    backgroundColor: COLORS.accent,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  confirmBtnLimeText: {
+    color: "#0A1A00",
+    fontSize: ms(15),
+    fontFamily: "Poppins-SemiBold",
+  },
+  confirmBtnGhost: {
+    height: sh(48),
+    borderRadius: sw(RADII.pill),
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  confirmBtnGhostText: {
+    color: COLORS.sub,
+    fontSize: ms(14),
+    fontFamily: "Poppins-SemiBold",
+  },
+
+  // Protocol status dot
   statusDot: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
+    width: sw(26),
+    height: sw(26),
+    borderRadius: sw(13),
     borderWidth: 2,
     alignItems: "center",
     justifyContent: "center",
   },
-  statusDotPending: {
-    borderColor: "rgba(11,11,11,0.30)",
-    backgroundColor: "transparent",
-  },
-  statusDotDone: {
-    backgroundColor: "#0B0B0B",
-    borderColor: "#0B0B0B",
-  },
-  statusDotPressed: {
-    borderColor: "rgba(11,11,11,0.70)",
-    backgroundColor: "rgba(11,11,11,0.10)",
-    transform: [{ scale: 0.88 }],
-  },
   statusCheck: {
     color: "#B4F34D",
-    fontSize: 13,
+    fontSize: ms(13),
     fontFamily: "Poppins-SemiBold",
+  },
+
+  // Unified 3D status button: shows ○ / ✓ / ✗
+  statusBtnDepth: {
+    borderRadius: sw(17),
+    backgroundColor: "#999999",
+    paddingBottom: sh(3),
+  },
+  statusBtnDepthDone: {
+    backgroundColor: COLORS.accentDepth,
+  },
+  statusBtnDepthSkipped: {
+    backgroundColor: "#991B1B",
+  },
+  statusBtnFace: {
+    width: sw(34),
+    height: sw(34),
+    borderRadius: sw(17),
+    backgroundColor: "#1C1C1C",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  statusBtnFaceDone: {
+    backgroundColor: COLORS.accent,
+  },
+  statusBtnFaceSkipped: {
+    backgroundColor: "#EF4444",
+  },
+  statusBtnGlyph: {
+    fontSize: ms(14),
+    fontFamily: "Poppins-SemiBold",
+    color: COLORS.sub,
+    lineHeight: ms(17),
+  },
+  statusBtnGlyphDone: {
+    color: "#0B0B0B",
+  },
+  statusBtnGlyphSkipped: {
+    color: "#0B0B0B",
   },
 
   // Protocol cards — 3D depth style
   protocolCardBase: {
-    borderRadius: RADII.lg,
+    borderRadius: sw(RADII.lg),
     backgroundColor: "#2A2A2A",
     paddingBottom: TASK_DEPTH,
     shadowColor: "#000000",
     shadowOpacity: 0.40,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: sw(10),
+    shadowOffset: { width: 0, height: sh(4) },
     elevation: 6,
   },
   protocolCardBaseDone: {
@@ -1738,8 +2240,9 @@ const styles = StyleSheet.create({
     elevation: 0,
   },
   protocolCardFace: {
-    borderRadius: RADII.lg,
-    padding: SP[4],
+    borderRadius: sw(RADII.lg),
+    paddingVertical: sh(6),
+    paddingHorizontal: sw(SP[3]),
     backgroundColor: "#222222",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.10)",
@@ -1749,23 +2252,23 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255,255,255,0.05)",
   },
   protocolIconWrap: {
-    width: 52,
-    height: 52,
-    borderRadius: 14,
+    width: sw(34),
+    height: sw(34),
+    borderRadius: sw(8),
     backgroundColor: "rgba(255,255,255,0.06)",
     alignItems: "center",
     justifyContent: "center",
   },
-  protocolEmoji: { fontSize: 26 },
+  protocolEmoji: { fontSize: ms(18) },
   protocolTitle: {
     color: COLORS.text,
-    fontSize: 15,
+    fontSize: ms(13),
     fontFamily: "Poppins-SemiBold",
   },
   protocolTitleDone: { color: "rgba(255,255,255,0.30)" },
   protocolQuantity: {
     color: "rgba(255,255,255,0.50)",
-    fontSize: 12,
+    fontSize: ms(11),
     fontFamily: "Poppins-SemiBold",
   },
   protocolStatusDot: {
@@ -1780,13 +2283,13 @@ const styles = StyleSheet.create({
   protocolsHeader: {
     flexDirection: "row",
     alignItems: "center",
-    paddingTop: SP[4],
-    paddingBottom: SP[2],
+    paddingTop: sh(SP[4]),
+    paddingBottom: sh(SP[2]),
   },
   protocolsTitle: {
     flex: 1,
     color: COLORS.sub,
-    fontSize: 13,
+    fontSize: ms(13),
     fontFamily: "Poppins-SemiBold",
     letterSpacing: 0.5,
     textTransform: "uppercase",
@@ -1798,50 +2301,50 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.80)",
     alignItems: "center",
     justifyContent: "flex-end",
-    paddingBottom: 40,
-    paddingHorizontal: SP[4],
+    paddingBottom: sh(40),
+    paddingHorizontal: sw(SP[4]),
   },
   modalCard: {
     width: "100%",
     backgroundColor: "#141414",
-    borderRadius: RADII.xl,
+    borderRadius: sw(RADII.xl),
     borderWidth: 1,
     borderColor: COLORS.cardBorder,
-    padding: SP[5],
+    padding: sw(SP[5]),
     alignItems: "center",
   },
   modalTitle: {
     color: COLORS.sub,
-    fontSize: 13,
+    fontSize: ms(13),
     fontFamily: "Poppins-SemiBold",
     letterSpacing: 1,
     textTransform: "uppercase",
     textAlign: "center",
-    marginBottom: SP[2],
+    marginBottom: sh(SP[2]),
   },
   modalExercise: {
     color: COLORS.text,
-    fontSize: 24,
+    fontSize: ms(24),
     fontFamily: "Poppins-SemiBold",
     textAlign: "center",
-    marginBottom: SP[1],
+    marginBottom: sh(SP[1]),
   },
   modalHint: {
     color: COLORS.sub,
-    fontSize: 13,
+    fontSize: ms(13),
     fontFamily: "Poppins-SemiBold",
     textAlign: "center",
-    marginBottom: SP[5],
+    marginBottom: sh(SP[5]),
   },
   modalBtns: {
     flexDirection: "row",
-    gap: SP[3],
+    gap: sw(SP[3]),
     width: "100%",
   },
   modalBtnGhost: {
     flex: 1,
-    height: 48,
-    borderRadius: RADII.pill,
+    height: sh(48),
+    borderRadius: sw(RADII.pill),
     borderWidth: 1,
     borderColor: COLORS.outline,
     alignItems: "center",
@@ -1849,34 +2352,34 @@ const styles = StyleSheet.create({
   },
   modalBtnGhostText: {
     color: COLORS.sub,
-    fontSize: 15,
+    fontSize: ms(15),
     fontFamily: "Poppins-SemiBold",
   },
   modalBtnDepth: {
     flex: 2,
-    borderRadius: RADII.pill,
+    borderRadius: sw(RADII.pill),
     backgroundColor: "#6B9A1E",
-    paddingBottom: 5,
+    paddingBottom: sh(5),
     shadowColor: "#B4F34D",
     shadowOpacity: 0.45,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 8 },
+    shadowRadius: sw(18),
+    shadowOffset: { width: 0, height: sh(8) },
     elevation: 10,
   },
   modalBtnPressable: {
-    height: 48,
-    borderRadius: RADII.pill,
+    height: sh(48),
+    borderRadius: sw(RADII.pill),
     overflow: "hidden",
   },
   modalBtnGradient: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: RADII.pill,
+    borderRadius: sw(RADII.pill),
   },
   modalBtnPrimaryText: {
     color: "#0B0B0B",
-    fontSize: 15,
+    fontSize: ms(15),
     fontFamily: "Poppins-SemiBold",
   },
 });

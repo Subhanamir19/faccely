@@ -118,7 +118,7 @@ export default function EdgeScreen() {
   const progress = getProgressForStep("edge");
 
   const handleContinue = useCallback(() => {
-    router.push("/(onboarding)/face-scan");
+    router.push("/(onboarding)/scan");
   }, []);
 
   const handleBack = useCallback(() => {

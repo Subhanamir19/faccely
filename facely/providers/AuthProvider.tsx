@@ -6,6 +6,7 @@ import { syncUserProfile } from "@/lib/api/user";
 import { useAuthStore } from "@/store/auth";
 import { useSubscriptionStore } from "@/store/subscription";
 import { checkSubscriptionStatus, identifyUser, logoutUser } from "@/lib/revenuecat";
+import { logger } from "@/lib/logger";
 
 type Props = {
   children: React.ReactNode;
@@ -60,9 +61,7 @@ export function AuthProvider({ children }: Props) {
           const isRevenueCatInitialized = useSubscriptionStore.getState().isRevenueCatInitialized;
           if (isRevenueCatInitialized) {
             identifyUser(userId).catch((error) => {
-              if (__DEV__) {
-                console.warn("[AuthProvider] Failed to sync RevenueCat user ID:", error);
-              }
+              logger.warn("[AuthProvider] Failed to sync RevenueCat user ID:", error);
             });
           }
         } else if (reason === "user_updated") {
@@ -77,32 +76,26 @@ export function AuthProvider({ children }: Props) {
             .then((hasEntitlement) => {
               if (cancelled) return;
               useSubscriptionStore.getState().setRevenueCatEntitlement(hasEntitlement);
-              if (__DEV__) {
-                const state = useSubscriptionStore.getState();
-                console.log("[AuthProvider] Subscription synced:", {
-                  revenueCat: hasEntitlement,
-                  promo: state.promoActivated,
-                  hasAccess: hasEntitlement || state.promoActivated,
-                });
-              }
+              const state = useSubscriptionStore.getState();
+              logger.log("[AuthProvider] Subscription synced:", {
+                revenueCat: hasEntitlement,
+                promo: state.promoActivated,
+                hasAccess: hasEntitlement || state.promoActivated,
+              });
             })
             .catch((error) => {
               // On network error, keep existing persisted state
               // Don't kick out users who might just be offline
-              if (__DEV__) {
-                console.warn("[AuthProvider] Subscription check failed, keeping cached state:", error);
-              }
+              logger.warn("[AuthProvider] Subscription check failed, keeping cached state:", error);
             });
         } else {
-          if (__DEV__) {
-            console.log("[AuthProvider] Skipping subscription check - RevenueCat not initialized yet");
-          }
+          logger.log("[AuthProvider] Skipping subscription check - RevenueCat not initialized yet");
         }
 
         return;
       }
 
-      console.warn("[auth] supabase session missing user/token", { reason });
+      logger.warn("[auth] supabase session missing user/token", { reason });
       lastSyncedUserId.current = null;
       clearAuthState();
     };
@@ -121,12 +114,12 @@ export function AuthProvider({ children }: Props) {
         // onAuthStateChange will fire SIGNED_IN and call applySession automatically.
         const { error: anonError } = await supabase.auth.signInAnonymously();
         if (anonError) {
-          console.warn("[auth] anonymous sign-in failed", anonError.message);
+          logger.warn("[auth] anonymous sign-in failed", anonError.message);
           lastSyncedUserId.current = null;
           clearAuthState();
         }
       } catch (err: any) {
-        console.warn("[auth] supabase bootstrap failed", err?.message || err);
+        logger.warn("[auth] supabase bootstrap failed", err?.message || err);
         lastSyncedUserId.current = null;
         clearAuthState();
       } finally {
@@ -154,7 +147,7 @@ export function AuthProvider({ children }: Props) {
           // Guard: don't retry if we're already mid-sign-in to avoid loops.
           if (!cancelled) {
             supabase.auth.signInAnonymously().catch((err) => {
-              console.warn("[auth] failed to re-enter anonymous after sign-out:", err?.message);
+              logger.warn("[auth] failed to re-enter anonymous after sign-out:", err?.message);
             });
           }
           return;

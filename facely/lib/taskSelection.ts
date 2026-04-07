@@ -165,6 +165,26 @@ export const EXERCISE_CATALOG: ExerciseEntry[] = [
     scoreFields: ["nose_harmony"],
   },
 
+  // ── Midface ────────────────────────────────────────────────────────────────
+  {
+    id: "midface-exercise",
+    name: "Midface Lift",
+    targets: ["cheekbones", "nose"],
+    intensity: "medium",
+    weight: 5,
+    scoreFields: ["cheekbones", "nose_harmony", "facial_symmetry"],
+  },
+
+  // ── Lower Face ─────────────────────────────────────────────────────────────
+  {
+    id: "lowerface-exercise",
+    name: "Lower Face Lift",
+    targets: ["jawline"],
+    intensity: "high",
+    weight: 5,
+    scoreFields: ["jawline", "cheekbones", "sexual_dimorphism"],
+  },
+
   // ── All areas ──────────────────────────────────────────────────────────────
   {
     id: "lymphatic-drainage",

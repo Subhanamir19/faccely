@@ -206,6 +206,34 @@ export const EXERCISE_DETAILS: Record<string, ExerciseDetail> = {
     tip: "Keep movements smooth and avoid using momentum — this protects your neck and maximizes muscle engagement.",
   },
 
+  "midface-exercise": {
+    name: "Midface Lift",
+    benefits: "Activates the zygomaticus and levator labii muscles to lift and define the midface region, enhancing cheekbone projection.",
+    steps: [
+      "Wash your hands thoroughly before beginning.",
+      "Open your mouth slightly and curl your lips inward over your teeth.",
+      "Place your thumb inside your mouth and press firmly against the inner palate (roof of mouth).",
+      "Apply moderate outward pressure with your thumb for the full 30 seconds.",
+      "Breathe steadily through your nose while maintaining the pressure.",
+    ],
+    reps: "Hold for 30 seconds per set, 2–3 sets daily",
+    tip: "Use consistent, moderate pressure — avoid pushing too hard, which can cause discomfort. The goal is gentle resistance, not force.",
+  },
+
+  "lowerface-exercise": {
+    name: "Lower Face Lift",
+    benefits: "Tones the depressor anguli oris and platysma muscles to define the lower face, sharpen the chin contour, and reduce jowl softness.",
+    steps: [
+      "Sit upright with your shoulders relaxed and spine straight.",
+      "Tilt your head back very slightly to elongate the lower neck.",
+      "Push your lower jaw forward and upward as far as comfortably possible.",
+      "Hold the forward position for 2–3 seconds, feeling the contraction along the chin and lower jaw.",
+      "Slowly return your jaw to the neutral resting position.",
+    ],
+    reps: "3 sets of 12–15 reps",
+    tip: "Keep all tension in your lower jaw — your upper body and neck should remain still throughout the movement.",
+  },
+
   "towel-chewing": {
     name: "Towel Resistance Chew",
     benefits: "Engages the masseter muscles through intense resistance to broaden the jawline and define the chin.",

@@ -4,6 +4,7 @@
 
 import * as ExpoConstantsModule from "expo-constants";
 import { Platform } from "react-native";
+import { logger } from "@/lib/logger";
 
 const ExpoConstants =
   (ExpoConstantsModule as { default?: unknown })?.default ?? ExpoConstantsModule;
@@ -185,8 +186,7 @@ export const API_BASE_MISCONFIGURED_MESSAGE = configurationHint;
 if (isDevLike) {
   const note =
     resolved.source === "env" ? "(env)" : resolved.source === "dev-fallback" ? "(dev-fallback)" : "";
-  // eslint-disable-next-line no-console
-  console.log("[API] BASE =", API_BASE, note, "| reason:", API_BASE_REASON);
+  logger.log("[API] BASE =", API_BASE, note, "| reason:", API_BASE_REASON);
 }
 
 export default API_BASE;

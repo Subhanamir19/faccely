@@ -28,6 +28,7 @@ export default function LimeButton({ label, onPress, disabled, loading }: Props)
           borderRadius: 28,
           backgroundColor: COLORS.btnDisabledBg,
           paddingBottom: DEPTH,
+          width: "100%",
         }}
       >
         <View
@@ -73,6 +74,7 @@ export default function LimeButton({ label, onPress, disabled, loading }: Props)
         shadowRadius: 20,
         shadowOffset: { width: 0, height: 8 },
         elevation: 10,
+        width: "100%",
       }}
     >
       <Pressable

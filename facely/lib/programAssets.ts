@@ -78,6 +78,13 @@ export const POSE_FRAMES: Record<string, any[]> = {
     require("../aligned_exercises/Chin tucks with head tilt-Pose1.jpeg"),
     require("../aligned_exercises/Chin tucks with head tilt-Pose2.jpeg"),
   ],
+  "lowerface-exercise": [
+    require("../excercise-videos/lowerface-pose1.jpeg"),
+    require("../excercise-videos/lowerface-pose2.jpeg"),
+  ],
+  "midface-exercise": [
+    require("../excercise-videos/midface-exercise.jpeg"),
+  ],
 };
 
 // Aliases for renamed exercise IDs — reuse existing frames where available

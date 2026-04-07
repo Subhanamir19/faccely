@@ -1,70 +1,90 @@
 // app/history/analysis-card.tsx
-// Analysis detail view - premium design matching app aesthetic
+// Analysis detail — vertical scroll, priority-ordered metrics, expandable insights.
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   Animated,
   Easing,
-  FlatList,
+  ScrollView,
   StyleSheet,
   View,
   Image,
-  Dimensions,
+  Pressable,
+  Platform,
+  LayoutAnimation,
+  UIManager,
+  ActivityIndicator,
 } from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
 import Svg, { Circle, Defs, LinearGradient as SvgGradient, Stop } from "react-native-svg";
 import Text from "@/components/ui/T";
 import BackButton from "@/components/ui/BackButton";
-import StateView from "@/components/layout/StateView";
-import MetricPagerFooter from "@/components/layout/MetricPagerFooter";
 import { fetchScanDetail, type ScanDetail } from "@/lib/api/history";
-import { COLORS, SP, RADII, SIZES } from "@/lib/tokens";
+import { COLORS, SP, RADII, TYPE, SIZES } from "@/lib/tokens";
+import {
+  getArchetype,
+  getMetricPriorities,
+  getOverallScore,
+  METRIC_LABELS,
+  getMetricRecommendations,
+} from "@/lib/analysisInsights";
+import type { MetricKey } from "@/lib/types";
 
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
-
-const METRIC_DEFS: Array<{ key: keyof ScanDetail["scores"]; label: string }> = [
-  { key: "eyes_symmetry", label: "Eyes" },
-  { key: "jawline", label: "Jawline" },
-  { key: "cheekbones", label: "Cheekbones" },
-  { key: "nose_harmony", label: "Nose" },
-  { key: "facial_symmetry", label: "Symmetry" },
-  { key: "skin_quality", label: "Skin" },
-  { key: "sexual_dimorphism", label: "Masculinity" },
-];
-
-const SCORE_COLORS = [
-  { max: 39, color: "#EF4444", glow: "rgba(239,68,68,0.3)" },
-  { max: 59, color: "#BE00E8", glow: "rgba(190,0,232,0.3)" },
-  { max: 79, color: "#F59E0B", glow: "rgba(245,158,11,0.3)" },
-  { max: 100, color: "#B4F34D", glow: "rgba(180,243,77,0.3)" },
-] as const;
-
-const RING_SIZE = 140;
-const AnimatedCircle = Animated.createAnimatedComponent(Circle);
-
-const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
-
-function getScoreData(score: number) {
-  const s = clamp(score, 0, 100);
-  const data = SCORE_COLORS.find(({ max }) => s <= max) ?? SCORE_COLORS[3];
-  return data;
+// Enable LayoutAnimation on Android
+if (
+  Platform.OS === "android" &&
+  UIManager.setLayoutAnimationEnabledExperimental
+) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-function lightenColor(hex: string, amount: number): string {
-  const num = parseInt(hex.replace("#", ""), 16);
-  const r = Math.min(255, (num >> 16) + Math.round((255 - (num >> 16)) * amount));
-  const g = Math.min(255, ((num >> 8) & 0x00ff) + Math.round((255 - ((num >> 8) & 0x00ff)) * amount));
-  const b = Math.min(255, (num & 0x0000ff) + Math.round((255 - (num & 0x0000ff)) * amount));
-  return `#${(0x1000000 + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
+// ── Score helpers ──────────────────────────────────────────────────────────
+
+const SCORE_TIERS = [
+  { max: 39, color: "#EF4444", glow: "rgba(239,68,68,0.25)" },
+  { max: 59, color: "#F97316", glow: "rgba(249,115,22,0.25)" },
+  { max: 79, color: "#F59E0B", glow: "rgba(245,158,11,0.25)" },
+  { max: 100, color: "#B4F34D", glow: "rgba(180,243,77,0.25)" },
+] as const;
+
+function clamp(v: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, v));
+}
+
+function getScoreTier(score: number) {
+  const s = clamp(score, 0, 100);
+  return SCORE_TIERS.find(({ max }) => s <= max) ?? SCORE_TIERS[3];
+}
+
+function getScoreBand(score: number): string {
+  if (score >= 80) return "Elite";
+  if (score >= 65) return "Sharp";
+  if (score >= 50) return "Average";
+  return "Needs Work";
+}
+
+function lighten(hex: string, amount: number): string {
+  const n = parseInt(hex.replace("#", ""), 16);
+  const r = Math.min(255, (n >> 16) + Math.round((255 - (n >> 16)) * amount));
+  const g = Math.min(255, ((n >> 8) & 0xff) + Math.round((255 - ((n >> 8) & 0xff)) * amount));
+  const b = Math.min(255, (n & 0xff) + Math.round((255 - (n & 0xff)) * amount));
+  return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
 }
 
 function formatDate(value?: string): string {
   if (!value) return "--";
   try {
     const d = new Date(value);
-    return d.toLocaleString(undefined, {
+    return d.toLocaleDateString(undefined, {
       day: "2-digit",
       month: "short",
       year: "numeric",
@@ -74,57 +94,50 @@ function formatDate(value?: string): string {
   }
 }
 
-type ScoreRingProps = { value: number; active: boolean };
+// ── Animated score ring ────────────────────────────────────────────────────
 
-function ScoreRing({ value, active }: ScoreRingProps) {
-  const scoreData = getScoreData(value);
-  const color = scoreData.color;
-  const colorLight = lightenColor(color, 0.35);
-  const stroke = 12;
+const RING_SIZE = 80;
+const AnimatedCircle = Animated.createAnimatedComponent(Circle);
+
+function ScoreRing({ value, delay = 0 }: { value: number; delay?: number }) {
+  const tier = getScoreTier(value);
+  const colorLight = lighten(tier.color, 0.35);
+  const stroke = 8;
   const r = (RING_SIZE - stroke) / 2;
   const c = 2 * Math.PI * r;
   const center = RING_SIZE / 2;
-
   const progress = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     Animated.timing(progress, {
-      toValue: active ? 1 : 0,
-      duration: active ? 1000 : 200,
-      easing: active ? Easing.out(Easing.cubic) : Easing.inOut(Easing.quad),
+      toValue: 1,
+      duration: 900,
+      delay,
+      easing: Easing.out(Easing.cubic),
       useNativeDriver: false,
     }).start();
-  }, [active, value]);
+  }, []);
 
   const dashOffset = progress.interpolate({
     inputRange: [0, 1],
     outputRange: [c, c * (1 - clamp(value, 0, 100) / 100)],
   });
 
+  const band = getScoreBand(value);
+
   return (
-    <View style={[styles.ringContainer, { shadowColor: color }]}>
+    <View style={[ringStyles.wrap, { shadowColor: tier.color }]}>
       <Svg width={RING_SIZE} height={RING_SIZE}>
         <Defs>
-          <SvgGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1">
+          <SvgGradient id={`g${value}${delay}`} x1="0" y1="0" x2="1" y2="1">
             <Stop offset="0%" stopColor={colorLight} />
-            <Stop offset="100%" stopColor={color} />
+            <Stop offset="100%" stopColor={tier.color} />
           </SvgGradient>
         </Defs>
-        {/* Background ring */}
-        <Circle
-          cx={center}
-          cy={center}
-          r={r}
-          stroke={COLORS.track}
-          strokeWidth={stroke}
-          fill="none"
-        />
-        {/* Progress ring */}
+        <Circle cx={center} cy={center} r={r} stroke={COLORS.track} strokeWidth={stroke} fill="none" />
         <AnimatedCircle
-          cx={center}
-          cy={center}
-          r={r}
-          stroke="url(#ringGrad)"
+          cx={center} cy={center} r={r}
+          stroke={`url(#g${value}${delay})`}
           strokeWidth={stroke}
           fill="none"
           strokeDasharray={`${c}`}
@@ -135,20 +148,456 @@ function ScoreRing({ value, active }: ScoreRingProps) {
           originY={center}
         />
       </Svg>
-      <View style={styles.ringCenter}>
-        <Text style={[styles.ringValue, { color }]}>
+      <View style={ringStyles.center}>
+        <Text style={[ringStyles.value, { color: tier.color }]}>
           {Math.round(clamp(value, 0, 100))}
         </Text>
-        <Text variant="small" color="sub">/ 100</Text>
+        <Text style={[ringStyles.band, { color: tier.color }]}>{band}</Text>
       </View>
     </View>
   );
 }
 
-type AnalysisItem = {
-  key: string;
+const ringStyles = StyleSheet.create({
+  wrap: {
+    width: RING_SIZE,
+    height: RING_SIZE,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowOpacity: 0.4,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 6,
+  },
+  center: {
+    position: "absolute",
+    alignItems: "center",
+  },
+  value: {
+    fontSize: 20,
+    lineHeight: 22,
+    fontFamily: "Poppins-SemiBold",
+  },
+  band: {
+    fontSize: 8,
+    lineHeight: 10,
+    fontFamily: "Poppins-SemiBold",
+    letterSpacing: 0.3,
+    textTransform: "uppercase",
+    marginTop: 1,
+  },
+});
+
+// ── Metric card ────────────────────────────────────────────────────────────
+
+type MetricCardProps = {
+  metric: MetricKey;
   label: string;
-  score: number | null;
+  score: number;
+  lines: string[];
+  index: number;
+};
+
+function MetricCard({ metric, label, score, lines, index }: MetricCardProps) {
+  const [expanded, setExpanded] = useState(false);
+  const tier = getScoreTier(score);
+  const recs = getMetricRecommendations(metric, score);
+  const PREVIEW = 3;
+  const hasMore = lines.length > PREVIEW;
+  const visibleLines = expanded ? lines : lines.slice(0, PREVIEW);
+
+  const toggleExpand = () => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setExpanded((e) => !e);
+  };
+
+  return (
+    <View style={[cardStyles.card, { borderColor: `${tier.color}22` }]}>
+      {/* Subtle glow top line */}
+      <View style={[cardStyles.topLine, { backgroundColor: tier.color }]} />
+
+      {/* Header row: ring + metric name + score bar */}
+      <View style={cardStyles.headerRow}>
+        <ScoreRing value={score} delay={index * 80} />
+
+        <View style={cardStyles.headerRight}>
+          <View style={cardStyles.titleRow}>
+            <Text style={cardStyles.metricLabel}>{label}</Text>
+            <View style={[cardStyles.bandPill, { borderColor: tier.color }]}>
+              <Text style={[cardStyles.bandPillText, { color: tier.color }]}>
+                {getScoreBand(score)}
+              </Text>
+            </View>
+          </View>
+
+          {/* Score bar */}
+          <View style={cardStyles.barTrack}>
+            <View
+              style={[
+                cardStyles.barFill,
+                { width: `${score}%` as any, backgroundColor: tier.color },
+              ]}
+            />
+          </View>
+
+          <Text style={cardStyles.scoreLabel}>
+            {Math.round(score)}{" "}
+            <Text style={cardStyles.scoreSub}>/ 100</Text>
+          </Text>
+        </View>
+      </View>
+
+      {/* Divider */}
+      <View style={cardStyles.divider} />
+
+      {/* Insight lines */}
+      <View style={cardStyles.insightsBlock}>
+        <Text style={[cardStyles.sectionLabel, { color: tier.color }]}>
+          Analysis
+        </Text>
+        <View style={cardStyles.linesList}>
+          {visibleLines.map((line, i) => (
+            <View key={i} style={cardStyles.lineRow}>
+              <View style={[cardStyles.dot, { backgroundColor: tier.color }]} />
+              <Text style={cardStyles.lineText}>{line || "--"}</Text>
+            </View>
+          ))}
+        </View>
+
+        {hasMore && (
+          <Pressable
+            onPress={toggleExpand}
+            style={({ pressed }) => [cardStyles.expandBtn, pressed && { opacity: 0.7 }]}
+            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+          >
+            <Text style={cardStyles.expandText}>
+              {expanded
+                ? "Show less"
+                : `Show ${lines.length - PREVIEW} more`}
+            </Text>
+            <Ionicons
+              name={expanded ? "chevron-up" : "chevron-down"}
+              size={12}
+              color={COLORS.sub}
+            />
+          </Pressable>
+        )}
+      </View>
+
+      {/* Recommendations */}
+      {recs.length > 0 && (
+        <View style={cardStyles.recsBlock}>
+          <View style={cardStyles.recsTitleRow}>
+            <Ionicons name="flash-outline" size={12} color={COLORS.accent} />
+            <Text style={cardStyles.recsLabel}>Recommendations</Text>
+          </View>
+          <View style={cardStyles.recsList}>
+            {recs.map((rec, i) => (
+              <View key={i} style={[cardStyles.recRow, rec.priority === "high" && cardStyles.recRowHigh]}>
+                <View style={[cardStyles.recPriorityBar, { backgroundColor: rec.priority === "high" ? tier.color : COLORS.cardBorder }]} />
+                <Text style={cardStyles.recText}>{rec.text}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      )}
+    </View>
+  );
+}
+
+const cardStyles = StyleSheet.create({
+  card: {
+    backgroundColor: COLORS.card,
+    borderRadius: RADII.xl,
+    borderWidth: 1,
+    overflow: "hidden",
+    ...(Platform.OS === "ios"
+      ? { shadowColor: "#000", shadowOpacity: 0.22, shadowRadius: 18, shadowOffset: { width: 0, height: 8 } }
+      : { elevation: 6 }),
+  },
+  topLine: {
+    height: 2,
+    opacity: 0.5,
+  },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SP[4],
+    padding: SP[4],
+    paddingBottom: SP[3],
+  },
+  headerRight: {
+    flex: 1,
+    gap: SP[2],
+  },
+  titleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SP[2],
+    flexWrap: "wrap",
+  },
+  metricLabel: {
+    ...TYPE.bodySemiBold,
+    color: COLORS.text,
+  },
+  bandPill: {
+    borderWidth: 1,
+    borderRadius: RADII.circle,
+    paddingHorizontal: SP[2],
+    paddingVertical: 2,
+  },
+  bandPillText: {
+    fontFamily: "Poppins-SemiBold",
+    fontSize: 10,
+    letterSpacing: 0.3,
+  },
+  barTrack: {
+    height: 4,
+    backgroundColor: COLORS.track,
+    borderRadius: RADII.circle,
+    overflow: "hidden",
+  },
+  barFill: {
+    height: "100%",
+    borderRadius: RADII.circle,
+  },
+  scoreLabel: {
+    ...TYPE.captionSemiBold,
+    color: COLORS.text,
+  },
+  scoreSub: {
+    ...TYPE.caption,
+    color: COLORS.sub,
+    fontFamily: "Poppins-Regular",
+  },
+
+  divider: {
+    height: 1,
+    backgroundColor: COLORS.divider,
+    marginHorizontal: SP[4],
+  },
+
+  insightsBlock: {
+    paddingHorizontal: SP[4],
+    paddingTop: SP[3],
+    paddingBottom: SP[3],
+    gap: SP[2],
+  },
+  sectionLabel: {
+    ...TYPE.smallSemiBold,
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+  },
+  linesList: {
+    gap: SP[2],
+  },
+  lineRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: SP[2],
+  },
+  dot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    marginTop: 7,
+    flexShrink: 0,
+  },
+  lineText: {
+    ...TYPE.caption,
+    color: COLORS.textHigh,
+    flex: 1,
+    lineHeight: 20,
+  },
+  expandBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SP[1],
+    alignSelf: "flex-start",
+    marginTop: SP[1],
+  },
+  expandText: {
+    ...TYPE.small,
+    color: COLORS.sub,
+  },
+
+  recsBlock: {
+    paddingHorizontal: SP[4],
+    paddingBottom: SP[4],
+    gap: SP[2],
+    borderTopWidth: 1,
+    borderTopColor: COLORS.divider,
+    paddingTop: SP[3],
+  },
+  recsTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SP[1] + 1,
+    marginBottom: SP[1],
+  },
+  recsLabel: {
+    ...TYPE.smallSemiBold,
+    color: COLORS.accent,
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+    fontSize: 11,
+  },
+  recsList: {
+    gap: SP[2],
+  },
+  recRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: SP[2],
+    backgroundColor: COLORS.whiteGlass,
+    borderRadius: RADII.md,
+    paddingVertical: SP[3],
+    paddingHorizontal: SP[3],
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+  },
+  recRowHigh: {
+    borderColor: "rgba(180,243,77,0.15)",
+    backgroundColor: "rgba(180,243,77,0.04)",
+  },
+  recPriorityBar: {
+    width: 3,
+    borderRadius: 2,
+    alignSelf: "stretch",
+    minHeight: 16,
+    flexShrink: 0,
+    marginTop: 1,
+  },
+  recText: {
+    ...TYPE.caption,
+    color: COLORS.textHigh,
+    flex: 1,
+    lineHeight: 20,
+  },
+});
+
+// ── Hero image section ─────────────────────────────────────────────────────
+
+function HeroImage({
+  imageUrl,
+  overallScore,
+  archetype,
+  date,
+}: {
+  imageUrl?: string;
+  overallScore: number | null;
+  archetype: string;
+  date: string;
+}) {
+  const tier = overallScore != null ? getScoreTier(overallScore) : null;
+
+  return (
+    <View style={heroStyles.wrap}>
+      {imageUrl ? (
+        <Image
+          source={{ uri: imageUrl }}
+          style={heroStyles.image}
+          resizeMode="cover"
+        />
+      ) : (
+        <View style={heroStyles.placeholder}>
+          <Ionicons name="person-outline" size={56} color={COLORS.muted} />
+        </View>
+      )}
+
+      {/* Gradient overlay */}
+      <LinearGradient
+        colors={["transparent", "rgba(0,0,0,0.85)"]}
+        style={StyleSheet.absoluteFill}
+        start={{ x: 0.5, y: 0.3 }}
+        end={{ x: 0.5, y: 1 }}
+        pointerEvents="none"
+      />
+
+      {/* Score overlay at bottom */}
+      <View style={heroStyles.overlay}>
+        <View style={heroStyles.overallRow}>
+          {overallScore != null && (
+            <>
+              <Text style={[heroStyles.overallScore, { color: tier!.color }]}>
+                {overallScore}
+              </Text>
+              <View style={heroStyles.overallRight}>
+                <Text style={[heroStyles.overallBand, { color: tier!.color }]}>
+                  {getScoreBand(overallScore)}
+                </Text>
+                <Text style={heroStyles.archetype}>{archetype}</Text>
+              </View>
+            </>
+          )}
+        </View>
+        <Text style={heroStyles.date}>{date}</Text>
+      </View>
+    </View>
+  );
+}
+
+const heroStyles = StyleSheet.create({
+  wrap: {
+    height: 220,
+    borderRadius: RADII.xl,
+    overflow: "hidden",
+    backgroundColor: COLORS.track,
+  },
+  image: {
+    width: "100%",
+    height: "100%",
+  },
+  placeholder: {
+    width: "100%",
+    height: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.04)",
+  },
+  overlay: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingHorizontal: SP[4],
+    paddingBottom: SP[4],
+    paddingTop: SP[3],
+    gap: SP[1],
+  },
+  overallRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SP[3],
+  },
+  overallScore: {
+    fontSize: 44,
+    lineHeight: 50,
+    fontFamily: "Poppins-SemiBold",
+  },
+  overallRight: {
+    gap: 2,
+  },
+  overallBand: {
+    ...TYPE.captionSemiBold,
+    letterSpacing: 0.5,
+  },
+  archetype: {
+    ...TYPE.small,
+    color: COLORS.muted,
+  },
+  date: {
+    ...TYPE.small,
+    color: "rgba(255,255,255,0.5)",
+  },
+});
+
+// ── Main screen ────────────────────────────────────────────────────────────
+
+type AnalysisItem = {
+  key: MetricKey;
+  label: string;
+  score: number;
   lines: string[];
 };
 
@@ -160,12 +609,6 @@ export default function HistoryAnalysisCard() {
   const [detail, setDetail] = useState<ScanDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [page, setPage] = useState(0);
-  const listRef = useRef<FlatList>(null);
-
-  const cardWidth = SCREEN_WIDTH - SP[4] * 2;
-  const gutter = SP[3];
-  const snap = cardWidth + gutter;
 
   useEffect(() => {
     if (!scanId) {
@@ -188,195 +631,188 @@ export default function HistoryAnalysisCard() {
       }
     })();
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [scanId]);
 
-  const items = useMemo(() => {
-    if (!detail?.explanations || !detail?.scores) return [] as AnalysisItem[];
-    const result: AnalysisItem[] = [];
-    for (const def of METRIC_DEFS) {
-      const explanations = (detail.explanations as any)?.[def.key];
-      const score = Number((detail.scores as any)?.[def.key]);
-      const hasCopy = Array.isArray(explanations) &&
-        explanations.some((line: unknown) => typeof line === "string" && (line as string).trim().length > 0);
-      if (hasCopy) {
-        result.push({
-          key: def.key as string,
-          label: def.label,
-          score: Number.isFinite(score) ? clamp(score, 0, 100) : null,
-          lines: explanations as string[],
+  // Build metric items sorted worst-first (highest improvement potential)
+  const items = useMemo<AnalysisItem[]>(() => {
+    if (!detail?.explanations || !detail?.scores) return [];
+    const raw: AnalysisItem[] = [];
+
+    for (const key of Object.keys(METRIC_LABELS) as MetricKey[]) {
+      const explanations = (detail.explanations as any)?.[key];
+      const score = Number((detail.scores as any)?.[key]);
+      const hasCopy =
+        Array.isArray(explanations) &&
+        explanations.some(
+          (l: unknown) => typeof l === "string" && (l as string).trim().length > 0
+        );
+      if (hasCopy && Number.isFinite(score)) {
+        raw.push({
+          key,
+          label: METRIC_LABELS[key],
+          score: clamp(score, 0, 100),
+          lines: (explanations as string[]).filter((l) => typeof l === "string" && l.trim()),
         });
       }
     }
-    return result;
+
+    // Sort worst first (ascending score)
+    const priorities = getMetricPriorities(detail.scores as any);
+    raw.sort((a, b) => priorities.indexOf(a.key) - priorities.indexOf(b.key));
+    return raw;
   }, [detail]);
 
-  useEffect(() => {
-    const clamped = Math.max(0, Math.min(page, items.length - 1));
-    if (clamped !== page) setPage(clamped);
-  }, [items.length, page]);
-
-  const scrollToPage = useCallback((i: number) => {
-    const next = Math.max(0, Math.min(items.length - 1, i));
-    listRef.current?.scrollToOffset({ offset: next * snap, animated: true });
-    setPage(next);
-  }, [items.length, snap]);
+  const overallScore = useMemo(
+    () => (detail?.scores ? getOverallScore(detail.scores as any) : null),
+    [detail]
+  );
+  const archetype = useMemo(
+    () => (detail?.scores ? getArchetype(detail.scores as any) : ""),
+    [detail]
+  );
 
   const handleBack = () => router.back();
+  const handleViewScores = () =>
+    router.push(`/history/score-card?scanId=${encodeURIComponent(scanId ?? "")}`);
 
-  const renderCard = useCallback(({ item, index }: { item: AnalysisItem; index: number }) => {
-    const isActive = page === index;
-    const safeScore = item.score ?? 0;
-    const scoreData = getScoreData(safeScore);
-
-    return (
-      <View style={[styles.analysisCard, { width: cardWidth }]}>
-        {/* Glow effect */}
-        <View style={[styles.cardGlow, { backgroundColor: scoreData.glow }]} />
-
-        {/* Card content */}
-        <View style={styles.cardContent}>
-          {/* Top section: Image + Ring */}
-          <View style={styles.topSection}>
-            {/* Mini profile image */}
-            <View style={styles.miniImageWrapper}>
-              {detail?.images?.front?.url ? (
-                <Image
-                  source={{ uri: detail.images.front.url }}
-                  style={styles.miniImage}
-                  resizeMode="cover"
-                />
-              ) : (
-                <View style={[styles.miniImage, styles.imagePlaceholder]}>
-                  <Text variant="caption" color="sub">?</Text>
-                </View>
-              )}
-            </View>
-
-            {/* Score Ring */}
-            <ScoreRing value={safeScore} active={isActive} />
-
-            {/* Metric label badge */}
-            <View style={[styles.metricBadge, { borderColor: scoreData.color }]}>
-              <Text variant="captionSemiBold" style={{ color: scoreData.color }}>
-                {item.label}
-              </Text>
-            </View>
-          </View>
-
-          {/* Divider */}
-          <View style={styles.divider} />
-
-          {/* Remarks section */}
-          <View style={styles.remarksSection}>
-            <Text variant="captionSemiBold" style={styles.remarksTitle}>
-              Analysis
-            </Text>
-            <View style={styles.remarksList}>
-              {item.lines.slice(0, 4).map((line, idx) => (
-                <View key={idx} style={styles.remarkRow}>
-                  <View style={[styles.remarkDot, { backgroundColor: scoreData.color }]} />
-                  <Text variant="caption" color="textHigh" style={styles.remarkText}>
-                    {line || "--"}
-                  </Text>
-                </View>
-              ))}
-            </View>
-          </View>
-        </View>
-      </View>
-    );
-  }, [page, cardWidth, detail]);
-
-  if (!scanId || loading || error || !detail) {
+  // ── Loading / error / missing ────────────────────────────────────────────
+  if (loading || error || !detail) {
     return (
       <View style={[styles.screen, { paddingTop: insets.top }]}>
-        <LinearGradient colors={[COLORS.bgTop, COLORS.bgBottom]} style={StyleSheet.absoluteFill} />
-        <View style={styles.header}>
-          <BackButton onPress={handleBack} />
-          <Text variant="h2" color="text">Analysis</Text>
-        </View>
-        <StateView
-          loading={loading}
-          loadingText="Loading analysis..."
-          error={error}
-          empty={!scanId}
-          emptyTitle="Missing scan"
-          emptySubtitle="Could not load this scan"
+        <LinearGradient
+          colors={[COLORS.bgTop, COLORS.bgBottom]}
+          style={StyleSheet.absoluteFill}
         />
+        <View style={styles.stateHeader}>
+          <BackButton onPress={handleBack} />
+          <Text variant="h2" color="text">
+            Analysis
+          </Text>
+        </View>
+
+        {loading ? (
+          <View style={styles.centeredState}>
+            <ActivityIndicator color={COLORS.accent} size="large" />
+            <Text variant="captionMedium" color="sub" style={{ marginTop: SP[3] }}>
+              Loading analysis...
+            </Text>
+          </View>
+        ) : error ? (
+          <View style={styles.centeredState}>
+            <Ionicons name="alert-circle-outline" size={40} color={COLORS.error} />
+            <Text
+              variant="captionMedium"
+              style={{ color: COLORS.error, textAlign: "center", marginTop: SP[2] }}
+            >
+              {error}
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.centeredState}>
+            <Ionicons name="scan-outline" size={40} color={COLORS.muted} />
+            <Text variant="body" color="sub" style={{ textAlign: "center" }}>
+              Could not load this scan.
+            </Text>
+          </View>
+        )}
       </View>
     );
   }
 
-  const hasItems = items.length > 0;
-
   return (
     <View style={styles.screen}>
-      <LinearGradient colors={[COLORS.bgTop, COLORS.bgBottom]} style={StyleSheet.absoluteFill} />
-
-      {/* Accent glow at top */}
+      <LinearGradient
+        colors={[COLORS.bgTop, COLORS.bgBottom]}
+        style={StyleSheet.absoluteFill}
+      />
       <LinearGradient
         colors={[COLORS.accentGlow, "transparent"]}
         style={styles.topGlow}
       />
 
-      <View style={[styles.container, { paddingTop: insets.top }]}>
-        {/* Header */}
-        <View style={styles.header}>
-          <BackButton onPress={handleBack} />
-          <View style={styles.headerTitle}>
-            <Text variant="h2" color="text">Analysis</Text>
-            <View style={styles.dateBadge}>
-              <Text variant="small" color="sub">{formatDate(detail.createdAt)}</Text>
-            </View>
-          </View>
+      {/* ── Fixed header ────────────────────────────────── */}
+      <View style={[styles.header, { paddingTop: insets.top + SP[2] }]}>
+        <BackButton onPress={handleBack} />
+        <View style={styles.headerCenter}>
+          <Text variant="h2" color="text">
+            Analysis
+          </Text>
         </View>
-
-        {/* Cards Carousel */}
-        {hasItems ? (
-          <View style={styles.carouselSection}>
-            <FlatList
-              ref={listRef}
-              data={items}
-              renderItem={renderCard}
-              keyExtractor={(item) => item.key}
-              horizontal
-              pagingEnabled={false}
-              snapToInterval={snap}
-              snapToAlignment="start"
-              decelerationRate="fast"
-              showsHorizontalScrollIndicator={false}
-              onMomentumScrollEnd={(e) => {
-                const idx = Math.round(e.nativeEvent.contentOffset.x / snap);
-                setPage(idx);
-              }}
-              contentContainerStyle={styles.carouselContent}
-              ItemSeparatorComponent={() => <View style={{ width: gutter }} />}
-            />
-          </View>
-        ) : (
-          <View style={styles.emptyAnalysis}>
-            <Text variant="body" color="sub">No analysis generated for this scan.</Text>
-          </View>
-        )}
+        <Pressable
+          onPress={handleViewScores}
+          style={({ pressed }) => [styles.scoresPill, pressed && { opacity: 0.7 }]}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Text style={styles.scoresPillText}>Scores</Text>
+          <Ionicons name="chevron-forward" size={12} color={COLORS.accent} />
+        </Pressable>
       </View>
 
-      {/* Footer */}
-      {hasItems && (
-        <View style={[styles.footer, { paddingBottom: insets.bottom + SP[4] }]}>
-          <MetricPagerFooter
-            index={page}
-            total={items.length}
-            onPrev={() => scrollToPage(page - 1)}
-            onNext={page === items.length - 1 ? handleBack : () => scrollToPage(page + 1)}
-            isFirst={page === 0}
-            isLast={page === items.length - 1}
-            nextLabel={page === items.length - 1 ? "Done" : "Next"}
-            helperText={items.length > 1 ? "Swipe to view more metrics" : undefined}
-            padX={0}
+      {/* ── Scrollable content ──────────────────────────── */}
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: insets.bottom + 100 },
+        ]}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Hero image with score overlay */}
+        <HeroImage
+          imageUrl={detail.images?.front?.url}
+          overallScore={overallScore}
+          archetype={archetype}
+          date={formatDate(detail.createdAt)}
+        />
+
+        {/* Section label */}
+        {items.length > 0 && (
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Metric Breakdown</Text>
+            <Text style={styles.sectionSub}>Sorted by improvement potential</Text>
+          </View>
+        )}
+
+        {/* Metric cards */}
+        {items.map((item, i) => (
+          <MetricCard
+            key={item.key}
+            metric={item.key}
+            label={item.label}
+            score={item.score}
+            lines={item.lines}
+            index={i}
           />
+        ))}
+
+        {items.length === 0 && (
+          <View style={styles.emptyAnalysis}>
+            <Ionicons name="analytics-outline" size={36} color={COLORS.muted} />
+            <Text variant="body" color="sub" style={{ textAlign: "center", marginTop: SP[3] }}>
+              No analysis generated for this scan.
+            </Text>
+          </View>
+        )}
+      </ScrollView>
+
+      {/* ── Fixed footer CTA ────────────────────────────── */}
+      <View style={[styles.footer, { paddingBottom: insets.bottom + SP[3] }]}>
+        <View style={styles.ctaDepth}>
+          <Pressable
+            style={({ pressed }) => [
+              styles.ctaFace,
+              { transform: [{ translateY: pressed ? 3 : 0 }] },
+            ]}
+            onPress={handleViewScores}
+          >
+            <Ionicons name="stats-chart-outline" size={16} color="#0B0B0B" />
+            <Text style={styles.ctaText}>View Score Breakdown</Text>
+          </Pressable>
         </View>
-      )}
+      </View>
     </View>
   );
 }
@@ -393,154 +829,110 @@ const styles = StyleSheet.create({
     right: 0,
     height: 180,
   },
-  container: {
+  centeredState: {
     flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: SP[8],
+    gap: SP[2],
   },
-  header: {
+  stateHeader: {
     paddingHorizontal: SP[4],
     paddingTop: SP[2],
     paddingBottom: SP[3],
     gap: SP[1],
   },
-  headerTitle: {
+
+  // Header
+  header: {
     flexDirection: "row",
     alignItems: "center",
+    paddingHorizontal: SP[4],
+    paddingBottom: SP[3],
     gap: SP[3],
   },
-  dateBadge: {
-    backgroundColor: COLORS.whiteGlass,
+  headerCenter: {
+    flex: 1,
+  },
+  scoresPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
     paddingHorizontal: SP[3],
-    paddingVertical: SP[1],
+    paddingVertical: SP[2],
     borderRadius: RADII.circle,
     borderWidth: 1,
-    borderColor: COLORS.cardBorder,
+    borderColor: COLORS.accentBorder,
+    backgroundColor: COLORS.accentGlow,
+  },
+  scoresPillText: {
+    ...TYPE.smallSemiBold,
+    color: COLORS.accent,
   },
 
-  // Carousel
-  carouselSection: {
+  // Scroll
+  scroll: {
     flex: 1,
-    justifyContent: "center",
   },
-  carouselContent: {
+  scrollContent: {
     paddingHorizontal: SP[4],
-    paddingVertical: SP[2],
-  },
-  emptyAnalysis: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  // Analysis card
-  analysisCard: {
-    backgroundColor: COLORS.bgBottom,
-    borderRadius: RADII.xl,
-    borderWidth: 1,
-    borderColor: COLORS.cardBorder,
-    overflow: "hidden",
-  },
-  cardGlow: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 120,
-    opacity: 0.5,
-  },
-  cardContent: {
-    padding: SP[4],
+    paddingTop: SP[2],
     gap: SP[4],
   },
 
-  // Top section
-  topSection: {
-    alignItems: "center",
-    gap: SP[3],
-  },
-  miniImageWrapper: {
-    padding: 2,
-    borderRadius: (SIZES.avatarSm + 4) / 2,
-    borderWidth: 1,
-    borderColor: COLORS.cardBorder,
-  },
-  miniImage: {
-    width: SIZES.avatarSm,
-    height: SIZES.avatarSm,
-    borderRadius: SIZES.avatarSm / 2,
-    backgroundColor: COLORS.track,
-  },
-  imagePlaceholder: {
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  // Score ring
-  ringContainer: {
-    width: RING_SIZE,
-    height: RING_SIZE,
-    alignItems: "center",
-    justifyContent: "center",
-    shadowOpacity: 0.4,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 8,
-  },
-  ringCenter: {
-    position: "absolute",
-    alignItems: "center",
-  },
-  ringValue: {
-    fontSize: 40,
-    lineHeight: 48,
-    fontFamily: "Poppins-SemiBold",
-  },
-
-  // Metric badge
-  metricBadge: {
-    paddingHorizontal: SP[4],
-    paddingVertical: SP[2],
-    borderRadius: RADII.circle,
-    borderWidth: 1.5,
-    backgroundColor: "rgba(0,0,0,0.3)",
-  },
-
-  // Divider
-  divider: {
-    height: 1,
-    backgroundColor: COLORS.divider,
-  },
-
-  // Remarks section
-  remarksSection: {
-    gap: SP[3],
-  },
-  remarksTitle: {
-    color: COLORS.accent,
-    letterSpacing: 0.5,
-    textTransform: "uppercase",
-  },
-  remarksList: {
-    gap: SP[2],
-  },
-  remarkRow: {
+  // Section header
+  sectionHeader: {
     flexDirection: "row",
-    alignItems: "flex-start",
-    gap: SP[2],
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: SP[1],
   },
-  remarkDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    marginTop: 6,
+  sectionTitle: {
+    ...TYPE.captionSemiBold,
+    color: COLORS.sub,
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+    fontSize: 11,
   },
-  remarkText: {
-    flex: 1,
-    lineHeight: 20,
+  sectionSub: {
+    ...TYPE.small,
+    color: COLORS.muted,
+    fontSize: 10,
   },
 
-  // Footer
+  emptyAnalysis: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: SP[12],
+  },
+
+  // Footer CTA
   footer: {
     paddingHorizontal: SP[4],
     paddingTop: SP[2],
+    backgroundColor: COLORS.bgTop,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.divider,
+  },
+  ctaDepth: {
+    borderRadius: RADII.pill,
+    backgroundColor: COLORS.accentDepth,
+    paddingBottom: 4,
+    ...(Platform.OS === "ios"
+      ? { shadowColor: COLORS.accent, shadowOpacity: 0.3, shadowRadius: 18, shadowOffset: { width: 0, height: 6 } }
+      : { elevation: 10 }),
+  },
+  ctaFace: {
+    borderRadius: RADII.pill,
+    paddingVertical: SP[4],
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: SP[2],
+    backgroundColor: COLORS.accent,
+  },
+  ctaText: {
+    ...TYPE.bodySemiBold,
+    color: "#0B0B0B",
   },
 });

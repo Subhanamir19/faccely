@@ -41,7 +41,6 @@ const SUB_TITLE_FONT = ms(13.5, 0.3);
 const SUB_VERDICT_FONT = ms(12.5, 0.3);
 const BADGE_FONT = ms(11, 0.3);
 const BADGE_H = sh(24);
-const INFO_PILL = ms(26);
 
 const ACCENT = "#8FA31E";
 
@@ -62,9 +61,6 @@ export default function AnalysisCard({
         {/* Header row */}
         <View style={styles.headerRow}>
           <Text style={[tx.title, { fontSize: TITLE_FONT }] as TextStyle[]}>{copy.title}</Text>
-          <View style={[styles.infoPill, { width: INFO_PILL, height: INFO_PILL, borderRadius: INFO_PILL / 2 }]}>
-            <Text style={{ fontSize: ms(13), color: "#fff" }}>i</Text>
-          </View>
         </View>
 
         {/* Face visualization */}
@@ -154,12 +150,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingBottom: sh(6),
-  },
-
-  infoPill: {
-    backgroundColor: "rgba(255,255,255,0.08)",
-    alignItems: "center",
-    justifyContent: "center",
   },
 
   faceWrap: {

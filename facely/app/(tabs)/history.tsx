@@ -1,5 +1,5 @@
 // app/(tabs)/history.tsx
-// History list screen — redesigned to match app design language.
+// History list screen — redesigned per UX audit.
 
 import React, { useCallback, useEffect, useState } from "react";
 import {
@@ -8,23 +8,29 @@ import {
   StyleSheet,
   RefreshControl,
   Pressable,
+  Image,
   Platform,
+  ActivityIndicator,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
+import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Animated, { FadeInDown } from "react-native-reanimated";
+import Animated, { FadeInDown, FadeIn } from "react-native-reanimated";
 import { fetchScanHistory, type ScanHistoryItem } from "@/lib/api/history";
 import Text from "@/components/ui/T";
 import ScreenHeader from "@/components/layout/ScreenHeader";
-import StateView from "@/components/layout/StateView";
 import { COLORS, SP, RADII, TYPE } from "@/lib/tokens";
+
+const goToScan = () => router.push("/(tabs)/take-picture");
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
-// 3D depth button constants — matches take-picture.tsx / score-teaser.tsx
+// 3D depth button constants
 const DEPTH = 4;
+
+// ── Helpers ────────────────────────────────────────────────────────────────
 
 function formatDate(value: string): { date: string; time: string } {
   try {
@@ -44,6 +50,101 @@ function formatDate(value: string): { date: string; time: string } {
   }
 }
 
+function getScoreColor(score: number): string {
+  if (score <= 39) return COLORS.error;
+  if (score <= 59) return COLORS.errorLight;
+  if (score <= 79) return COLORS.warning;
+  return COLORS.success;
+}
+
+function getScoreBand(score: number): string {
+  if (score >= 80) return "Elite";
+  if (score >= 65) return "Sharp";
+  if (score >= 50) return "Average";
+  return "Needs Work";
+}
+
+// ---------------------------------------------------------------------------
+// Compare Discovery Banner — shown when ≥3 scans and not yet dismissed
+// ---------------------------------------------------------------------------
+function CompareDiscoveryBanner({ onCompare }: { onCompare: () => void }) {
+  return (
+    <Animated.View entering={FadeInDown.duration(400)} style={bannerStyles.wrapper}>
+      <BlurView
+        intensity={Platform.OS === "android" ? 20 : 35}
+        tint="dark"
+        style={bannerStyles.blur}
+      >
+        <View style={bannerStyles.overlay} />
+        <View style={bannerStyles.inner}>
+          <View style={bannerStyles.iconWrap}>
+            <Ionicons name="git-compare-outline" size={20} color={COLORS.accent} />
+          </View>
+          <View style={bannerStyles.textBlock}>
+            <Text style={bannerStyles.title}>Compare scans side by side</Text>
+            <Text style={bannerStyles.sub}>Track your progress over time</Text>
+          </View>
+          <Pressable
+            onPress={onCompare}
+            style={({ pressed }) => [bannerStyles.cta, pressed && { opacity: 0.75 }]}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Text style={bannerStyles.ctaText}>Try it</Text>
+          </Pressable>
+        </View>
+      </BlurView>
+    </Animated.View>
+  );
+}
+
+const bannerStyles = StyleSheet.create({
+  wrapper: {
+    borderRadius: RADII.xl,
+    overflow: "hidden",
+    marginBottom: SP[1],
+    ...(Platform.OS === "ios"
+      ? { shadowColor: COLORS.accent, shadowOpacity: 0.12, shadowRadius: 16, shadowOffset: { width: 0, height: 6 } }
+      : { elevation: 4 }),
+  },
+  blur: { borderRadius: RADII.xl, overflow: "hidden" },
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(180,243,77,0.04)",
+    borderWidth: 1,
+    borderColor: COLORS.accentBorder,
+    borderRadius: RADII.xl,
+  },
+  inner: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: SP[4],
+    paddingVertical: SP[3],
+    gap: SP[3],
+  },
+  iconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: COLORS.accentGlow,
+    borderWidth: 1,
+    borderColor: COLORS.accentBorder,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  textBlock: { flex: 1, gap: 2 },
+  title: { ...TYPE.captionSemiBold, color: COLORS.text },
+  sub: { ...TYPE.small, color: COLORS.sub },
+  cta: {
+    paddingHorizontal: SP[3],
+    paddingVertical: SP[2],
+    borderRadius: RADII.md,
+    borderWidth: 1,
+    borderColor: COLORS.accentBorder,
+    backgroundColor: COLORS.accentGlow,
+  },
+  ctaText: { ...TYPE.smallSemiBold, color: COLORS.accent },
+});
+
 // ---------------------------------------------------------------------------
 // HistoryCard
 // ---------------------------------------------------------------------------
@@ -54,6 +155,7 @@ type HistoryCardProps = {
   compareMode: boolean;
   isSelected: boolean;
   onToggleSelect: (id: string) => void;
+  prevScore?: number;
 };
 
 function HistoryCard({
@@ -63,21 +165,28 @@ function HistoryCard({
   compareMode,
   isSelected,
   onToggleSelect,
+  prevScore,
 }: HistoryCardProps) {
   const { date, time } = formatDate(item.createdAt);
-  // Newest scan is highest number (scan #N, #N-1, …, #1)
   const scanNumber = totalCount - index;
 
-  const handleViewScores = () => {
-    router.push(`/history/score-card?scanId=${encodeURIComponent(item.id)}`);
-  };
+  const hasScore = typeof item.overallScore === "number";
+  const score = item.overallScore ?? 0;
+  const scoreColor = hasScore ? getScoreColor(score) : COLORS.sub;
+  const band = hasScore ? getScoreBand(score) : null;
 
-  const handleViewAnalysis = () => {
-    router.push(`/history/analysis-card?scanId=${encodeURIComponent(item.id)}`);
-  };
+  // Delta vs previous scan (positive = improved)
+  const hasDelta =
+    hasScore &&
+    typeof prevScore === "number";
+  const delta = hasDelta ? score - prevScore! : 0;
 
   const handlePress = () => {
     if (compareMode) onToggleSelect(item.id);
+  };
+
+  const handleViewResults = () => {
+    router.push(`/history/analysis-card?scanId=${encodeURIComponent(item.id)}`);
   };
 
   return (
@@ -91,78 +200,104 @@ function HistoryCard({
         tint="dark"
         style={styles.cardBlur}
       >
-        {/* Glass overlay + border */}
         <View style={[styles.cardOverlay, isSelected && styles.cardOverlaySelected]} />
-        {/* Lime top hairline */}
         <View style={styles.cardTopLine} />
 
         <View style={styles.cardInner}>
-          {/* ── Header row: date + scan badge ─────────────────── */}
-          <View style={styles.cardHeaderRow}>
-            <View style={styles.cardHeaderLeft}>
-              <View style={styles.scanDotWrapper}>
-                <View style={styles.scanDot} />
-              </View>
-              <View>
-                <Text style={styles.dateText}>{date}</Text>
-                <Text style={styles.timeText}>{time}</Text>
-              </View>
+          {/* ── Main info row ─────────────────────────────── */}
+          <View style={styles.mainRow}>
+            {/* Thumbnail */}
+            <View style={styles.thumbWrapper}>
+              {item.frontImageUrl ? (
+                <Image
+                  source={{ uri: item.frontImageUrl }}
+                  style={styles.thumb}
+                  resizeMode="cover"
+                />
+              ) : (
+                <View style={styles.thumbPlaceholder}>
+                  <Ionicons name="person-outline" size={22} color={COLORS.accent} />
+                </View>
+              )}
+              {/* Live indicator dot */}
+              <View style={styles.liveDot} />
             </View>
 
-            {/* Scan number or selection circle */}
+            {/* Date / badges */}
+            <View style={styles.metaBlock}>
+              <Text style={styles.dateText}>{date}</Text>
+              <Text style={styles.timeText}>{time}</Text>
+              {item.hasSideImage && (
+                <View style={styles.sideBadge}>
+                  <Ionicons name="scan-outline" size={10} color={COLORS.accent} />
+                  <Text style={styles.sideBadgeText}>Side</Text>
+                </View>
+              )}
+            </View>
+
+            {/* Score / badge area */}
             {compareMode ? (
               <View style={[styles.selectCircle, isSelected && styles.selectCircleActive]}>
-                {isSelected && <Text style={styles.checkmark}>✓</Text>}
+                {isSelected && (
+                  <Ionicons name="checkmark" size={14} color={COLORS.bgTop} />
+                )}
               </View>
             ) : (
-              <View style={styles.scanBadge}>
-                <Text style={styles.scanBadgeText}>#{scanNumber}</Text>
+              <View style={styles.scoreBlock}>
+                {hasScore ? (
+                  <>
+                    <Text style={[styles.scoreNum, { color: scoreColor }]}>
+                      {Math.round(score)}
+                    </Text>
+                    <Text style={[styles.scoreBand, { color: scoreColor }]}>{band}</Text>
+                    {hasDelta && (
+                      <View style={styles.deltaRow}>
+                        <Ionicons
+                          name={delta >= 0 ? "arrow-up" : "arrow-down"}
+                          size={10}
+                          color={delta >= 0 ? COLORS.success : COLORS.error}
+                        />
+                        <Text
+                          style={[
+                            styles.deltaText,
+                            { color: delta >= 0 ? COLORS.success : COLORS.error },
+                          ]}
+                        >
+                          {delta >= 0 ? "+" : ""}
+                          {Math.round(delta)}
+                        </Text>
+                      </View>
+                    )}
+                  </>
+                ) : (
+                  <View style={styles.scanBadge}>
+                    <Text style={styles.scanBadgeText}>#{scanNumber}</Text>
+                  </View>
+                )}
               </View>
             )}
           </View>
 
-          {/* ── Badges ─────────────────────────────────────────── */}
-          {item.hasSideImage && (
-            <View style={styles.badgeRow}>
-              <View style={styles.badge}>
-                <Text style={styles.badgeText}>Side Profile</Text>
-              </View>
-            </View>
-          )}
-
-          {/* ── Compare hint ───────────────────────────────────── */}
+          {/* ── Compare hint ──────────────────────────────── */}
           {compareMode && (
             <Text style={styles.compareTap}>
               {isSelected ? "Selected for comparison" : "Tap to select"}
             </Text>
           )}
 
-          {/* ── Action buttons ─────────────────────────────────── */}
+          {/* ── Single CTA ────────────────────────────────── */}
           {!compareMode && (
-            <View style={styles.actionRow}>
-              {/* Ghost scores button */}
+            <View style={styles.primaryDepth}>
               <Pressable
                 style={({ pressed }) => [
-                  styles.ghostBtn,
-                  pressed && styles.btnPressed,
+                  styles.primaryFace,
+                  { transform: [{ translateY: pressed ? DEPTH - 1 : 0 }] },
                 ]}
-                onPress={handleViewScores}
+                onPress={handleViewResults}
               >
-                <Text style={styles.ghostBtnText}>Scores</Text>
+                <Text style={styles.primaryBtnText}>View Results</Text>
+                <Ionicons name="arrow-forward" size={14} color="#0B0B0B" />
               </Pressable>
-
-              {/* 3D depth primary button */}
-              <View style={styles.primaryDepth}>
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.primaryFace,
-                    { transform: [{ translateY: pressed ? DEPTH - 1 : 0 }] },
-                  ]}
-                  onPress={handleViewAnalysis}
-                >
-                  <Text style={styles.primaryBtnText}>View Analysis</Text>
-                </Pressable>
-              </View>
             </View>
           )}
         </View>
@@ -170,6 +305,48 @@ function HistoryCard({
     </AnimatedPressable>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Empty state (inline — no emoji)
+// ---------------------------------------------------------------------------
+function EmptyState() {
+  return (
+    <Animated.View entering={FadeIn.delay(200)} style={emptyStyles.container}>
+      <View style={emptyStyles.iconWrap}>
+        <Ionicons name="stats-chart-outline" size={36} color={COLORS.accent} />
+      </View>
+      <Text variant="h4" color="text" style={emptyStyles.title}>
+        No scans yet
+      </Text>
+      <Text variant="caption" color="sub" style={emptyStyles.sub}>
+        Run your first scan to see your history here
+      </Text>
+    </Animated.View>
+  );
+}
+
+const emptyStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: SP[8],
+    gap: SP[3],
+  },
+  iconWrap: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: COLORS.accentGlow,
+    borderWidth: 1,
+    borderColor: COLORS.accentBorder,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: SP[2],
+  },
+  title: { textAlign: "center" },
+  sub: { textAlign: "center", lineHeight: 20 },
+});
 
 // ---------------------------------------------------------------------------
 // Screen
@@ -182,6 +359,7 @@ export default function HistoryScreen() {
   const [error, setError] = useState<string | null>(null);
   const [compareMode, setCompareMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [compareBannerDismissed, setCompareBannerDismissed] = useState(false);
 
   const load = useCallback(async () => {
     setError(null);
@@ -196,7 +374,9 @@ export default function HistoryScreen() {
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
@@ -223,45 +403,85 @@ export default function HistoryScreen() {
     );
   }, [selectedIds]);
 
+  const handleDiscoverCompare = useCallback(() => {
+    setCompareBannerDismissed(true);
+    toggleCompareMode();
+  }, [toggleCompareMode]);
+
   const renderItem = useCallback(
-    ({ item, index }: { item: ScanHistoryItem; index: number }) => (
-      <HistoryCard
-        item={item}
-        index={index}
-        totalCount={scans.length}
-        compareMode={compareMode}
-        isSelected={selectedIds.includes(item.id)}
-        onToggleSelect={handleToggleSelect}
-      />
-    ),
-    [compareMode, selectedIds, handleToggleSelect, scans.length]
+    ({ item, index }: { item: ScanHistoryItem; index: number }) => {
+      // Previous scan score (the scan that came before this one, i.e. index+1 since newest first)
+      const prev = scans[index + 1];
+      const prevScore =
+        typeof prev?.overallScore === "number" ? prev.overallScore : undefined;
+
+      return (
+        <HistoryCard
+          item={item}
+          index={index}
+          totalCount={scans.length}
+          compareMode={compareMode}
+          isSelected={selectedIds.includes(item.id)}
+          onToggleSelect={handleToggleSelect}
+          prevScore={prevScore}
+        />
+      );
+    },
+    [compareMode, selectedIds, handleToggleSelect, scans]
   );
 
-  // Compare / Cancel toggle button for header
   const compareToggleBtn = (
     <Pressable
       onPress={toggleCompareMode}
       style={({ pressed }) => [styles.headerBtn, pressed && { opacity: 0.7 }]}
       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
     >
-      <Text style={[styles.headerBtnText, compareMode && styles.headerBtnTextActive]}>
+      <Text
+        style={[styles.headerBtnText, compareMode && styles.headerBtnTextActive]}
+      >
         {compareMode ? "Cancel" : "Compare"}
       </Text>
     </Pressable>
   );
 
+  const showDiscoverBanner =
+    !compareMode &&
+    !compareBannerDismissed &&
+    scans.length >= 3;
+
   const renderContent = () => {
-    if (loading) return <StateView loading loadingText="Loading history..." />;
-    if (error) return <StateView error={error} onRetry={load} />;
-    if (scans.length === 0) {
+    if (loading) {
       return (
-        <StateView
-          empty
-          emptyIcon="📊"
-          emptyTitle="No scans yet"
-          emptySubtitle="Run your first scan to see your history here"
-        />
+        <View style={styles.centeredState}>
+          <ActivityIndicator color={COLORS.accent} size="large" />
+          <Text variant="captionMedium" color="sub" style={{ marginTop: SP[3] }}>
+            Loading history...
+          </Text>
+        </View>
       );
+    }
+
+    if (error) {
+      return (
+        <View style={styles.centeredState}>
+          <Ionicons name="alert-circle-outline" size={40} color={COLORS.error} />
+          <Text variant="captionMedium" style={{ color: COLORS.error, textAlign: "center", marginTop: SP[2] }}>
+            {error}
+          </Text>
+          <Pressable
+            style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.8 }]}
+            onPress={load}
+          >
+            <Text variant="captionSemiBold" style={{ color: COLORS.bgTop }}>
+              Retry
+            </Text>
+          </Pressable>
+        </View>
+      );
+    }
+
+    if (scans.length === 0) {
+      return <EmptyState />;
     }
 
     return (
@@ -269,6 +489,11 @@ export default function HistoryScreen() {
         data={scans}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
+        ListHeaderComponent={
+          showDiscoverBanner ? (
+            <CompareDiscoveryBanner onCompare={handleDiscoverCompare} />
+          ) : null
+        }
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -296,7 +521,6 @@ export default function HistoryScreen() {
 
   return (
     <View style={styles.screen}>
-      {/* Background */}
       <LinearGradient
         colors={[COLORS.bgTop, COLORS.bgBottom]}
         style={StyleSheet.absoluteFill}
@@ -314,12 +538,14 @@ export default function HistoryScreen() {
         <ScreenHeader
           title="History"
           subtitle={subtitle}
+          showBack
+          onBack={goToScan}
           rightAction={scans.length > 1 ? compareToggleBtn : undefined}
         />
         {renderContent()}
       </View>
 
-      {/* Floating compare CTA — 3D depth style */}
+      {/* Floating compare CTA */}
       {compareMode && selectedIds.length === 2 && (
         <View style={[styles.floatingCta, { bottom: insets.bottom + SP[4] }]}>
           <View style={styles.ctaDepth}>
@@ -330,7 +556,8 @@ export default function HistoryScreen() {
               ]}
               onPress={handleCompare}
             >
-              <Text style={styles.ctaText}>Compare 2 Scans →</Text>
+              <Ionicons name="git-compare-outline" size={18} color="#0B0B0B" />
+              <Text style={styles.ctaText}>Compare 2 Scans</Text>
             </Pressable>
           </View>
         </View>
@@ -362,6 +589,20 @@ const styles = StyleSheet.create({
     paddingTop: SP[2],
     gap: SP[3],
   },
+  centeredState: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: SP[8],
+    gap: SP[3],
+  },
+  retryBtn: {
+    backgroundColor: COLORS.accent,
+    paddingHorizontal: SP[6],
+    paddingVertical: SP[3],
+    borderRadius: RADII.md,
+    marginTop: SP[2],
+  },
 
   // Header button
   headerBtn: {
@@ -381,21 +622,12 @@ const styles = StyleSheet.create({
     borderRadius: RADII.xl,
     overflow: "hidden",
     ...(Platform.OS === "ios"
-      ? {
-          shadowColor: "#000",
-          shadowOpacity: 0.28,
-          shadowRadius: 22,
-          shadowOffset: { width: 0, height: 12 },
-        }
+      ? { shadowColor: "#000", shadowOpacity: 0.28, shadowRadius: 22, shadowOffset: { width: 0, height: 12 } }
       : { elevation: 8 }),
   },
   cardWrapperSelected: {
     ...(Platform.OS === "ios"
-      ? {
-          shadowColor: COLORS.accent,
-          shadowOpacity: 0.18,
-          shadowRadius: 18,
-        }
+      ? { shadowColor: COLORS.accent, shadowOpacity: 0.18, shadowRadius: 18 }
       : {}),
   },
   cardBlur: {
@@ -413,7 +645,6 @@ const styles = StyleSheet.create({
     borderColor: COLORS.accentBorder,
     backgroundColor: "rgba(180,243,77,0.05)",
   },
-  // Thin lime accent line at the top of each card
   cardTopLine: {
     position: "absolute",
     top: 0,
@@ -423,39 +654,55 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.accentBorder,
     borderRadius: 1,
   },
-
   cardInner: {
     padding: SP[4],
     gap: SP[3],
   },
 
-  // ── Card header ─────────────────────────────────────────────────────────
-  cardHeaderRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  cardHeaderLeft: {
+  // ── Main info row ────────────────────────────────────────────────────────
+  mainRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: SP[3],
-    flex: 1,
   },
-  scanDotWrapper: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+
+  // Thumbnail
+  thumbWrapper: {
+    position: "relative",
+  },
+  thumb: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    borderWidth: 2,
+    borderColor: COLORS.accentBorder,
+  },
+  thumbPlaceholder: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     backgroundColor: COLORS.accentGlow,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: COLORS.accentBorder,
     alignItems: "center",
     justifyContent: "center",
   },
-  scanDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+  liveDot: {
+    position: "absolute",
+    bottom: 1,
+    right: 1,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
     backgroundColor: COLORS.accent,
+    borderWidth: 2,
+    borderColor: COLORS.bgTop,
+  },
+
+  // Meta (date/time/badges)
+  metaBlock: {
+    flex: 1,
+    gap: 2,
   },
   dateText: {
     ...TYPE.captionSemiBold,
@@ -464,10 +711,52 @@ const styles = StyleSheet.create({
   timeText: {
     ...TYPE.small,
     color: COLORS.sub,
-    marginTop: 1,
+  },
+  sideBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    marginTop: 4,
+    alignSelf: "flex-start",
+    backgroundColor: COLORS.accentGlow,
+    paddingHorizontal: SP[2],
+    paddingVertical: 2,
+    borderRadius: RADII.circle,
+    borderWidth: 1,
+    borderColor: COLORS.accentBorder,
+  },
+  sideBadgeText: {
+    ...TYPE.smallSemiBold,
+    color: COLORS.accent,
+    fontSize: 10,
   },
 
-  // Scan number badge
+  // Score block (right side)
+  scoreBlock: {
+    alignItems: "flex-end",
+    gap: 2,
+    minWidth: 52,
+  },
+  scoreNum: {
+    fontSize: 28,
+    lineHeight: 32,
+    fontFamily: "Poppins-SemiBold",
+  },
+  scoreBand: {
+    ...TYPE.smallSemiBold,
+    fontSize: 10,
+    letterSpacing: 0.3,
+  },
+  deltaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
+    marginTop: 2,
+  },
+  deltaText: {
+    ...TYPE.smallSemiBold,
+    fontSize: 11,
+  },
   scanBadge: {
     paddingHorizontal: SP[3],
     paddingVertical: SP[1],
@@ -482,82 +771,16 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
 
-  // ── Badges ──────────────────────────────────────────────────────────────
-  badgeRow: {
-    flexDirection: "row",
-  },
-  badge: {
-    backgroundColor: COLORS.accentGlow,
-    paddingHorizontal: SP[3],
-    paddingVertical: SP[1],
-    borderRadius: RADII.circle,
-    borderWidth: 1,
-    borderColor: COLORS.accentBorder,
-  },
-  badgeText: {
-    ...TYPE.smallSemiBold,
-    color: COLORS.accent,
-  },
-
-  // ── Compare hint ────────────────────────────────────────────────────────
+  // Compare
   compareTap: {
     ...TYPE.caption,
     color: COLORS.sub,
     textAlign: "center",
   },
-
-  // ── Action buttons ───────────────────────────────────────────────────────
-  actionRow: {
-    flexDirection: "row",
-    gap: SP[2],
-    alignItems: "center",
-  },
-
-  // Ghost "Scores" button
-  ghostBtn: {
-    paddingVertical: SP[3],
-    paddingHorizontal: SP[4],
-    borderRadius: RADII.md,
-    backgroundColor: COLORS.whiteGlass,
-    borderWidth: 1,
-    borderColor: COLORS.cardBorder,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  ghostBtnText: {
-    ...TYPE.captionSemiBold,
-    color: COLORS.dim,
-  },
-
-  // 3D depth "View Analysis" button
-  primaryDepth: {
-    flex: 1,
-    borderRadius: RADII.md,
-    backgroundColor: "#6B9A1E",
-    paddingBottom: DEPTH,
-  },
-  primaryFace: {
-    borderRadius: RADII.md,
-    paddingVertical: SP[3],
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: COLORS.accent,
-  },
-  primaryBtnText: {
-    ...TYPE.captionSemiBold,
-    color: "#0B0B0B",
-  },
-
-  btnPressed: {
-    opacity: 0.85,
-    transform: [{ scale: 0.98 }],
-  },
-
-  // ── Selection (compare mode) ─────────────────────────────────────────────
   selectCircle: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     borderWidth: 2,
     borderColor: COLORS.cardBorder,
     alignItems: "center",
@@ -567,13 +790,28 @@ const styles = StyleSheet.create({
     borderColor: COLORS.accent,
     backgroundColor: COLORS.accent,
   },
-  checkmark: {
-    ...TYPE.smallSemiBold,
-    color: COLORS.bgTop,
-    lineHeight: 16,
+
+  // Single primary CTA
+  primaryDepth: {
+    borderRadius: RADII.md,
+    backgroundColor: COLORS.accentDepth,
+    paddingBottom: DEPTH,
+  },
+  primaryFace: {
+    borderRadius: RADII.md,
+    paddingVertical: SP[3],
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: SP[2],
+    backgroundColor: COLORS.accent,
+  },
+  primaryBtnText: {
+    ...TYPE.captionSemiBold,
+    color: "#0B0B0B",
   },
 
-  // ── Floating compare CTA ─────────────────────────────────────────────────
+  // Floating compare CTA
   floatingCta: {
     position: "absolute",
     left: SP[4],
@@ -581,22 +819,19 @@ const styles = StyleSheet.create({
   },
   ctaDepth: {
     borderRadius: RADII.pill,
-    backgroundColor: "#6B9A1E",
+    backgroundColor: COLORS.accentDepth,
     paddingBottom: DEPTH,
   },
   ctaFace: {
     borderRadius: RADII.pill,
     paddingVertical: SP[4],
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    gap: SP[2],
     backgroundColor: COLORS.accent,
     ...(Platform.OS === "ios"
-      ? {
-          shadowColor: COLORS.accent,
-          shadowOpacity: 0.35,
-          shadowRadius: 20,
-          shadowOffset: { width: 0, height: 6 },
-        }
+      ? { shadowColor: COLORS.accent, shadowOpacity: 0.35, shadowRadius: 20, shadowOffset: { width: 0, height: 6 } }
       : { elevation: 12 }),
   },
   ctaText: {

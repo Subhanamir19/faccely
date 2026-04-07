@@ -189,24 +189,20 @@ export function buildDailyProtocols(input: ProtocolSelectionInput): ProtocolPick
   const dateSlot = dayOfYear(dateStr);
   const recentIds = new Set(recentProtocolIds);
 
-  // Skincare and lifestyle share the first slot — both are "habit" type actions
-  const habitPool = PROTOCOL_CATALOG.filter(
-    (p) => (p.type === "lifestyle" || p.type === "skincare") && isEligible(p, scores, goals),
-  );
   const dietaryPool = PROTOCOL_CATALOG.filter(
     (p) => p.type === "dietary" && isEligible(p, scores, goals),
   );
-
-  // Safety fallbacks — should never be needed given the always=true entries in catalog
-  const habitFallback = PROTOCOL_CATALOG.filter(
-    (p) => p.type === "lifestyle" || p.type === "skincare",
-  );
   const dietaryFallback = PROTOCOL_CATALOG.filter((p) => p.type === "dietary");
 
-  const habit   = pickBestFromPool(habitPool.length   > 0 ? habitPool   : habitFallback,   scores, goals, dateSlot, recentIds);
-  const dietary = pickBestFromPool(dietaryPool.length > 0 ? dietaryPool : dietaryFallback, scores, goals, dateSlot, recentIds);
+  const pool = dietaryPool.length > 0 ? dietaryPool : dietaryFallback;
+  const ranked = pool
+    .map((e) => ({ entry: e, rank: scoreProtocol(e, scores, goals, dateSlot, recentIds) }))
+    .sort((a, b) => b.rank - a.rank);
 
-  return [habit, dietary].map((e) => ({
+  const first  = ranked[0].entry;
+  const second = ranked.find((r) => r.entry.id !== first.id)?.entry ?? ranked[0].entry;
+
+  return [first, second].map((e) => ({
     id:       e.id,
     name:     e.name,
     type:     e.type,

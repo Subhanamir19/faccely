@@ -202,12 +202,12 @@ type ScoresSummaryCardProps = {
 // All 8 metrics displayed on summary card (4 rows x 2 columns)
 const SUMMARY_METRICS = [
   "Overall",           // Row 1
-  "Facial Symmetry",
-  "Masculinity/Femininity", // Row 2
-  "Skin Quality",
-  "Jawline",           // Row 3
-  "Cheekbones",
-  "Eye Symmetry",      // Row 4
+  "Jawline",
+  "Cheekbones",        // Row 2
+  "Eye Symmetry",
+  "Facial Symmetry",   // Row 3
+  "Masculinity/Femininity",
+  "Skin Quality",      // Row 4
   "Nose Balance",
 ];
 

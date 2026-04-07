@@ -72,6 +72,9 @@ export default function ProfileScreen() {
   const hydrateProfile = useProfile((state) => state.hydrate);
   const setProfileAvatar = useProfile((state) => state.setAvatar);
   const setDisplayName = useProfile((state) => state.setDisplayName);
+  const revenueCatEntitlement = useSubscriptionStore((state) => state.revenueCatEntitlement);
+  const promoActivated = useSubscriptionStore((state) => state.promoActivated);
+  const hasAccess = revenueCatEntitlement || promoActivated;
   const setRevenueCatEntitlement = useSubscriptionStore((state) => state.setRevenueCatEntitlement);
   const [changingPhoto, setChangingPhoto] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
@@ -332,7 +335,13 @@ export default function ProfileScreen() {
         <GlassCard style={styles.card}>
           <View style={styles.cardHeader}>
             <T style={styles.cardLabel}>Subscription</T>
-            <T style={styles.cardSubtext}>Active - Sigma Max Pro</T>
+            <T style={styles.cardSubtext}>
+              {hasAccess
+                ? promoActivated
+                  ? "Active (Promo Code)"
+                  : "Active - Sigma Max Pro"
+                : "No active subscription"}
+            </T>
           </View>
           <View style={styles.subscriptionActions}>
             <View style={styles.subscriptionBtn}>

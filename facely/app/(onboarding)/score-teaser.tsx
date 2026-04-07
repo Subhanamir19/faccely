@@ -81,6 +81,15 @@ export default function ScoreTeaserScreen() {
     }
   }, [loading, scores]);
 
+  // Safety net: if backend hangs and never responds, send user into the app
+  // after 20s so they're never stuck on the loader indefinitely.
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      router.replace("/(tabs)/program");
+    }, 20_000);
+    return () => clearTimeout(timeout);
+  }, []);
+
   const footerH = insets.bottom + 88;
 
   const metrics = useMemo<MetricScore[]>(() => {

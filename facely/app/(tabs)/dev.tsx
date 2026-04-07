@@ -9,7 +9,11 @@ import {
   TouchableOpacity,
   StyleSheet,
   Alert,
+  Modal,
+  Pressable,
+  ImageBackground,
 } from "react-native";
+import InsightRevealCard from "@/components/scores/InsightRevealCard";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
 import T from "@/components/ui/T";
@@ -93,6 +97,8 @@ export default function DevScreen() {
   const [consentValue, setConsentValue] = useState<string | null | "…">("…");
   const [previewVisible, setPreviewVisible] = useState(false);
   const [dayCompleteVisible, setDayCompleteVisible] = useState(false);
+  const [insightPreviewVisible, setInsightPreviewVisible] = useState(false);
+  const [insightPreviewKey, setInsightPreviewKey] = useState(0); // bump to replay
   const currentStreak = useTasksStore((s) => s.currentStreak);
   const [scanBypass, setScanBypass] = useState<boolean | "…">("…");
 
@@ -177,6 +183,22 @@ export default function DevScreen() {
           </View>
         </GlassCard>
 
+        {/* ── Insight Reveal Preview ────────────────────────────────── */}
+        <GlassCard style={styles.card}>
+          <SectionHeader
+            title="Insight Reveal (new score screen)"
+            subtitle="Two-section animated reveal: What's working / Needs attention"
+          />
+          <DevButton
+            label="▶  Preview Full Screen"
+            accent
+            onPress={() => {
+              setInsightPreviewKey((k) => k + 1);
+              setInsightPreviewVisible(true);
+            }}
+          />
+        </GlassCard>
+
         {/* ── Day Complete Modal ─────────────────────────────────────── */}
         <GlassCard style={styles.card}>
           <SectionHeader
@@ -258,6 +280,88 @@ export default function DevScreen() {
           />
         </GlassCard>
 
+        {/* ── New Exercise Previews ─────────────────────────────────── */}
+        <GlassCard style={styles.card}>
+          <SectionHeader
+            title="New Exercise Preview"
+            subtitle="Preview the 2 new exercises in the session player"
+          />
+          <DevButton
+            label="▶  Midface Lift"
+            accent
+            onPress={() => router.push("/program/session?previewExerciseIds=midface-exercise" as any)}
+          />
+          <DevButton
+            label="▶  Lower Face Lift"
+            accent
+            onPress={() => router.push("/program/session?previewExerciseIds=lowerface-exercise" as any)}
+          />
+          <DevButton
+            label="▶  Both Together"
+            accent
+            onPress={() => router.push("/program/session?previewExerciseIds=midface-exercise,lowerface-exercise" as any)}
+          />
+        </GlassCard>
+
+        {/* ── Daily Flow Screen Previews ────────────────────────────── */}
+        <GlassCard style={styles.card}>
+          <SectionHeader
+            title="Daily Flow Screens"
+            subtitle="Preview the 4-screen daily workflow"
+          />
+          <View style={styles.screenGrid}>
+            {[
+              { label: "🔥  Streak Screen",       route: "/program/streak" },
+              { label: "💪  Workout Reveal",       route: "/program/workout-reveal" },
+              { label: "📋  Exercise List",        route: "/program/list" },
+              { label: "▶  Session Player",       route: "/program/session" },
+              { label: "🏆  Completion Screen",    route: "/program/complete" },
+            ].map(({ label, route }) => (
+              <TouchableOpacity
+                key={route}
+                style={styles.screenChip}
+                onPress={() => router.push(route as any)}
+                activeOpacity={0.7}
+              >
+                <T style={styles.screenChipText}>{label}</T>
+                <T style={styles.screenChipArrow}>→</T>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </GlassCard>
+
+        {/* ── Tasks / Exercises ─────────────────────────────────────── */}
+        <GlassCard style={styles.card}>
+          <SectionHeader
+            title="Today's Exercises"
+            subtitle="Reset completion state for UI testing"
+          />
+          <DevButton
+            label="↺  Rebuild Diet Protocols"
+            accent
+            onPress={() => {
+              useTasksStore.getState().rebuildProtocols();
+              Alert.alert("Done", "Diet protocols rebuilt from updated catalog.");
+            }}
+          />
+          <DevButton
+            label="↺  Uncheck All Exercises"
+            accent
+            onPress={() => {
+              const { today } = useTasksStore.getState();
+              if (!today) {
+                Alert.alert("No tasks", "Today's tasks are not loaded yet.");
+                return;
+              }
+              const { uncompleteTask } = useTasksStore.getState();
+              today.tasks.forEach((t) => {
+                if (t.status === "completed") uncompleteTask(t.exerciseId);
+              });
+              Alert.alert("Done", "All exercises reset to pending.");
+            }}
+          />
+        </GlassCard>
+
         {/* ── Scan Limit Bypass ──────────────────────────────────────── */}
         <GlassCard style={styles.card}>
           <SectionHeader
@@ -323,6 +427,62 @@ export default function DevScreen() {
         }}
         onCancel={() => setPreviewVisible(false)}
       />
+
+      {/* ── Insight Reveal full-screen preview ──────────────────────── */}
+      <Modal
+        visible={insightPreviewVisible}
+        animationType="slide"
+        presentationStyle="fullScreen"
+        onRequestClose={() => setInsightPreviewVisible(false)}
+      >
+        <ImageBackground
+          source={require("../../assets/bg/score-bg.jpg")}
+          style={{ flex: 1 }}
+          resizeMode="cover"
+        >
+          <View style={{ ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.55)" }} />
+          <SafeAreaView style={{ flex: 1 }}>
+            {/* Close + replay header */}
+            <View style={styles.previewHeader}>
+              <T style={styles.previewTitle}>Score Screen Preview</T>
+              <View style={styles.previewActions}>
+                <Pressable
+                  onPress={() => {
+                    setInsightPreviewKey((k) => k + 1);
+                  }}
+                  hitSlop={12}
+                  style={styles.previewBtn}
+                >
+                  <T style={styles.previewBtnText}>↺  Replay</T>
+                </Pressable>
+                <Pressable
+                  onPress={() => setInsightPreviewVisible(false)}
+                  hitSlop={12}
+                  style={[styles.previewBtn, styles.previewBtnClose]}
+                >
+                  <T style={styles.previewBtnText}>✕  Close</T>
+                </Pressable>
+              </View>
+            </View>
+
+            {/* The card itself with mock data */}
+            <InsightRevealCard
+              key={insightPreviewKey}
+              totalScore={71}
+              imageUri={null}
+              metrics={[
+                { label: "Jawline",       score: 78 },
+                { label: "Cheekbones",    score: 82 },
+                { label: "Eye Symmetry",  score: 69 },
+                { label: "Symmetry",      score: 74 },
+                { label: "Masculinity",   score: 67 },
+                { label: "Skin Quality",  score: 54 },
+                { label: "Nose Balance",  score: 60 },
+              ]}
+            />
+          </SafeAreaView>
+        </ImageBackground>
+      </Modal>
 
       {/* Life moment modal previews */}
       <ComebackModal
@@ -481,5 +641,41 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
     gap: SP[3],
+  },
+
+  // Insight preview modal header
+  previewHeader: {
+    paddingHorizontal: SP[4],
+    paddingVertical: SP[3],
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: COLORS.divider,
+    marginBottom: SP[2],
+  },
+  previewTitle: {
+    fontSize: 15,
+    color: COLORS.text,
+  },
+  previewActions: {
+    flexDirection: "row",
+    gap: SP[2],
+  },
+  previewBtn: {
+    paddingHorizontal: SP[3],
+    paddingVertical: SP[2],
+    borderRadius: RADII.md,
+    backgroundColor: COLORS.whiteGlass,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: COLORS.cardBorder,
+  },
+  previewBtnClose: {
+    borderColor: "rgba(255,80,80,0.3)",
+    backgroundColor: "rgba(255,80,80,0.08)",
+  },
+  previewBtnText: {
+    fontSize: 13,
+    color: COLORS.dim,
   },
 });

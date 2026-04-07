@@ -1,6 +1,7 @@
 // app/_layout.tsx
 import React, { useEffect } from "react";
-import { View } from "react-native";
+import { View, Platform } from "react-native";
+import * as NavigationBar from "expo-navigation-bar";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import {
@@ -38,6 +39,13 @@ export default function RootLayout() {
       SplashScreen.hideAsync().catch(() => {});
     }
   }, [fontsLoaded, fontError]);
+
+  useEffect(() => {
+    if (Platform.OS === "android") {
+      void NavigationBar.setBackgroundColorAsync("#0B0B0B");
+      void NavigationBar.setButtonStyleAsync("light");
+    }
+  }, []);
 
   useEffect(() => {
     void useAuthStore.getState().initialize();
@@ -112,8 +120,8 @@ export default function RootLayout() {
     <ErrorBoundary>
       <AuthProvider>
         {fontsLoaded || fontError ? (
-          <View style={{ flex: 1 }}>
-            <Stack screenOptions={{ headerShown: false }}>
+          <View style={{ flex: 1, backgroundColor: "#0B0B0B" }}>
+            <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: "#0B0B0B" } }}>
               <Stack.Screen name="index" />
               <Stack.Screen name="(auth)" />
               <Stack.Screen name="(onboarding)" />

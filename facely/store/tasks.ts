@@ -47,6 +47,12 @@ type TasksState = {
   history: DayRecord[]; // last 14 days
   currentStreak: number;
   loading: boolean;
+  /**
+   * Persisted across app kills. Stores the date string for which the
+   * DayCompleteModal has already been shown, so it never re-fires on
+   * force-kill + reopen.
+   */
+  completionModalShownDate: string | null;
 
   // Actions
   initToday: () => void;
@@ -54,7 +60,9 @@ type TasksState = {
   uncompleteTask: (exerciseId: string) => void;
   skipTask: (exerciseId: string) => void;
   completeProtocol: (id: string, done: boolean) => void;
+  rebuildProtocols: () => void;
   setMood: (mood: string) => void;
+  markCompletionModalShown: (date: string) => void;
   reset: () => void;
 };
 
@@ -147,7 +155,7 @@ function getRecentProtocolIds(history: DayRecord[]): string[] {
   return ids;
 }
 
-function getConsecutiveMissed(history: DayRecord[]): number {
+export function getConsecutiveMissed(history: DayRecord[]): number {
   if (!history.length) return 0;
 
   // Find the most recent completed day — anchor point for missed-day counting
@@ -172,6 +180,28 @@ function getConsecutiveMissed(history: DayRecord[]): number {
 }
 
 // ---------------------------------------------------------------------------
+// Debounced sync — batches rapid completions (e.g. 5-exercise session) into
+// one Supabase write instead of firing on every single tap.
+// ---------------------------------------------------------------------------
+
+let _syncDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+let _pendingSyncUid: string | null = null;
+
+function scheduleSyncTaskHistory(uid: string): void {
+  _pendingSyncUid = uid;
+  if (_syncDebounceTimer) clearTimeout(_syncDebounceTimer);
+  _syncDebounceTimer = setTimeout(() => {
+    _syncDebounceTimer = null;
+    // Read latest state at flush time, not stale captured state
+    const day = useTasksStore.getState().today;
+    if (_pendingSyncUid && day) {
+      syncTaskHistory(_pendingSyncUid, day);
+    }
+    _pendingSyncUid = null;
+  }, 2000);
+}
+
+// ---------------------------------------------------------------------------
 // Store
 // ---------------------------------------------------------------------------
 
@@ -182,6 +212,7 @@ export const useTasksStore = create<TasksState>()(
       history: [],
       currentStreak: 0,
       loading: false,
+      completionModalShownDate: null,
 
       initToday: () => {
         const state = get();
@@ -249,13 +280,8 @@ export const useTasksStore = create<TasksState>()(
         const consecutiveMissed = getConsecutiveMissed(history);
         const isNewUser = history.length === 0;
 
-        let skinScore: number | null = null;
-        try {
-          const scoresStore = require("./scores").useScores.getState();
-          skinScore = scoresStore.scores?.skin_quality ?? null;
-        } catch (e) {
-          logger.warn("[tasks] Could not read skin score:", e);
-        }
+        // skinScore is already available from the scores read above — no second require needed
+        const skinScore: number | null = scores?.skin_quality ?? null;
 
         const picks = buildDailyRoutine({
           scores,
@@ -313,17 +339,22 @@ export const useTasksStore = create<TasksState>()(
       completeTask: (exerciseId: string) => {
         const state = get();
         if (!state.today) return;
+        // Idempotency guard — already completed, nothing to do
+        if (state.today.tasks.find((t) => t.exerciseId === exerciseId)?.status === "completed") return;
 
         const tasks = state.today.tasks.map((t) =>
           t.exerciseId === exerciseId ? { ...t, status: "completed" as TaskStatus } : t
         );
 
-        // allComplete = every single exercise AND protocol finished (triggers modal)
+        // allComplete = every task is in a terminal state (completed OR skipped)
+        // AND every protocol is done. Skipped exercises no longer block the
+        // completion flow — a user who resolves all tasks has finished their day.
         const allComplete =
-          tasks.every((t) => t.status === "completed") &&
+          tasks.every((t) => t.status !== "pending") &&
           state.today.protocols.every((p) => p.status === "done");
 
-        // streakEarned = sticky flag: once ≥ STREAK_THRESHOLD items done, day counts
+        // streakEarned = sticky flag: once ≥ STREAK_THRESHOLD real completions, day counts.
+        // Skipped tasks deliberately do NOT count toward the threshold.
         const streakEarned =
           state.today.streakEarned ||
           countCompletedItems(tasks, state.today.protocols) >= STREAK_THRESHOLD;
@@ -331,13 +362,18 @@ export const useTasksStore = create<TasksState>()(
         // Only increment streak the very first time the threshold is reached today
         const firstStreakEarned = streakEarned && !state.today.streakEarned;
 
+        // completedOnce is sticky and requires BOTH the day being resolved AND
+        // real work done (streakEarned). This prevents the completion modal from
+        // firing on a day where the user skipped everything.
+        const completedOnce = state.today.completedOnce || (allComplete && streakEarned);
+
         set({
           today: {
             ...state.today,
             tasks,
             allComplete,
             streakEarned,
-            completedOnce: state.today.completedOnce || allComplete,
+            completedOnce,
           },
           currentStreak: firstStreakEarned
             ? state.currentStreak + 1
@@ -345,10 +381,12 @@ export const useTasksStore = create<TasksState>()(
         });
 
         const uid = getUid();
-        const newState = get();
-        if (uid && newState.today) {
-          syncTaskHistory(uid, newState.today);
-          if (firstStreakEarned) syncStreak(uid, newState.currentStreak, newState.today.date);
+        if (uid) {
+          scheduleSyncTaskHistory(uid);
+          if (firstStreakEarned) {
+            const newState = get();
+            syncStreak(uid, newState.currentStreak, newState.today!.date);
+          }
         }
       },
 
@@ -360,9 +398,11 @@ export const useTasksStore = create<TasksState>()(
           t.exerciseId === exerciseId ? { ...t, status: "pending" as TaskStatus } : t
         );
 
-        // allComplete can drop back to false; streakEarned is sticky and stays
+        // Moving a task back to "pending" always drops allComplete to false —
+        // a pending task means the day is not fully resolved.
+        // streakEarned is intentionally sticky and stays true (earned is permanent).
         const allComplete =
-          tasks.every((t) => t.status === "completed") &&
+          tasks.every((t) => t.status !== "pending") &&
           state.today.protocols.every((p) => p.status === "done");
         set({
           today: { ...state.today, tasks, allComplete },
@@ -377,13 +417,23 @@ export const useTasksStore = create<TasksState>()(
           t.exerciseId === exerciseId ? { ...t, status: "skipped" as TaskStatus } : t
         );
 
-        // Skipped ≠ completed — allComplete stays false if any task is skipped
+        // Skipped counts as "resolved" — if all tasks are skipped/completed and
+        // all protocols done, the day is considered fully resolved.
+        // NOTE: Skipping does NOT count toward the STREAK_THRESHOLD — streakEarned
+        // is carried forward unchanged. completedOnce only sets if real work was done.
         const allComplete =
-          tasks.every((t) => t.status === "completed") &&
+          tasks.every((t) => t.status !== "pending") &&
           state.today.protocols.every((p) => p.status === "done");
+
+        const completedOnce =
+          state.today.completedOnce || (allComplete && state.today.streakEarned);
+
         set({
-          today: { ...state.today, tasks, allComplete },
+          today: { ...state.today, tasks, allComplete, completedOnce },
         });
+
+        const uid = getUid();
+        if (uid) scheduleSyncTaskHistory(uid);
       },
 
       completeProtocol: (id: string, done: boolean) => {
@@ -393,9 +443,10 @@ export const useTasksStore = create<TasksState>()(
           p.id === id ? { ...p, status: (done ? "done" : "pending") as ProtocolStatus } : p
         );
 
-        // allComplete = every exercise AND protocol finished (triggers modal)
+        // Same allComplete semantics as completeTask — tasks resolved (not pending)
+        // AND all protocols done.
         const allComplete =
-          state.today.tasks.every((t) => t.status === "completed") &&
+          state.today.tasks.every((t) => t.status !== "pending") &&
           protocols.every((p) => p.status === "done");
 
         // streakEarned = sticky: once threshold hit, stays true
@@ -405,23 +456,48 @@ export const useTasksStore = create<TasksState>()(
 
         const firstStreakEarned = streakEarned && !state.today.streakEarned;
 
+        // completedOnce requires real work (streakEarned) — prevents modal on zero-effort days
+        const completedOnce = state.today.completedOnce || (allComplete && streakEarned);
+
         set({
           today: {
             ...state.today,
             protocols,
             allComplete,
             streakEarned,
-            completedOnce: state.today.completedOnce || allComplete,
+            completedOnce,
           },
           currentStreak: firstStreakEarned ? state.currentStreak + 1 : state.currentStreak,
         });
 
         const uid = getUid();
-        const newState = get();
-        if (uid && newState.today) {
-          syncTaskHistory(uid, newState.today);
-          if (firstStreakEarned) syncStreak(uid, newState.currentStreak, newState.today.date);
+        if (uid) {
+          scheduleSyncTaskHistory(uid);
+          if (firstStreakEarned) {
+            const newState = get();
+            syncStreak(uid, newState.currentStreak, newState.today!.date);
+          }
         }
+      },
+
+      rebuildProtocols: () => {
+        const state = get();
+        if (!state.today) return;
+        const currentDate = new Date().toISOString().split("T")[0];
+        const recentProtocolIds = getRecentProtocolIds(state.history);
+        let scores = null;
+        let goals: string[] | null = null;
+        try {
+          const scoresStore = require("./scores").useScores.getState();
+          scores = scoresStore.scores ?? null;
+        } catch {}
+        try {
+          const onboardingStore = require("./onboarding").useOnboarding.getState();
+          goals = onboardingStore.data?.goals ?? null;
+        } catch {}
+        const fresh = buildDailyProtocols({ dateStr: currentDate, scores, goals, recentProtocolIds });
+        const protocols: ProtocolTask[] = fresh.map((p) => ({ ...p, status: "pending" as ProtocolStatus }));
+        set({ today: { ...state.today, protocols } });
       },
 
       setMood: (mood: string) => {
@@ -429,8 +505,11 @@ export const useTasksStore = create<TasksState>()(
         if (!state.today) return;
         set({ today: { ...state.today, mood } });
         const uid = getUid();
-        const newState = get();
-        if (uid && newState.today) syncTaskHistory(uid, newState.today);
+        if (uid) scheduleSyncTaskHistory(uid);
+      },
+
+      markCompletionModalShown: (date: string) => {
+        set({ completionModalShownDate: date });
       },
 
       reset: () => {
@@ -439,6 +518,7 @@ export const useTasksStore = create<TasksState>()(
           history: [],
           currentStreak: 0,
           loading: false,
+          completionModalShownDate: null,
         });
       },
     }),
@@ -450,6 +530,7 @@ export const useTasksStore = create<TasksState>()(
         today: state.today,
         history: state.history,
         currentStreak: state.currentStreak,
+        completionModalShownDate: state.completionModalShownDate,
       }),
       migrate: (persisted: any, version: number) => {
         // v0 → v1: add completedOnce to today & history records

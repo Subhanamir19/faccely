@@ -2,7 +2,7 @@
 // Pure logic for the redesigned analysis summary view.
 // No React, no side effects. All derived from existing scores + label strings.
 
-import type { MetricKey } from "../store/scores";
+import type { MetricKey } from "./types";
 
 // ---------------------------------------------------------------------------
 // Label → plain English translation map
@@ -126,7 +126,7 @@ export const LABEL_TRANSLATIONS: Record<string, string> = {
   "Roman Nose":         "defined nose with a slight bridge curve — a strong feature",
   "Refined Nose":       "nose is fine and well-proportioned",
   "Standard Shape":     "nose shape is average",
-  "Moderate Definition":"nose definition is below average",
+  // "Moderate Definition" already defined (jawline section — same meaning)
   "Bulbous":            "the nose tip appears rounded and wide",
   "Crooked":            "the nose has a visible bend",
   "Hooked":             "the nose has a downward hook",
@@ -153,7 +153,7 @@ export const LABEL_TRANSLATIONS: Record<string, string> = {
   "Acceptable Balance":  "nose proportions are passable",
   "Too Long":            "the nose is noticeably long relative to the face",
   "Too Short":           "the nose appears too short for the face",
-  "Too Wide":            "the nose is wide relative to the face",
+  // "Too Wide" already defined (cheekbones section — same meaning)
   "Too Narrow":          "the nose appears narrow and pinched",
 
   // ── nose_harmony › Nose Tip Type ──────────────────────────────────────────
@@ -231,7 +231,7 @@ export const LABEL_TRANSLATIONS: Record<string, string> = {
 
   // ── facial_symmetry › Eye-Line Level ──────────────────────────────────────
   "Perfectly Level": "both eyes sit at exactly the same height",
-  "Minimal Tilt":    "eyes are nearly level with minimal variation",
+  // "Minimal Tilt" already defined (eyes_symmetry canthal section — same meaning)
   "Even Placement":  "eye placement is even",
   "Slight Tilt":     "one eye sits slightly higher — adds a mild tilt",
   "Minor Difference":"a small height difference between eyes",
@@ -243,7 +243,7 @@ export const LABEL_TRANSLATIONS: Record<string, string> = {
   "Perfectly Centered":  "the nose is perfectly centered",
   "Symmetrical Position":"the nose sits symmetrically",
   "Mostly Centered":     "mostly centered with a small offset",
-  "Noticeably Off":      "the nose is clearly off-center",
+  // "Noticeably Off" already defined (facial_symmetry vertical section — same meaning)
   "Deviated":            "nose deviation is visible and affects balance",
   "Crooked Nose":        "the nose is noticeably crooked on the face",
 
@@ -547,3 +547,151 @@ export const EXERCISE_DISPLAY_NAMES: Record<string, string> = {
   "gua-sha":                "Gua Sha",
   "towel-chewing":          "Towel Resistance Chew",
 };
+
+// ---------------------------------------------------------------------------
+// Per-metric actionable recommendations keyed by score band.
+// Tone: direct, honest, evidence-aware. No fluff. 1–2 sentences each.
+// ---------------------------------------------------------------------------
+
+export type MetricRecommendation = {
+  text: string;
+  /** "high" = most impactful action, "medium" = supporting habit */
+  priority: "high" | "medium";
+};
+
+const METRIC_RECS: Record<MetricKey, Record<"low" | "average" | "sharp" | "elite", MetricRecommendation[]>> = {
+  jawline: {
+    low: [
+      { text: "Mew consistently — tongue sealed to the palate 24/7 is the single highest-leverage structural habit for jaw definition.", priority: "high" },
+      { text: "Drop body fat below 15%. Subcutaneous fat on the jaw is the #1 score suppressor — diet is the unlock.", priority: "high" },
+    ],
+    average: [
+      { text: "Add jaw resistance training 3× per week. The jaw responds to mechanical load the same way any muscle does.", priority: "high" },
+      { text: "Fix sleep posture — back-sleeping with a firm pillow maintains forward head posture gains and reduces jaw compression.", priority: "medium" },
+    ],
+    sharp: [
+      { text: "Protect your leanness. Any meaningful weight gain will immediately blunt jaw sharpness.", priority: "high" },
+      { text: "Hard chewing foods (mastic gum, tough cuts of meat) 20+ min/day targets the gonial angle over time.", priority: "medium" },
+    ],
+    elite: [
+      { text: "Maintain. This is already a structural strength — stay lean and keep mewing to hold it.", priority: "medium" },
+    ],
+  },
+  cheekbones: {
+    low: [
+      { text: "Body fat reduction is the unlock. Cheekbones only emerge below ~15% BF — no topical or exercise substitutes for this.", priority: "high" },
+      { text: "Proper mewing form raises the midface over years. Start now — this is slow but real.", priority: "medium" },
+    ],
+    average: [
+      { text: "Sustained low-intensity cardio (10k steps/day) strips facial fat without losing muscle — the most efficient approach.", priority: "high" },
+      { text: "Keep a neutral resting expression. Constant smiling relaxes facial muscles and softens the midface appearance.", priority: "medium" },
+    ],
+    sharp: [
+      { text: "Protect current leanness. Cheekbone prominence is almost entirely fat-dependent — any weight gain softens it.", priority: "high" },
+      { text: "High-protein diet preserves muscle volume under the cheekbone, keeping the hollow effect.", priority: "medium" },
+    ],
+    elite: [
+      { text: "Elite level. Stay lean and maintain mewing — there's nothing more to do here.", priority: "medium" },
+    ],
+  },
+  eyes_symmetry: {
+    low: [
+      { text: "Hunter eyes protocol: practice squinching — deliberate partial lid lowering — 10 min/day in a mirror.", priority: "high" },
+      { text: "Prioritize 8h sleep. Puffy eyes and visible iris below the eyelid (sanpaku) worsen significantly with poor sleep.", priority: "high" },
+    ],
+    average: [
+      { text: "Cut sodium and alcohol — both cause orbital puffiness that kills canthal tilt appearance.", priority: "high" },
+      { text: "Eyelid isolation exercises build lid control and deepen squinch depth over 8–12 weeks of daily practice.", priority: "medium" },
+    ],
+    sharp: [
+      { text: "Stay lean — eye area fat deposits accumulate quickly with weight gain and directly lower perceived canthal tilt.", priority: "high" },
+      { text: "Cut screens 1h before sleep. Blue light causes eye irritation and redness that lowers eye vibrancy scores.", priority: "medium" },
+    ],
+    elite: [
+      { text: "Strong eye profile. Maintain sleep quality and leanness to hold this.", priority: "medium" },
+    ],
+  },
+  nose_harmony: {
+    low: [
+      { text: "Correct mewing posture aligns the septum and midface structure — start immediately, results are cumulative over years.", priority: "high" },
+      { text: "Reduce overall body fat. Midface fat reduction creates subtle contour improvements around the nasal base.", priority: "medium" },
+    ],
+    average: [
+      { text: "Nasal bridge massage 5 min daily — anecdotally tightens nasal tissue and can subtly narrow tip appearance over months.", priority: "medium" },
+      { text: "Ensure dental alignment is correct. Bite issues shift midface structure and nasal position over time.", priority: "medium" },
+    ],
+    sharp: [
+      { text: "Nose harmony is largely structural at this level. Maintain facial leanness to keep proportions visible.", priority: "medium" },
+      { text: "Strong mewing keeps the maxilla properly supported, which directly affects how the nose sits on the face.", priority: "medium" },
+    ],
+    elite: [
+      { text: "Elite harmony. Protect this by maintaining overall facial structure — nothing specific to change.", priority: "medium" },
+    ],
+  },
+  skin_quality: {
+    low: [
+      { text: "Cut sugar and seed oils completely — both are primary drivers of acne and chronic skin inflammation.", priority: "high" },
+      { text: "SPF 50 every single morning. UV damage is the #1 cause of premature aging and the most reversible prevention.", priority: "high" },
+    ],
+    average: [
+      { text: "Start a retinol routine (0.025% nightly) — the most evidence-backed topical for skin cell turnover and clarity.", priority: "high" },
+      { text: "Sleep on a silk pillowcase, washed weekly. Fabric friction and bacteria directly degrade skin quality overnight.", priority: "medium" },
+    ],
+    sharp: [
+      { text: "Add Vitamin C serum in the morning and niacinamide — both have strong clinical evidence for tone-evening and barrier repair.", priority: "medium" },
+      { text: "Drink 3L of water daily. Skin hydration is systemic first, topical second.", priority: "medium" },
+    ],
+    elite: [
+      { text: "Excellent skin. Maintain SPF, sleep quality, and your current low-inflammation diet.", priority: "medium" },
+    ],
+  },
+  facial_symmetry: {
+    low: [
+      { text: "Chew only on your weaker side for 30 days — this is the most effective and accessible asymmetry correction method.", priority: "high" },
+      { text: "Fix sleeping position. Always sleeping on one side compresses that half and progressively worsens asymmetry.", priority: "high" },
+    ],
+    average: [
+      { text: "Unilateral jaw exercises targeting the weaker side — asymmetry is often muscular, not purely structural.", priority: "high" },
+      { text: "Check for habitual head tilt in photos. A consistent tilt creates perceived asymmetry even in structurally symmetric faces.", priority: "medium" },
+    ],
+    sharp: [
+      { text: "Minor asymmetry at this level is within normal range and largely imperceptible. Lighting and shooting angle matter more.", priority: "medium" },
+      { text: "Maintain bilateral chewing and upright posture to prevent regression.", priority: "medium" },
+    ],
+    elite: [
+      { text: "Exceptional symmetry. No corrective action needed — just maintain current habits.", priority: "medium" },
+    ],
+  },
+  sexual_dimorphism: {
+    low: [
+      { text: "Optimize testosterone naturally: compound lifting 4× per week, 8h sleep, body fat 12–15%. These three variables drive the most change.", priority: "high" },
+      { text: "Reduce estrogen load: eliminate alcohol, avoid BPA plastics, and eat cruciferous vegetables daily.", priority: "high" },
+    ],
+    average: [
+      { text: "Cold exposure (cold showers or ice bath 3×/week) measurably raises testosterone and sharpens facial contours.", priority: "high" },
+      { text: "High zinc and magnesium diet (pumpkin seeds, red meat, oysters) — both are critical testosterone cofactors.", priority: "medium" },
+    ],
+    sharp: [
+      { text: "Strong masculinity markers. Maintaining low body fat and high androgens will keep this stable.", priority: "medium" },
+      { text: "Continue compound lifting — facial masculinity is partly driven by masseter and temporal muscle development.", priority: "medium" },
+    ],
+    elite: [
+      { text: "Elite masculinity score. Maintain training, sleep quality, and lean body composition.", priority: "medium" },
+    ],
+  },
+};
+
+function scoreToBand(score: number): "low" | "average" | "sharp" | "elite" {
+  if (score >= 80) return "elite";
+  if (score >= 65) return "sharp";
+  if (score >= 50) return "average";
+  return "low";
+}
+
+export function getMetricRecommendations(
+  metric: MetricKey,
+  score: number
+): MetricRecommendation[] {
+  const band = scoreToBand(score);
+  return METRIC_RECS[metric]?.[band] ?? [];
+}

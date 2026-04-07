@@ -853,6 +853,47 @@ export const EXERCISE_GUIDES: Record<string, ExerciseGuide> = {
       "Casein is slow-digesting — eating before sleep supports overnight muscle and bone recovery",
     ],
   },
+  // ── Midface & Lower Face ──────────────────────────────────────────────────
+
+  "midface-exercise": {
+    id: "midface-exercise",
+    name: "Midface Lift",
+    holdTime: "30 seconds",
+    reps: "2–3 sets",
+    frequency: "Daily",
+    howTo: [
+      "Wash your hands thoroughly before beginning.",
+      "Open your mouth slightly and curl your lips inward over your teeth.",
+      "Place your thumb inside your mouth and press firmly against the inner palate (roof of mouth).",
+      "Apply moderate outward pressure with your thumb for the full 30 seconds.",
+      "Breathe steadily through your nose while maintaining the pressure.",
+    ],
+    tips: [
+      "Always wash your hands — this exercise involves direct oral contact.",
+      "Use consistent, moderate pressure — the goal is gentle resistance, not force.",
+      "Keep the rest of your face relaxed; all effort is in the palate push.",
+    ],
+  },
+
+  "lowerface-exercise": {
+    id: "lowerface-exercise",
+    name: "Lower Face Lift",
+    holdTime: "2–3 seconds per rep",
+    reps: "3 sets of 12–15 reps",
+    frequency: "Daily",
+    howTo: [
+      "Sit upright with your shoulders relaxed and spine straight.",
+      "Tilt your head back very slightly to elongate the lower neck.",
+      "Push your lower jaw forward and upward as far as comfortably possible.",
+      "Hold the forward position for 2–3 seconds, feeling the contraction along the chin and lower jaw.",
+      "Slowly return your jaw to the neutral resting position.",
+    ],
+    tips: [
+      "Keep all tension in your lower jaw — your upper body and neck should remain still.",
+      "Never force the jaw past a comfortable range to avoid joint strain.",
+      "Progress gradually: add reps week by week as the muscles strengthen.",
+    ],
+  },
 };
 
 /**

@@ -9,6 +9,10 @@ export interface ScanHistoryItem {
   createdAt: string;
   modelVersion: string;
   hasSideImage: boolean;
+  /** Overall score (0–100). Included when the server enriches list items. */
+  overallScore?: number;
+  /** Front-face image URL. Included when the server enriches list items. */
+  frontImageUrl?: string;
 }
 
 export interface ScanDetail {

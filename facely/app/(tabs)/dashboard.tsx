@@ -43,7 +43,7 @@ import Svg, {
   Text as SvgText,
 } from "react-native-svg";
 import { useRouter, useFocusEffect } from "expo-router";
-import { TrendingUp } from "lucide-react-native";
+import { TrendingUp, Flame } from "lucide-react-native";
 import Text from "@/components/ui/T";
 import { COLORS, SP, RADII, TYPE, SHADOWS } from "@/lib/tokens";
 import { useInsights } from "@/store/insights";
@@ -268,13 +268,6 @@ function MetricDetailSheet({
   const placeholder = METRIC_PLACEHOLDER_EMOJI[metric.key] ?? "📊";
   const subMap    = SUBMETRIC_MAP[metric.key];
   const advGroup  = subMap && latestAdvanced ? (latestAdvanced as any)[subMap.groupKey] : null;
-
-  // --- DIAGNOSTIC LOGS (remove after debugging) ---
-  console.log("[MetricDetailSheet] opened for metric:", metric.key);
-  console.log("[MetricDetailSheet] latestAdvanced:", latestAdvanced ? JSON.stringify(latestAdvanced) : "NULL");
-  console.log("[MetricDetailSheet] subMap:", subMap ? `groupKey=${subMap.groupKey}` : "NO_SUBMAP (metric has no sub-metrics)");
-  console.log("[MetricDetailSheet] advGroup:", advGroup ? "FOUND" : "NULL", "→", advGroup ? JSON.stringify(advGroup) : "will show empty state");
-  // -------------------------------------------------
 
   const barColor  =
     metric.direction === "up"   ? LIME.primary :
@@ -1522,10 +1515,7 @@ export default function DashboardScreen() {
   useFocusEffect(
     useCallback(() => {
       if (isDirty) {
-        console.log("[dashboard] focused — isDirty=true, calling loadInsights()");
         loadInsights();
-      } else {
-        console.log("[dashboard] focused — data is fresh, skipping fetch");
       }
     }, [loadInsights, isDirty])
   );
@@ -1724,10 +1714,11 @@ export default function DashboardScreen() {
             <Text style={styles.headerWelcome}>WELCOME BACK!</Text>
             <Text style={styles.headerName}>{userName}</Text>
           </View>
-          {/* 3D streak pill — depth base peeks below the face */}
+          {/* Streak pill */}
           <View style={styles.streakPillBase}>
             <View style={styles.streakPillFace}>
-              <Text style={styles.streakText}>🔥 {currentStreak} day streak</Text>
+              <Flame size={16} color="#FF6B1A" strokeWidth={1.5} fill="#FF8C42" />
+              <Text style={styles.streakText}>{currentStreak} day streak</Text>
             </View>
           </View>
         </Animated.View>
@@ -1777,23 +1768,28 @@ const styles = StyleSheet.create({
 
   streakPillBase: {
     borderRadius: RADII.pill,
-    backgroundColor: "#7A2E00",   // burnt-orange depth — the "shadow" base
-    paddingBottom: 3,
+    backgroundColor: "#000",
+    shadowColor: "#000",
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.4,
+    elevation: 4,
   },
   streakPillFace: {
     flexDirection: "row",
     alignItems: "center",
+    gap: 6,
     paddingHorizontal: SP[4],
     paddingVertical: SP[2],
     borderRadius: RADII.pill,
-    backgroundColor: "#1A1A1A",
+    backgroundColor: "#1C1C1C",
     borderWidth: 1,
-    borderColor: "rgba(251,146,60,0.40)",
+    borderColor: "rgba(255,255,255,0.08)",
   },
   streakText: {
     fontSize: 13,
     fontFamily: "Poppins-SemiBold",
-    color: "#FB923C",
+    color: "#FFFFFF",
   },
 
   /* Glass card */
