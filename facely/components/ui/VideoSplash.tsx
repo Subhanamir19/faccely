@@ -1,7 +1,6 @@
 import React, { useEffect, useCallback, useState } from "react";
-import { StyleSheet, Text, View, Dimensions } from "react-native";
+import { Image, StyleSheet, Text, View, Dimensions } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { Video, ResizeMode } from "expo-av";
 import Svg, { Circle } from "react-native-svg";
 import Animated, {
   Easing,
@@ -48,7 +47,7 @@ const LOADING_MESSAGES = [
   "Syncing protocols",
 ];
 
-const VIDEO_SOURCE = require("@/assets/loading/loading-video.mp4");
+const LOGO_SOURCE = require("@/assets/sigmamax-real-updatred-logo.jpeg");
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
@@ -183,13 +182,10 @@ const VideoSplash: React.FC<VideoSplashProps> = ({ visible = true }) => {
           {/* Video container - centered within ring */}
           <View style={styles.videoContainer}>
             <View style={styles.videoMask}>
-              <Video
-                source={VIDEO_SOURCE}
+              <Image
+                source={LOGO_SOURCE}
                 style={styles.video}
-                resizeMode={ResizeMode.COVER}
-                isLooping
-                isMuted
-                shouldPlay={visible}
+                resizeMode="cover"
               />
             </View>
             {/* Subtle inner border for polish */}

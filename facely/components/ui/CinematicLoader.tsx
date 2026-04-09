@@ -1,7 +1,6 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { Image, StyleSheet, Text, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { Video, ResizeMode } from "expo-av";
 import Svg, { Circle, Path } from "react-native-svg";
 
 import Animated, {
@@ -36,7 +35,7 @@ const TRACK         = "rgba(255,255,255,0.10)";
 const TEXT_COLOR    = "#F5F5F5";
 const TEXT_SUB      = "rgba(255,255,255,0.45)";
 
-const VIDEO_SOURCE = require("@/assets/loading/loading-video.mp4");
+const LOGO_SOURCE = require("@/assets/sigmamax-real-updatred-logo.jpeg");
 
 const SCAN_STEPS = [
   "Scanning facial structure",
@@ -300,11 +299,10 @@ const CinematicLoader: React.FC<CinematicLoaderProps> = ({
                   <View style={styles.scanOverlay} />
                 </>
               ) : (
-                <Video
-                  source={VIDEO_SOURCE}
+                <Image
+                  source={LOGO_SOURCE}
                   style={styles.portrait}
-                  resizeMode={ResizeMode.COVER}
-                  isLooping isMuted shouldPlay={loading}
+                  resizeMode="cover"
                 />
               )}
               <View style={styles.portraitInnerBorder} />

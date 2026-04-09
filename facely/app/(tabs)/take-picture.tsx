@@ -1,5 +1,5 @@
 // C:\SS\facely\app\(tabs)\take-picture.tsx
-import React, { useRef, useState } from "react";
+import React, { useRef, useState, useCallback, useMemo } from "react";
 import {
   View,
   Text,
@@ -162,37 +162,40 @@ function SideGuides({ w, h }: { w: number; h: number }) {
 }
 
 /* ============================== FACE MESH ============================== */
-function FaceMeshOverlay({ cx, cy, rx, ry }: { cx: number; cy: number; rx: number; ry: number }) {
+const FaceMeshOverlay = React.memo(function FaceMeshOverlay({ cx, cy, rx, ry }: { cx: number; cy: number; rx: number; ry: number }) {
   const ROWS = 12;
   const COLS = 8;
 
-  type Pt = { x: number; y: number } | null;
-  const grid: Pt[][] = [];
+  const lines = useMemo(() => {
+    type Pt = { x: number; y: number } | null;
+    const grid: Pt[][] = [];
 
-  for (let r = 0; r <= ROWS; r++) {
-    grid[r] = [];
-    for (let c = 0; c <= COLS; c++) {
-      const nx = (c / COLS) * 2 - 1;
-      const ny = (r / ROWS) * 2 - 1;
-      grid[r][c] = nx * nx + ny * ny <= 0.95
-        ? { x: cx + nx * rx, y: cy + ny * ry }
-        : null;
+    for (let r = 0; r <= ROWS; r++) {
+      grid[r] = [];
+      for (let c = 0; c <= COLS; c++) {
+        const nx = (c / COLS) * 2 - 1;
+        const ny = (r / ROWS) * 2 - 1;
+        grid[r][c] = nx * nx + ny * ny <= 0.95
+          ? { x: cx + nx * rx, y: cy + ny * ry }
+          : null;
+      }
     }
-  }
 
-  const lines: { x1: number; y1: number; x2: number; y2: number }[] = [];
-  for (let r = 0; r <= ROWS; r++) {
-    for (let c = 0; c <= COLS; c++) {
-      const p = grid[r]?.[c];
-      if (!p) continue;
-      const pr = grid[r]?.[c + 1];
-      if (pr) lines.push({ x1: p.x, y1: p.y, x2: pr.x, y2: pr.y });
-      const pb = grid[r + 1]?.[c];
-      if (pb) lines.push({ x1: p.x, y1: p.y, x2: pb.x, y2: pb.y });
-      const pd = grid[r + 1]?.[c + 1];
-      if (pd) lines.push({ x1: p.x, y1: p.y, x2: pd.x, y2: pd.y });
+    const result: { x1: number; y1: number; x2: number; y2: number }[] = [];
+    for (let r = 0; r <= ROWS; r++) {
+      for (let c = 0; c <= COLS; c++) {
+        const p = grid[r]?.[c];
+        if (!p) continue;
+        const pr = grid[r]?.[c + 1];
+        if (pr) result.push({ x1: p.x, y1: p.y, x2: pr.x, y2: pr.y });
+        const pb = grid[r + 1]?.[c];
+        if (pb) result.push({ x1: p.x, y1: p.y, x2: pb.x, y2: pb.y });
+        const pd = grid[r + 1]?.[c + 1];
+        if (pd) result.push({ x1: p.x, y1: p.y, x2: pd.x, y2: pd.y });
+      }
     }
-  }
+    return result;
+  }, [cx, cy, rx, ry]);
 
   return (
     <>
@@ -201,7 +204,7 @@ function FaceMeshOverlay({ cx, cy, rx, ry }: { cx: number; cy: number; rx: numbe
       ))}
     </>
   );
-}
+});
 
 
 /* ============================== SCREEN ============================== */
@@ -216,24 +219,34 @@ export default function TakePicture() {
   const [sideUri, setSideUri] = useState<string | null>(null);
 
   const [submitting, setSubmitting] = useState(false);
+  const [capturing, setCapturing] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [chooserOpen, setChooserOpen] = useState(false);
   const cameraRef = useRef<CameraView>(null);
+  // Prevents concurrent handleChosen calls (e.g. double-tap gallery)
+  const handlingRef = useRef(false);
 
   const window = useWindowDimensions();
 
   const headingFontSize = window.width >= 420 ? 34 : window.width >= 360 ? 30 : 28;
 
-  // capture selection
-  const handleChosen = async (uri: string | null) => {
-    if (!uri) return;
+  // Normalize URI and advance to the next step.
+  // handlingRef prevents concurrent invocations (e.g. rapid gallery double-tap).
+  const handleChosen = useCallback(async (uri: string | null) => {
+    if (!uri || handlingRef.current) return;
+    handlingRef.current = true;
     try {
       const normalized = await ensureFileUriAsync(uri);
       if (!normalized) throw new Error("Bad photo path");
       if (pose === "frontal") {
         setFrontalUri(normalized);
-        setPose("side");
-        setStep("capture");
+        if (sideUri) {
+          // Retaking frontal only — side already exists, return to review
+          setStep("review");
+        } else {
+          setPose("side");
+          setStep("capture");
+        }
       } else {
         setSideUri(normalized);
         setStep("review");
@@ -241,27 +254,34 @@ export default function TakePicture() {
     } catch (e) {
       logger.error("[PIC] normalize failed", e);
       Alert.alert("File error", "Could not use the selected photo.");
+    } finally {
+      handlingRef.current = false;
     }
-  };
+  }, [pose, sideUri]);
 
-  const changePose = (nextPose: "frontal" | "side") => {
+  const changePose = useCallback((nextPose: "frontal" | "side") => {
     setPose(nextPose);
     setStep("capture");
     setChooserOpen(true);
-  };
+  }, []);
 
-  const pickFromGallery = async () => {
+  const pickFromGallery = useCallback(async () => {
     setChooserOpen(false);
     setCameraOpen(false);
+    // On Android, the camera modal needs a moment to fully dismiss before the
+    // system image picker can open correctly — without this, it can silently fail.
+    if (Platform.OS === "android") {
+      await new Promise<void>((r) => setTimeout(r, 300));
+    }
     const res = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       quality: 1,
       exif: false,
     });
-    if (!res.canceled) await handleChosen(res.assets?.[0]?.uri || null);
-  };
+    if (!res.canceled) await handleChosen(res.assets?.[0]?.uri ?? null);
+  }, [handleChosen]);
 
-  const startCamera = async () => {
+  const startCamera = useCallback(async () => {
     setChooserOpen(false);
     if (!perm?.granted) {
       const r = await requestPerm();
@@ -271,9 +291,12 @@ export default function TakePicture() {
       }
     }
     setCameraOpen(true);
-  };
+  }, [perm, requestPerm]);
 
-  const capture = async () => {
+  const capture = useCallback(async () => {
+    // Guard against double-tap on the shutter button
+    if (capturing) return;
+    setCapturing(true);
     try {
       const cam: any = cameraRef.current;
       const photo =
@@ -281,13 +304,17 @@ export default function TakePicture() {
         (await cam?.takePhoto?.({ quality: 1 })) ||
         null;
       const raw = photo?.uri ?? photo?.path ?? photo?.assets?.[0]?.uri;
-      await handleChosen(raw || null);
-    } catch (e: any) {
+      // Close camera immediately after the photo is taken so the UI
+      // snaps back without waiting for URI normalization.
+      setCameraOpen(false);
+      await handleChosen(raw ?? null);
+    } catch {
+      setCameraOpen(false);
       Alert.alert("Camera error", "Something went wrong. Please try again.");
     } finally {
-      setCameraOpen(false);
+      setCapturing(false);
     }
-  };
+  }, [capturing, handleChosen]);
 
   const canContinue = !!frontalUri && !!sideUri && !submitting;
 
@@ -340,31 +367,12 @@ export default function TakePicture() {
     setSubmitting(true);
 
     try {
-      const fResolved = await ensureFileUriAsync(frontalUri!);
-      const sResolved = await ensureFileUriAsync(sideUri!);
-      if (!fResolved || !sResolved) throw new Error("Could not read selected photos.");
-
-      const [frontInfo, sideInfo] = await Promise.all([
-        FileSystem.getInfoAsync(fResolved),
-        FileSystem.getInfoAsync(sResolved),
-      ]);
-
-      if (!frontInfo.exists || !sideInfo.exists) {
-        logger.warn("[PIC] missing file(s)", {
-          frontExists: frontInfo.exists,
-          sideExists: sideInfo.exists,
-          fResolved,
-          sResolved,
-        });
-        Alert.alert("Photos missing", "Please retake or reselect your photos.");
-        return;
-      }
-
+      // URIs are already normalized by handleChosen — no need to re-resolve.
       let fNormTemp, sNormTemp;
       try {
         [fNormTemp, sNormTemp] = await Promise.all([
-          ensureJpegCompressed(fResolved),
-          ensureJpegCompressed(sResolved),
+          ensureJpegCompressed(frontalUri!),
+          ensureJpegCompressed(sideUri!),
         ]);
       } catch {
         throw new Error(
@@ -788,18 +796,20 @@ export default function TakePicture() {
               {/* Bottom controls */}
               <View style={{ position: "absolute", bottom: 0, left: 0, right: 0, paddingBottom: 44, alignItems: "center", gap: 20 }}>
 
-                {/* Capture button */}
+                {/* Capture button — disabled while a capture is in flight */}
                 <Pressable
                   onPress={capture}
+                  disabled={capturing}
                   style={({ pressed }) => ({
                     width: 80,
                     height: 80,
                     borderRadius: 40,
                     borderWidth: 4,
-                    borderColor: "rgba(255,255,255,0.45)",
+                    borderColor: capturing ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.45)",
                     alignItems: "center",
                     justifyContent: "center",
                     backgroundColor: "#fff",
+                    opacity: capturing ? 0.5 : 1,
                     transform: [{ scale: pressed ? 0.93 : 1 }],
                   })}
                 >

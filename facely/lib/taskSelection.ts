@@ -171,7 +171,7 @@ export const EXERCISE_CATALOG: ExerciseEntry[] = [
     name: "Midface Lift",
     targets: ["cheekbones", "nose"],
     intensity: "medium",
-    weight: 5,
+    weight: 7,
     scoreFields: ["cheekbones", "nose_harmony", "facial_symmetry"],
   },
 
@@ -181,7 +181,7 @@ export const EXERCISE_CATALOG: ExerciseEntry[] = [
     name: "Lower Face Lift",
     targets: ["jawline"],
     intensity: "high",
-    weight: 5,
+    weight: 7,
     scoreFields: ["jawline", "cheekbones", "sexual_dimorphism"],
   },
 

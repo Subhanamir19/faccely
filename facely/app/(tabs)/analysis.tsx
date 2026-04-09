@@ -9,6 +9,7 @@ import {
   StyleSheet,
   Pressable,
   Platform,
+  Image,
 } from "react-native";
 import { useFocusEffect } from "expo-router";
 import { router } from "expo-router";
@@ -25,19 +26,14 @@ import Animated, {
   interpolate,
   Easing,
 } from "react-native-reanimated";
-import {
-  Sparkles, Target, AlertCircle, ChevronDown, ChevronRight,
-  MoveHorizontal, Layers, Diamond, Droplets,
-  Shield, Triangle, Compass,
-  Eye, ScanEye, Layers2, FlipHorizontal,
-  Sun,
-} from "lucide-react-native";
+import { Sparkles, Target, AlertCircle, ChevronDown, ChevronRight } from "lucide-react-native";
 
 import Text from "@/components/ui/T";
 import { COLORS, SP, RADII } from "@/lib/tokens";
 import { ms, sw, sh } from "@/lib/responsive";
 import { useScores } from "@/store/scores";
 import { useAdvancedAnalysis } from "@/store/advancedAnalysis";
+import { useTasksStore } from "@/store/tasks";
 import { useAdvancedAnalysisConsent } from "@/hooks/useAdvancedAnalysisConsent";
 import type { AdvancedAnalysis } from "@/lib/api/advancedAnalysis";
 
@@ -71,6 +67,20 @@ const C = {
   alarmBg:     "#FF6B6B",
   alarmBorder: "#D94A4A",
   alarmIcon:   "#FF6B6B",
+
+  // ── Zone slab backgrounds (Option C: Surface Stratification) ──
+  workingZoneBg:  "#0C1900",   // very subtle lime tint
+  workingZoneBrd: "#192E00",
+  workingCardBg:  "#142100",   // slightly lighter than zone
+
+  okayZoneBg:     "#111111",   // neutral dark
+  okayZoneBrd:    "#1C1C1C",
+
+  needsZoneBg:    "#160202",   // very subtle red tint
+  needsZoneBrd:   "#280808",
+  needsCardBg:    "#1F0606",   // slightly lighter than zone
+  needsCardBrd:   "#380E0E",
+  needsCardDep:   "#0D0101",
 };
 
 // ---------------------------------------------------------------------------
@@ -95,23 +105,24 @@ type SubDef = {
   key:      string;
   label:    string;
   category: CategoryChip;
-  icon:     React.ComponentType<{ size: number; color: string; strokeWidth: number }>;
+  emoji:    string;
+  icon?:    number | null;
 };
 
 const SUBMETRIC_DEFS: SubDef[] = [
-  { id: "cheekbones.width",          group: "cheekbones", key: "width",          label: "Cheekbones Width",  category: "CHEEKS", icon: MoveHorizontal  },
-  { id: "cheekbones.maxilla",        group: "cheekbones", key: "maxilla",        label: "Maxilla",           category: "CHEEKS", icon: Layers          },
-  { id: "cheekbones.bone_structure", group: "cheekbones", key: "bone_structure", label: "Bone Structure",    category: "CHEEKS", icon: Diamond         },
-  { id: "cheekbones.face_fat",       group: "cheekbones", key: "face_fat",       label: "Face Fat",          category: "CHEEKS", icon: Droplets        },
-  { id: "jawline.development",       group: "jawline",    key: "development",    label: "Jaw Development",   category: "JAW",    icon: Shield          },
-  { id: "jawline.gonial_angle",      group: "jawline",    key: "gonial_angle",   label: "Gonial Angle",      category: "JAW",    icon: Triangle        },
-  { id: "jawline.projection",        group: "jawline",    key: "projection",     label: "Chin Projection",   category: "JAW",    icon: Compass         },
-  { id: "eyes.canthal_tilt",         group: "eyes",       key: "canthal_tilt",   label: "Canthal Tilt",      category: "EYES",   icon: Eye             },
-  { id: "eyes.eye_type",             group: "eyes",       key: "eye_type",       label: "Eye Type",          category: "EYES",   icon: ScanEye         },
-  { id: "eyes.brow_volume",          group: "eyes",       key: "brow_volume",    label: "Brow Volume",       category: "EYES",   icon: Layers2         },
-  { id: "eyes.symmetry",             group: "eyes",       key: "symmetry",       label: "Eye Symmetry",      category: "EYES",   icon: FlipHorizontal  },
-  { id: "skin.color",                group: "skin",       key: "color",          label: "Skin Color",        category: "SKIN",   icon: Sun             },
-  { id: "skin.quality",              group: "skin",       key: "quality",        label: "Skin Quality",      category: "SKIN",   icon: Sparkles        },
+  { id: "cheekbones.width",          group: "cheekbones", key: "width",          label: "Cheekbones Width",  category: "CHEEKS", emoji: "😊",  icon: require("../../advanced-analysis-icons/cheekbones-width.jpeg")    },
+  { id: "cheekbones.maxilla",        group: "cheekbones", key: "maxilla",        label: "Maxilla",           category: "CHEEKS", emoji: "🦷",  icon: require("../../advanced-analysis-icons/maxilla.jpeg")             },
+  { id: "cheekbones.bone_structure", group: "cheekbones", key: "bone_structure", label: "Bone Structure",    category: "CHEEKS", emoji: "🦴",  icon: require("../../advanced-analysis-icons/bone structure.jpeg")      },
+  { id: "cheekbones.face_fat",       group: "cheekbones", key: "face_fat",       label: "Face Fat",          category: "CHEEKS", emoji: "🫦",  icon: require("../../advanced-analysis-icons/face fat.jpeg")            },
+  { id: "jawline.development",       group: "jawline",    key: "development",    label: "Jaw Development",   category: "JAW",    emoji: "💪",  icon: require("../../advanced-analysis-icons/jawline development.jpeg") },
+  { id: "jawline.gonial_angle",      group: "jawline",    key: "gonial_angle",   label: "Gonial Angle",      category: "JAW",    emoji: "📐",  icon: require("../../advanced-analysis-icons/gonial-angle.jpeg")        },
+  { id: "jawline.projection",        group: "jawline",    key: "projection",     label: "Chin Projection",   category: "JAW",    emoji: "👤",  icon: require("../../advanced-analysis-icons/chin-projection.jpeg")     },
+  { id: "eyes.canthal_tilt",         group: "eyes",       key: "canthal_tilt",   label: "Canthal Tilt",      category: "EYES",   emoji: "👁️",  icon: require("../../advanced-analysis-icons/canthal tilt.jpeg")        },
+  { id: "eyes.eye_type",             group: "eyes",       key: "eye_type",       label: "Eye Type",          category: "EYES",   emoji: "👀",  icon: require("../../advanced-analysis-icons/eye-type.jpeg")             },
+  { id: "eyes.brow_volume",          group: "eyes",       key: "brow_volume",    label: "Brow Volume",       category: "EYES",   emoji: "🤨",  icon: require("../../advanced-analysis-icons/eyebrows-density.jpeg")    },
+  { id: "eyes.symmetry",             group: "eyes",       key: "symmetry",       label: "Eye Symmetry",      category: "EYES",   emoji: "👁️",  icon: require("../../advanced-analysis-icons/eye-symmetry.jpeg")        },
+  { id: "skin.color",                group: "skin",       key: "color",          label: "Skin Color",        category: "SKIN",   emoji: "🎨",  icon: require("../../advanced-analysis-icons/ski color.jpeg")           },
+  { id: "skin.quality",              group: "skin",       key: "quality",        label: "Skin Quality",      category: "SKIN",   emoji: "✨",  icon: require("../../advanced-analysis-icons/skin quality.jpeg")        },
 ];
 
 // ---------------------------------------------------------------------------
@@ -128,7 +139,8 @@ type FlatMetric = {
   section:    SectionKey;
   status:     StatusKind;
   globalIdx:  number;
-  icon:       React.ComponentType<{ size: number; color: string; strokeWidth: number }>;
+  emoji:      string;
+  icon:       number | null | undefined;
 };
 
 function classifyScore(score: number): { section: SectionKey; status: StatusKind } {
@@ -169,7 +181,7 @@ function flattenData(data: AdvancedAnalysis): FlatMetric[] {
     const rawVerdict = (group[`${def.key}_verdict`]  as string | undefined) ?? "";
     const verdict    = resolveVerdict(def, score, rawVerdict);
     const { section, status } = classifyScore(score);
-    return { id: def.id, label: def.label, category: def.category, score, verdict, commentary, section, status, globalIdx: i, icon: def.icon };
+    return { id: def.id, label: def.label, category: def.category, score, verdict, commentary, section, status, globalIdx: i, emoji: def.emoji, icon: def.icon };
   });
 }
 
@@ -203,10 +215,23 @@ const SECTION_CONFIG: Record<SectionKey, { title: string; emptyLabel: string }> 
 };
 
 // ---------------------------------------------------------------------------
+// Zone config — Option C: Surface Stratification
+// Each section renders inside a tinted slab with its own bg + border tone
+// ---------------------------------------------------------------------------
+
+type ZoneCfg = { zoneBg: string; zoneBrd: string; dividerClr: string };
+
+const ZONE_CONFIG: Record<SectionKey, ZoneCfg> = {
+  working:    { zoneBg: C.workingZoneBg,  zoneBrd: C.workingZoneBrd, dividerClr: C.fineIcon    },
+  okay:       { zoneBg: C.okayZoneBg,     zoneBrd: C.okayZoneBrd,    dividerClr: C.neutralIcon },
+  needs_work: { zoneBg: C.needsZoneBg,    zoneBrd: C.needsZoneBrd,   dividerClr: C.alarmIcon   },
+};
+
+// ---------------------------------------------------------------------------
 // Shimmer line — loading placeholder
 // ---------------------------------------------------------------------------
 
-function ShimmerLine({ width = "100%", delay = 0 }: { width?: string | number; delay?: number }) {
+function ShimmerLine({ width = "100%" }: { width?: string | number; delay?: number }) {
   const opacity = useSharedValue(0.2);
   useEffect(() => {
     opacity.value = withRepeat(
@@ -251,32 +276,33 @@ function ShimmerCard({ index }: { index: number }) {
 // ---------------------------------------------------------------------------
 
 function MetricCard({ item }: { item: FlatMetric }) {
-  const cfg = STATUS_CONFIG[item.status];
-  const Icon = item.icon;
+  const cfg         = STATUS_CONFIG[item.status];
+  const isNeedsWork = item.section === "needs_work";
+  const isWorking   = item.section === "working";
 
-  const [expanded, setExpanded]   = useState(false);
+  // needs_work cards start expanded — commentary is always visible
+  const [expanded, setExpanded]   = useState(isNeedsWork);
   const [typedText, setTypedText] = useState("");
   const hasAnimated               = useRef(false);
   const hasCommentary             = item.commentary.length > 0;
 
-  const chevronRot     = useSharedValue(0);
-  const revealProgress = useSharedValue(0);
+  const chevronRot     = useSharedValue(isNeedsWork ? 1 : 0);
+  const revealProgress = useSharedValue(isNeedsWork ? 1 : 0);
 
   const toggle = useCallback(() => {
-    if (!hasCommentary) return;
+    if (!hasCommentary || isNeedsWork) return;
     const next = !expanded;
     setExpanded(next);
     chevronRot.value     = withSpring(next ? 1 : 0, { damping: 12, stiffness: 220 });
     revealProgress.value = withSpring(next ? 1 : 0, { damping: 16, stiffness: 200 });
-  }, [expanded, hasCommentary]);
+  }, [expanded, hasCommentary, isNeedsWork]);
 
-  // Typewriter — runs once per open; thereafter shows full text instantly
+  // Typewriter — auto-runs on mount for needs_work; once per open otherwise
   useEffect(() => {
     if (!expanded || !item.commentary) return;
     if (hasAnimated.current) { setTypedText(item.commentary); return; }
     setTypedText("");
     let i = 0;
-    // Speed scales with length: cap total duration at ~3.5s
     const msPerChar = Math.min(18, Math.max(7, Math.round(3500 / item.commentary.length)));
     const timer = setInterval(() => {
       i += 1;
@@ -296,44 +322,48 @@ function MetricCard({ item }: { item: FlatMetric }) {
     overflow:  "hidden" as const,
   }));
 
+  // Card visual style varies per section zone
+  const cardSx = isNeedsWork ? sx.cardNeedsWork : isWorking ? sx.cardWorking : sx.card;
+
   return (
     <Animated.View
       entering={FadeInDown.duration(420).delay(Math.min(item.globalIdx * 60, 480))}
-      style={sx.card}
+      style={cardSx}
     >
       {/* ── Header row ── */}
       <Pressable
         onPress={toggle}
         style={({ pressed }) => [
           sx.cardHeader,
-          pressed && { opacity: 0.82, transform: [{ scale: 0.984 }] },
+          pressed && !isNeedsWork && { opacity: 0.82, transform: [{ scale: 0.984 }] },
         ]}
         accessibilityRole="button"
-        accessibilityLabel={`${item.label}, ${item.verdict}. ${expanded ? "Collapse" : "Expand"} details`}
+        accessibilityLabel={`${item.label}, ${item.verdict}${isNeedsWork && item.commentary ? ". " + item.commentary : ""}`}
       >
         {/* Icon box */}
         <View style={[sx.iconBox, { borderBottomColor: C.iconDepth }]}>
-          <Icon size={ms(18)} color={cfg.iconColor} strokeWidth={1.9} />
+          {item.icon ? (
+            <Image source={item.icon} style={sx.metricIcon} />
+          ) : (
+            <Text style={sx.metricEmoji}>{item.emoji}</Text>
+          )}
         </View>
 
-        {/* Label + category chip */}
+        {/* Label */}
         <View style={sx.labelBlock}>
-          <Text style={sx.metricLabel} numberOfLines={1}>{item.label}</Text>
-          <View style={[sx.categoryChip, { borderColor: C.cardDepth }]}>
-            <Text style={sx.categoryChipText}>{item.category}</Text>
-          </View>
+          <Text style={sx.metricLabel} numberOfLines={2}>{item.label}</Text>
         </View>
 
-        {/* Verdict pill + chevron */}
+        {/* Verdict pill + chevron (chevron hidden for needs_work — always open) */}
         <View style={sx.rightGroup}>
           <View style={[sx.pillDepth, { backgroundColor: cfg.pillBorder }]}>
             <View style={[sx.pillFace, { backgroundColor: cfg.pillBg }]}>
-              <Text style={[sx.pillText, { color: cfg.pillText }]} numberOfLines={1}>
+              <Text style={[sx.pillText, { color: cfg.pillText }]}>
                 {item.verdict}
               </Text>
             </View>
           </View>
-          {hasCommentary && (
+          {hasCommentary && !isNeedsWork && (
             <Animated.View style={chevronStyle}>
               <ChevronDown size={ms(16)} color={C.textMuted} strokeWidth={2.2} />
             </Animated.View>
@@ -341,8 +371,22 @@ function MetricCard({ item }: { item: FlatMetric }) {
         </View>
       </Pressable>
 
-      {/* ── Expanded commentary ── */}
-      {hasCommentary && (
+      {/* ── needs_work: commentary always visible, red-tinted inset card ── */}
+      {isNeedsWork && hasCommentary && (
+        <View style={sx.expandedWrapDirect}>
+          <View style={sx.expandedCardDark}>
+            <Text style={sx.expandedTextDark}>
+              {typedText}
+              {typedText.length < item.commentary.length && (
+                <Text style={[sx.cursor, { color: C.alarmIcon }]}>|</Text>
+              )}
+            </Text>
+          </View>
+        </View>
+      )}
+
+      {/* ── working/okay: accordion expand ── */}
+      {!isNeedsWork && hasCommentary && (
         <Animated.View style={expandStyle}>
           <View style={sx.expandedWrap}>
             <View style={sx.expandedCard}>
@@ -383,20 +427,27 @@ function SectionBlock({
 
   const cfg    = STATUS_CONFIG[metrics[0].status];
   const config = SECTION_CONFIG[sectionKey];
+  const zone   = ZONE_CONFIG[sectionKey];
 
   return (
-    <View style={sx.section}>
-      {/* Section header */}
-      <Animated.View
-        entering={FadeInDown.duration(380).delay(sectionKey === "working" ? 60 : sectionKey === "okay" ? 160 : 260)}
-        style={sx.sectionHeader}
-      >
+    // Zone slab — tinted background unique to each section
+    <Animated.View
+      entering={FadeInDown.duration(380).delay(sectionKey === "working" ? 60 : sectionKey === "okay" ? 160 : 260)}
+      style={[sx.sectionZone, { backgroundColor: zone.zoneBg, borderColor: zone.zoneBrd }]}
+    >
+      {/* Zone header: title left, count right (large accent number) */}
+      <View style={sx.zoneHeader}>
         <View style={sx.sectionTitleRow}>
           <View style={[sx.sectionDot, { backgroundColor: cfg.dotColor }]} />
           <Text style={sx.sectionTitle}>{config.title}</Text>
         </View>
-        <Text style={sx.sectionCount}>{metrics.length} {metrics.length === 1 ? "item" : "items"}</Text>
-      </Animated.View>
+        <Text style={[sx.sectionCountLarge, { color: cfg.dotColor }]}>
+          {metrics.length}
+        </Text>
+      </View>
+
+      {/* Thin accent divider — colored by section status */}
+      <View style={[sx.zoneDivider, { backgroundColor: zone.dividerClr + "30" }]} />
 
       {/* Cards */}
       <View style={sx.cardList}>
@@ -404,7 +455,7 @@ function SectionBlock({
           <MetricCard key={item.id} item={item} />
         ))}
       </View>
-    </View>
+    </Animated.View>
   );
 }
 
@@ -413,16 +464,11 @@ function SectionBlock({
 // ---------------------------------------------------------------------------
 
 function AnalysisContent({ data }: { data: AdvancedAnalysis }) {
+  const currentStreak = useTasksStore((s) => s.currentStreak);
   const metrics   = useMemo(() => flattenData(data), [data]);
   const working   = useMemo(() => metrics.filter((m) => m.section === "working"),    [metrics]);
   const okay      = useMemo(() => metrics.filter((m) => m.section === "okay"),       [metrics]);
   const needsWork = useMemo(() => metrics.filter((m) => m.section === "needs_work"), [metrics]);
-
-  // Average of all sub-metric scores — shown in the score pill
-  const avgScore = useMemo(
-    () => Math.round(metrics.reduce((s, m) => s + m.score, 0) / (metrics.length || 1)),
-    [metrics]
-  );
 
   const workingFraction = metrics.length > 0 ? working.length / metrics.length : 0;
 
@@ -446,7 +492,7 @@ function AnalysisContent({ data }: { data: AdvancedAnalysis }) {
           <View style={sx.refPillDepth}>
             <View style={sx.refPill}>
               <Text style={sx.refPillFire}>🔥</Text>
-              <Text style={sx.refPillScore}>{avgScore}</Text>
+              <Text style={sx.refPillScore}>{currentStreak}</Text>
             </View>
           </View>
           <View style={sx.refLabelRow}>
@@ -656,8 +702,8 @@ export default function AnalysisScreen() {
 // ---------------------------------------------------------------------------
 
 const CARD_RADIUS   = ms(18);
-const ICON_BOX_SIZE = ms(44);
-const ICON_RADIUS   = ms(12);
+const ICON_BOX_SIZE = ms(36);
+const ICON_RADIUS   = ms(10);
 const PILL_RADIUS   = ms(999);
 
 const sx = StyleSheet.create({
@@ -709,7 +755,7 @@ const sx = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: sw(16),
     paddingTop: sh(2),
-    gap: sh(2),
+    gap: sh(12),
   },
 
   // ── Reference-style header (inside AnalysisContent) ──
@@ -791,7 +837,7 @@ const sx = StyleSheet.create({
   },
   barTrack: {
     flex: 1,
-    height: sh(5),
+    height: sh(8),
     backgroundColor: "#1A1A1A",
     borderRadius: 999,
     overflow: "hidden",
@@ -807,14 +853,26 @@ const sx = StyleSheet.create({
     color: C.textMuted,
   },
 
-  // ── Section ──
-  section: { gap: sh(10), marginBottom: sh(28) },
-  sectionHeader: {
+  // ── Section zone slab (Option C: Surface Stratification) ──
+  sectionZone: {
+    borderRadius: ms(20),
+    borderWidth: 1,
+    paddingTop: sh(14),
+    paddingBottom: sh(16),
+    paddingHorizontal: sw(12),
+    overflow: "hidden",
+  },
+  // Zone header: title left, large accent count right
+  zoneHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: sw(4),
-    marginBottom: sh(4),
+    marginBottom: sh(10),
+  },
+  // Thin horizontal accent line below zone header
+  zoneDivider: {
+    height: 1,
+    marginBottom: sh(12),
   },
   sectionTitleRow: { flexDirection: "row", alignItems: "center", gap: sw(7) },
   sectionDot: {
@@ -828,10 +886,11 @@ const sx = StyleSheet.create({
     color: C.textPrimary,
     letterSpacing: -0.1,
   },
-  sectionCount: {
-    fontSize: ms(12.5, 0.3),
+  // Large accent number replacing the small "5 items" label
+  sectionCountLarge: {
+    fontSize: ms(26, 0.3),
     fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
-    color: C.textMuted,
+    letterSpacing: -1,
   },
   cardList: { gap: sh(8) },
 
@@ -844,6 +903,30 @@ const sx = StyleSheet.create({
     paddingHorizontal: sw(12),
     paddingTop: sh(9),
     paddingBottom: sh(7),
+    overflow: "hidden",
+  },
+  // What's Working card — lime-tinted, floats above zone bg
+  cardWorking: {
+    backgroundColor: C.workingCardBg,
+    borderRadius: CARD_RADIUS,
+    borderBottomWidth: 6,
+    borderBottomColor: C.workingZoneBg,
+    paddingHorizontal: sw(12),
+    paddingTop: sh(9),
+    paddingBottom: sh(7),
+    overflow: "hidden",
+  },
+  // Needs Work card — heavier border, more vertical padding, red-tinted
+  cardNeedsWork: {
+    backgroundColor: C.needsCardBg,
+    borderRadius: CARD_RADIUS,
+    borderWidth: 1,
+    borderColor: C.needsCardBrd,
+    borderBottomWidth: 4,
+    borderBottomColor: C.needsCardDep,
+    paddingHorizontal: sw(12),
+    paddingTop: sh(12),
+    paddingBottom: sh(10),
     overflow: "hidden",
   },
   cardHeader: {
@@ -869,11 +952,21 @@ const sx = StyleSheet.create({
     flex: 1,
     gap: sh(3),
   },
+  metricIcon: {
+    width: ICON_BOX_SIZE,
+    height: ICON_BOX_SIZE,
+    borderRadius: ICON_RADIUS,
+  },
+  metricEmoji: {
+    fontSize: ms(18),
+    lineHeight: ms(20),
+    textAlign: "center" as const,
+  },
   metricLabel: {
-    fontSize: ms(14.5, 0.3),
+    fontSize: ms(13, 0.3),
     fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
     color: C.textPrimary,
-    lineHeight: ms(18),
+    lineHeight: ms(16),
   },
   categoryChip: {
     alignSelf: "flex-start",
@@ -903,16 +996,18 @@ const sx = StyleSheet.create({
   },
   pillFace: {
     borderRadius: PILL_RADIUS,
-    paddingHorizontal: sw(11),
-    paddingVertical: sh(4),
-    minWidth: sw(68),
+    paddingHorizontal: sw(8),
+    paddingVertical: sh(3),
+    minWidth: sw(56),
+    maxWidth: sw(130),
     alignItems: "center",
     justifyContent: "center",
   },
   pillText: {
-    fontSize: ms(12, 0.3),
+    fontSize: ms(10.5, 0.3),
     fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
-    lineHeight: ms(15),
+    lineHeight: ms(13),
+    textAlign: "center" as const,
   },
 
   // Expanded commentary
@@ -932,6 +1027,25 @@ const sx = StyleSheet.create({
     fontSize: ms(13, 0.3),
     fontFamily: Platform.select({ ios: "Poppins-Regular", android: "Poppins-Regular", default: "Poppins-Regular" }),
     color: C.textBody,
+    lineHeight: ms(20),
+  },
+  // needs_work commentary — always visible, red-accented inset
+  expandedWrapDirect: {
+    paddingTop: sh(10),
+    paddingBottom: sh(2),
+  },
+  expandedCardDark: {
+    backgroundColor: "#150303",
+    borderRadius: ms(10),
+    borderLeftWidth: 2,
+    borderLeftColor: C.alarmIcon,
+    paddingHorizontal: sw(12),
+    paddingVertical: sh(9),
+  },
+  expandedTextDark: {
+    fontSize: ms(13, 0.3),
+    fontFamily: Platform.select({ ios: "Poppins-Regular", android: "Poppins-Regular", default: "Poppins-Regular" }),
+    color: "#C49090",
     lineHeight: ms(20),
   },
   cursor: {
