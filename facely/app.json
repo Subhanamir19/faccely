@@ -2,18 +2,18 @@
   "expo": {
     "name": "Sigma Max",
     "slug": "sigmamax-app",
-    "version": "1.4.0",
+    "version": "1.5.0",
     "orientation": "portrait",
     "icon": "./assets/sigmamax-real-updatred-logo.jpeg",
     "userInterfaceStyle": "light",
     "splash": {
-      "image": "./assets/sigmamax-real-updatred-logo.jpeg",
+      "image": "./assets/sigmamax-logo-for-splash screen.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#000000"
     },
     "ios": {
       "supportsTablet": false,
-      "buildNumber": "11",
+      "buildNumber": "12",
       "bundleIdentifier": "com.sigmamax.app",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,

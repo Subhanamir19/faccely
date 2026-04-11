@@ -29,7 +29,8 @@ import { ensureJpegCompressed } from "../../lib/api/media";
 import { logger } from '@/lib/logger';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAuthStore } from "@/store/auth";
-import { getLastScanTime, canScanNow } from "@/lib/supabase/scanLimit";
+import { getWeekScanData, checkScanLimit, WEEKLY_SCAN_LIMIT } from "@/lib/supabase/scanLimit";
+import { getNextMonday } from "@/lib/time/nextMidnight";
 import { COLORS } from "@/lib/tokens";
 import LimeButton from "@/components/ui/LimeButton";
 
@@ -326,21 +327,31 @@ export default function TakePicture() {
       const uid = useAuthStore.getState().uid;
       if (uid) {
         logger.log("[scanLimit] checking limit for user:", uid);
-        const lastScan = await getLastScanTime(uid);
-        const { allowed } = canScanNow(lastScan);
+        const { lastScanTime, weekCount } = await getWeekScanData(uid);
+        const { allowed, reason } = checkScanLimit(lastScanTime, weekCount);
         logger.log(
           "[scanLimit] last scan:",
-          lastScan?.toISOString() ?? "none",
-          "| hours ago:",
-          lastScan ? ((Date.now() - lastScan.getTime()) / 3_600_000).toFixed(1) : "n/a"
+          lastScanTime?.toISOString() ?? "none",
+          "| scans this week:", weekCount,
+          "| limit:", WEEKLY_SCAN_LIMIT
         );
-        logger.log("[scanLimit] allowed:", allowed);
+        logger.log("[scanLimit] allowed:", allowed, "| reason:", reason ?? "n/a");
         if (!allowed) {
-          Alert.alert(
-            "Daily Limit Reached",
-            "You've used your daily scan. Come back tomorrow.",
-            [{ text: "OK" }]
-          );
+          if (reason === "weekly") {
+            const next = getNextMonday();
+            const dateStr = next.toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" });
+            Alert.alert(
+              "Weekly Limit Reached",
+              `You've used both scans for this week. Your next scan is available ${dateStr}.`,
+              [{ text: "OK" }]
+            );
+          } else {
+            Alert.alert(
+              "Daily Limit Reached",
+              "You've already scanned today. Come back tomorrow.",
+              [{ text: "OK" }]
+            );
+          }
           return;
         }
       }
@@ -759,15 +770,15 @@ export default function TakePicture() {
               <Svg pointerEvents="none" style={StyleSheet.absoluteFill} width={window.width} height={window.height}>
                 <FaceMeshOverlay
                   cx={window.width / 2}
-                  cy={window.height * 0.36}
-                  rx={window.width * 0.33}
-                  ry={window.height * 0.26}
+                  cy={window.height * 0.38}
+                  rx={window.width * 0.31}
+                  ry={window.height * 0.24}
                 />
                 <Ellipse
                   cx={window.width / 2}
-                  cy={window.height * 0.36}
-                  rx={window.width * 0.33}
-                  ry={window.height * 0.26}
+                  cy={window.height * 0.38}
+                  rx={window.width * 0.31}
+                  ry={window.height * 0.24}
                   stroke={ACCENT}
                   strokeWidth={3}
                   fill="none"
@@ -779,7 +790,7 @@ export default function TakePicture() {
                 pointerEvents="none"
                 style={{
                   position: "absolute",
-                  top: 56,
+                  top: 72,
                   left: 0,
                   right: 0,
                   alignItems: "center",
@@ -794,7 +805,7 @@ export default function TakePicture() {
               </View>
 
               {/* Bottom controls */}
-              <View style={{ position: "absolute", bottom: 0, left: 0, right: 0, paddingBottom: 44, alignItems: "center", gap: 20 }}>
+              <View style={{ position: "absolute", bottom: 0, left: 0, right: 0, paddingBottom: 88, paddingTop: 24, alignItems: "center", gap: 24 }}>
 
                 {/* Capture button — disabled while a capture is in flight */}
                 <Pressable

@@ -27,6 +27,10 @@ import HalfwayHypeModal from "@/components/ui/HalfwayHypeModal";
 import DidYouKnowModal from "@/components/ui/DidYouKnowModal";
 import { resetAllLifeModalFlags, DID_YOU_KNOW_FACTS } from "@/lib/lifeModals";
 import { useTasksStore } from "@/store/tasks";
+import { BlueprintModal } from "@/components/analysis/BlueprintModal";
+import { useAdvancedAnalysis } from "@/store/advancedAnalysis";
+import { useScores } from "@/store/scores";
+import type { AdvancedAnalysis } from "@/lib/api/advancedAnalysis";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -103,6 +107,17 @@ export default function DevScreen() {
   const history       = useTasksStore((s) => s.history);
   const dayNumber     = history.length + 1; // total days since user started
   const [scanBypass, setScanBypass] = useState<boolean | "…">("…");
+
+  // Blueprint modal preview
+  const [blueprintVisible, setBlueprintVisible] = useState(false);
+  const { data: advancedData } = useAdvancedAnalysis();
+  const { imageUri } = useScores();
+  const MOCK_ADVANCED: AdvancedAnalysis = {
+    cheekbones: { width: "", width_score: 48, width_verdict: "", maxilla: "", maxilla_score: 38, maxilla_verdict: "", bone_structure: "", bone_structure_score: 52, bone_structure_verdict: "", face_fat: "", face_fat_score: 41, face_fat_verdict: "" },
+    jawline:    { development: "", development_score: 44, development_verdict: "", gonial_angle: "", gonial_angle_score: 62, gonial_angle_verdict: "", projection: "", projection_score: 35, projection_verdict: "" },
+    eyes:       { canthal_tilt: "", canthal_tilt_score: 57, canthal_tilt_verdict: "", eye_type: "", eye_type_score: 66, eye_type_verdict: "", brow_volume: "", brow_volume_score: 71, brow_volume_verdict: "", symmetry: "", symmetry_score: 49, symmetry_verdict: "" },
+    skin:       { color: "", color_score: 73, color_verdict: "", quality: "", quality_score: 60, quality_verdict: "" },
+  };
 
   // Life modal previews
   type LifeModal = "comeback" | "streak" | "halfway" | "didyouknow";
@@ -195,6 +210,19 @@ export default function DevScreen() {
             label="▶  Preview UI"
             accent
             onPress={() => router.push("/(tabs)/analysis")}
+          />
+        </GlassCard>
+
+        {/* ── Blueprint Modal Preview ───────────────────────────────── */}
+        <GlassCard style={styles.card}>
+          <SectionHeader
+            title="Blueprint Modal"
+            subtitle={advancedData ? "Using real scan data" : "Using mock data (no scan yet)"}
+          />
+          <DevButton
+            label="▶  Preview Modal"
+            accent
+            onPress={() => setBlueprintVisible(true)}
           />
         </GlassCard>
 
@@ -313,6 +341,45 @@ export default function DevScreen() {
           />
         </GlassCard>
 
+        {/* ── Exercise Timer Preview ───────────────────────────────── */}
+        <GlassCard style={styles.card}>
+          <SectionHeader
+            title="Exercise Timer Preview"
+            subtitle="Preview every exercise exactly as it appears in the session player"
+          />
+          <View style={styles.screenGrid}>
+            {[
+              { label: "Neck & Jawline Extension", id: "jawline-1" },
+              { label: "Chin Tuck",                id: "chin-tucks" },
+              { label: "Fish Face",                id: "fish-face" },
+              { label: "Gua Sha Sculpting",        id: "gua-sha" },
+              { label: "Eyelid Isolation Squint",  id: "hunter-eyes-1" },
+              { label: "Hunter Eyes Squinch",      id: "hunter-eyes-2" },
+              { label: "Jaw Resistance Press",     id: "jaw-resistance" },
+              { label: "Lymphatic Drainage",       id: "lymphatic-drainage" },
+              { label: "Neck Lift",                id: "neck-lift-1" },
+              { label: "Skyward Neck Stretch",     id: "neck-lift-2" },
+              { label: "Nasal Bridge Sculpting",   id: "nose-massage" },
+              { label: "Nose Contouring Massage",  id: "slim-nose-massage" },
+              { label: "Neck Curls",               id: "neck-curls" },
+              { label: "Towel Chewing",            id: "towel-chewing" },
+              { label: "Cheek Puffs",              id: "alternating-cheek-puffs" },
+              { label: "Midface Lift",             id: "midface-exercise" },
+              { label: "Lower Face Lift",          id: "lowerface-exercise" },
+            ].map(({ label, id }) => (
+              <TouchableOpacity
+                key={id}
+                style={styles.screenChip}
+                onPress={() => router.push(`/program/session?previewExerciseIds=${id}` as any)}
+                activeOpacity={0.7}
+              >
+                <T style={styles.screenChipText}>{label}</T>
+                <T style={styles.screenChipArrow}>→</T>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </GlassCard>
+
         {/* ── Daily Flow Screen Previews ────────────────────────────── */}
         <GlassCard style={styles.card}>
           <SectionHeader
@@ -418,6 +485,14 @@ export default function DevScreen() {
           </View>
         </GlassCard>
       </ScrollView>
+
+      {/* Blueprint modal preview */}
+      <BlueprintModal
+        data={advancedData ?? MOCK_ADVANCED}
+        imageUri={imageUri ?? null}
+        visible={blueprintVisible}
+        onDismiss={() => setBlueprintVisible(false)}
+      />
 
       {/* Day Complete preview modal */}
       <DayCompleteModal

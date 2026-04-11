@@ -7,11 +7,11 @@ import {
   Modal,
   Pressable,
   SafeAreaView,
-  ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+import { Image as ExpoImage } from "expo-image";
 import { router, useFocusEffect } from "expo-router";
 import { getLocalDateString } from "@/lib/time/nextMidnight";
 import Animated, {
@@ -20,6 +20,9 @@ import Animated, {
   FadeOut,
   useSharedValue,
   useAnimatedStyle,
+  useAnimatedScrollHandler,
+  interpolate,
+  Extrapolation,
   withSpring,
   withTiming,
   withSequence,
@@ -31,7 +34,6 @@ import { Flame, Check } from "lucide-react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { COLORS, RADII, SP } from "@/lib/tokens";
 import { sw, sh, ms } from "@/lib/responsive";
-import DayCompleteModal from "@/components/ui/DayCompleteModal";
 import MoodCheckModal from "@/components/ui/MoodCheckModal";
 import LimeButton from "@/components/ui/LimeButton";
 import ComebackModal from "@/components/ui/ComebackModal";
@@ -39,6 +41,7 @@ import StreakCelebrationModal from "@/components/ui/StreakCelebrationModal";
 import HalfwayHypeModal from "@/components/ui/HalfwayHypeModal";
 import DidYouKnowModal from "@/components/ui/DidYouKnowModal";
 import {
+  canShowComeback,
   canShowDidYouKnow,
   canShowHalfway,
   getShownMilestones,
@@ -51,6 +54,49 @@ import { useProfile } from "@/store/profile";
 import { getExerciseIcon } from "@/lib/exerciseIcons";
 import { useExerciseSettings } from "@/store/exerciseSettings";
 import { getJSON, setJSON } from "@/lib/storage";
+
+// ---------------------------------------------------------------------------
+// Face header images — maps dominant target area to analysis image
+// ---------------------------------------------------------------------------
+
+const CARD_FACE_IMAGES: Record<string, any> = {
+  cheekbones: require("../../assets/analysis-image-new/cheekbones analysis.jpeg"),
+  jawline:    require("../../assets/analysis-image-new/jawline analysis.jpeg"),
+  eyes:       require("../../assets/analysis-image-new/eye area naalysis.jpeg"),
+  skin:       require("../../assets/analysis-image-new/skin analysis.jpeg"),
+};
+
+const CARD_FACE_LABELS: Record<string, string> = {
+  jawline:    "Lower Face",
+  cheekbones: "Midface",
+  eyes:       "Eye Area",
+  nose:       "Nose",
+  skin:       "Skin",
+  all:        "Full Face",
+};
+
+// Vertical crop — focus on the relevant facial zone
+const CARD_FACE_FOCUS: Record<string, string> = {
+  cheekbones: "center 42%",
+  jawline:    "center 62%",
+  eyes:       "center 26%",
+  skin:       "center 36%",
+};
+
+function resolveCardTarget(tasks: { targets: string[] }[]): string {
+  const counts: Record<string, number> = {};
+  const priority = ["jawline", "cheekbones", "eyes", "skin"];
+  for (const task of tasks) {
+    for (const t of task.targets) {
+      counts[t] = (counts[t] ?? 0) + 1;
+    }
+  }
+  // Pick the highest-priority target that appears at least once
+  for (const p of priority) {
+    if (counts[p]) return p;
+  }
+  return "cheekbones";
+}
 
 // Module-level: only show intro splash once per day
 let lastIntroDate: string | null = null;
@@ -78,8 +124,6 @@ async function markDailyFlowShown(todayStr: string): Promise<void> {
 let _comebackChecked = false;
 let _didYouKnowChecked = false;
 
-// NOTE: DayCompleteModal dedup is now handled via tasks store's
-// completionModalShownDate (persisted), so it survives app force-kills.
 
 // ---------------------------------------------------------------------------
 // Loading screen — helpers
@@ -413,12 +457,12 @@ const AREA_LABELS: Record<string, string> = {
 };
 
 const AREA_BENEFIT: Record<string, string> = {
-  jawline:    "sharpen lower face definition and jawline structure",
-  cheekbones: "lift and sculpt mid-face cheekbone prominence",
-  eyes:       "improve eye area symmetry and orbital muscle tone",
-  nose:       "refine nasolabial harmony and nose bridge contour",
-  skin:       "boost skin circulation and surface quality",
-  all:        "activate all major facial regions for overall balance",
+  jawline:    "jawline definition",
+  cheekbones: "midface sculpting",
+  eyes:       "eye symmetry & lift",
+  nose:       "nose contour",
+  skin:       "skin circulation",
+  all:        "full face balance",
 };
 
 function parseFocusAreas(focusSummary: string): string[] {
@@ -441,15 +485,9 @@ function aggregateIntensity(tasks: DailyTask[]): "high" | "medium" | "low" {
 }
 
 const INTENSITY_VERB: Record<string, string> = {
-  high:   "high-intensity resistance training",
-  medium: "balanced sculpting",
-  low:    "gentle activation",
-};
-
-const OVERLOAD_SUFFIX: Record<string, string> = {
-  "Base":   "",
-  "Week 2": ", progressively overloaded from last week",
-  "Week 4": ", at peak advanced intensity",
+  high:   "Intense",
+  medium: "Sculpting",
+  low:    "Gentle",
 };
 
 function buildRoutineDescription(
@@ -459,22 +497,20 @@ function buildRoutineDescription(
 ): string {
   const areas = parseFocusAreas(focusSummary);
   const intensity = aggregateIntensity(tasks);
-  const verb = INTENSITY_VERB[intensity] ?? "balanced sculpting";
-  const overloadNote = OVERLOAD_SUFFIX[overloadLabel] ?? "";
+  const verb = INTENSITY_VERB[intensity] ?? "Sculpting";
 
   if (areas.length === 0) {
-    return `A full-face ${verb} session${overloadNote}.`;
+    return `${verb} session — full face activation.`;
   }
 
   if (areas.length === 1) {
-    const benefit = AREA_BENEFIT[areas[0]] ?? `target your ${AREA_LABELS[areas[0]] ?? areas[0]}`;
-    return `A ${verb} session designed to ${benefit}${overloadNote}.`;
+    const benefit = AREA_BENEFIT[areas[0]] ?? (AREA_LABELS[areas[0]] ?? areas[0]);
+    return `${verb} session — ${benefit}.`;
   }
 
-  // Two areas
-  const b0 = AREA_BENEFIT[areas[0]] ?? `target your ${AREA_LABELS[areas[0]] ?? areas[0]}`;
-  const b1 = AREA_BENEFIT[areas[1]] ?? `improve your ${AREA_LABELS[areas[1]] ?? areas[1]}`;
-  return `A ${verb} session to ${b0}, and ${b1}${overloadNote}.`;
+  const b0 = AREA_BENEFIT[areas[0]] ?? (AREA_LABELS[areas[0]] ?? areas[0]);
+  const b1 = AREA_BENEFIT[areas[1]] ?? (AREA_LABELS[areas[1]] ?? areas[1]);
+  return `${verb} session — ${b0} & ${b1}.`;
 }
 
 function WorkoutCard({
@@ -518,44 +554,82 @@ function WorkoutCard({
     [tasks, focusSummary, overloadLabel],
   );
 
+  const cardTarget     = resolveCardTarget(tasks);
+  const cardFaceImage  = CARD_FACE_IMAGES[cardTarget] ?? CARD_FACE_IMAGES.cheekbones;
+  const cardFaceFocus  = CARD_FACE_FOCUS[cardTarget] ?? "center";
+  const cardFaceLabel  = CARD_FACE_LABELS[cardTarget] ?? "Full Face";
+
   return (
     <View style={styles.workoutCard}>
+      <View style={styles.cardContent}>
 
-<View style={styles.cardContent}>
-        <View style={styles.cardTopRow}>
-          {/* Centred label — absolutely positioned so the streak badge doesn't shift it */}
-          <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
-            <View style={styles.eyebrowRowCentered}>
-              <View style={styles.eyebrowDot} />
-              <Text style={styles.eyebrowLabel}>
-                {allDone ? "COMPLETED" : "TODAY'S WORKOUT"}
+        {/* ── Two-column layout: text left · face image right ── */}
+        <View style={styles.cardBodyRow}>
+
+          {/* LEFT: Streak badge + label + description + progress */}
+          <View style={styles.cardTextCol}>
+
+            {/* Eyebrow row: streak badge + label inline */}
+            <View style={styles.cardTopRow}>
+              <StreakBadge />
+              <View style={styles.eyebrowRow}>
+                <View style={styles.eyebrowDot} />
+                <Text style={styles.eyebrowLabel} numberOfLines={1}>
+                  {allDone ? "COMPLETED" : "TODAY'S WORKOUT"}
+                </Text>
+              </View>
+            </View>
+
+            {/* Description */}
+            <Animated.View
+              key={allDone ? "done" : focusSummary}
+              entering={FadeInDown.duration(380).delay(60).springify().damping(22)}
+            >
+              <Text
+                style={allDone ? styles.cardDescriptionDone : styles.cardDescription}
+                numberOfLines={2}
+              >
+                {allDone ? "All done — great work today." : description}
               </Text>
+            </Animated.View>
+
+            <View style={styles.targetDivider} />
+
+            {/* Progress bar */}
+            <View style={styles.progressRow}>
+              <View style={styles.progressTrack}>
+                <Animated.View style={[styles.progressFill, progressBarStyle]} />
+              </View>
+              <Animated.Text style={[styles.progressCount, numStyle]}>
+                {completedCount} / {totalCount}
+              </Animated.Text>
+            </View>
+
+          </View>
+
+          {/* RIGHT: Face analysis image */}
+          <View style={styles.cardFaceWrap}>
+            <ExpoImage
+              key={`card-face-${cardTarget}`}
+              source={cardFaceImage}
+              style={StyleSheet.absoluteFillObject}
+              contentFit="cover"
+              contentPosition={cardFaceFocus}
+              transition={400}
+            />
+            {/* Bottom gradient + label */}
+            <LinearGradient
+              colors={["transparent", "rgba(0,0,0,0.72)"]}
+              style={styles.cardFaceGrad}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 0, y: 1 }}
+            />
+            <View style={styles.cardFaceLabelWrap}>
+              <View style={styles.cardFaceLabelDot} />
+              <Text style={styles.cardFaceLabel}>{cardFaceLabel}</Text>
             </View>
           </View>
-          <StreakBadge />
-        </View>
 
-        <Animated.View
-          key={allDone ? "done" : focusSummary}
-          entering={FadeInDown.duration(380).delay(60).springify().damping(22)}
-        >
-          <Text style={allDone ? styles.cardDescriptionDone : styles.cardDescription}>
-            {allDone
-              ? "All done — great work today."
-              : description}
-          </Text>
-        </Animated.View>
-
-        <View style={styles.targetDivider} />
-
-        {/* ── Animated progress bar ── */}
-        <View style={styles.progressRow}>
-          <View style={styles.progressTrack}>
-            <Animated.View style={[styles.progressFill, progressBarStyle]} />
-          </View>
-          <Animated.Text style={[styles.progressCount, numStyle]}>
-            {completedCount} / {totalCount}
-          </Animated.Text>
         </View>
       </View>
     </View>
@@ -641,6 +715,20 @@ function ExerciseRow({
   const isSkipped   = task.status === "skipped";
   const isPending   = !isCompleted && !isSkipped;
 
+  // Scale bounce when task transitions to completed
+  const rowScale = useSharedValue(1);
+  const prevCompletedRef = useRef(false);
+  useEffect(() => {
+    if (isCompleted && !prevCompletedRef.current) {
+      rowScale.value = withSequence(
+        withSpring(1.04, { damping: 5, stiffness: 600 }),
+        withSpring(1.0,  { damping: 14, stiffness: 200 }),
+      );
+    }
+    prevCompletedRef.current = isCompleted;
+  }, [isCompleted]);
+  const rowAnimStyle = useAnimatedStyle(() => ({ transform: [{ scale: rowScale.value }] }));
+
   const confirmCopy = isCompleted
     ? {
         emoji: "↩️",
@@ -678,6 +766,7 @@ function ExerciseRow({
 
   return (
     <>
+      <Animated.View style={rowAnimStyle}>
       <View style={[
         styles.taskCardBase,
         isCompleted && styles.taskCardBaseDone,
@@ -763,6 +852,7 @@ function ExerciseRow({
           </View>
         </Pressable>
       </View>
+      </Animated.View>
 
       {/* Confirmation bottom sheet */}
       <Modal
@@ -847,7 +937,21 @@ function ProtocolRow({
 }) {
   const isDone = protocol.status === "done";
 
+  const rowScale = useSharedValue(1);
+  const prevDoneRef = useRef(false);
+  useEffect(() => {
+    if (isDone && !prevDoneRef.current) {
+      rowScale.value = withSequence(
+        withSpring(1.04, { damping: 5, stiffness: 600 }),
+        withSpring(1.0,  { damping: 14, stiffness: 200 }),
+      );
+    }
+    prevDoneRef.current = isDone;
+  }, [isDone]);
+  const rowAnimStyle = useAnimatedStyle(() => ({ transform: [{ scale: rowScale.value }] }));
+
   return (
+    <Animated.View style={rowAnimStyle}>
     <View style={[styles.protocolCardBase, isDone && styles.protocolCardBaseDone]}>
       <Pressable
         onPress={isDone ? undefined : onPress}
@@ -878,6 +982,7 @@ function ProtocolRow({
         </View>
       </Pressable>
     </View>
+    </Animated.View>
   );
 }
 
@@ -1146,6 +1251,48 @@ const overlayStyles = StyleSheet.create({
 });
 
 // ---------------------------------------------------------------------------
+// Start Session button — self-contained with breathing glow
+// ---------------------------------------------------------------------------
+
+function StartSessionBtn({ onPress }: { onPress: () => void }) {
+  const glowOpacity = useSharedValue(0.35);
+
+  useEffect(() => {
+    glowOpacity.value = withRepeat(
+      withTiming(0.75, { duration: 1600, easing: Easing.inOut(Easing.ease) }),
+      -1,
+      true,
+    );
+  }, []);
+
+  const depthAnimStyle = useAnimatedStyle(() => ({
+    shadowOpacity: glowOpacity.value,
+  }));
+
+  return (
+    <Animated.View style={[styles.startSessionDepth, depthAnimStyle]}>
+      <Pressable
+        onPress={onPress}
+        style={({ pressed }) => [
+          styles.startSessionBtn,
+          { transform: [{ translateY: pressed ? 4 : 0 }] },
+        ]}
+      >
+        <LinearGradient
+          colors={["#CCFF6B", "#B4F34D"]}
+          locations={[0, 1]}
+          start={{ x: 0.5, y: 0 }}
+          end={{ x: 0.5, y: 1 }}
+          style={styles.startSessionGradient}
+        >
+          <Text style={styles.startSessionText}>▶  Start Session</Text>
+        </LinearGradient>
+      </Pressable>
+    </Animated.View>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main screen
 // ---------------------------------------------------------------------------
 
@@ -1163,7 +1310,6 @@ export default function TasksScreen() {
   } = useTasksStore();
   const { displayName } = useProfile();
 
-  const [showDayComplete, setShowDayComplete]     = useState(false);
   const [showMoodCheck, setShowMoodCheck]         = useState(false);
   const [markDoneTask, setMarkDoneTask]           = useState<DailyTask | null>(null);
   const [confirmProtocol, setConfirmProtocol]     = useState<ProtocolTask | null>(null);
@@ -1192,7 +1338,7 @@ export default function TasksScreen() {
   }, []);
 
   // On screen focus: show AllDoneOverlay if tasks are all done, and also detect
-  // when exercises were completed in the session screen (show DayCompleteModal).
+  // when exercises were completed in the session screen (show MoodCheckModal).
   useFocusEffect(
     useCallback(() => {
       const state = useTasksStore.getState();
@@ -1202,7 +1348,7 @@ export default function TasksScreen() {
       }
 
       // If completedOnce became true while we were in the session screen and we
-      // haven't shown DayCompleteModal for today yet, show it now.
+      // haven't shown the completion modal for today yet, show MoodCheck now.
       // Uses persisted completionModalShownDate so force-kill + reopen doesn't
       // re-show the modal.
       if (
@@ -1210,7 +1356,7 @@ export default function TasksScreen() {
         state.completionModalShownDate !== state.today.date
       ) {
         state.markCompletionModalShown(state.today.date);
-        setTimeout(() => setShowDayComplete(true), 300);
+        setTimeout(() => setShowMoodCheck(true), 300);
       }
     }, [])
   );
@@ -1223,14 +1369,26 @@ export default function TasksScreen() {
         if (introVisibleRef.current) return;
         if (useTasksStore.getState().today?.allComplete) return;
 
-        // Priority 1: Comeback — user missed 2+ days
+        // Priority 1: Comeback — user missed 2+ consecutive days.
+        // _comebackChecked is an in-session guard (prevents duplicate async calls
+        // within one JS runtime). canShowComeback() is the persistent guard —
+        // it writes to AsyncStorage so hot-reloads and force-kill/reopen don't
+        // re-show the modal for the same streak-break window.
         if (!_comebackChecked) {
           _comebackChecked = true;
           const history = useTasksStore.getState().history ?? [];
-          const missed = getConsecutiveMissed(history);
+          const missed   = getConsecutiveMissed(history);
           if (missed >= 2) {
-            setMissedDays(missed);
-            showLifeModal("comeback");
+            const lastCompletedDate =
+              [...history]
+                .filter((r) => r.streakEarned)
+                .sort((a, b) => b.date.localeCompare(a.date))[0]?.date ?? null;
+            canShowComeback(lastCompletedDate, getLocalDateString()).then((can) => {
+              if (can) {
+                setMissedDays(missed);
+                showLifeModal("comeback");
+              }
+            });
             return;
           }
         }
@@ -1255,7 +1413,6 @@ export default function TasksScreen() {
       if (shown.includes(currentStreak)) return;
       markMilestoneShown(currentStreak);
       setCelebMilestone(currentStreak);
-      // Don't show immediately — DayCompleteModal is about to appear.
       // pendingStreakMilestone is flushed after MoodCheck closes.
       setPendingStreakMilestone(currentStreak);
     });
@@ -1321,7 +1478,7 @@ export default function TasksScreen() {
     const nowCounted = newState.today?.completedOnce ?? false;
     if (!alreadyCounted && nowCounted && newState.today) {
       markCompletionModalShown(newState.today.date);
-      setTimeout(() => setShowDayComplete(true), 150);
+      setTimeout(() => setShowMoodCheck(true), 150);
     }
   }, [completeTask, markCompletionModalShown]);
 
@@ -1351,28 +1508,51 @@ export default function TasksScreen() {
     });
   }, [halfwayReached, introVisible, loading, today, showLifeModal]);
 
+  // Card fade-away on scroll — must stay above early return (rules of hooks)
+  const scrollY = useSharedValue(0);
+  const scrollHandler = useAnimatedScrollHandler((e) => {
+    scrollY.value = e.contentOffset.y;
+  });
+  const cardFadeStyle = useAnimatedStyle(() => ({
+    opacity:   interpolate(scrollY.value, [0, 140], [1, 0],  Extrapolation.CLAMP),
+    transform: [{ translateY: interpolate(scrollY.value, [0, 140], [0, -18], Extrapolation.CLAMP) }],
+  }));
+
   if (introVisible || loading || !today) return <TasksLoadingScreen />;
 
   return (
     <SafeAreaView style={styles.safe}>
 
-      {/* ── Top 70%: Workout card ── */}
-      <Animated.View
-        entering={FadeIn.duration(400)}
-        style={styles.topSection}
+      {/* ── Single scrollable body ── */}
+      <Animated.ScrollView
+        onScroll={scrollHandler}
+        scrollEventThrottle={16}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={[
+          styles.scrollContent,
+          tasks.some((t) => t.status === "pending") && styles.scrollContentWithBtn,
+        ]}
       >
-        <WorkoutCard
-          tasks={tasks}
-          focusSummary={today.focusSummary}
-          overloadLabel={today.tasks[0]?.overloadLabel ?? "Base"}
-          completedCount={completedCount}
-          totalCount={totalCount}
-        />
-      </Animated.View>
+        {/* Workout card — fades away on scroll */}
+        <Animated.View
+          entering={FadeIn.duration(400)}
+          style={[styles.cardSection, cardFadeStyle]}
+        >
+          <WorkoutCard
+            tasks={tasks}
+            focusSummary={today.focusSummary}
+            overloadLabel={today.tasks[0]?.overloadLabel ?? "Base"}
+            completedCount={completedCount}
+            totalCount={totalCount}
+          />
+        </Animated.View>
 
-      {/* ── Bottom section: Exercise list (scrollable) ── */}
-      <View style={styles.bottomSection}>
+        {/* Thin divider between card and list */}
+        <View style={styles.listDivider} />
+
+        {/* Exercises section header */}
         <View style={styles.sectionHeader}>
+          <View style={styles.sectionAccentBar} />
           <Text style={styles.sectionTitle}>Exercises</Text>
           <Text style={styles.sectionHint}>
             {tasks.every((t) => t.status !== "pending")
@@ -1381,13 +1561,8 @@ export default function TasksScreen() {
           </Text>
         </View>
 
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={[
-            styles.exerciseList,
-            tasks.some((t) => t.status === "pending") && styles.exerciseListWithBtn,
-          ]}
-        >
+        {/* Exercise rows */}
+        <View style={styles.exerciseList}>
           {tasks.map((task, idx) => (
             <Animated.View
               key={task.exerciseId}
@@ -1407,10 +1582,11 @@ export default function TasksScreen() {
             </Animated.View>
           ))}
 
-          {/* ── Other Protocols ── */}
+          {/* ── Protocols ── */}
           {today.protocols?.length > 0 && (
             <>
               <View style={styles.protocolsHeader}>
+                <View style={styles.sectionAccentBar} />
                 <Text style={styles.protocolsTitle}>Diet</Text>
                 <Text style={styles.sectionHint}>
                   {today.protocols.every((p) => p.status === "done") ? "All done" : `${today.protocols.filter((p) => p.status === "pending").length} left`}
@@ -1429,36 +1605,20 @@ export default function TasksScreen() {
               ))}
             </>
           )}
-        </ScrollView>
+        </View>
+      </Animated.ScrollView>
 
-        {/* ── Floating Start Session button ── */}
-        {tasks.some((t) => t.status === "pending") && (
-          <View style={styles.floatingBtnWrap} pointerEvents="box-none">
-            <View style={styles.startSessionDepth}>
-              <Pressable
-                onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                  router.push("/program/session");
-                }}
-                style={({ pressed }) => [
-                  styles.startSessionBtn,
-                  { transform: [{ translateY: pressed ? 4 : 0 }] },
-                ]}
-              >
-                <LinearGradient
-                  colors={["#CCFF6B", "#B4F34D"]}
-                  locations={[0, 1]}
-                  start={{ x: 0.5, y: 0 }}
-                  end={{ x: 0.5, y: 1 }}
-                  style={styles.startSessionGradient}
-                >
-                  <Text style={styles.startSessionText}>▶  Start Session</Text>
-                </LinearGradient>
-              </Pressable>
-            </View>
-          </View>
-        )}
-      </View>
+      {/* ── Floating Start Session button — sits above scroll ── */}
+      {tasks.some((t) => t.status === "pending") && (
+        <View style={styles.floatingBtnWrap} pointerEvents="box-none">
+          <StartSessionBtn
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              router.push("/program/session");
+            }}
+          />
+        </View>
+      )}
 
       {/* ── Modals ── */}
       <MarkDoneModal
@@ -1466,19 +1626,6 @@ export default function TasksScreen() {
         task={markDoneTask}
         onConfirm={handleMarkDoneConfirm}
         onDismiss={() => setMarkDoneTask(null)}
-      />
-
-      <DayCompleteModal
-        visible={showDayComplete}
-        dayNumber={currentStreak}
-        streak={currentStreak}
-        autoDismissMs={0}
-        dismissOnBackdropPress={false}
-        particles
-        onClose={() => {
-          setShowDayComplete(false);
-          setTimeout(() => setShowMoodCheck(true), 200);
-        }}
       />
 
       <MoodCheckModal
@@ -1513,7 +1660,7 @@ export default function TasksScreen() {
             const nowCounted = newState.today?.completedOnce ?? false;
             if (!alreadyCounted && nowCounted && newState.today) {
               markCompletionModalShown(newState.today.date);
-              setTimeout(() => setShowDayComplete(true), 150);
+              setTimeout(() => setShowMoodCheck(true), 150);
             }
           }
           setConfirmProtocol(null);
@@ -1595,18 +1742,22 @@ const styles = StyleSheet.create({
     width: "100%",
   },
 
-  // Layout
-  topSection: {
+  // Layout — unified scroll
+  scrollContent: {
     paddingHorizontal: sw(SP[4]),
+    paddingBottom: sh(SP[4]),
+  },
+  scrollContentWithBtn: {
+    paddingBottom: sh(100),
+  },
+  cardSection: {
     paddingTop: sh(SP[3]),
     paddingBottom: sh(SP[2]),
   },
-  bottomSection: {
-    flex: 1,
-    paddingHorizontal: sw(SP[4]),
-    paddingBottom: sh(SP[2]),
-    borderTopWidth: 1,
-    borderTopColor: COLORS.divider,
+  listDivider: {
+    height: 1,
+    backgroundColor: COLORS.divider,
+    marginBottom: sh(SP[1]),
   },
 
   // Start Session button
@@ -1714,15 +1865,66 @@ const styles = StyleSheet.create({
 
   // Content section
   cardContent: {
-    paddingHorizontal: sw(18),
+    paddingLeft: sw(18),
+    paddingRight: 0,            // image column is flush to the card edge
     paddingTop: sh(14),
     paddingBottom: sh(16),
+  },
+
+  // Two-column row: text left, face image right
+  cardBodyRow: {
+    flexDirection: "row",
+    alignItems: "stretch",
+    gap: sw(12),
+  },
+
+  // Left text column
+  cardTextCol: {
+    flex: 1,
     gap: sh(10),
   },
+
+  // Right face image
+  cardFaceWrap: {
+    width: sw(96),
+    borderRadius: sw(14),
+    overflow: "hidden",
+    backgroundColor: "#1A1A1A",
+    marginRight: sw(14),
+    minHeight: sh(110),
+  },
+  cardFaceGrad: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: "55%",
+  },
+  cardFaceLabelWrap: {
+    position: "absolute",
+    bottom: sh(8),
+    left: sw(8),
+    flexDirection: "row",
+    alignItems: "center",
+    gap: sw(4),
+  },
+  cardFaceLabelDot: {
+    width: sw(5),
+    height: sw(5),
+    borderRadius: sw(3),
+    backgroundColor: COLORS.accent,
+  },
+  cardFaceLabel: {
+    color: COLORS.text,
+    fontSize: ms(10),
+    fontFamily: "Poppins-SemiBold",
+    letterSpacing: 0.4,
+  },
+
   cardTopRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
+    gap: sw(8),
   },
 
   // Label row (● TODAY'S WORKOUT)
@@ -1730,6 +1932,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: sw(6),
+    flex: 1,
   },
   eyebrowRowCentered: {
     flex: 1,
@@ -1942,6 +2145,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingTop: sh(SP[3]),
     paddingBottom: sh(SP[2]),
+    gap: sw(8),
+  },
+  sectionAccentBar: {
+    width: sw(3),
+    height: sh(16),
+    borderRadius: sw(2),
+    backgroundColor: COLORS.accent,
   },
   sectionTitle: {
     flex: 1,
@@ -1956,8 +2166,7 @@ const styles = StyleSheet.create({
   },
 
   // Exercise list
-  exerciseList: { gap: sh(SP[1]), paddingBottom: sh(SP[2]) },
-  exerciseListWithBtn: { paddingBottom: sh(80) },
+  exerciseList: { gap: sh(SP[2]) },
   floatingBtnWrap: {
     position: "absolute",
     bottom: sh(SP[4]),
@@ -1988,7 +2197,7 @@ const styles = StyleSheet.create({
   },
   taskCardFace: {
     borderRadius: sw(RADII.lg),
-    paddingVertical: sh(6),
+    paddingVertical: sh(10),
     paddingHorizontal: sw(SP[3]),
     backgroundColor: "#FFFFFF",
   },
@@ -2285,6 +2494,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingTop: sh(SP[4]),
     paddingBottom: sh(SP[2]),
+    gap: sw(8),
   },
   protocolsTitle: {
     flex: 1,

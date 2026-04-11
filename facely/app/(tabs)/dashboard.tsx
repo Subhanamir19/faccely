@@ -801,7 +801,7 @@ function HeroCard({
   verdict: string;
   scanCount: number;
   joinedDaysAgo: number;
-  userName: string;
+  userName: string | null;
 }) {
   const isImproved = verdict === "improved";
   const deltaColor = overallDelta >= 0 ? LIME.primary : "#EF4444";
@@ -875,7 +875,7 @@ function HeroCard({
 
           {/* Right column — info */}
           <View style={styles.heroInfoCol}>
-            <Text style={[styles.heroInfoTitle, { color: "rgba(0,0,0,0.55)" }]}>{userName}'s Progress</Text>
+            <Text style={[styles.heroInfoTitle, { color: "rgba(0,0,0,0.55)" }]}>{userName ? `${userName}'s Progress` : "Your Progress"}</Text>
 
             {/* Delta line */}
             <View style={styles.heroDeltaRow}>
@@ -1490,7 +1490,7 @@ function EmptyState({
 export default function DashboardScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { data, loading, error, isDirty, loadInsights, invalidate, pollUntilInsight, pollUntilAdvanced } = useInsights();
+  const { data, loading, error, loadInsights, invalidate, startPolling } = useInsights();
   const currentStreak = useTasksStore((s) => s.currentStreak);
   const advancedData = useAdvancedAnalysis((s) => s.data);
   const authUser = useAuthStore((s) => s.user);
@@ -1498,43 +1498,50 @@ export default function DashboardScreen() {
   const scanLoading = useScores((s) => s.loading);
   const scanError   = useScores((s) => s.error);
 
-  // Derive first name: prefer user-set display name, then auth fields, then email prefix
+  // UUID pattern — Supabase leaks the auth UUID into name/email fields on some flows.
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const isUuid = (s: string) => UUID_RE.test(s.trim());
+
+  // Derive display name: prefer user-set profile name, then auth fields, then friendly fallback.
+  // Any value that looks like a UUID is skipped — those are auth IDs, not names.
   const userName = (() => {
-    if (displayName) return displayName;
-    const raw =
-      (authUser as any)?.fullName ||
-      (authUser as any)?.firstName ||
-      (authUser as any)?.name ||
-      (authUser as any)?.email ||
-      "";
-    if (!raw) return "there";
-    const first = raw.split(/[@\s]/)[0];
-    return first.charAt(0).toUpperCase() + first.slice(1).toLowerCase();
+    if (displayName && !isUuid(displayName)) return displayName;
+
+    const candidates: (string | undefined | null)[] = [
+      (authUser as any)?.fullName,
+      (authUser as any)?.firstName,
+      (authUser as any)?.name,
+      (authUser as any)?.email,
+    ];
+
+    for (const raw of candidates) {
+      if (!raw || typeof raw !== "string") continue;
+      const first = raw.split(/[@\s]/)[0];
+      if (!first || isUuid(first)) continue;
+      return first.charAt(0).toUpperCase() + first.slice(1).toLowerCase();
+    }
+
+    return "Champion"; // shown when no real name is available
   })();
 
+  // Load on focus — loadInsights guards itself (no-op when data is fresh).
+  // No isDirty in deps: when isDirty flips false the callback identity would
+  // change, triggering an extra useFocusEffect fire on the same focus event.
   useFocusEffect(
     useCallback(() => {
-      if (isDirty) {
-        loadInsights();
-      }
-    }, [loadInsights, isDirty])
+      loadInsights();
+    }, [loadInsights])
   );
 
-  // When scan_count >= 2 but insight hasn't generated yet, poll until it arrives
+  // Single unified background poll — covers both pending insight and pending
+  // advanced analysis. Only one interval runs at a time (store-level guard).
   useEffect(() => {
-    if (data && data.scan_count >= 2 && data.insight === null) {
-      return pollUntilInsight();
+    const needsInsight  = data != null && data.scan_count >= 2 && data.insight === null;
+    const needsAdvanced = data != null && data.scan_count >= 1 && data.latest_advanced === null;
+    if (needsInsight || needsAdvanced) {
+      return startPolling();
     }
-  }, [data?.scan_count, data?.insight]);
-
-  // Fix C: When latest_advanced is null but we have scans, poll until it appears.
-  // Covers the case where the user is already on the dashboard when advanced analysis finishes.
-  useEffect(() => {
-    if (data && data.scan_count >= 1 && data.latest_advanced === null) {
-      const cancel = pollUntilAdvanced();
-      return cancel;
-    }
-  }, [data?.scan_count, data?.latest_advanced]);
+  }, [data?.scan_count, data?.insight, data?.latest_advanced]);
 
   const onRefresh = useCallback(() => {
     invalidate();
@@ -1712,7 +1719,7 @@ export default function DashboardScreen() {
         <Animated.View entering={FadeInDown.delay(0).duration(400)} style={styles.headerRow}>
           <View style={{ flex: 1 }}>
             <Text style={styles.headerWelcome}>WELCOME BACK!</Text>
-            <Text style={styles.headerName}>{userName}</Text>
+            {userName ? <Text style={styles.headerName}>{userName}</Text> : null}
           </View>
           {/* Streak pill */}
           <View style={styles.streakPillBase}>

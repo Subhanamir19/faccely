@@ -5,9 +5,10 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const K = {
-  milestones:   "life_modals_v1_milestones",   // number[] of shown streak milestones
-  lastFact:     "life_modals_v1_fact_date",     // YYYY-MM-DD of last did-you-know shown
-  halfwayDate:  "life_modals_v1_halfway_date",  // YYYY-MM-DD of last halfway shown
+  milestones:    "life_modals_v1_milestones",    // number[] of shown streak milestones
+  lastFact:      "life_modals_v1_fact_date",      // YYYY-MM-DD of last did-you-know shown
+  halfwayDate:   "life_modals_v1_halfway_date",   // YYYY-MM-DD of last halfway shown
+  comebackShown: "life_modals_v1_comeback_shown", // YYYY-MM-DD we last showed comeback modal
 };
 
 // ---------------------------------------------------------------------------
@@ -70,12 +71,48 @@ export async function canShowHalfway(today: string): Promise<boolean> {
 }
 
 // ---------------------------------------------------------------------------
+// Comeback helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns true (and persists the decision) only when ALL conditions hold:
+ *   1. The user has at least one completed day in history (lastCompletedDate is non-null)
+ *   2. They haven't already seen the comeback modal for THIS streak-break window.
+ *
+ * "Same streak-break window" = the stored shown-date is strictly AFTER the user's
+ * last completed workout date. If the user completes a workout after we showed the
+ * modal, lastCompletedDate advances, the stored date falls behind it, and we become
+ * eligible again for the next break — but only after 2+ missed days (enforced by
+ * the caller checking getConsecutiveMissed).
+ */
+export async function canShowComeback(
+  lastCompletedDate: string | null, // YYYY-MM-DD of most recent streakEarned day
+  todayStr: string,                 // YYYY-MM-DD of current day
+): Promise<boolean> {
+  try {
+    if (!lastCompletedDate) return false; // never completed → nothing to come back to
+
+    const stored = await AsyncStorage.getItem(K.comebackShown);
+
+    // Already shown for this gap: stored date is after the last completed date,
+    // meaning no new workout has happened since we last showed the modal.
+    if (stored && stored > lastCompletedDate) return false;
+
+    // New gap (or first ever) — mark as shown for today and allow display.
+    await AsyncStorage.setItem(K.comebackShown, todayStr);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Dev: reset all flags (for testing)
 // ---------------------------------------------------------------------------
 
 export async function resetAllLifeModalFlags(): Promise<void> {
   try {
-    await AsyncStorage.multiRemove([K.milestones, K.lastFact, K.halfwayDate]);
+    await AsyncStorage.multiRemove([K.milestones, K.lastFact, K.halfwayDate, K.comebackShown]);
   } catch {}
 }
 

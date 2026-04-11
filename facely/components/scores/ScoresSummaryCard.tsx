@@ -1,30 +1,23 @@
 // facely/components/scores/ScoresSummaryCard.tsx
 // Redesigned summary card: profile photo overlapping top + 8 key metrics in compact grid (4x2)
+// All sizing is derived from live useWindowDimensions — no module-level screen constants.
 
-import React, { useEffect, useRef, useState } from "react";
-import { View, StyleSheet, Animated, Easing, Image, Dimensions } from "react-native";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { View, StyleSheet, Animated, Easing, Image, useWindowDimensions } from "react-native";
 import Text from "@/components/ui/T";
-import { COLORS, SP, RADII, TYPE, SIZES } from "@/lib/tokens";
+import { COLORS, SP, RADII, SIZES } from "@/lib/tokens";
 import { useOnboarding } from "@/store/onboarding";
 
-// Get screen width for responsive calculations
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
+// ─── Score helpers ─────────────────────────────────────────────────────────────
 
-// Responsive avatar size - scales with screen width but has min/max bounds
-// ~36% of screen width, bounded between 120px (small phones) and 160px (tablets)
-const AVATAR_SIZE = Math.min(Math.max(SCREEN_WIDTH * 0.36, 120), 160);
-const AVATAR_BORDER = 4;
-const AVATAR_TOTAL = AVATAR_SIZE + AVATAR_BORDER * 2;
-
-// Score color function - 6 tier system
 function getScoreColor(score: number): string {
   const s = Math.max(0, Math.min(100, score));
-  if (s < 40) return COLORS.error;        // Red - needs work
-  if (s < 60) return COLORS.errorLight;   // Orange - below average
-  if (s < 70) return COLORS.warning;      // Yellow/Amber - average
-  if (s < 80) return "#C8DA45";           // Chartreuse - above average
-  if (s < 90) return COLORS.accent;       // Lime - great
-  return COLORS.success;                   // Bright green - elite
+  if (s < 40) return COLORS.error;
+  if (s < 60) return COLORS.errorLight;
+  if (s < 70) return COLORS.warning;
+  if (s < 80) return "#C8DA45";
+  if (s < 90) return COLORS.accent;
+  return COLORS.success;
 }
 
 export type MetricScore = {
@@ -33,7 +26,6 @@ export type MetricScore = {
   score: number;
 };
 
-// Shorter labels for the compact summary card view
 const SHORT_LABELS: Record<string, string> = {
   "Facial Symmetry": "Symmetry",
   "Eye Symmetry": "Eyes",
@@ -41,7 +33,6 @@ const SHORT_LABELS: Record<string, string> = {
   "Skin Quality": "Skin quality",
 };
 
-// Gender-specific label for sexual dimorphism metric
 const GENDER_LABELS: Record<string, string> = {
   male: "Masculinity",
   female: "Femininity",
@@ -54,8 +45,6 @@ function getShortLabel(label: string, gender?: string): string {
   return SHORT_LABELS[label] || label;
 }
 
-// Tier anchors: 8 labels per metric mapped to score ranges
-// Ranges: 0-25 | 26-40 | 41-50 | 51-60 | 61-70 | 71-80 | 81-89 | 90-100
 const ANCHORS: Record<string, [string, string, string, string, string, string, string, string]> = {
   "Overall":                 ["Weak",        "Below Avg",    "Developing",  "Decent",      "Mediocre",    "Strong",       "Elite",        "Top-tier"],
   "Jawline":                 ["Undefined",   "Soft",         "Mild",        "Average",     "Basic",       "Sharp",        "Chiseled",     "Razor-sharp"],
@@ -80,24 +69,65 @@ function getTierLabel(label: string, score: number): string {
   return anchors[7];
 }
 
-// ============================================================================
-// Animated Progress Bar
-// ============================================================================
-type ProgressBarProps = {
-  score: number;
-  delay: number;
-  active: boolean;
-};
+// ─── Responsive sizing ─────────────────────────────────────────────────────────
+// All values derived from live window dimensions — call inside components only.
+
+function useCardSizing(cardWidth: number) {
+  const { width: SW, height: SH } = useWindowDimensions();
+
+  return useMemo(() => {
+    // Avatar
+    const avatarSize   = Math.min(Math.max(Math.round(SW * 0.29), 96), 136);
+    const avatarBorder = 3;
+    const avatarTotal  = avatarSize + avatarBorder * 2;
+
+    // Card internal padding
+    const cardPadH     = Math.max(14, Math.round(SW * 0.044));
+    const cardPadBot   = Math.max(12, Math.round(SH * 0.02));
+    const cardPadTop   = Math.round(avatarTotal / 2) + Math.max(8, Math.round(SH * 0.012));
+
+    // Grid gaps — tighter on small screens
+    const rowGap = Math.max(8,  Math.round(SH * 0.013));
+    const colGap = Math.max(10, Math.round(SH * 0.015));
+
+    // Per-cell width (two equal columns)
+    const cellWidth = (cardWidth - cardPadH * 2 - colGap) / 2;
+
+    // Typography — scaled to cell width
+    const scoreFontSize      = Math.max(22, Math.round(cellWidth * 0.21));
+    const scoreFontSizeLarge = Math.max(26, Math.round(cellWidth * 0.25));
+    const tierFontSize       = Math.max(9,  Math.round(cellWidth * 0.072));
+    const labelFontSize      = Math.max(11, Math.round(cellWidth * 0.084));
+    const labelFontSizeLarge = Math.max(12, Math.round(cellWidth * 0.094));
+
+    // Row spacing inside each metric cell
+    const scoreMB = Math.max(3, Math.round(SH * 0.006));
+
+    return {
+      avatarSize, avatarBorder, avatarTotal,
+      cardPadH, cardPadBot, cardPadTop,
+      rowGap, colGap, cellWidth,
+      scoreFontSize, scoreFontSizeLarge,
+      tierFontSize,
+      labelFontSize, labelFontSizeLarge,
+      scoreMB,
+    };
+  }, [SW, SH, cardWidth]);
+}
+
+// ─── Animated progress bar ─────────────────────────────────────────────────────
+
+type ProgressBarProps = { score: number; delay: number; active: boolean };
 
 function AnimatedProgressBar({ score, delay, active }: ProgressBarProps) {
-  const width = useRef(new Animated.Value(0)).current;
-  const color = getScoreColor(score);
-  const clamped = Math.max(0, Math.min(100, score));
+  const widthAnim = useRef(new Animated.Value(0)).current;
+  const clamped   = Math.max(0, Math.min(100, score));
+  const color     = getScoreColor(score);
 
   useEffect(() => {
     if (active) {
-      width.setValue(0);
-      Animated.timing(width, {
+      widthAnim.setValue(0);
+      Animated.timing(widthAnim, {
         toValue: clamped,
         duration: 800,
         delay,
@@ -107,29 +137,17 @@ function AnimatedProgressBar({ score, delay, active }: ProgressBarProps) {
     }
   }, [active, clamped, delay]);
 
-  const animatedWidth = width.interpolate({
-    inputRange: [0, 100],
-    outputRange: ["0%", "100%"],
-  });
+  const animWidth = widthAnim.interpolate({ inputRange: [0, 100], outputRange: ["0%", "100%"] });
 
   return (
-    <View style={styles.progressTrack}>
-      <Animated.View
-        style={[
-          styles.progressFill,
-          {
-            width: animatedWidth,
-            backgroundColor: color,
-          },
-        ]}
-      />
+    <View style={staticStyles.progressTrack}>
+      <Animated.View style={[staticStyles.progressFill, { width: animWidth, backgroundColor: color }]} />
     </View>
   );
 }
 
-// ============================================================================
-// Metric Cell - Single metric with label, number, progress bar
-// ============================================================================
+// ─── Metric cell ───────────────────────────────────────────────────────────────
+
 type MetricCellProps = {
   label: string;
   score: number;
@@ -137,60 +155,82 @@ type MetricCellProps = {
   active: boolean;
   isLarge?: boolean;
   gender?: string;
+  sizing: ReturnType<typeof useCardSizing>;
 };
 
-function MetricCell({ label, score, delay, active, isLarge = false, gender }: MetricCellProps) {
-  const clamped = Math.round(Math.max(0, Math.min(100, score)));
+function MetricCell({ label, score, delay, active, isLarge = false, gender, sizing }: MetricCellProps) {
+  const clamped      = Math.round(Math.max(0, Math.min(100, score)));
   const displayLabel = getShortLabel(label, gender);
-  const tierLabel = getTierLabel(label, score);
-  const tierColor = getScoreColor(score);
+  const tierLabel    = getTierLabel(label, score);
 
-  // Count-up animation — synced with the progress bar timing
   const countAnim = useRef(new Animated.Value(0)).current;
   const [displayScore, setDisplayScore] = useState(0);
 
   useEffect(() => {
     if (active) {
       countAnim.setValue(0);
-      const listener = countAnim.addListener(({ value }) => {
-        setDisplayScore(Math.round(value));
-      });
+      const id = countAnim.addListener(({ value }) => setDisplayScore(Math.round(value)));
       Animated.timing(countAnim, {
         toValue: clamped,
         duration: 900,
         delay,
         easing: Easing.out(Easing.cubic),
         useNativeDriver: false,
-      }).start(() => {
-        countAnim.removeListener(listener);
-      });
-      return () => countAnim.removeListener(listener);
+      }).start(() => countAnim.removeListener(id));
+      return () => countAnim.removeListener(id);
     }
   }, [active, clamped, delay]);
 
+  const { scoreFontSize, scoreFontSizeLarge, tierFontSize, labelFontSize, labelFontSizeLarge, scoreMB } = sizing;
+
+  const activeLabelSize = isLarge ? labelFontSizeLarge : labelFontSize;
+  const activeScoreSize = isLarge ? scoreFontSizeLarge : scoreFontSize;
+
   return (
-    <View style={styles.metricCell}>
-      <Text style={[styles.metricLabel, isLarge && styles.metricLabelLarge]}>
+    <View style={staticStyles.metricCell}>
+      <Text
+        style={[
+          staticStyles.metricLabel,
+          { fontSize: activeLabelSize, lineHeight: Math.round(activeLabelSize * 1.35) },
+        ]}
+      >
         {displayLabel}
       </Text>
-      <View style={styles.scoreRow}>
-        <Text style={[styles.metricScore, isLarge && styles.metricScoreLarge]}>
+
+      <View style={[staticStyles.scoreRow, { marginBottom: scoreMB }]}>
+        <Text
+          style={[
+            staticStyles.metricScore,
+            { fontSize: activeScoreSize, lineHeight: Math.round(activeScoreSize * 1.2) },
+          ]}
+        >
           {displayScore}
         </Text>
-        <View style={styles.tierChip}>
-          <Text style={[styles.tierChipText, isLarge && styles.tierChipTextLarge]}>
+        <View style={staticStyles.tierChip}>
+          <Text style={[staticStyles.tierChipText, { fontSize: tierFontSize, lineHeight: Math.round(tierFontSize * 1.4) }]}>
             {tierLabel}
           </Text>
         </View>
       </View>
+
       <AnimatedProgressBar score={score} delay={delay} active={active} />
     </View>
   );
 }
 
-// ============================================================================
-// Main Component
-// ============================================================================
+// ─── Main component ────────────────────────────────────────────────────────────
+
+const SUMMARY_METRICS = [
+  "Overall",
+  "Jawline",
+  "Cheekbones",
+  "Eye Symmetry",
+  "Facial Symmetry",
+  "Masculinity/Femininity",
+  "Skin Quality",
+  "Nose Balance",
+];
+
 type ScoresSummaryCardProps = {
   metrics: MetricScore[];
   totalScore: number;
@@ -198,18 +238,6 @@ type ScoresSummaryCardProps = {
   active: boolean;
   imageUri?: string | null;
 };
-
-// All 8 metrics displayed on summary card (4 rows x 2 columns)
-const SUMMARY_METRICS = [
-  "Overall",           // Row 1
-  "Jawline",
-  "Cheekbones",        // Row 2
-  "Eye Symmetry",
-  "Facial Symmetry",   // Row 3
-  "Masculinity/Femininity",
-  "Skin Quality",      // Row 4
-  "Nose Balance",
-];
 
 export default function ScoresSummaryCard({
   metrics,
@@ -219,53 +247,78 @@ export default function ScoresSummaryCard({
   imageUri,
 }: ScoresSummaryCardProps) {
   const { data: onboardingData } = useOnboarding();
-  const gender = onboardingData?.gender;
+  const gender  = onboardingData?.gender;
+  const sizing  = useCardSizing(width);
 
-  // Add Overall to metrics list
-  const allMetrics: MetricScore[] = [
+  const {
+    avatarSize, avatarBorder, avatarTotal,
+    cardPadH, cardPadBot, cardPadTop,
+    rowGap, colGap,
+  } = sizing;
+
+  const allMetrics: MetricScore[] = useMemo(() => [
     { key: "overall", label: "Overall", score: totalScore },
     ...metrics,
-  ];
+  ], [metrics, totalScore]);
 
-  // Filter to only summary metrics and sort in defined order
-  const displayMetrics = allMetrics
-    .filter(m => SUMMARY_METRICS.includes(m.label))
-    .sort((a, b) => SUMMARY_METRICS.indexOf(a.label) - SUMMARY_METRICS.indexOf(b.label));
-
-  // Create pairs for the grid (2 columns, 4 rows)
-  const pairs: MetricScore[][] = [];
-  for (let i = 0; i < displayMetrics.length; i += 2) {
-    pairs.push(displayMetrics.slice(i, i + 2));
-  }
-
-  // Calculate how much the photo overflows the card top
-  const photoOverflow = AVATAR_TOTAL / 2;
+  const pairs: MetricScore[][] = useMemo(() => {
+    const display = allMetrics
+      .filter(m => SUMMARY_METRICS.includes(m.label))
+      .sort((a, b) => SUMMARY_METRICS.indexOf(a.label) - SUMMARY_METRICS.indexOf(b.label));
+    const result: MetricScore[][] = [];
+    for (let i = 0; i < display.length; i += 2) result.push(display.slice(i, i + 2));
+    return result;
+  }, [allMetrics]);
 
   return (
-    <View style={styles.wrapper}>
-      {/* Profile Photo - positioned to overlap card top */}
-      <View style={styles.photoWrapper}>
-        <View style={styles.photoContainer}>
+    <View style={staticStyles.wrapper}>
+      {/* Profile photo — overlaps card top */}
+      <View style={{ zIndex: 10, marginBottom: -(avatarTotal / 2) }}>
+        <View
+          style={[
+            staticStyles.photoContainer,
+            {
+              width: avatarTotal,
+              height: avatarTotal,
+              borderRadius: avatarTotal / 2,
+              padding: avatarBorder,
+            },
+          ]}
+        >
           {imageUri ? (
             <Image
               source={{ uri: imageUri }}
-              style={styles.photo}
+              style={{ width: avatarSize, height: avatarSize, borderRadius: avatarSize / 2, backgroundColor: COLORS.track }}
               resizeMode="cover"
             />
           ) : (
-            <View style={styles.photoPlaceholder}>
-              <Text style={styles.photoPlaceholderText}>?</Text>
+            <View
+              style={[
+                staticStyles.photoPlaceholder,
+                { width: avatarSize, height: avatarSize, borderRadius: avatarSize / 2 },
+              ]}
+            >
+              <Text style={staticStyles.photoPlaceholderText}>?</Text>
             </View>
           )}
         </View>
       </View>
 
-      {/* Card with top padding to accommodate photo overlap */}
-      <View style={[styles.card, { width, paddingTop: photoOverflow + SP[3] }]}>
-        {/* Metrics Grid - 4 rows x 2 columns */}
-        <View style={styles.metricsContainer}>
+      {/* Card */}
+      <View
+        style={[
+          staticStyles.card,
+          {
+            width,
+            paddingTop: cardPadTop,
+            paddingBottom: cardPadBot,
+            paddingHorizontal: cardPadH,
+          },
+        ]}
+      >
+        <View style={{ gap: rowGap }}>
           {pairs.map((pair, rowIndex) => (
-            <View key={rowIndex} style={styles.metricsRow}>
+            <View key={rowIndex} style={[staticStyles.metricsRow, { gap: colGap }]}>
               {pair.map((metric, colIndex) => (
                 <MetricCell
                   key={metric.key}
@@ -275,6 +328,7 @@ export default function ScoresSummaryCard({
                   active={active}
                   isLarge={rowIndex === 0}
                   gender={gender}
+                  sizing={sizing}
                 />
               ))}
             </View>
@@ -285,117 +339,76 @@ export default function ScoresSummaryCard({
   );
 }
 
-const styles = StyleSheet.create({
-  // Outer wrapper to handle the overflow
+// ─── Static styles (no dynamic values) ────────────────────────────────────────
+
+const staticStyles = StyleSheet.create({
   wrapper: {
     alignItems: "center",
   },
 
-  // Photo wrapper - positioned absolutely to overlap the card
-  photoWrapper: {
-    zIndex: 10,
-    marginBottom: -(AVATAR_TOTAL / 2), // Pull the card up to overlap
-  },
-
-  // Card container
   card: {
     backgroundColor: COLORS.bgBottom,
     borderRadius: RADII.xl,
     borderWidth: 1,
     borderColor: COLORS.cardBorder,
-    paddingBottom: SP[4],
-    paddingHorizontal: SCREEN_WIDTH * 0.05,
   },
 
-  // Profile Photo with ring border
   photoContainer: {
-    width: AVATAR_TOTAL,
-    height: AVATAR_TOTAL,
-    borderRadius: AVATAR_TOTAL / 2,
-    padding: AVATAR_BORDER,
     backgroundColor: COLORS.bgBottom,
     borderWidth: 2,
     borderColor: COLORS.cardBorder,
     alignItems: "center",
     justifyContent: "center",
   },
-  photo: {
-    width: AVATAR_SIZE,
-    height: AVATAR_SIZE,
-    borderRadius: AVATAR_SIZE / 2,
-    backgroundColor: COLORS.track,
-  },
   photoPlaceholder: {
-    width: AVATAR_SIZE,
-    height: AVATAR_SIZE,
-    borderRadius: AVATAR_SIZE / 2,
     backgroundColor: COLORS.track,
     alignItems: "center",
     justifyContent: "center",
   },
   photoPlaceholderText: {
-    ...TYPE.h3,
+    fontSize: 22,
+    lineHeight: 28,
+    fontFamily: "Poppins-SemiBold",
     color: COLORS.sub,
   },
 
-  // Metrics Grid
-  metricsContainer: {
-    gap: SP[4],
-  },
   metricsRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    gap: SP[4],
   },
 
-  // Metric Cell
   metricCell: {
     flex: 1,
   },
   metricLabel: {
-    ...TYPE.small,
     color: COLORS.text,
-    marginBottom: SP[0],
-  },
-  metricLabelLarge: {
-    ...TYPE.caption,
+    fontFamily: "Poppins-Regular",
+    marginBottom: 2,
   },
   scoreRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: SP[2],
   },
   metricScore: {
-    fontSize: Math.max(30, SCREEN_WIDTH * 0.08),
-    lineHeight: Math.max(36, SCREEN_WIDTH * 0.095),
     fontFamily: "Poppins-SemiBold",
     color: COLORS.text,
   },
-  metricScoreLarge: {
-    fontSize: Math.max(38, SCREEN_WIDTH * 0.1),
-    lineHeight: Math.max(44, SCREEN_WIDTH * 0.115),
-  },
   tierChip: {
     paddingHorizontal: SP[2],
-    paddingVertical: 3,
+    paddingVertical: 2,
     borderRadius: 100,
     backgroundColor: "rgba(255,255,255,0.08)",
-    flexShrink: 0,
+    flexShrink: 1,
   },
   tierChipText: {
-    fontSize: 11,
     fontFamily: "Poppins-SemiBold",
     letterSpacing: 0.2,
     color: COLORS.sub,
   },
-  tierChipTextLarge: {
-    fontSize: 13,
-  },
 
-  // Progress Bar
   progressTrack: {
-    height: SIZES.progressBarLg,
+    height: SIZES.progressBarMd,
     backgroundColor: COLORS.track,
     borderRadius: RADII.circle,
     overflow: "hidden",

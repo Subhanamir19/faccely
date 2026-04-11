@@ -2,18 +2,16 @@ import { create } from "zustand";
 import { fetchInsights, type InsightData } from "../lib/api/insights";
 
 // ---------------------------------------------------------------------------
-// Module-level mutable refs — intentionally outside Zustand state so they
-// never trigger re-renders.  They are implementation details, not UI state.
+// Module-level mutable refs — outside Zustand state so they never trigger re-renders.
 // ---------------------------------------------------------------------------
 
-/** Active interval for pollUntilInsight — null means no poll is running. */
-let _insightPollId: ReturnType<typeof setInterval> | null = null;
-/** Active interval for pollUntilAdvanced — null means no poll is running. */
-let _advancedPollId: ReturnType<typeof setInterval> | null = null;
+/** Active background poll interval — null means no poll is running. */
+let _pollId: ReturnType<typeof setInterval> | null = null;
+
 /**
- * Monotonically-increasing generation counter.  Each loadInsights() call
- * captures its own generation; stale poll ticks that finish after a newer
- * manual fetch silently drop their result instead of overwriting fresh data.
+ * Monotonically-increasing generation counter. Each loadInsights() call
+ * captures its own generation; a stale poll tick that resolves after a newer
+ * manual fetch drops its result instead of overwriting fresh data.
  */
 let _fetchGeneration = 0;
 
@@ -25,30 +23,24 @@ type State = {
   data: InsightData | null;
   loading: boolean;
   error: string | null;
-  /** True when a new explanation has completed — next load will re-fetch */
+  /** True when data is stale — next focus will re-fetch. */
   isDirty: boolean;
 };
 
 type Actions = {
   /** Fetch insights if data is missing or dirty. No-op if already fresh. */
   loadInsights: () => Promise<void>;
-  /** Mark insights as stale — called after a new explanation completes. */
+  /** Mark insights as stale — call after a new explanation or scan completes. */
   invalidate: () => void;
   /**
-   * When scan_count >= 2 but insight hasn't generated yet, poll until it
-   * arrives (max 30 s).  No-op if insight already exists, scan_count < 2,
-   * or a poll is already running.
-   * Returns a cleanup function — call it to cancel the poll on unmount.
+   * Start a single background poll that covers BOTH pending-insight and
+   * pending-advanced-analysis cases. Fires every 5 s, stops when both
+   * conditions resolve or after MAX_ATTEMPTS ticks.
+   *
+   * Safe to call multiple times — no-op if a poll is already running.
+   * Returns a cleanup function to cancel early (e.g. on unmount).
    */
-  pollUntilInsight: () => () => void;
-  /**
-   * When scan_count >= 1 but latest_advanced is null (advanced analysis still
-   * running), poll every 5 s for up to 50 s until the data appears.
-   * No-op if latest_advanced already exists, scan_count < 1, or a poll is
-   * already running.
-   * Returns a cleanup function — call it to cancel the poll on unmount.
-   */
-  pollUntilAdvanced: () => () => void;
+  startPolling: () => () => void;
   reset: () => void;
 };
 
@@ -70,22 +62,17 @@ export const useInsights = create<State & Actions>((set, get) => ({
     if (loading) return;
     if (data && !isDirty) return;
 
-    // Capture generation so a concurrent poll tick cannot overwrite this result.
     _fetchGeneration += 1;
     const gen = _fetchGeneration;
 
     set({ loading: true, error: null });
     try {
       const result = await fetchInsights();
-
-      // Discard if a newer fetch has already started (e.g. user pulled-to-refresh
-      // while a background poll was in flight).
-      if (gen !== _fetchGeneration) return;
-
+      if (gen !== _fetchGeneration) return; // a newer fetch already landed
       set({ data: result, loading: false, isDirty: false });
     } catch (err: any) {
-      if (gen !== _fetchGeneration) return; // stale, ignore
-      console.error("[insights] fetch FAILED:", err?.message);
+      if (gen !== _fetchGeneration) return;
+      console.error("[insights] fetch failed:", err?.message);
       set({ loading: false, error: err?.message ?? "Failed to load insights" });
     }
   },
@@ -96,118 +83,64 @@ export const useInsights = create<State & Actions>((set, get) => ({
   invalidate: () => set({ isDirty: true }),
 
   // -------------------------------------------------------------------------
-  // pollUntilInsight
+  // startPolling — single unified poll replacing the two old separate ones.
+  //
+  // Conditions that warrant polling:
+  //   • scan_count >= 2 && insight === null  (AI insight pending)
+  //   • scan_count >= 1 && latest_advanced === null  (advanced analysis pending)
+  //
+  // Only ONE interval runs at a time regardless of how many callers invoke this.
   // -------------------------------------------------------------------------
-  pollUntilInsight: () => {
+  startPolling: () => {
     const { data } = get();
 
-    // Guard: only poll when we have 2+ scans but insight hasn't generated yet.
-    if (!data || data.scan_count < 2 || data.insight !== null) {
-      return () => {}; // no-op cleanup
+    const needsInsight  = data != null && data.scan_count >= 2 && data.insight === null;
+    const needsAdvanced = data != null && data.scan_count >= 1 && data.latest_advanced === null;
+
+    if (!needsInsight && !needsAdvanced) {
+      return () => {}; // nothing to poll for
     }
 
-    // Guard: don't start a second interval if one is already running.
-    if (_insightPollId !== null) {
-      return () => { if (_insightPollId !== null) { clearInterval(_insightPollId); _insightPollId = null; } };
-    }
-
-    let attempts = 0;
-    const MAX_ATTEMPTS = 6; // 6 × 5 s = 30 s max
-    const INTERVAL_MS  = 5_000;
-
-    _insightPollId = setInterval(async () => {
-      attempts++;
-      _fetchGeneration += 1;
-      const gen = _fetchGeneration;
-
-      try {
-        const result = await fetchInsights();
-
-        if (gen !== _fetchGeneration) return;
-
-        set({ data: result, loading: false, isDirty: false });
-
-        if (result.insight !== null) {
-          clearInterval(_insightPollId!);
-          _insightPollId = null;
-        } else if (attempts >= MAX_ATTEMPTS) {
-          clearInterval(_insightPollId!);
-          _insightPollId = null;
-          set({ error: "Insight generation is taking longer than expected." });
-        }
-      } catch (err: any) {
-        if (gen !== _fetchGeneration) return;
-        if (attempts >= MAX_ATTEMPTS) {
-          clearInterval(_insightPollId!);
-          _insightPollId = null;
-          set({ error: "Failed to load insight after multiple retries." });
-        }
-      }
-    }, INTERVAL_MS);
-
-    return () => {
-      if (_insightPollId !== null) {
-        clearInterval(_insightPollId);
-        _insightPollId = null;
-      }
-    };
-  },
-
-  // -------------------------------------------------------------------------
-  // pollUntilAdvanced
-  // -------------------------------------------------------------------------
-  pollUntilAdvanced: () => {
-    const { data } = get();
-
-    // Guard: only poll when we have scans but advanced data hasn't arrived yet.
-    if (!data || data.scan_count < 1 || data.latest_advanced !== null) {
-      return () => {}; // no-op cleanup
-    }
-
-    // Guard: don't start a second interval if one is already running.
-    if (_advancedPollId !== null) {
-      return () => { if (_advancedPollId !== null) { clearInterval(_advancedPollId); _advancedPollId = null; } };
+    // Already polling — return a cancel handle for the existing interval.
+    if (_pollId !== null) {
+      return () => {
+        if (_pollId !== null) { clearInterval(_pollId); _pollId = null; }
+      };
     }
 
     let attempts = 0;
     const MAX_ATTEMPTS = 10; // 10 × 5 s = 50 s max
-    const INTERVAL_MS  = 5_000;
 
-    _advancedPollId = setInterval(async () => {
+    _pollId = setInterval(async () => {
       attempts++;
       _fetchGeneration += 1;
       const gen = _fetchGeneration;
 
       try {
         const result = await fetchInsights();
-
-        if (gen !== _fetchGeneration) return;
+        if (gen !== _fetchGeneration) return; // stale, discard
 
         set({ data: result, loading: false, isDirty: false });
 
-        if (result.latest_advanced !== null) {
-          clearInterval(_advancedPollId!);
-          _advancedPollId = null;
-        } else if (attempts >= MAX_ATTEMPTS) {
-          clearInterval(_advancedPollId!);
-          _advancedPollId = null;
-          set({ error: "Advanced analysis is taking longer than expected." });
+        const stillNeedsInsight  = result.scan_count >= 2 && result.insight === null;
+        const stillNeedsAdvanced = result.scan_count >= 1 && result.latest_advanced === null;
+
+        if ((!stillNeedsInsight && !stillNeedsAdvanced) || attempts >= MAX_ATTEMPTS) {
+          clearInterval(_pollId!);
+          _pollId = null;
         }
       } catch (err: any) {
         if (gen !== _fetchGeneration) return;
         if (attempts >= MAX_ATTEMPTS) {
-          clearInterval(_advancedPollId!);
-          _advancedPollId = null;
-          set({ error: "Failed to load advanced analysis after multiple retries." });
+          clearInterval(_pollId!);
+          _pollId = null;
+          set({ error: "Background sync timed out." });
         }
       }
-    }, INTERVAL_MS);
+    }, 5_000);
 
     return () => {
-      if (_advancedPollId !== null) {
-        clearInterval(_advancedPollId);
-        _advancedPollId = null;
-      }
+      if (_pollId !== null) { clearInterval(_pollId); _pollId = null; }
     };
   },
 

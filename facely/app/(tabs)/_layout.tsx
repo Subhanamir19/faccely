@@ -167,8 +167,14 @@ export default function TabsLayout() {
       {/* hidden */}
       <Tabs.Screen name="sigma" options={{ href: null }} />
 
-      {/* Tab 5: dev — hidden from tab bar */}
-      <Tabs.Screen name="dev" options={{ href: null }} />
+      {/* Dev */}
+      <Tabs.Screen
+        name="dev"
+        options={{
+          title: "Dev",
+          tabBarIcon: ({ color, size }) => <Wrench color={color} size={size ?? 24} />,
+        }}
+      />
 
       {/* Keep routes, hide from bar */}
       <Tabs.Screen name="history"    options={{ href: null }} />

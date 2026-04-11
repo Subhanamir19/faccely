@@ -15,6 +15,7 @@ import {
   View,
   useWindowDimensions,
 } from "react-native";
+import { Image as ExpoImage } from "expo-image";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { Video, ResizeMode } from "expo-av";
 import Svg, { Circle, Path, Rect } from "react-native-svg";
@@ -63,6 +64,14 @@ const EXERCISE_IMAGE_PAIRS: Record<string, [any, any]> = {
   ],
 };
 
+// Content position for image-pair exercises — controls which part of the image
+// fills the circular crop. Side-profile images need "left" to show the face.
+const EXERCISE_IMAGE_POSITION: Record<string, string> = {
+  "chin-tucks":        "left center",
+  "lowerface-exercise":"left center",
+  "hunter-eyes-1":     "center",
+};
+
 // ---------------------------------------------------------------------------
 // Exercises that use a single static image with a looping zoom animation
 // ---------------------------------------------------------------------------
@@ -96,6 +105,7 @@ export function consumeSessionFlag(): boolean {
 function CircleFrame({
   videoSrc,
   imagePair,
+  imagePairPosition,
   zoomImage,
   isPaused,
   progress,
@@ -106,6 +116,7 @@ function CircleFrame({
 }: {
   videoSrc: any;
   imagePair?: [any, any];
+  imagePairPosition?: string;
   zoomImage?: any;
   isPaused: boolean;
   progress: number;
@@ -241,11 +252,12 @@ function CircleFrame({
             />
           </Animated.View>
         ) : imagePair ? (
-          <Image
+          <ExpoImage
             key={`${exerciseKey}-${poseIndex}`}
             source={imagePair[poseIndex]}
             style={StyleSheet.absoluteFillObject}
-            resizeMode="cover"
+            contentFit="cover"
+            contentPosition={imagePairPosition ?? "center"}
           />
         ) : videoSrc ? (
           <Video
@@ -435,8 +447,9 @@ export default function SessionScreen() {
   const current    = exercises[currentIndex];
   const duration   = current ? getEffectiveDuration(current.exerciseId) : 30;
   const videoSrc   = current ? getExerciseVideo(current.exerciseId) : null;
-  const imagePair  = current ? (EXERCISE_IMAGE_PAIRS[current.exerciseId] ?? undefined) : undefined;
-  const zoomImage  = current ? (EXERCISE_ZOOM_IMAGES[current.exerciseId] ?? undefined) : undefined;
+  const imagePair         = current ? (EXERCISE_IMAGE_PAIRS[current.exerciseId] ?? undefined) : undefined;
+  const imagePairPosition = current ? (EXERCISE_IMAGE_POSITION[current.exerciseId] ?? "center") : "center";
+  const zoomImage         = current ? (EXERCISE_ZOOM_IMAGES[current.exerciseId] ?? undefined) : undefined;
   const total      = exercises.length;
 
   // ---------------------------------------------------------------------------
@@ -689,6 +702,8 @@ export default function SessionScreen() {
   const secs = timeLeft % 60;
   const timeDisplay = `${mins}:${String(secs).padStart(2, "0")}`;
 
+  // (banner removed — header variables no longer needed)
+
   // ---------------------------------------------------------------------------
   // Session complete — navigate to completion screen (via effect, not during render)
   // ---------------------------------------------------------------------------
@@ -712,39 +727,60 @@ export default function SessionScreen() {
   return (
     <SafeAreaView style={styles.safe}>
 
-      {/* ── Header: X · N of M + dots · ··· ── */}
-      <View style={styles.header}>
-        <Pressable onPress={handleExit} style={styles.headerSideBtn} hitSlop={10}>
-          <Text style={styles.headerX}>✕</Text>
+      {/* ── Clean top bar: exit · dots · counter + info ── */}
+      <View style={styles.topBar}>
+
+        {/* Exit button */}
+        <Pressable onPress={handleExit} style={styles.topBarIconBtn} hitSlop={12}>
+          <Svg width={14} height={14} viewBox="0 0 14 14" fill="none">
+            <Path
+              d="M1.5 1.5 L12.5 12.5 M12.5 1.5 L1.5 12.5"
+              stroke="rgba(255,255,255,0.55)"
+              strokeWidth={2.2}
+              strokeLinecap="round"
+            />
+          </Svg>
         </Pressable>
 
-        <View style={styles.headerCenter}>
-          <Text style={styles.headerProgress}>{currentIndex + 1} of {total}</Text>
-          <View style={styles.progressDots}>
-            {exercises.map((ex, idx) => (
-              <View
-                key={ex.exerciseId}
-                style={[
-                  styles.progressDot,
-                  doneInSession.includes(ex.exerciseId) && styles.progressDotDone,
-                  skippedInSession.includes(ex.exerciseId) && styles.progressDotSkipped,
-                  idx === currentIndex &&
-                    !doneInSession.includes(ex.exerciseId) &&
-                    !skippedInSession.includes(ex.exerciseId) &&
-                    styles.progressDotCurrent,
-                ]}
-              />
-            ))}
-          </View>
+        {/* Progress dots — centered */}
+        <View style={styles.progressDots}>
+          {exercises.map((ex, idx) => (
+            <View
+              key={ex.exerciseId}
+              style={[
+                styles.progressDot,
+                doneInSession.includes(ex.exerciseId) && styles.progressDotDone,
+                skippedInSession.includes(ex.exerciseId) && styles.progressDotSkipped,
+                idx === currentIndex &&
+                  !doneInSession.includes(ex.exerciseId) &&
+                  !skippedInSession.includes(ex.exerciseId) &&
+                  styles.progressDotCurrent,
+              ]}
+            />
+          ))}
         </View>
 
-        <Pressable
-          onPress={() => { setIsPaused(true); setShowHowTo(true); }}
-          style={styles.headerSideBtn}
-          hitSlop={10}
-        >
-          <Text style={styles.headerDots}>···</Text>
-        </Pressable>
+        {/* Counter + info button */}
+        <View style={styles.topBarRight}>
+          <Text style={styles.topBarCount}>
+            {currentIndex + 1}<Text style={styles.topBarCountOf}> / {total}</Text>
+          </Text>
+          <Pressable
+            onPress={() => { setIsPaused(true); setShowHowTo(true); }}
+            style={styles.topBarIconBtn}
+            hitSlop={12}
+          >
+            <Svg width={18} height={5} viewBox="0 0 18 5" fill="none">
+              <Path
+                d="M2.5 2.5 A0.5 0.5 0 1 1 2.5 2.4999 M9 2.5 A0.5 0.5 0 1 1 9 2.4999 M15.5 2.5 A0.5 0.5 0 1 1 15.5 2.4999"
+                stroke="rgba(255,255,255,0.55)"
+                strokeWidth={2.4}
+                strokeLinecap="round"
+              />
+            </Svg>
+          </Pressable>
+        </View>
+
       </View>
 
       {/* ── Main content ── */}
@@ -767,6 +803,7 @@ export default function SessionScreen() {
           <CircleFrame
             videoSrc={videoSrc}
             imagePair={imagePair}
+            imagePairPosition={imagePairPosition}
             zoomImage={zoomImage}
             isPaused={isPaused}
             progress={progress}
@@ -783,7 +820,7 @@ export default function SessionScreen() {
           entering={slideDir === "right"
             ? FadeInRight.duration(320).springify()
             : FadeInLeft.duration(320).springify()}
-          style={{ alignItems: "center", gap: 0 }}
+          style={{ alignItems: "center", gap: SP[2] }}
         >
 
         {/* Exercise name + info button */}
@@ -978,52 +1015,50 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.bgBottom,
   },
 
-  // Header
-  header: {
+  // ── Face banner header ──────────────────────────────────────────────────────
+
+  // ── Clean top bar ────────────────────────────────────────────────────────────
+  topBar: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
     paddingHorizontal: SP[4],
     paddingVertical: SP[3],
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: COLORS.divider,
+    gap: SP[3],
   },
-  headerSideBtn: {
+  topBarIconBtn: {
     width: 36,
     height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(255,255,255,0.07)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 18,
-    backgroundColor: "rgba(255,255,255,0.06)",
   },
-  headerX: {
-    color: COLORS.text,
-    fontSize: 14,
-    fontFamily: "Poppins-SemiBold",
-  },
-  headerCenter: {
+  topBarRight: {
+    flexDirection: "row",
     alignItems: "center",
-    gap: SP[1],
+    gap: SP[2],
   },
-  headerProgress: {
+  topBarCount: {
     color: COLORS.text,
-    fontSize: 17,
+    fontSize: 13,
     fontFamily: "Poppins-SemiBold",
-    letterSpacing: -0.3,
+    letterSpacing: -0.2,
   },
-  headerDots: {
+  topBarCountOf: {
     color: COLORS.sub,
-    fontSize: 18,
-    fontFamily: "Poppins-SemiBold",
-    letterSpacing: 2,
-    lineHeight: 20,
+    fontSize: 12,
+    fontFamily: "Poppins-Regular",
   },
 
-  // Progress dots row
+  // ── Progress dots ─────────────────────────────────────────────────────────────
   progressDots: {
+    flex: 1,
     flexDirection: "row",
     gap: 5,
     alignItems: "center",
+    justifyContent: "center",
   },
   progressDot: {
     width: 6,
@@ -1038,9 +1073,9 @@ const styles = StyleSheet.create({
     backgroundColor: "#EF4444",
   },
   progressDotCurrent: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 20,
+    height: 6,
+    borderRadius: 3,
     backgroundColor: COLORS.text,
   },
 
@@ -1068,15 +1103,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: SP[6],
-    gap: SP[4],
+    gap: SP[6],
   },
 
   // Exercise name + info
   nameRow: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
     gap: SP[2],
-    marginTop: SP[2],
   },
   exerciseName: {
     color: COLORS.text,
@@ -1114,7 +1149,7 @@ const styles = StyleSheet.create({
     fontFamily: "Poppins-SemiBold",
     letterSpacing: -2,
     lineHeight: 62,
-    marginTop: SP[4],
+    marginTop: SP[2],
   },
 
   // Controls

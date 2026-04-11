@@ -8,6 +8,7 @@ import {
   Alert,
   ImageBackground,
   Pressable,
+  useWindowDimensions,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, { FadeInDown } from "react-native-reanimated";
@@ -74,8 +75,13 @@ function calculateTotalScore(metrics: MetricScore[]): number {
 // ---------------------------------------------------------------------------
 export default function ScoreScreen() {
   const insets = useSafeAreaInsets();
+  const { height: SH } = useWindowDimensions();
   const { imageUri, sideImageUri, scores, explLoading } = useScores();
   const sizing = useMetricSizing();
+
+  // Spacing that scales down on shorter screens (SE, older iPhones)
+  const vSpaceLg = Math.max(12, Math.round(SH * 0.018)); // ~14px on 812, 12px on 667
+  const vSpaceMd = Math.max(8,  Math.round(SH * 0.012)); // ~10px on 812, 8px on 667
   const { checkAndPromptConsent, ConsentModal } = useAdvancedAnalysisConsent();
 
   // Build metrics from API scores or use defaults
@@ -124,9 +130,9 @@ export default function ScoreScreen() {
       </ImageBackground>
 
       {/* Content */}
-      <View style={[styles.container, { paddingTop: insets.top + SP[4] }]}>
+      <View style={[styles.container, { paddingTop: insets.top + vSpaceLg }]}>
         {/* Header */}
-        <Animated.View entering={FadeInDown.duration(400).delay(100)} style={styles.header}>
+        <Animated.View entering={FadeInDown.duration(400).delay(100)} style={[styles.header, { marginBottom: vSpaceLg }]}>
           <Text variant="h2" color="text">Your Scores</Text>
           <Text variant="caption" color="sub" style={styles.subtitle}>
             Overall facial analysis results
@@ -158,7 +164,7 @@ export default function ScoreScreen() {
         {/* Footer with buttons */}
         <Animated.View
           entering={FadeInDown.duration(400).delay(400)}
-          style={[styles.footer, { paddingBottom: insets.bottom + SP[4] }]}
+          style={[styles.footer, { paddingTop: vSpaceMd, paddingBottom: insets.bottom + vSpaceLg }]}
         >
           <View style={styles.buttonRow}>
             <PillNavButton
@@ -197,7 +203,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: SP[4],
   },
   header: {
-    marginBottom: SP[4],
+    // marginBottom overridden inline with responsive vSpaceLg
   },
   subtitle: {
     marginTop: SP[1],
@@ -208,7 +214,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   footer: {
-    paddingTop: SP[4],
+    // paddingTop and paddingBottom overridden inline with responsive values
   },
   buttonRow: {
     flexDirection: "row",

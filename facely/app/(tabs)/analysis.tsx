@@ -35,6 +35,7 @@ import { useScores } from "@/store/scores";
 import { useAdvancedAnalysis } from "@/store/advancedAnalysis";
 import { useTasksStore } from "@/store/tasks";
 import { useAdvancedAnalysisConsent } from "@/hooks/useAdvancedAnalysisConsent";
+import { BlueprintModal } from "@/components/analysis/BlueprintModal";
 import type { AdvancedAnalysis } from "@/lib/api/advancedAnalysis";
 
 // ---------------------------------------------------------------------------
@@ -615,14 +616,18 @@ export default function AnalysisScreen() {
   const insets = useSafeAreaInsets();
 
   const { scores, imageUri }               = useScores();
-  const { data, loading, error, fetch }    = useAdvancedAnalysis();
-  const { checkAndPromptConsent, ConsentModal } = useAdvancedAnalysisConsent();
+  const { data, loading, error, fetch, cachedScanId } = useAdvancedAnalysis();
+  const { checkAndPromptConsent, ConsentModal }        = useAdvancedAnalysisConsent();
 
   const hasScores = !!scores && !!imageUri;
 
   // Bump on every focus so AnalysisContent remounts and re-animates.
   // Data is cached in Zustand so there's no loading flash — just fresh entrance.
   const [focusKey, setFocusKey] = useState(0);
+
+  // Blueprint modal — shown once per scan (keyed to cachedScanId)
+  const [blueprintVisible, setBlueprintVisible] = useState(false);
+  const shownForScanIdRef = useRef<string | null>(null);
 
   // Fetch on every focus — consent gate runs once per install (Apple 5.1.1/5.1.2)
   useFocusEffect(
@@ -635,6 +640,14 @@ export default function AnalysisScreen() {
       }
     }, [hasScores, data, loading, checkAndPromptConsent, fetch])
   );
+
+  // Surface blueprint modal the first time data arrives for each scan
+  useEffect(() => {
+    if (data && cachedScanId && shownForScanIdRef.current !== cachedScanId) {
+      shownForScanIdRef.current = cachedScanId;
+      setBlueprintVisible(true);
+    }
+  }, [data, cachedScanId]);
 
   const showLoading  = loading && !data;
   const showError    = !!error && !data;
@@ -693,6 +706,16 @@ export default function AnalysisScreen() {
 
       {/* Consent modal — shown once before first fetch */}
       <ConsentModal />
+
+      {/* Blueprint modal — auto-surfaces once per scan when data is ready */}
+      {showContent && (
+        <BlueprintModal
+          data={data!}
+          imageUri={imageUri ?? null}
+          visible={blueprintVisible}
+          onDismiss={() => setBlueprintVisible(false)}
+        />
+      )}
     </View>
   );
 }

@@ -28,4 +28,22 @@ export function msUntilNextMidnight(): number {
       if ((global as any).__dailyInterval) clearInterval((global as any).__dailyInterval);
     };
   }
+
+/** Returns the Monday 00:00:00 of the current local calendar week. */
+export function getStartOfWeek(d?: Date): Date {
+  const now = d ?? new Date();
+  const day = now.getDay(); // 0 = Sun, 1 = Mon, ..., 6 = Sat
+  const diffToMonday = day === 0 ? -6 : 1 - day;
+  const monday = new Date(now);
+  monday.setDate(now.getDate() + diffToMonday);
+  monday.setHours(0, 0, 0, 0);
+  return monday;
+}
+
+/** Returns the Monday 00:00:00 of the NEXT calendar week. */
+export function getNextMonday(): Date {
+  const monday = getStartOfWeek();
+  monday.setDate(monday.getDate() + 7);
+  return monday;
+}
   
