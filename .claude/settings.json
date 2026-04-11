@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node gen-hero-assets.js)",
+      "Bash(node -e ':*)",
+      "Bash(node gen-mascot-bust.js)"
+    ]
+  }
+}

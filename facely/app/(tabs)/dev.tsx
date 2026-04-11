@@ -31,6 +31,7 @@ import { BlueprintModal } from "@/components/analysis/BlueprintModal";
 import { useAdvancedAnalysis } from "@/store/advancedAnalysis";
 import { useScores } from "@/store/scores";
 import type { AdvancedAnalysis } from "@/lib/api/advancedAnalysis";
+import ProgramHero from "@/components/program/ProgramHero";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -107,6 +108,16 @@ export default function DevScreen() {
   const history       = useTasksStore((s) => s.history);
   const dayNumber     = history.length + 1; // total days since user started
   const [scanBypass, setScanBypass] = useState<boolean | "…">("…");
+
+  // Program hero preview
+  const [heroVisible, setHeroVisible] = useState(false);
+  const HERO_ZONE_SETS = [
+    ["jawline", "cheekbones"],
+    ["eyes", "cheekbones"],
+    ["jawline", "nose"],
+    ["eyes", "jawline", "cheekbones"],
+  ];
+  const [heroZoneIdx, setHeroZoneIdx] = useState(0);
 
   // Blueprint modal preview
   const [blueprintVisible, setBlueprintVisible] = useState(false);
@@ -366,6 +377,7 @@ export default function DevScreen() {
               { label: "Cheek Puffs",              id: "alternating-cheek-puffs" },
               { label: "Midface Lift",             id: "midface-exercise" },
               { label: "Lower Face Lift",          id: "lowerface-exercise" },
+              { label: "Chin Training",            id: "chin-training" },
             ].map(({ label, id }) => (
               <TouchableOpacity
                 key={id}
@@ -405,6 +417,19 @@ export default function DevScreen() {
               </TouchableOpacity>
             ))}
           </View>
+        </GlassCard>
+
+        {/* ── Program Hero ──────────────────────────────────────────── */}
+        <GlassCard style={styles.card}>
+          <SectionHeader
+            title="Program Hero"
+            subtitle="Mascot header with animated zone overlays — exercise screen top section"
+          />
+          <DevButton
+            label="▶  Preview Hero"
+            accent
+            onPress={() => setHeroVisible(true)}
+          />
         </GlassCard>
 
         {/* ── Tasks / Exercises ─────────────────────────────────────── */}
@@ -485,6 +510,53 @@ export default function DevScreen() {
           </View>
         </GlassCard>
       </ScrollView>
+
+      {/* Program Hero full-screen preview */}
+      <Modal
+        visible={heroVisible}
+        animationType="slide"
+        presentationStyle="fullScreen"
+        onRequestClose={() => setHeroVisible(false)}
+      >
+        <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.bgBottom }}>
+          {/* Header bar */}
+          <View style={styles.previewHeader}>
+            <T style={styles.previewTitle}>Program Hero Preview</T>
+            <View style={styles.previewActions}>
+              <Pressable
+                onPress={() => setHeroZoneIdx((i) => (i + 1) % HERO_ZONE_SETS.length)}
+                hitSlop={12}
+                style={styles.previewBtn}
+              >
+                <T style={styles.previewBtnText}>↺  Zones</T>
+              </Pressable>
+              <Pressable
+                onPress={() => setHeroVisible(false)}
+                hitSlop={12}
+                style={[styles.previewBtn, styles.previewBtnClose]}
+              >
+                <T style={styles.previewBtnText}>✕  Close</T>
+              </Pressable>
+            </View>
+          </View>
+
+          {/* The hero itself */}
+          <ProgramHero
+            userName="Alex"
+            streak={7}
+            activeZones={HERO_ZONE_SETS[heroZoneIdx]}
+            completedTasks={2}
+            totalTasks={5}
+          />
+
+          {/* Spacer so you can see where the screen content would begin */}
+          <View style={{ paddingHorizontal: 20, paddingTop: 24, gap: 12 }}>
+            <View style={{ height: 48, borderRadius: 14, backgroundColor: "rgba(255,255,255,0.05)", borderWidth: 1, borderColor: "rgba(255,255,255,0.08)" }} />
+            <View style={{ height: 48, borderRadius: 14, backgroundColor: "rgba(255,255,255,0.05)", borderWidth: 1, borderColor: "rgba(255,255,255,0.08)" }} />
+            <View style={{ height: 48, borderRadius: 14, backgroundColor: "rgba(255,255,255,0.05)", borderWidth: 1, borderColor: "rgba(255,255,255,0.08)" }} />
+          </View>
+        </SafeAreaView>
+      </Modal>
 
       {/* Blueprint modal preview */}
       <BlueprintModal

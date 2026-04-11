@@ -119,19 +119,40 @@ function getPreviousDateString(dateStr: string): string {
   return getLocalDateString(d);
 }
 
+/**
+ * Returns IDs of exercises completed yesterday only.
+ * These receive the heaviest freshness penalty in the selection algorithm.
+ */
 function getRecentExerciseIds(history: DayRecord[]): string[] {
-  const today = getLocalDateString();
+  const yesterday = getPreviousDateString(getLocalDateString());
+  const ids: string[] = [];
+  for (const record of history) {
+    if (record.date === yesterday) {
+      for (const task of record.tasks) {
+        if (task.status === "completed") ids.push(task.exerciseId);
+      }
+    }
+  }
+  return ids;
+}
+
+/**
+ * Returns IDs of exercises completed 2–3 days ago.
+ * These receive a moderate freshness penalty to encourage rotation without
+ * fully blocking an exercise from returning after a couple of days off.
+ */
+function getOlderExerciseIds(history: DayRecord[]): string[] {
+  const today     = getLocalDateString();
   const yesterday = getPreviousDateString(today);
-  const dayBefore = getPreviousDateString(yesterday);
-  const recentDates = new Set([yesterday, dayBefore]);
+  const dayBefore  = getPreviousDateString(yesterday);
+  const dayBefore2 = getPreviousDateString(dayBefore);
+  const olderDates = new Set([dayBefore, dayBefore2]);
 
   const ids: string[] = [];
   for (const record of history) {
-    if (recentDates.has(record.date)) {
+    if (olderDates.has(record.date)) {
       for (const task of record.tasks) {
-        if (task.status === "completed") {
-          ids.push(task.exerciseId);
-        }
+        if (task.status === "completed") ids.push(task.exerciseId);
       }
     }
   }
@@ -275,8 +296,10 @@ export const useTasksStore = create<TasksState>()(
         }
 
         const recentExerciseIds = getRecentExerciseIds(history);
+        const olderExerciseIds  = getOlderExerciseIds(history);
         const recentProtocolIds = getRecentProtocolIds(history);
-        const currentStreak = computeStreak(history);
+        // +1 because opening the app today counts as today's streak day immediately
+        const currentStreak = computeStreak(history) + 1;
         const consecutiveMissed = getConsecutiveMissed(history);
         const isNewUser = history.length === 0;
 
@@ -288,6 +311,7 @@ export const useTasksStore = create<TasksState>()(
           goals,
           experience,
           recentExerciseIds,
+          olderExerciseIds,
           currentStreak,
           consecutiveMissed,
           isNewUser,
@@ -319,7 +343,7 @@ export const useTasksStore = create<TasksState>()(
             protocols,
             mood: null,
             allComplete: false,
-            streakEarned: false,
+            streakEarned: true,  // opening the app earns today's streak day
             completedOnce: false,
             focusSummary,
           },
@@ -328,10 +352,11 @@ export const useTasksStore = create<TasksState>()(
           loading: false,
         });
 
-        // Background: flush any offline-queued writes, then pull remote streak
+        // Background: flush any offline-queued writes, then push + pull remote streak
         const uid = getUid();
         if (uid) {
           flushSyncQueue(uid).catch(() => {});
+          syncStreak(uid, currentStreak, currentDate);
           fetchAndMergeStreak(uid, currentStreak, (n) => set({ currentStreak: n })).catch(() => {});
         }
       },

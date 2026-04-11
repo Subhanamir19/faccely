@@ -35,7 +35,10 @@ export type SelectionInput = {
   scores: Partial<Record<ScoreField, number>> | null;
   goals: string[] | null;
   experience: string | null;
+  /** IDs of exercises completed yesterday — strongest freshness penalty */
   recentExerciseIds: string[];
+  /** IDs of exercises completed 2–3 days ago — lighter freshness penalty */
+  olderExerciseIds?: string[];
   currentStreak: number;
   consecutiveMissed: number;
   isNewUser: boolean;
@@ -183,6 +186,14 @@ export const EXERCISE_CATALOG: ExerciseEntry[] = [
     intensity: "high",
     weight: 7,
     scoreFields: ["jawline", "cheekbones", "sexual_dimorphism"],
+  },
+  {
+    id: "chin-training",
+    name: "Chin Training",
+    targets: ["jawline"],
+    intensity: "medium",
+    weight: 7,
+    scoreFields: ["jawline", "sexual_dimorphism"],
   },
 
   // ── All areas ──────────────────────────────────────────────────────────────
@@ -446,7 +457,8 @@ export function selectDailyTasks(input: SelectionInput): TaskPick[] {
     });
   }
 
-  const recentSet = new Set(input.recentExerciseIds);
+  const recentSet = new Set(input.recentExerciseIds);          // yesterday
+  const olderSet  = new Set(input.olderExerciseIds ?? []);     // 2–3 days ago
   const forceNeckCurls = shouldIncludeNeckCurlsToday(input.scores);
   const neckCurlsEntry = EXERCISES_BY_ID.get("neck-curls")!;
 
@@ -471,8 +483,11 @@ export function selectDailyTasks(input: SelectionInput): TaskPick[] {
         rank = goalMatchScore(entry.scoreFields, input.goals!);
       }
 
-      // Freshness penalty: recently done = half weight
-      rank *= recentSet.has(entry.id) ? 0.5 : 1;
+      // Tiered freshness penalty — prevents the same exercises repeating day after day.
+      // Yesterday: very steep penalty so today's picks differ clearly.
+      // 2–3 days ago: moderate penalty to encourage rotation but allow return.
+      if (recentSet.has(entry.id))      rank *= 0.15;
+      else if (olderSet.has(entry.id))  rank *= 0.45;
       // Weight bonus: higher frequency → more likely selected
       rank *= entry.weight / 7;
       // Small bonus for multi-target (more efficient sessions)
@@ -503,7 +518,8 @@ export function selectDailyTasks(input: SelectionInput): TaskPick[] {
     } else if (tier === 3) {
       neckRank = goalMatchScore(neckCurlsEntry.scoreFields, input.goals!);
     }
-    neckRank *= recentSet.has("neck-curls") ? 0.5 : 1;
+    if (recentSet.has("neck-curls"))      neckRank *= 0.15;
+    else if (olderSet.has("neck-curls")) neckRank *= 0.45;
     neckRank *= neckCurlsEntry.weight / 7;
     // neck-curls is high-intensity — apply recovery penalty in competition mode too
     neckRank *= missedPenalty;

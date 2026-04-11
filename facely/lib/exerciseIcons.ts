@@ -37,6 +37,9 @@ export const EXERCISE_ICONS: Record<string, any> = {
   // Midface & Lower Face
   "midface-exercise":   ICON_CHEEKBONES,
   "lowerface-exercise": ICON_JAWLINE,
+
+  // Chin
+  "chin-training":      ICON_JAWLINE,
 };
 
 export function getExerciseIcon(exerciseId: string): any {

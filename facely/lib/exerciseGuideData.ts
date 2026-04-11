@@ -492,6 +492,26 @@ export const EXERCISE_GUIDES: Record<string, ExerciseGuide> = {
     ],
   },
 
+  "chin-training": {
+    id: "chin-training",
+    name: "Chin Ball Press",
+    holdTime: "2–3 seconds per rep",
+    reps: "3 sets of 15–20 reps",
+    frequency: "5 times per week",
+    howTo: [
+      "Hold a small ball (tennis ball, stress ball, or rolled towel) under your chin",
+      "Sit upright with your spine straight and shoulders relaxed — head stays level",
+      "Press your chin firmly downward into the ball, squeezing it against your chest or neck",
+      "Hold the contraction for 2–3 seconds, feeling the burn under the chin",
+      "Slowly release the pressure and repeat without letting the ball drop",
+    ],
+    tips: [
+      "Keep your head upright — the press comes from the chin going DOWN, not from leaning forward",
+      "The harder you squeeze, the more the submental muscles engage — work up gradually",
+      "A tennis ball gives good resistance; a softer stress ball is easier for beginners",
+    ],
+  },
+
   // ── Skincare protocols ────────────────────────────────────────────────────
 
   "cold-water-splash": {

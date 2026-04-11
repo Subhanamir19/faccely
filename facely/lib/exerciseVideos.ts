@@ -17,6 +17,7 @@ export const EXERCISE_VIDEOS: Record<string, any> = {
   "slim-nose-massage":       require("../excercise-videos/nosefat-slimnose.mp4"),
   "neck-curls":              require("../excercise-videos/strong-kneck-jawlinebuilding.mp4"),
   "towel-chewing":           require("../excercise-videos/towel-chewing.mp4"),
+  "chin-training":           require("../excercise-videos/chin-training.mp4"),
 };
 
 export function getExerciseVideo(exerciseId: string): any {

@@ -19,6 +19,7 @@ export const EXERCISE_DURATIONS: Record<string, number> = {
   "towel-chewing":           60,
   "midface-exercise":        30,
   "lowerface-exercise":      45,
+  "chin-training":           45,
 };
 
 export function getExerciseDuration(exerciseId: string): number {

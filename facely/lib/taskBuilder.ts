@@ -181,8 +181,8 @@ function pickBestFromPool(
 }
 
 /**
- * Selects 1 lifestyle/skincare protocol + 1 dietary protocol for the day.
- * Both are chosen based on the user's scores, goals, and recent history.
+ * Selects 2 dietary protocols for the day.
+ * Ensures the two picks don't share a key ingredient (e.g. two banana items).
  */
 export function buildDailyProtocols(input: ProtocolSelectionInput): ProtocolPick[] {
   const { dateStr, scores, goals, recentProtocolIds = [] } = input;
@@ -192,15 +192,26 @@ export function buildDailyProtocols(input: ProtocolSelectionInput): ProtocolPick
   const dietaryPool = PROTOCOL_CATALOG.filter(
     (p) => p.type === "dietary" && isEligible(p, scores, goals),
   );
-  const dietaryFallback = PROTOCOL_CATALOG.filter((p) => p.type === "dietary");
+  const pool = dietaryPool.length > 0
+    ? dietaryPool
+    : PROTOCOL_CATALOG.filter((p) => p.type === "dietary");
 
-  const pool = dietaryPool.length > 0 ? dietaryPool : dietaryFallback;
   const ranked = pool
     .map((e) => ({ entry: e, rank: scoreProtocol(e, scores, goals, dateSlot, recentIds) }))
     .sort((a, b) => b.rank - a.rank);
 
-  const first  = ranked[0].entry;
-  const second = ranked.find((r) => r.entry.id !== first.id)?.entry ?? ranked[0].entry;
+  const first = ranked[0].entry;
+
+  // Extract meaningful words from the first pick's id to detect ingredient overlap
+  const firstWords = new Set(first.id.split("-").filter((w) => w.length > 3));
+
+  // Second pick: different id AND no shared ingredient word with the first
+  const second =
+    ranked.find(
+      (r) =>
+        r.entry.id !== first.id &&
+        !r.entry.id.split("-").some((w) => w.length > 3 && firstWords.has(w)),
+    )?.entry ?? ranked.find((r) => r.entry.id !== first.id)?.entry ?? ranked[0].entry;
 
   return [first, second].map((e) => ({
     id:       e.id,

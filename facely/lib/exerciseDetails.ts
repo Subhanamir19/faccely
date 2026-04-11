@@ -234,6 +234,20 @@ export const EXERCISE_DETAILS: Record<string, ExerciseDetail> = {
     tip: "Keep all tension in your lower jaw — your upper body and neck should remain still throughout the movement.",
   },
 
+  "chin-training": {
+    name: "Chin Ball Press",
+    benefits: "Activates the submental and suprahyoid muscles to eliminate a double chin and sharpen the chin–neck angle.",
+    steps: [
+      "Hold a small ball (tennis ball, stress ball, or rolled towel) under your chin.",
+      "Sit or stand upright with your spine straight and shoulders relaxed.",
+      "Press your chin firmly down into the ball, squeezing it against your chest or neck.",
+      "Hold the contraction for 2–3 seconds, feeling the muscles under your chin engage.",
+      "Release the pressure slowly and repeat without letting the ball drop.",
+    ],
+    reps: "3 sets of 15–20 reps",
+    tip: "The squeeze comes from pressing the chin DOWN — do not tilt your head forward, keep it upright and press through the submental muscles.",
+  },
+
   "towel-chewing": {
     name: "Towel Resistance Chew",
     benefits: "Engages the masseter muscles through intense resistance to broaden the jawline and define the chin.",
