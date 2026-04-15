@@ -752,7 +752,7 @@ function normalizeResponse(raw: string | null | undefined): Record<MetricKey, st
 
 // Bump this string whenever the advanced prompt or JSON shape changes — it
 // busts any in-process cached responses that were built under the old schema.
-const PROMPT_VERSION_ADVANCED = "adv.v3.0";
+const PROMPT_VERSION_ADVANCED = "adv.v3.1";
 
 const ADVANCED_VERDICT_OPTIONS = `
 VERDICT LABELS — for each sub-metric also return a "verdict" field as described below.
@@ -798,22 +798,42 @@ You are a calibrated facial-aesthetics analyst. Score and describe each sub-metr
 - When uncertain, score lower. Optimism is a calibration error.
 
 ━━━ COMMENTARY RULES ━━━
-- One sentence per sub-metric (20–90 words). Present tense. Clinical, neutral tone.
-- No medical advice. No ethnicity or identity claims. No emojis. No markdown.
-- Lead with the dominant visible cue. Add one concrete direction only if improvement is realistic and visible.
-- If a feature is genuinely strong, confirm it plainly — no filler praise.
+- One sentence per sub-metric (20–90 words). Present tense. Conversational but honest — write like a knowledgeable coach, not a medical report.
+- No medical advice. No ethnicity or identity claims. No emojis. No markdown. No jargon the average person wouldn't know.
+- No filler phrases like "contributing to a balanced structure" or "adding to overall harmony" — these say nothing.
+- If a feature is genuinely strong, confirm it plainly with the specific visible reason.
+
+━━━ TIER-AWARE TONE ━━━
+The score determines the writing register. Match it exactly.
+
+Score 72–100 (strong/exceptional):
+  Confirm the strength. State the specific visible reason it scores well. One clean sentence.
+  Do NOT add improvement notes unless there is a genuinely visible limiting factor.
+  Example: "The jaw corner sits at roughly 102° and reads as sharp and angular — it anchors the lower face cleanly."
+
+Score 55–71 (present but not strong):
+  The feature exists but something specific is holding it back. Name that thing.
+  End with the one change that would make the biggest visible difference. Keep it plain — no jargon.
+  The user must feel "I know exactly what to work on," not "well, this seems okay."
+  NEVER write a neutral observation for this tier. Every sentence needs a direction.
+  Example: "There's width here, but not enough to cast a shadow under the cheekbones — getting leaner is the most direct way to change that."
+
+Score 0–54 (underdeveloped):
+  Be direct about the gap. No softening. Name the specific limitation visible in the image.
+  One concrete direction. Keep language plain and respectful — honest, not harsh.
+  Example: "The jaw edge is soft and doesn't hold a clear line from the front — the corner rounds off before it creates any definition."
 
 ━━━ CALIBRATION EXAMPLES ━━━
-Score ~55 (average):
-  "The jawline edge shows moderate definition with visible softening at the lower corners; reducing facial fat would sharpen this considerably."
-  verdict: "Moderate"
+Score ~62 (Just Okay — needs direction):
+  "The cheekbones have some width but not enough spread to create that high, lifted look — dropping body fat is the clearest lever here."
+  verdict: "Moderate Width"
 
 Score ~78 (strong):
   "The gonial angle appears to be around 102°, creating a well-defined jaw corner that adds clear angularity to the lower third of the face."
   verdict: "Chiseled"
 
 Score ~88 (exceptional):
-  "The canthal tilt is clearly positive at an estimated +4°, a strong aesthetic marker that gives the eye region intensity and forward direction."
+  "The canthal tilt is clearly positive at around +4° — the outer corners sit higher than the inner corners, which gives the eyes a focused, sharp quality."
   verdict: "Hunter"
 
 ━━━ FWHR INSTRUCTIONS ━━━

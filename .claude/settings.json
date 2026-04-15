@@ -25,7 +25,13 @@
       "Bash(cmd //c \"cd /d C:\\\\SS\\\\scorer-node && npx tsc --noEmit 2>&1\")",
       "Bash(cmd.exe /c \"node_modules\\\\.bin\\\\tsc --noEmit 2>&1\")",
       "Bash(cmd.exe /c \"npx tsc --noEmit 2>&1\")",
-      "Bash(echo \"exit: $?\")"
+      "Bash(echo \"exit: $?\")",
+      "Bash(cmd.exe /c \"node_modules\\\\.bin\\\\tsc --noEmit\")",
+      "Bash(cmd.exe /c \"npx tsc --noEmit\")",
+      "WebSearch",
+      "WebFetch(domain:www.remotion.dev)",
+      "WebFetch(domain:github.com)",
+      "Bash(npx skills *)"
     ]
   }
 }

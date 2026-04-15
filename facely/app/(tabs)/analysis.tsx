@@ -134,7 +134,7 @@ const SUBMETRIC_DEFS: SubDef[] = [
   },
   {
     id: "cheekbones.fwhr", group: "cheekbones", key: "fwhr", label: "fWHR", category: "CHEEKS", emoji: "📏",
-    icon: null,
+    icon: require("../../advanced-analysis-icons/FWHR.png"),
     idealRange: "Facial width-to-height ratio. Ideal: ~1.9–2.0 (masculine), ~1.6–1.8 (feminine). Wider = higher androgen exposure signal.",
   },
   {
@@ -154,7 +154,7 @@ const SUBMETRIC_DEFS: SubDef[] = [
   },
   {
     id: "jawline.ramus", group: "jawline", key: "ramus", label: "Ramus Height", category: "JAW", emoji: "📐",
-    icon: null,
+    icon: require("../../advanced-analysis-icons/ramus.png"),
     idealRange: "Tall, near-vertical ramus (>50% of total jaw length, ~90° from horizontal). More vertical = stronger jaw corner appearance.",
   },
   {
