@@ -49,7 +49,7 @@ import { EXERCISE_CATALOG } from "@/lib/taskSelection";
 // Exercises that use image pair animation instead of video
 // ---------------------------------------------------------------------------
 
-const EXERCISE_IMAGE_PAIRS: Record<string, [any, any]> = {
+const EXERCISE_IMAGE_PAIRS: Record<string, any[]> = {
   "hunter-eyes-1": [
     require("../../aligned_exercises/Hunter eyes 1-Pose1.jpeg"),
     require("../../aligned_exercises/Hunter eyes 1-Pose2.jpeg"),
@@ -62,6 +62,23 @@ const EXERCISE_IMAGE_PAIRS: Record<string, [any, any]> = {
     require("../../excercise-videos/lowerface-pose1.jpeg"),
     require("../../excercise-videos/lowerface-pose2.jpeg"),
   ],
+  "chin-stretch": [
+    require("../../aligned_exercises/chin-stretch-Pose1.jpeg"),
+    require("../../aligned_exercises/chin-stretch-Pose2.jpeg"),
+  ],
+  "neck-stretch": [
+    require("../../aligned_exercises/Neck stretch-Pose1.jpeg"),
+    require("../../aligned_exercises/Neck stretch-Pose2.jpeg"),
+    require("../../aligned_exercises/Neck stretch-Pose3.jpeg"),
+  ],
+  "tongue-touching": [
+    require("../../aligned_exercises/Tongue touching-Pose1.jpeg"),
+    require("../../aligned_exercises/Tongue touching-Pose2.jpeg"),
+  ],
+  "side-tongue": [
+    require("../../aligned_exercises/Side tongue-Pose1.jpeg"),
+    require("../../aligned_exercises/Side tongue-Pose2.jpeg"),
+  ],
 };
 
 // Content position for image-pair exercises — controls which part of the image
@@ -70,6 +87,10 @@ const EXERCISE_IMAGE_POSITION: Record<string, string> = {
   "chin-tucks":        "left center",
   "lowerface-exercise":"left center",
   "hunter-eyes-1":     "center",
+  "chin-stretch":      "center",
+  "neck-stretch":      "center",
+  "tongue-touching":   "center",
+  "side-tongue":       "center",
 };
 
 // ---------------------------------------------------------------------------
@@ -115,7 +136,7 @@ function CircleFrame({
   prepCountdown,
 }: {
   videoSrc: any;
-  imagePair?: [any, any];
+  imagePair?: any[];
   imagePairPosition?: string;
   zoomImage?: any;
   isPaused: boolean;
@@ -131,7 +152,7 @@ function CircleFrame({
   useEffect(() => {
     if (!imagePair || prepCountdown > 0 || isPaused) return;
     const id = setInterval(() => {
-      setPoseIndex((i) => (i === 0 ? 1 : 0));
+      setPoseIndex((i) => (i + 1) % (imagePair?.length ?? 2));
     }, 1500);
     return () => clearInterval(id);
   }, [imagePair, prepCountdown, isPaused, exerciseKey]);

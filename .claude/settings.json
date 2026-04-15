@@ -3,7 +3,29 @@
     "allow": [
       "Bash(node gen-hero-assets.js)",
       "Bash(node -e ':*)",
-      "Bash(node gen-mascot-bust.js)"
+      "Bash(node gen-mascot-bust.js)",
+      "Bash(python skills/ui-ux-pro-max/scripts/search.py \"fitness health workout dark mobile immersive\" --design-system -p \"Facely Daily Workout\" -f markdown)",
+      "Bash(python3 skills/ui-ux-pro-max/scripts/search.py \"fitness health workout dark mobile immersive\" --design-system -p \"Facely Daily Workout\" -f markdown)",
+      "Bash(python --version)",
+      "Bash(py --version)",
+      "Bash(where python:*)",
+      "Bash(where py:*)",
+      "Bash(py scripts/search.py \"fitness health workout dark mobile immersive\" --design-system -p \"Facely Daily Workout\" -f markdown)",
+      "Bash(py /c/Users/SUBHAN/.claude/skills/ui-ux-pro-max/scripts/search.py \"fitness health workout dark mobile immersive\" --design-system -p \"Facely Daily Workout\" -f markdown)",
+      "Bash(py \"C:/Users/SUBHAN/.claude/skills/ui-ux-pro-max/scripts/search.py\" \"fitness health workout dark mobile immersive\" --design-system -p \"Facely Daily Workout\" -f markdown)",
+      "Bash(dir \"C:\\\\Users\\\\SUBHAN\\\\.claude\\\\skills\\\\ui-ux-pro-max\\\\scripts\")",
+      "Bash(dir \"C:\\\\Users\\\\SUBHAN\\\\.claude\\\\skills\\\\ui-ux-pro-max\\\\data\")",
+      "Bash(cmd /c \"dir /a \\\\\"C:\\\\Users\\\\SUBHAN\\\\.claude\\\\skills\\\\ui-ux-pro-max\\\\scripts\\\\\"\")",
+      "Bash(cmd /c \"dir /a /s \\\\\"C:\\\\Users\\\\SUBHAN\\\\.claude\\\\skills\\\\ui-ux-pro-max\\\\\"\")",
+      "Bash(npx tsc:*)",
+      "Bash(pip install:*)",
+      "Bash(python -c ':*)",
+      "Bash(npx expo:*)",
+      "Bash(node_modules/.bin/tsc --noEmit)",
+      "Bash(cmd //c \"cd /d C:\\\\SS\\\\scorer-node && npx tsc --noEmit 2>&1\")",
+      "Bash(cmd.exe /c \"node_modules\\\\.bin\\\\tsc --noEmit 2>&1\")",
+      "Bash(cmd.exe /c \"npx tsc --noEmit 2>&1\")",
+      "Bash(echo \"exit: $?\")"
     ]
   }
 }

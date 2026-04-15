@@ -25,24 +25,25 @@ const GAP = 4;
 const OUTER_H = SP[4]; // 16px — screen container horizontal padding
 const CARD_H = SP[3];  // 12px — card internal horizontal padding
 
-function getUtcDateString(d?: Date): string {
+function getLocalDateString(d?: Date): string {
   const now = d ?? new Date();
-  const y = now.getUTCFullYear();
-  const m = String(now.getUTCMonth() + 1).padStart(2, "0");
-  const day = String(now.getUTCDate()).padStart(2, "0");
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
 }
 
 function subDays(dateStr: string, n: number): string {
-  const d = new Date(dateStr + "T00:00:00Z");
-  d.setUTCDate(d.getUTCDate() - n);
-  return getUtcDateString(d);
+  const [y, mo, da] = dateStr.split("-").map(Number);
+  const d = new Date(y, mo - 1, da - n);
+  return getLocalDateString(d);
 }
 
 // ISO day of week: Monday=1 … Sunday=7
 function isoWeekday(dateStr: string): number {
-  const d = new Date(dateStr + "T00:00:00Z");
-  return d.getUTCDay() === 0 ? 7 : d.getUTCDay(); // Sun→7
+  const [y, mo, da] = dateStr.split("-").map(Number);
+  const d = new Date(y, mo - 1, da);
+  return d.getDay() === 0 ? 7 : d.getDay(); // Sun→7
 }
 
 function getCellState(
@@ -54,19 +55,19 @@ function getCellState(
   if (dateStr > todayStr) return "future";
 
   if (dateStr === todayStr) {
-    return today?.allComplete ? "completed" : "today";
+    return today?.streakEarned ? "completed" : "today";
   }
 
   const record = history.find((r) => r.date === dateStr);
   if (!record) return "missed";
-  return record.allComplete ? "completed" : "missed";
+  return record.streakEarned ? "completed" : "missed";
 }
 
 function buildCells(
   today: DayRecord | null,
   history: DayRecord[]
 ): CalendarCell[] {
-  const todayStr = getUtcDateString();
+  const todayStr = getLocalDateString();
 
   // Build 28 real data cells going back from today
   const dateCells: CalendarCell[] = [];

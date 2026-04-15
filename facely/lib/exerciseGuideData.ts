@@ -512,6 +512,86 @@ export const EXERCISE_GUIDES: Record<string, ExerciseGuide> = {
     ],
   },
 
+  "chin-stretch": {
+    id: "chin-stretch",
+    name: "Chin Stretch",
+    holdTime: "3–5 seconds per rep",
+    reps: "3 sets of 10–12 reps",
+    frequency: "4 times per week",
+    howTo: [
+      "Sit upright with your spine straight and shoulders fully relaxed",
+      "Slowly tilt your head back, extending your chin upward toward the ceiling",
+      "Place two fingers lightly under your chin and apply gentle downward resistance",
+      "Push your chin up against the finger resistance, engaging the submental muscles",
+      "Hold the contraction for 3–5 seconds, then slowly return to neutral",
+    ],
+    tips: [
+      "Keep resistance light — 50–60% effort is enough for muscle activation",
+      "Stop immediately if you feel any joint discomfort in the neck",
+      "Pair with chin tucks in the same session to balance the push–pull",
+    ],
+  },
+
+  "neck-stretch": {
+    id: "neck-stretch",
+    name: "Neck Stretch",
+    holdTime: "10–15 seconds per side",
+    reps: "5–8 reps per side",
+    frequency: "Daily",
+    howTo: [
+      "Sit or stand tall with your spine straight and both shoulders level",
+      "Slowly tilt your head toward your right shoulder without raising that shoulder",
+      "Hold the stretch, feeling the pull along the left side of your neck",
+      "Return to center, then repeat toward the left shoulder",
+      "Keep your jaw relaxed throughout — avoid clenching",
+    ],
+    tips: [
+      "Never force the stretch — let gravity do the work, no pulling with your hand",
+      "Keep both shoulders down and level to get the full range of stretch",
+      "Breathe slowly and deeply through each hold to release tension",
+    ],
+  },
+
+  "side-tongue": {
+    id: "side-tongue",
+    name: "Side Tongue Stretch",
+    holdTime: "3–5 seconds per side",
+    reps: "10–15 reps per side",
+    frequency: "Daily",
+    howTo: [
+      "Sit upright with your mouth slightly open and jaw fully relaxed",
+      "Extend your tongue outward and push it as far as possible toward your right cheek",
+      "Hold the stretch for 3–5 seconds, feeling the resistance in your cheek and midface muscles",
+      "Return your tongue to center, then immediately push it toward your left cheek",
+      "Alternate sides in a steady, controlled rhythm",
+    ],
+    tips: [
+      "Push the tongue against the inside of the cheek — the cheek should visibly bulge outward",
+      "Keep your jaw still throughout — only the tongue moves",
+      "Increase hold time as the muscles strengthen — work up to 8 seconds per side",
+    ],
+  },
+
+  "tongue-touching": {
+    id: "tongue-touching",
+    name: "Tongue Posture Press",
+    holdTime: "5–10 seconds per rep",
+    reps: "10–15 reps",
+    frequency: "2–3 times daily",
+    howTo: [
+      "Sit upright with your mouth slightly open and jaw fully relaxed",
+      "Extend your tongue outward and downward as far as comfortably possible",
+      "Hold the extended position for a moment, feeling the stretch at the tongue base",
+      "Pull your tongue back in and immediately press it firmly to the roof of your mouth",
+      "Hold the palate press for 5–10 seconds before repeating the cycle",
+    ],
+    tips: [
+      "The outward extension loosens tension; the roof press trains correct mewing posture",
+      "Keep your jaw relaxed — the tongue should move independently of your jaw",
+      "Consistency throughout the day matters more than a single long session",
+    ],
+  },
+
   // ── Skincare protocols ────────────────────────────────────────────────────
 
   "cold-water-splash": {

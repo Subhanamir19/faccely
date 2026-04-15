@@ -196,6 +196,40 @@ export const EXERCISE_CATALOG: ExerciseEntry[] = [
     scoreFields: ["jawline", "sexual_dimorphism"],
   },
 
+  // ── Chin / Neck ────────────────────────────────────────────────────────────
+  {
+    id: "chin-stretch",
+    name: "Chin Stretch",
+    targets: ["jawline"],
+    intensity: "high",
+    weight: 4,
+    scoreFields: ["jawline", "sexual_dimorphism"],
+  },
+  {
+    id: "neck-stretch",
+    name: "Neck Stretch",
+    targets: ["jawline"],
+    intensity: "low",
+    weight: 6,
+    scoreFields: ["jawline"],
+  },
+  {
+    id: "tongue-touching",
+    name: "Tongue Posture Press",
+    targets: ["jawline", "cheekbones"],
+    intensity: "low",
+    weight: 7,
+    scoreFields: ["jawline", "facial_symmetry", "cheekbones"],
+  },
+  {
+    id: "side-tongue",
+    name: "Side Tongue Stretch",
+    targets: ["cheekbones", "nose"],
+    intensity: "medium",
+    weight: 5,
+    scoreFields: ["cheekbones", "nose_harmony", "facial_symmetry"],
+  },
+
   // ── All areas ──────────────────────────────────────────────────────────────
   {
     id: "lymphatic-drainage",

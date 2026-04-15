@@ -101,29 +101,92 @@ type StatusKind   = "fine" | "neutral" | "alarming";
 type SectionKey   = "working" | "okay" | "needs_work";
 
 type SubDef = {
-  id:       string;
-  group:    keyof AdvancedAnalysis;
-  key:      string;
-  label:    string;
-  category: CategoryChip;
-  emoji:    string;
-  icon?:    number | null;
+  id:         string;
+  group:      keyof AdvancedAnalysis;
+  key:        string;
+  label:      string;
+  category:   CategoryChip;
+  emoji:      string;
+  icon?:      number | null;
+  idealRange: string;  // one-liner shown in expanded ideal-range row
 };
 
 const SUBMETRIC_DEFS: SubDef[] = [
-  { id: "cheekbones.width",          group: "cheekbones", key: "width",          label: "Cheekbones Width",  category: "CHEEKS", emoji: "😊",  icon: require("../../advanced-analysis-icons/cheekbones-width.jpeg")    },
-  { id: "cheekbones.maxilla",        group: "cheekbones", key: "maxilla",        label: "Maxilla",           category: "CHEEKS", emoji: "🦷",  icon: require("../../advanced-analysis-icons/maxilla.jpeg")             },
-  { id: "cheekbones.bone_structure", group: "cheekbones", key: "bone_structure", label: "Bone Structure",    category: "CHEEKS", emoji: "🦴",  icon: require("../../advanced-analysis-icons/bone structure.jpeg")      },
-  { id: "cheekbones.face_fat",       group: "cheekbones", key: "face_fat",       label: "Face Fat",          category: "CHEEKS", emoji: "🫦",  icon: require("../../advanced-analysis-icons/face fat.jpeg")            },
-  { id: "jawline.development",       group: "jawline",    key: "development",    label: "Jaw Development",   category: "JAW",    emoji: "💪",  icon: require("../../advanced-analysis-icons/jawline development.jpeg") },
-  { id: "jawline.gonial_angle",      group: "jawline",    key: "gonial_angle",   label: "Gonial Angle",      category: "JAW",    emoji: "📐",  icon: require("../../advanced-analysis-icons/gonial-angle.jpeg")        },
-  { id: "jawline.projection",        group: "jawline",    key: "projection",     label: "Chin Projection",   category: "JAW",    emoji: "👤",  icon: require("../../advanced-analysis-icons/chin-projection.jpeg")     },
-  { id: "eyes.canthal_tilt",         group: "eyes",       key: "canthal_tilt",   label: "Canthal Tilt",      category: "EYES",   emoji: "👁️",  icon: require("../../advanced-analysis-icons/canthal tilt.jpeg")        },
-  { id: "eyes.eye_type",             group: "eyes",       key: "eye_type",       label: "Eye Type",          category: "EYES",   emoji: "👀",  icon: require("../../advanced-analysis-icons/eye-type.jpeg")             },
-  { id: "eyes.brow_volume",          group: "eyes",       key: "brow_volume",    label: "Brow Volume",       category: "EYES",   emoji: "🤨",  icon: require("../../advanced-analysis-icons/eyebrows-density.jpeg")    },
-  { id: "eyes.symmetry",             group: "eyes",       key: "symmetry",       label: "Eye Symmetry",      category: "EYES",   emoji: "👁️",  icon: require("../../advanced-analysis-icons/eye-symmetry.jpeg")        },
-  { id: "skin.color",                group: "skin",       key: "color",          label: "Skin Color",        category: "SKIN",   emoji: "🎨",  icon: require("../../advanced-analysis-icons/ski color.jpeg")           },
-  { id: "skin.quality",              group: "skin",       key: "quality",        label: "Skin Quality",      category: "SKIN",   emoji: "✨",  icon: require("../../advanced-analysis-icons/skin quality.jpeg")        },
+  {
+    id: "cheekbones.width", group: "cheekbones", key: "width", label: "Cheekbones Width", category: "CHEEKS", emoji: "😊",
+    icon: require("../../advanced-analysis-icons/cheekbones-width.jpeg"),
+    idealRange: "Bizygomatic width ~130% of midface height. Wide but proportional to the forehead.",
+  },
+  {
+    id: "cheekbones.maxilla", group: "cheekbones", key: "maxilla", label: "Maxilla", category: "CHEEKS", emoji: "🦷",
+    icon: require("../../advanced-analysis-icons/maxilla.jpeg"),
+    idealRange: "Forward-set, well-developed maxilla. Anterior projection lifts the midface and supports the orbital rims.",
+  },
+  {
+    id: "cheekbones.bone_structure", group: "cheekbones", key: "bone_structure", label: "Bone Structure", category: "CHEEKS", emoji: "🦴",
+    icon: require("../../advanced-analysis-icons/bone structure.jpeg"),
+    idealRange: "High, prominent cheekbones with visible sculpting. Malar eminence above the ear canal level.",
+  },
+  {
+    id: "cheekbones.face_fat", group: "cheekbones", key: "face_fat", label: "Face Fat", category: "CHEEKS", emoji: "🫦",
+    icon: require("../../advanced-analysis-icons/face fat.jpeg"),
+    idealRange: "Very lean to lean (~10–14% BF). Buccal fat recedes enough to expose cheekbone shadow.",
+  },
+  {
+    id: "cheekbones.fwhr", group: "cheekbones", key: "fwhr", label: "fWHR", category: "CHEEKS", emoji: "📏",
+    icon: null,
+    idealRange: "Facial width-to-height ratio. Ideal: ~1.9–2.0 (masculine), ~1.6–1.8 (feminine). Wider = higher androgen exposure signal.",
+  },
+  {
+    id: "jawline.development", group: "jawline", key: "development", label: "Jaw Development", category: "JAW", emoji: "💪",
+    icon: require("../../advanced-analysis-icons/jawline development.jpeg"),
+    idealRange: "Sharp, visible edge from frontal view at distance. Mandible cortical bone density creates a defined inferior border.",
+  },
+  {
+    id: "jawline.gonial_angle", group: "jawline", key: "gonial_angle", label: "Gonial Angle", category: "JAW", emoji: "📐",
+    icon: require("../../advanced-analysis-icons/gonial-angle.jpeg"),
+    idealRange: "Ideal: 95–115°. Tighter angle = sharper, more visible jaw corner. Above 125° the corner disappears.",
+  },
+  {
+    id: "jawline.projection", group: "jawline", key: "projection", label: "Chin Projection", category: "JAW", emoji: "👤",
+    icon: require("../../advanced-analysis-icons/chin-projection.jpeg"),
+    idealRange: "Chin tip aligns with or slightly exceeds the nose tip on Ricketts' E-line. Strong projection = defined profile.",
+  },
+  {
+    id: "jawline.ramus", group: "jawline", key: "ramus", label: "Ramus Height", category: "JAW", emoji: "📐",
+    icon: null,
+    idealRange: "Tall, near-vertical ramus (>50% of total jaw length, ~90° from horizontal). More vertical = stronger jaw corner appearance.",
+  },
+  {
+    id: "eyes.canthal_tilt", group: "eyes", key: "canthal_tilt", label: "Canthal Tilt", category: "EYES", emoji: "👁️",
+    icon: require("../../advanced-analysis-icons/canthal tilt.jpeg"),
+    idealRange: "Ideal: +3° to +5° positive (outer corner higher than inner). Hunter-eye aesthetic. Negative tilt softens intensity.",
+  },
+  {
+    id: "eyes.eye_type", group: "eyes", key: "eye_type", label: "Eye Type", category: "EYES", emoji: "👀",
+    icon: require("../../advanced-analysis-icons/eye-type.jpeg"),
+    idealRange: "Hunter or almond shape — lid tension, no visible lower white (sclera). Forward orbital rim placement helps.",
+  },
+  {
+    id: "eyes.brow_volume", group: "eyes", key: "brow_volume", label: "Brow Volume", category: "EYES", emoji: "🤨",
+    icon: require("../../advanced-analysis-icons/eyebrows-density.jpeg"),
+    idealRange: "Full, well-defined brow with clear arch. Tail extends past the lateral canthus. Frames and anchors the eye.",
+  },
+  {
+    id: "eyes.symmetry", group: "eyes", key: "symmetry", label: "Eye Symmetry", category: "EYES", emoji: "👁️",
+    icon: require("../../advanced-analysis-icons/eye-symmetry.jpeg"),
+    idealRange: "Difference < 2mm in height and width between eyes. Slight asymmetry is normal; >3mm is visible at conversational distance.",
+  },
+  {
+    id: "skin.color", group: "skin", key: "color", label: "Skin Color", category: "SKIN", emoji: "🎨",
+    icon: require("../../advanced-analysis-icons/ski color.jpeg"),
+    idealRange: "Even, consistent tone with no hyperpigmentation, redness, or blotchiness. Uniform melanin distribution.",
+  },
+  {
+    id: "skin.quality", group: "skin", key: "quality", label: "Skin Quality", category: "SKIN", emoji: "✨",
+    icon: require("../../advanced-analysis-icons/skin quality.jpeg"),
+    idealRange: "Smooth texture, minimal visible pores, no active breakouts. Light reflects evenly — no diffuse roughness.",
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -142,6 +205,7 @@ type FlatMetric = {
   globalIdx:  number;
   emoji:      string;
   icon:       number | null | undefined;
+  idealRange: string;  // static reference text shown in expanded ideal range row
 };
 
 function classifyScore(score: number): { section: SectionKey; status: StatusKind } {
@@ -175,15 +239,27 @@ function resolveVerdict(def: SubDef, score: number, rawVerdict: string): string 
 }
 
 function flattenData(data: AdvancedAnalysis): FlatMetric[] {
-  return SUBMETRIC_DEFS.map((def, i) => {
-    const group      = data[def.group] as Record<string, any>;
-    const score      = (group[`${def.key}_score`]   as number | undefined) ?? 50;
-    const commentary = (group[def.key]               as string | undefined) ?? "";
-    const rawVerdict = (group[`${def.key}_verdict`]  as string | undefined) ?? "";
-    const verdict    = resolveVerdict(def, score, rawVerdict);
-    const { section, status } = classifyScore(score);
-    return { id: def.id, label: def.label, category: def.category, score, verdict, commentary, section, status, globalIdx: i, emoji: def.emoji, icon: def.icon };
-  });
+  return SUBMETRIC_DEFS
+    .map((def, i) => {
+      const group      = data[def.group] as Record<string, any>;
+      const score      = (group[`${def.key}_score`]   as number | undefined) ?? 50;
+      const commentary = (group[def.key]               as string | undefined) ?? "";
+      const rawVerdict = (group[`${def.key}_verdict`]  as string | undefined) ?? "";
+      const verdict    = resolveVerdict(def, score, rawVerdict);
+      const { section, status } = classifyScore(score);
+      return {
+        id: def.id, label: def.label, category: def.category,
+        score, verdict, commentary, rawVerdict,
+        section, status, globalIdx: i,
+        emoji: def.emoji, icon: def.icon,
+        idealRange: def.idealRange,
+      };
+    })
+    // Suppress metrics that were not assessed: ramus when no side image was provided.
+    // Signal: score is exactly the Zod default (50) AND both verdict and commentary are empty.
+    .filter((m) => !(m.score === 50 && (m as any).rawVerdict === "" && m.commentary === ""))
+    // Re-index globalIdx after filter so animation delays stay tight.
+    .map((m, i) => ({ ...m, globalIdx: i }));
 }
 
 // ---------------------------------------------------------------------------
@@ -276,19 +352,34 @@ function ShimmerCard({ index }: { index: number }) {
 // Metric card — the main accordion item
 // ---------------------------------------------------------------------------
 
+function IdealRangeRow({ text, accentColor }: { text: string; accentColor: string }) {
+  return (
+    <View style={sx.idealRangeRow}>
+      <View style={[sx.idealRangeDot, { backgroundColor: accentColor }]} />
+      <View style={sx.idealRangeTextWrap}>
+        <Text style={sx.idealRangeLabel}>IDEAL</Text>
+        <Text style={sx.idealRangeText}>{text}</Text>
+      </View>
+    </View>
+  );
+}
+
 function MetricCard({ item }: { item: FlatMetric }) {
   const cfg         = STATUS_CONFIG[item.status];
   const isNeedsWork = item.section === "needs_work";
   const isWorking   = item.section === "working";
 
   // needs_work cards start expanded — commentary is always visible
-  const [expanded, setExpanded]   = useState(isNeedsWork);
-  const [typedText, setTypedText] = useState("");
-  const hasAnimated               = useRef(false);
-  const hasCommentary             = item.commentary.length > 0;
+  const [expanded, setExpanded]       = useState(isNeedsWork);
+  const [typedText, setTypedText]     = useState("");
+  const [idealOpen, setIdealOpen]     = useState(false);
+  const hasAnimated                   = useRef(false);
+  const hasCommentary                 = item.commentary.length > 0;
+  const hasIdealRange                 = item.idealRange.length > 0;
 
   const chevronRot     = useSharedValue(isNeedsWork ? 1 : 0);
   const revealProgress = useSharedValue(isNeedsWork ? 1 : 0);
+  const idealProgress  = useSharedValue(0);
 
   const toggle = useCallback(() => {
     if (!hasCommentary || isNeedsWork) return;
@@ -296,7 +387,19 @@ function MetricCard({ item }: { item: FlatMetric }) {
     setExpanded(next);
     chevronRot.value     = withSpring(next ? 1 : 0, { damping: 12, stiffness: 220 });
     revealProgress.value = withSpring(next ? 1 : 0, { damping: 16, stiffness: 200 });
+    // Collapse ideal range when main card collapses
+    if (!next) {
+      setIdealOpen(false);
+      idealProgress.value = withSpring(0, { damping: 16, stiffness: 200 });
+    }
   }, [expanded, hasCommentary, isNeedsWork]);
+
+  const toggleIdeal = useCallback(() => {
+    if (!hasIdealRange) return;
+    const next = !idealOpen;
+    setIdealOpen(next);
+    idealProgress.value = withSpring(next ? 1 : 0, { damping: 16, stiffness: 200 });
+  }, [idealOpen, hasIdealRange]);
 
   // Typewriter — auto-runs on mount for needs_work; once per open otherwise
   useEffect(() => {
@@ -323,8 +426,17 @@ function MetricCard({ item }: { item: FlatMetric }) {
     overflow:  "hidden" as const,
   }));
 
+  const idealStyle = useAnimatedStyle(() => ({
+    maxHeight: interpolate(idealProgress.value, [0, 1], [0, 120]),
+    opacity:   interpolate(idealProgress.value, [0, 0.4], [0, 1]),
+    overflow:  "hidden" as const,
+  }));
+
   // Card visual style varies per section zone
   const cardSx = isNeedsWork ? sx.cardNeedsWork : isWorking ? sx.cardWorking : sx.card;
+
+  // Accent color for ideal range dot — matches section tone
+  const idealAccent = isNeedsWork ? C.alarmIcon : isWorking ? C.fineIcon : C.neutralIcon;
 
   return (
     <Animated.View
@@ -383,6 +495,28 @@ function MetricCard({ item }: { item: FlatMetric }) {
               )}
             </Text>
           </View>
+          {/* Ideal range toggle — always visible on needs_work expanded cards */}
+          {hasIdealRange && (
+            <>
+              <Pressable
+                onPress={toggleIdeal}
+                style={({ pressed }) => [sx.idealToggleRow, pressed && { opacity: 0.7 }]}
+                accessibilityRole="button"
+                accessibilityLabel="Toggle ideal range"
+              >
+                <Text style={[sx.idealToggleLabel, { color: idealAccent }]}>IDEAL RANGE</Text>
+                <ChevronDown
+                  size={ms(13)}
+                  color={idealAccent}
+                  strokeWidth={2.2}
+                  style={{ transform: [{ rotate: idealOpen ? "180deg" : "0deg" }] }}
+                />
+              </Pressable>
+              <Animated.View style={idealStyle}>
+                <IdealRangeRow text={item.idealRange} accentColor={idealAccent} />
+              </Animated.View>
+            </>
+          )}
         </View>
       )}
 
@@ -398,6 +532,28 @@ function MetricCard({ item }: { item: FlatMetric }) {
                 )}
               </Text>
             </View>
+            {/* Ideal range toggle — inside accordion */}
+            {hasIdealRange && (
+              <>
+                <Pressable
+                  onPress={toggleIdeal}
+                  style={({ pressed }) => [sx.idealToggleRow, pressed && { opacity: 0.7 }]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Toggle ideal range"
+                >
+                  <Text style={[sx.idealToggleLabel, { color: idealAccent }]}>IDEAL RANGE</Text>
+                  <ChevronDown
+                    size={ms(13)}
+                    color={idealAccent}
+                    strokeWidth={2.2}
+                    style={{ transform: [{ rotate: idealOpen ? "180deg" : "0deg" }] }}
+                  />
+                </Pressable>
+                <Animated.View style={idealStyle}>
+                  <IdealRangeRow text={item.idealRange} accentColor={idealAccent} />
+                </Animated.View>
+              </>
+            )}
           </View>
         </Animated.View>
       )}
@@ -1205,5 +1361,54 @@ const sx = StyleSheet.create({
     fontSize: ms(14, 0.3),
     fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
     color: C.textPrimary,
+  },
+
+  // ── Ideal range ──
+  idealToggleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: sh(10),
+    paddingTop: sh(8),
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.06)",
+    paddingHorizontal: sw(2),
+  },
+  idealToggleLabel: {
+    fontSize: ms(10, 0.3),
+    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
+    letterSpacing: 1.1,
+  },
+  idealRangeRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: sw(8),
+    paddingTop: sh(8),
+    paddingBottom: sh(4),
+    paddingHorizontal: sw(2),
+  },
+  idealRangeDot: {
+    width: sw(4),
+    height: sw(4),
+    borderRadius: sw(2),
+    marginTop: sh(5),
+    flexShrink: 0,
+    opacity: 0.7,
+  },
+  idealRangeTextWrap: {
+    flex: 1,
+    gap: sh(2),
+  },
+  idealRangeLabel: {
+    fontSize: ms(9.5, 0.3),
+    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
+    color: "rgba(255,255,255,0.35)",
+    letterSpacing: 0.8,
+  },
+  idealRangeText: {
+    fontSize: ms(12, 0.3),
+    fontFamily: Platform.select({ ios: "Poppins-Regular", android: "Poppins-Regular", default: "Poppins-Regular" }),
+    color: "rgba(255,255,255,0.6)",
+    lineHeight: ms(18),
   },
 });

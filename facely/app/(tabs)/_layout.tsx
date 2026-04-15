@@ -167,12 +167,15 @@ export default function TabsLayout() {
       {/* hidden */}
       <Tabs.Screen name="sigma" options={{ href: null }} />
 
-      {/* Dev */}
+      {/* Dev — visible in __DEV__ builds only */}
       <Tabs.Screen
         name="dev"
         options={{
           title: "Dev",
-          tabBarIcon: ({ color, size }) => <Wrench color={color} size={size ?? 24} />,
+          href: __DEV__ ? undefined : null,
+          tabBarIcon: __DEV__
+            ? ({ color, size }) => <Wrench color={color} size={size ?? 24} />
+            : undefined,
         }}
       />
 

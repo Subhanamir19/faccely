@@ -3,6 +3,7 @@
 
 import React, { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import {
+  Dimensions,
   Image,
   Modal,
   Pressable,
@@ -60,7 +61,7 @@ import { getJSON, setJSON } from "@/lib/storage";
 // ---------------------------------------------------------------------------
 
 const CARD_FACE_IMAGES: Record<string, any> = {
-  cheekbones: require("../../assets/analysis-image-new/cheekbones analysis.jpeg"),
+  cheekbones: require("../../assets/analysis-image-new/midface-area.jpeg"),
   jawline:    require("../../assets/analysis-image-new/jawline analysis.jpeg"),
   eyes:       require("../../assets/analysis-image-new/eye area naalysis.jpeg"),
   skin:       require("../../assets/analysis-image-new/skin analysis.jpeg"),
@@ -83,6 +84,34 @@ const CARD_FACE_FOCUS: Record<string, string> = {
   skin:       "center 36%",
 };
 
+// Speech bubble annotation text per zone
+const BUBBLE_TEXT: Record<string, string> = {
+  cheekbones: "fixing the\nmid-face",
+  jawline:    "fixing the\nlower face",
+  eyes:       "lifting the\neye area",
+  skin:       "improving\nskin tone",
+};
+
+// Absolute position of the right bubble per zone
+const BUBBLE_CONFIG: Record<string, {
+  top: string;
+  right?: number;
+  left?: number;
+}> = {
+  cheekbones: { top: "28%", right: 14 },
+  jawline:    { top: "52%", right: 14 },
+  eyes:       { top: "14%", right: 14 },
+  skin:       { top: "32%", right: 14 },
+};
+
+// Primary muscle targeted per zone — shown in top-left bubble
+const MUSCLE_TEXT: Record<string, string> = {
+  cheekbones: "Zygomaticus\nmuscle",
+  jawline:    "tightens your\njawline",
+  eyes:       "Orbicularis\noculi",
+  skin:       "Frontalis\nmuscle",
+};
+
 function resolveCardTarget(tasks: { targets: string[] }[]): string {
   const counts: Record<string, number> = {};
   const priority = ["jawline", "cheekbones", "eyes", "skin"];
@@ -97,6 +126,16 @@ function resolveCardTarget(tasks: { targets: string[] }[]): string {
   }
   return "cheekbones";
 }
+
+// ---------------------------------------------------------------------------
+// Screen metrics — used for proportional card sizing
+// ---------------------------------------------------------------------------
+
+const SCREEN_H       = Dimensions.get("window").height;
+const CARD_TOTAL_H   = Math.round(SCREEN_H * 0.25);   // 25% of screen
+const TOPBAR_H       = 50;
+const PROGRESS_ROW_H = 34;
+const HERO_IMAGE_H   = CARD_TOTAL_H - TOPBAR_H - PROGRESS_ROW_H;
 
 // Module-level: only show intro splash once per day
 let lastIntroDate: string | null = null;
@@ -433,13 +472,92 @@ function StreakBadge() {
           onPressOut={() => { scale.value = withSpring(1, { damping: 10, stiffness: 200 }); }}
           style={styles.streakBadge}
         >
-          <Flame size={18} color="#FF6B1A" strokeWidth={1.5} fill="#FF8C42" />
+          <Flame size={16} color="rgba(255,255,255,0.75)" strokeWidth={1.5} fill="rgba(255,255,255,0.18)" />
           <Text style={styles.streakText}>{currentStreak}</Text>
         </Pressable>
       </Animated.View>
 
       <StreakModal visible={modalVisible} onClose={() => setModalVisible(false)} />
     </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Speech bubble annotation — floats over the hero face image
+// ---------------------------------------------------------------------------
+
+function SpeechBubble({
+  text,
+  top,
+  right,
+  left,
+  delay = 240,
+  floatPhase = 0,
+}: {
+  text: string;
+  top: string | number;
+  right?: number;
+  left?: number;
+  delay?: number;
+  floatPhase?: number;  // ms offset so bubbles float out of sync
+}) {
+  const [displayed, setDisplayed] = useState("");
+  const floatY = useSharedValue(0);
+
+  // Typewriter
+  useEffect(() => {
+    setDisplayed("");
+    let i = 0;
+    let interval: ReturnType<typeof setInterval> | null = null;
+
+    const startTimer = setTimeout(() => {
+      interval = setInterval(() => {
+        i++;
+        setDisplayed(text.slice(0, i));
+        if (i >= text.length && interval) {
+          clearInterval(interval);
+          interval = null;
+        }
+      }, 52);
+    }, delay + 160);
+
+    return () => {
+      clearTimeout(startTimer);
+      if (interval) clearInterval(interval);
+    };
+  }, [text, delay]);
+
+  // Float — starts after entrance, limited to ±3.5px, phase-offset per bubble
+  useEffect(() => {
+    const t = setTimeout(() => {
+      floatY.value = withRepeat(
+        withSequence(
+          withTiming(-3.5, { duration: 1800, easing: Easing.inOut(Easing.sin) }),
+          withTiming( 3.5, { duration: 1800, easing: Easing.inOut(Easing.sin) }),
+        ),
+        -1,
+        false,
+      );
+    }, delay + floatPhase + 400);
+    return () => clearTimeout(t);
+  }, []);
+
+  const floatStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: floatY.value }],
+  }));
+
+  return (
+    <Animated.View
+      entering={FadeInDown.delay(delay).duration(380).springify().damping(18).stiffness(160)}
+      style={[
+        styles.bubbleWrap,
+        { top: top as any, ...(right !== undefined ? { right } : { left }) },
+        floatStyle,
+      ]}
+      accessibilityLabel={text}
+    >
+      <Text style={styles.bubbleText}>{displayed}</Text>
+    </Animated.View>
   );
 }
 
@@ -513,6 +631,35 @@ function buildRoutineDescription(
   return `${verb} session — ${b0} & ${b1}.`;
 }
 
+function ProgressSegment({ filled }: { filled: boolean }) {
+  const scaleY     = useSharedValue(filled ? 1 : 0.45);
+  const glow       = useSharedValue(filled ? 0.75 : 0);
+  const prevFilled = useRef(filled);
+
+  useEffect(() => {
+    if (filled && !prevFilled.current) {
+      scaleY.value = withSequence(
+        withSpring(1.22, { damping: 3, stiffness: 520 }),
+        withSpring(1.0,  { damping: 16, stiffness: 280 }),
+      );
+      glow.value = withTiming(0.75, { duration: 220 });
+    } else if (!filled && prevFilled.current) {
+      scaleY.value = withTiming(0.45, { duration: 160, easing: Easing.out(Easing.cubic) });
+      glow.value   = withTiming(0,    { duration: 160 });
+    }
+    prevFilled.current = filled;
+  }, [filled]);
+
+  const animStyle = useAnimatedStyle(() => ({
+    transform:    [{ scaleY: scaleY.value }],
+    shadowOpacity: glow.value,
+  }));
+
+  return (
+    <Animated.View style={[styles.segPill, filled && styles.segPillFilled, animStyle]} />
+  );
+}
+
 function WorkoutCard({
   tasks,
   focusSummary,
@@ -527,111 +674,133 @@ function WorkoutCard({
   totalCount: number;
 }) {
   const numScale = useSharedValue(1);
-  const progressAnim = useSharedValue(0);
+
+  // ── Header metrics ──────────────────────────────────────────────────────
+  const { getDuration } = useExerciseSettings();
+  const totalSecs  = tasks.reduce((sum, t) => sum + getDuration(t.exerciseId), 0);
+  const totalMins  = Math.max(1, Math.round(totalSecs / 60));
+  const intensity  = aggregateIntensity(tasks);
+  const boostPct   = intensity === "high" ? 3 : intensity === "low" ? 1 : 2;
 
   useEffect(() => {
     if (completedCount > 0) {
       numScale.value = withSequence(
-        withSpring(1.25, { damping: 5, stiffness: 500 }),
-        withSpring(1.0, { damping: 10, stiffness: 200 }),
+        withSpring(1.3, { damping: 4, stiffness: 500 }),
+        withSpring(1.0, { damping: 12, stiffness: 200 }),
       );
     }
-    const pct = totalCount > 0 ? completedCount / totalCount : 0;
-    progressAnim.value = withTiming(pct, { duration: 700, easing: Easing.out(Easing.cubic) });
-  }, [completedCount, totalCount]);
+  }, [completedCount]);
 
   const numStyle = useAnimatedStyle(() => ({
     transform: [{ scale: numScale.value }],
   }));
 
-  const progressBarStyle = useAnimatedStyle(() => ({
-    width: `${progressAnim.value * 100}%`,
-  }));
-
   const allDone = completedCount === totalCount && totalCount > 0;
-  const description = useMemo(
-    () => buildRoutineDescription(tasks, focusSummary, overloadLabel),
-    [tasks, focusSummary, overloadLabel],
-  );
 
-  const cardTarget     = resolveCardTarget(tasks);
-  const cardFaceImage  = CARD_FACE_IMAGES[cardTarget] ?? CARD_FACE_IMAGES.cheekbones;
-  const cardFaceFocus  = CARD_FACE_FOCUS[cardTarget] ?? "center";
-  const cardFaceLabel  = CARD_FACE_LABELS[cardTarget] ?? "Full Face";
+  const cardTarget    = resolveCardTarget(tasks);
+  const cardFaceImage = CARD_FACE_IMAGES[cardTarget] ?? CARD_FACE_IMAGES.cheekbones;
+  const cardFaceFocus = CARD_FACE_FOCUS[cardTarget] ?? "center";
+  const bubbleText    = BUBBLE_TEXT[cardTarget] ?? "full face session";
+  const bubbleCfg     = BUBBLE_CONFIG[cardTarget] ?? BUBBLE_CONFIG.cheekbones;
+  const muscleText    = MUSCLE_TEXT[cardTarget] ?? "Facial\nmuscle";
 
   return (
     <View style={styles.workoutCard}>
-      <View style={styles.cardContent}>
 
-        {/* ── Two-column layout: text left · face image right ── */}
-        <View style={styles.cardBodyRow}>
-
-          {/* LEFT: Streak badge + label + description + progress */}
-          <View style={styles.cardTextCol}>
-
-            {/* Eyebrow row: streak badge + label inline */}
-            <View style={styles.cardTopRow}>
-              <StreakBadge />
-              <View style={styles.eyebrowRow}>
-                <View style={styles.eyebrowDot} />
-                <Text style={styles.eyebrowLabel} numberOfLines={1}>
-                  {allDone ? "COMPLETED" : "TODAY'S WORKOUT"}
-                </Text>
-              </View>
-            </View>
-
-            {/* Description */}
-            <Animated.View
-              key={allDone ? "done" : focusSummary}
-              entering={FadeInDown.duration(380).delay(60).springify().damping(22)}
-            >
-              <Text
-                style={allDone ? styles.cardDescriptionDone : styles.cardDescription}
-                numberOfLines={2}
-              >
-                {allDone ? "All done — great work today." : description}
-              </Text>
-            </Animated.View>
-
-            <View style={styles.targetDivider} />
-
-            {/* Progress bar */}
-            <View style={styles.progressRow}>
-              <View style={styles.progressTrack}>
-                <Animated.View style={[styles.progressFill, progressBarStyle]} />
-              </View>
-              <Animated.Text style={[styles.progressCount, numStyle]}>
-                {completedCount} / {totalCount}
-              </Animated.Text>
-            </View>
-
+      {/* ── Top bar: streak badge + session label + metrics ── */}
+      <View style={styles.cardTopBar}>
+        {/* Row 1: badge + heading */}
+        <Animated.View entering={FadeIn.duration(300)} style={styles.cardTopRow}>
+          <StreakBadge />
+          <View style={styles.eyebrowRow}>
+            <View style={styles.eyebrowDot} />
+            <Text style={styles.eyebrowLabel} numberOfLines={1}>
+              {allDone ? "COMPLETED" : "TODAY'S WORKOUT"}
+            </Text>
           </View>
+        </Animated.View>
+        {/* Row 2: metrics — full card width */}
+        <Animated.View entering={FadeIn.delay(80).duration(300)} style={styles.metricsRow}>
+          <Text style={styles.metricChip}>~{totalMins} min</Text>
+          <Text style={styles.metricChip}>+{boostPct}% lift</Text>
+        </Animated.View>
+      </View>
 
-          {/* RIGHT: Face analysis image */}
-          <View style={styles.cardFaceWrap}>
-            <ExpoImage
-              key={`card-face-${cardTarget}`}
-              source={cardFaceImage}
-              style={StyleSheet.absoluteFillObject}
-              contentFit="cover"
-              contentPosition={cardFaceFocus}
-              transition={400}
-            />
-            {/* Bottom gradient + label */}
-            <LinearGradient
-              colors={["transparent", "rgba(0,0,0,0.72)"]}
-              style={styles.cardFaceGrad}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 0, y: 1 }}
-            />
-            <View style={styles.cardFaceLabelWrap}>
-              <View style={styles.cardFaceLabelDot} />
-              <Text style={styles.cardFaceLabel}>{cardFaceLabel}</Text>
+      {/* ── Hero image container ── */}
+      <View style={styles.heroImageWrap}>
+        <ExpoImage
+          key={`card-face-${cardTarget}`}
+          source={cardFaceImage}
+          style={styles.heroImage}
+          contentFit="contain"
+          contentPosition="center"
+          transition={400}
+        />
+
+        {/* Top edge fade — blends into card bg above */}
+        <LinearGradient
+          colors={["rgba(0,0,0,0.28)", "transparent"]}
+          style={styles.heroTopFade}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 0, y: 1 }}
+          pointerEvents="none"
+        />
+
+        {/* Bottom edge fade — depth without label */}
+        <LinearGradient
+          colors={["transparent", "rgba(0,0,0,0.48)"]}
+          style={styles.heroBottomFade}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 0, y: 1 }}
+          pointerEvents="none"
+        />
+
+        {/* Right bubble — target area */}
+        {!allDone && (
+          <SpeechBubble
+            text={bubbleText}
+            top={bubbleCfg.top}
+            right={bubbleCfg.right}
+            left={bubbleCfg.left}
+          />
+        )}
+
+        {/* Left bubble — primary muscle */}
+        {!allDone && (
+          <SpeechBubble
+            text={muscleText}
+            top="12%"
+            left={14}
+            delay={480}
+            floatPhase={900}
+          />
+        )}
+
+        {/* All-done overlay */}
+        {allDone && (
+          <View style={styles.allDoneImgOverlay}>
+            <View style={styles.allDoneCircle}>
+              <Check size={sw(22)} color="#000" strokeWidth={2.5} />
             </View>
           </View>
+        )}
+      </View>
 
+      {/* ── Progress row ── */}
+      <View style={styles.progressRow}>
+        <View style={styles.segPillsRow}>
+          {Array.from({ length: totalCount }).map((_, i) => (
+            <ProgressSegment key={i} filled={i < completedCount} />
+          ))}
+        </View>
+        <View style={styles.countWrap}>
+          <Animated.Text style={[styles.countCompleted, numStyle]}>
+            {completedCount}
+          </Animated.Text>
+          <Text style={styles.countTotal}>/{totalCount}</Text>
         </View>
       </View>
+
     </View>
   );
 }
@@ -1863,70 +2032,21 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
-  // Content section
-  cardContent: {
-    paddingLeft: sw(18),
-    paddingRight: 0,            // image column is flush to the card edge
-    paddingTop: sh(14),
-    paddingBottom: sh(16),
+  // ── Top bar: streak badge + session label ──────────────────────────────
+  cardTopBar: {
+    flexDirection: "column",
+    justifyContent: "center",
+    gap: sh(3),
+    height: TOPBAR_H,
+    paddingHorizontal: sw(16),
+    paddingVertical: sh(5),
   },
-
-  // Two-column row: text left, face image right
-  cardBodyRow: {
-    flexDirection: "row",
-    alignItems: "stretch",
-    gap: sw(12),
-  },
-
-  // Left text column
-  cardTextCol: {
-    flex: 1,
-    gap: sh(10),
-  },
-
-  // Right face image
-  cardFaceWrap: {
-    width: sw(96),
-    borderRadius: sw(14),
-    overflow: "hidden",
-    backgroundColor: "#1A1A1A",
-    marginRight: sw(14),
-    minHeight: sh(110),
-  },
-  cardFaceGrad: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: "55%",
-  },
-  cardFaceLabelWrap: {
-    position: "absolute",
-    bottom: sh(8),
-    left: sw(8),
-    flexDirection: "row",
-    alignItems: "center",
-    gap: sw(4),
-  },
-  cardFaceLabelDot: {
-    width: sw(5),
-    height: sw(5),
-    borderRadius: sw(3),
-    backgroundColor: COLORS.accent,
-  },
-  cardFaceLabel: {
-    color: COLORS.text,
-    fontSize: ms(10),
-    fontFamily: "Poppins-SemiBold",
-    letterSpacing: 0.4,
-  },
-
+  // Row 1: badge + heading
   cardTopRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: sw(8),
   },
-
   // Label row (● TODAY'S WORKOUT)
   eyebrowRow: {
     flexDirection: "row",
@@ -1934,12 +2054,10 @@ const styles = StyleSheet.create({
     gap: sw(6),
     flex: 1,
   },
-  eyebrowRowCentered: {
-    flex: 1,
+  // Row 2: metrics spanning full card width
+  metricsRow: {
     flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: sw(6),
+    justifyContent: "space-between",
   },
   eyebrowDot: {
     width: sw(5),
@@ -1948,75 +2066,121 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.accent,
   },
   eyebrowLabel: {
-    color: "rgba(255,255,255,0.55)",
+    color: "rgba(255,255,255,0.88)",
     fontSize: ms(13),
     fontFamily: "Poppins-SemiBold",
-    letterSpacing: 1.8,
+    letterSpacing: 1.2,
     textTransform: "uppercase",
+    flex: 1,
+    textAlign: "center",
   },
-
-  // Description line
-  cardDescription: {
-    color: "rgba(255,255,255,0.72)",
-    fontSize: ms(13),
+  metricChip: {
+    color: "rgba(255,255,255,0.55)",
+    fontSize: ms(10.5),
     fontFamily: "Poppins-Regular",
-    lineHeight: ms(20),
+    letterSpacing: 0.3,
   },
-  cardDescriptionDone: {
-    color: COLORS.accent,
-    fontSize: ms(13),
+
+  // ── Hero image ──────────────────────────────────────────────────────────
+  heroImageWrap: {
+    marginHorizontal: sw(16),
+    height: HERO_IMAGE_H,
+    borderRadius: sw(14),
+    overflow: "hidden",
+    backgroundColor: "#000000",
+  },
+  heroImage: {
+    width: "100%",
+    height: "100%",
+  },
+  heroTopFade: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: sh(52),
+  },
+  heroBottomFade: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: sh(64),
+  },
+
+  // ── Speech bubble annotation ────────────────────────────────────────────
+  bubbleWrap: {
+    position: "absolute",
+    backgroundColor: "#FFFFFF",
+    borderRadius: sw(6),
+    paddingHorizontal: sw(6),
+    paddingVertical: sh(4),
+    minWidth: sw(64),
+    maxWidth: sw(82),
+    minHeight: sh(24),
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: sh(1.5) },
+    shadowOpacity: 0.16,
+    shadowRadius: sw(4),
+    elevation: 4,
+  },
+  bubbleText: {
+    fontSize: ms(8),
     fontFamily: "Poppins-SemiBold",
-    lineHeight: ms(20),
+    color: "#0D0D0D",
+    letterSpacing: 0.1,
+    lineHeight: ms(11.5),
+    textAlign: "left",
   },
-
-  // Divider
-  targetDivider: {
-    height: 1,
-    backgroundColor: "rgba(255,255,255,0.07)",
-    marginTop: sh(2),
-  },
-
-  // Progress row
+  // ── Progress row ────────────────────────────────────────────────────────
   progressRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    marginTop: sh(2),
+    height: PROGRESS_ROW_H,
+    paddingHorizontal: sw(16),
+    gap: sw(14),
   },
-  progressTrack: {
+  // Segmented pill track
+  segPillsRow: {
     flex: 1,
-    height: sh(4),
-    borderRadius: sw(2),
-    backgroundColor: "rgba(255,255,255,0.10)",
-    overflow: "hidden",
-    marginRight: sw(12),
-  },
-  progressFill: {
-    height: "100%",
-    borderRadius: sw(2),
-    backgroundColor: COLORS.accent,
-  },
-  segDotsRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: sw(7),
+    gap: sw(5),
   },
-  segDot: {
-    width: sw(11),
-    height: sw(11),
-    borderRadius: sw(6),
-    backgroundColor: "rgba(255,255,255,0.10)",
+  segPill: {
+    flex: 1,
+    height: sh(7),
+    borderRadius: sw(4),
+    backgroundColor: "rgba(255,255,255,0.09)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.15)",
+    borderColor: "rgba(255,255,255,0.12)",
   },
-  segDotFilled: {
+  segPillFilled: {
     backgroundColor: COLORS.accent,
     borderColor: COLORS.accent,
     shadowColor: COLORS.accent,
-    shadowOpacity: 0.7,
-    shadowRadius: sw(5),
+    shadowRadius: sw(6),
     shadowOffset: { width: 0, height: 0 },
-    elevation: 3,
+    elevation: 4,
+  },
+  // Counter
+  countWrap: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    gap: sw(1),
+  },
+  countCompleted: {
+    color: COLORS.text,
+    fontSize: ms(16),
+    fontFamily: "Poppins-SemiBold",
+    fontVariant: ["tabular-nums"],
+    lineHeight: ms(20),
+  },
+  countTotal: {
+    color: "rgba(255,255,255,0.35)",
+    fontSize: ms(11),
+    fontFamily: "Poppins-Regular",
+    fontVariant: ["tabular-nums"],
   },
   // Streak badge
   streakBadgeWrap: {
@@ -2038,7 +2202,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.08)",
   },
-  streakText: { color: COLORS.text, fontSize: ms(15), fontFamily: "Poppins-SemiBold" },
+  streakText: { color: COLORS.text, fontSize: ms(13), fontFamily: "Poppins-SemiBold" },
 
   // Streak modal
   streakBigNum: {
@@ -2130,13 +2294,6 @@ const styles = StyleSheet.create({
     fontFamily: "Poppins-SemiBold",
     letterSpacing: 0.6,
     textTransform: "uppercase",
-  },
-  progressCount: {
-    color: COLORS.sub,
-    fontSize: ms(13),
-    fontFamily: "Poppins-SemiBold",
-    minWidth: sw(28),
-    textAlign: "right",
   },
 
   // Section header

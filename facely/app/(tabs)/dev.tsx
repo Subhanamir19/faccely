@@ -237,6 +237,19 @@ export default function DevScreen() {
           />
         </GlassCard>
 
+        {/* ── Score Card Shortcut ───────────────────────────────────── */}
+        <GlassCard style={styles.card}>
+          <SectionHeader
+            title="Score Card"
+            subtitle="Jump directly to the live scoring screen"
+          />
+          <DevButton
+            label="▶  Open Score Screen"
+            accent
+            onPress={() => router.push("/(tabs)/score" as any)}
+          />
+        </GlassCard>
+
         {/* ── Insight Reveal Preview ────────────────────────────────── */}
         <GlassCard style={styles.card}>
           <SectionHeader
@@ -263,6 +276,24 @@ export default function DevScreen() {
             label="▶  Preview Modal"
             accent
             onPress={() => setDayCompleteVisible(true)}
+          />
+        </GlassCard>
+
+        {/* ── Session Completion Screen ─────────────────────────────── */}
+        <GlassCard style={styles.card}>
+          <SectionHeader
+            title="Session Completion Screen"
+            subtitle="Redesigned: stats → streak ring → tomorrow card hierarchy"
+          />
+          <DevButton
+            label="▶  Preview (2 / 5 done)"
+            accent
+            onPress={() => router.push("/program/complete?doneCount=2&total=5" as any)}
+          />
+          <DevButton
+            label="▶  Preview (5 / 5 done)"
+            accent
+            onPress={() => router.push("/program/complete?doneCount=5&total=5" as any)}
           />
         </GlassCard>
 
@@ -352,6 +383,38 @@ export default function DevScreen() {
           />
         </GlassCard>
 
+        {/* ── 3 Newest Exercises ────────────────────────────────────── */}
+        <GlassCard style={styles.card}>
+          <SectionHeader
+            title="3 New Exercises"
+            subtitle="Guide screen + session player previews"
+          />
+          {[
+            { label: "Chin Stretch",         id: "chin-stretch" },
+            { label: "Neck Stretch",         id: "neck-stretch" },
+            { label: "Tongue Posture Press", id: "tongue-touching" },
+            { label: "Side Tongue Stretch",  id: "side-tongue" },
+          ].map(({ label, id }) => (
+            <View key={id} style={styles.row}>
+              <DevButton
+                label={`Guide — ${label}`}
+                accent
+                onPress={() => router.push(`/program/guide/${id}` as any)}
+              />
+              <DevButton
+                label="Session"
+                accent
+                onPress={() => router.push(`/program/session?previewExerciseIds=${id}` as any)}
+              />
+            </View>
+          ))}
+          <DevButton
+            label="▶  All 4 Together"
+            accent
+            onPress={() => router.push("/program/session?previewExerciseIds=chin-stretch,neck-stretch,tongue-touching,side-tongue" as any)}
+          />
+        </GlassCard>
+
         {/* ── Exercise Timer Preview ───────────────────────────────── */}
         <GlassCard style={styles.card}>
           <SectionHeader
@@ -378,6 +441,10 @@ export default function DevScreen() {
               { label: "Midface Lift",             id: "midface-exercise" },
               { label: "Lower Face Lift",          id: "lowerface-exercise" },
               { label: "Chin Training",            id: "chin-training" },
+              { label: "Chin Stretch",             id: "chin-stretch" },
+              { label: "Neck Stretch",             id: "neck-stretch" },
+              { label: "Tongue Posture Press",     id: "tongue-touching" },
+              { label: "Side Tongue Stretch",      id: "side-tongue" },
             ].map(({ label, id }) => (
               <TouchableOpacity
                 key={id}

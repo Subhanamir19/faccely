@@ -26,9 +26,14 @@ export const useAdvancedAnalysis = create<State & Actions>((set, get) => ({
   cachedScanId: null,
 
   fetch: async () => {
-    const { imageUri, scores, scanId } = useScores.getState();
+    const { imageUri, sideImageUri, scores, scanId } = useScores.getState();
 
-    logger.log("[advancedAnalysis] fetch() called — scanId:", scanId, "hasImageUri:", !!imageUri, "hasScores:", !!scores);
+    logger.log(
+      "[advancedAnalysis] fetch() called — scanId:", scanId,
+      "hasImageUri:", !!imageUri,
+      "hasSideImageUri:", !!sideImageUri,
+      "hasScores:", !!scores
+    );
 
     if (!scores || !imageUri) {
       logger.warn("[advancedAnalysis] blocked — missing scores or imageUri");
@@ -47,8 +52,8 @@ export const useAdvancedAnalysis = create<State & Actions>((set, get) => ({
 
     set({ loading: true, error: null });
     try {
-      logger.log("[advancedAnalysis] calling /analyze/advanced-explain...");
-      const result = await fetchAdvancedAnalysis(imageUri, scores, scanId);
+      logger.log("[advancedAnalysis] calling /analyze/advanced-explain...", sideImageUri ? "(with side image)" : "(frontal only)");
+      const result = await fetchAdvancedAnalysis(imageUri, scores, scanId, sideImageUri ?? null);
       logger.log("[advancedAnalysis] fetch OK — groups returned:", Object.keys(result));
       set({ data: result, loading: false, cachedScanId: scanId ?? null });
       // Fix B: DB write is now complete (Fix A awaits it on backend).

@@ -40,6 +40,12 @@ export const EXERCISE_ICONS: Record<string, any> = {
 
   // Chin
   "chin-training":      ICON_JAWLINE,
+
+  // Chin / Neck / Tongue
+  "chin-stretch":       ICON_JAWLINE,
+  "neck-stretch":       ICON_JAWLINE,
+  "tongue-touching":    ICON_CHEEKBONES_JAWLINE,
+  "side-tongue":        ICON_CHEEKBONES,
 };
 
 export function getExerciseIcon(exerciseId: string): any {

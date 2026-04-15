@@ -4,7 +4,11 @@ import { logger } from '@/lib/logger';
 // Centralised helpers for talking to the scorer API.
 // Keeps timeout/error handling consistent and observable.
 
-export type FetchWithTimeoutOptions = RequestInit & { timeoutMs?: number };
+export type FetchWithTimeoutOptions = RequestInit & {
+  timeoutMs?: number;
+  /** Suppress the [net] success log — use for high-frequency background polling. */
+  quiet?: boolean;
+};
 
 export class RequestTimeoutError extends Error {
   readonly timeoutMs: number;
@@ -75,7 +79,7 @@ export async function fetchWithTimeout(
   input: RequestInfo,
   init: FetchWithTimeoutOptions = {}
 ): Promise<Response> {
-  const { timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS, signal, ...rest } = init;
+  const { timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS, signal, quiet, ...rest } = init;
   const upstreamSignal = signal ?? undefined;
 
   // short-circuit: no timeout
@@ -97,7 +101,7 @@ export async function fetchWithTimeout(
     const res = await fetch(input, { ...rest, signal: timeoutSignal });
     const duration = Date.now() - start;
 
-    logger.log(`[net] ${method} ${url} → ${res.status} (${duration} ms)`);
+    if (!quiet) logger.log(`[net] ${method} ${url} → ${res.status} (${duration} ms)`);
 
     return res;
   } catch (err) {

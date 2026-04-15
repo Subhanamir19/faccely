@@ -1129,8 +1129,19 @@ app.post("/analyze/advanced-explain", async (req, res) => {
   }
   let slot: ConcurrencyToken | null = null;
   try {
-    await runSingleUpload("image", req, res);
-    const file = req.file;
+    // Accept frontal image (required) + optional side profile image.
+    await runFieldUpload(
+      [
+        { name: "image",      maxCount: 1 },
+        { name: "side_image", maxCount: 1 },
+      ],
+      req,
+      res
+    );
+    const files    = req.files as Record<string, Express.Multer.File[]> | undefined;
+    const file     = files?.image?.[0];
+    const sideFile = files?.side_image?.[0];
+
     if (!file)
       return res.status(400).json(
         apiError("missing_image", "Image field 'image' is required.", {
@@ -1147,7 +1158,20 @@ app.post("/analyze/advanced-explain", async (req, res) => {
     const scores = parseScoresPayload(scoresRaw);
     slot = await enqueue();
     const { buffer, mime } = await toJpegBuffer(file);
-    const result = await explainAdvancedBytes(openai, buffer, mime, scores);
+
+    // Prepare side image when provided — gracefully absent for single-scan users.
+    let sideBuffer: Buffer | undefined;
+    let sideMime: string | undefined;
+    if (sideFile) {
+      const sJ = await toJpegBuffer(sideFile);
+      sideBuffer = sJ.buffer;
+      sideMime   = sJ.mime;
+      console.log("[advanced-explain] side image received:", sideFile.originalname, sideBuffer.length, "bytes");
+    } else {
+      console.log("[advanced-explain] no side image — ramus will not be assessed");
+    }
+
+    const result = await explainAdvancedBytes(openai, buffer, mime, scores, sideBuffer, sideMime);
 
     // Persist to DB before responding so GET /insights always sees the data
     const scanId = req.body?.scanId;
@@ -1173,7 +1197,10 @@ app.post("/analyze/advanced-explain", async (req, res) => {
       message: "Failed to generate advanced explanations.",
     });
   } finally {
-    cleanupTempFile(req.file);
+    // Clean up both temp files — sideFile lives in req.files, not req.file.
+    const advFiles = req.files as Record<string, Express.Multer.File[]> | undefined;
+    cleanupTempFile(advFiles?.image?.[0]);
+    cleanupTempFile(advFiles?.side_image?.[0]);
     if (slot) release(slot);
     console.log("[/analyze/advanced-explain] ms =", Date.now() - t0);
   }

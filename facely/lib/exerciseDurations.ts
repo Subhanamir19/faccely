@@ -20,6 +20,10 @@ export const EXERCISE_DURATIONS: Record<string, number> = {
   "midface-exercise":        30,
   "lowerface-exercise":      45,
   "chin-training":           45,
+  "chin-stretch":            45,
+  "neck-stretch":            30,
+  "tongue-touching":         30,
+  "side-tongue":             30,
 };
 
 export function getExerciseDuration(exerciseId: string): number {

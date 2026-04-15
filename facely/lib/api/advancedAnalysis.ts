@@ -31,11 +31,15 @@ const AdvancedAnalysisSchema = z.object({
     maxilla: Line,        maxilla_score: Score,        maxilla_verdict: Verdict,
     bone_structure: Line, bone_structure_score: Score, bone_structure_verdict: Verdict,
     face_fat: Line,       face_fat_score: Score,       face_fat_verdict: Verdict,
+    // fwhr — always present (frontal estimate); defaults guard old cached responses.
+    fwhr: Line,           fwhr_score: Score,           fwhr_verdict: Verdict,
   }),
   jawline: z.object({
     development: Line,  development_score: Score,  development_verdict: Verdict,
     gonial_angle: Line, gonial_angle_score: Score, gonial_angle_verdict: Verdict,
     projection: Line,   projection_score: Score,   projection_verdict: Verdict,
+    // ramus — "" + 50 + "" when no side image was provided; frontend suppresses those rows.
+    ramus: Line,        ramus_score: Score,        ramus_verdict: Verdict,
   }),
   eyes: z.object({
     canthal_tilt: Line, canthal_tilt_score: Score, canthal_tilt_verdict: Verdict,
@@ -77,17 +81,31 @@ async function parseResponse(res: Response): Promise<AdvancedAnalysis> {
 
 /**
  * POST /analyze/advanced-explain
- * Sends the frontal image + existing scores; returns per-sub-metric commentary.
+ * Sends the frontal image (required) + optional side image + existing scores.
+ * Ramus assessment is only possible when sideImage is provided.
  */
 export async function fetchAdvancedAnalysis(
   image: UploadInput,
   scores: Scores,
   scanId?: string | null,
+  sideImage?: UploadInput | null,
   signal?: AbortSignal
 ): Promise<AdvancedAnalysis> {
   const fd = new FormData();
   const imagePart = await prepareUploadPart(image, "image.jpg");
   fd.append("image", imagePart as any);
+
+  // Side image is optional — single-scan users won't have it.
+  if (sideImage) {
+    try {
+      const sidePart = await prepareUploadPart(sideImage, "side.jpg");
+      fd.append("side_image", sidePart as any);
+    } catch (e) {
+      // Non-fatal: if side image fails to prepare, proceed without it.
+      logger.warn("[advancedAnalysis] side image preparation failed — proceeding without ramus:", e);
+    }
+  }
+
   fd.append("scores", JSON.stringify(scores));
   if (scanId) fd.append("scanId", scanId);
 

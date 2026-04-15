@@ -194,13 +194,13 @@ function CalCell({ slot, index }: { slot: DaySlot; index: number }) {
   const depthBg = isDone || isTodayPending
     ? "#4A7A00"
     : isMissed
-    ? "#8B0000"
+    ? "#CCCCCC"
     : "#161616";
 
   const faceBg = isDone || isTodayPending
     ? COLORS.accent
     : isMissed
-    ? "#C8112B"
+    ? "#FFFFFF"
     : "#252525";
 
   return (
@@ -487,10 +487,10 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   cellCross: {
-    fontSize:   14,
+    fontSize:   20,
     fontFamily: "Poppins-SemiBold",
-    color:      "#FFFFFF",           // white ✕ on red face
-    lineHeight: 18,
+    color:      "#C8112B",           // red ✕ on white face
+    lineHeight: 24,
   },
   cellDot: {
     width:        7,

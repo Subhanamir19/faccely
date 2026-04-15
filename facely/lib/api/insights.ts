@@ -90,6 +90,7 @@ export async function fetchInsights(): Promise<InsightData> {
   const res = await fetchWithRetry(`${API_BASE}/insights`, {
     method: "GET",
     headers: { Accept: "application/json", ...authHeaders },
+    quiet: true,
   });
 
   if (!res.ok) {

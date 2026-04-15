@@ -85,6 +85,23 @@ export const POSE_FRAMES: Record<string, any[]> = {
   "midface-exercise": [
     require("../excercise-videos/midface-exercise.jpeg"),
   ],
+  "chin-stretch": [
+    require("../aligned_exercises/chin-stretch-Pose1.jpeg"),
+    require("../aligned_exercises/chin-stretch-Pose2.jpeg"),
+  ],
+  "neck-stretch": [
+    require("../aligned_exercises/Neck stretch-Pose1.jpeg"),
+    require("../aligned_exercises/Neck stretch-Pose2.jpeg"),
+    require("../aligned_exercises/Neck stretch-Pose3.jpeg"),
+  ],
+  "tongue-touching": [
+    require("../aligned_exercises/Tongue touching-Pose1.jpeg"),
+    require("../aligned_exercises/Tongue touching-Pose2.jpeg"),
+  ],
+  "side-tongue": [
+    require("../aligned_exercises/Side tongue-Pose1.jpeg"),
+    require("../aligned_exercises/Side tongue-Pose2.jpeg"),
+  ],
 };
 
 // Aliases for renamed exercise IDs — reuse existing frames where available

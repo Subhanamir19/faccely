@@ -139,8 +139,8 @@ function ConfettiBurst({ screenWidth }: { screenWidth: number }) {
 // ---------------------------------------------------------------------------
 
 function StreakRing({ streak }: { streak: number }) {
-  const RING_SIZE  = 120;
-  const STROKE     = 8;
+  const RING_SIZE  = 90;
+  const STROKE     = 6;
   const radius     = (RING_SIZE - STROKE) / 2;
   const circumference = 2 * Math.PI * radius;
 
@@ -175,7 +175,7 @@ function StreakRing({ streak }: { streak: number }) {
           cx={RING_SIZE / 2}
           cy={RING_SIZE / 2}
           r={radius}
-          stroke="rgba(180,243,77,0.12)"
+          stroke="rgba(255,255,255,0.08)"
           strokeWidth={STROKE}
           fill="none"
         />
@@ -292,7 +292,7 @@ export default function CompleteScreen() {
 
       <View style={[styles.inner, { paddingBottom: Math.max(insets.bottom, SP[5]) }]}>
 
-        {/* ── Check icon ── */}
+        {/* ── Check icon (supporting accent, not hero) ── */}
         <Animated.View
           entering={FadeIn.duration(280).delay(100)}
           style={styles.checkCircle}
@@ -321,26 +321,26 @@ export default function CompleteScreen() {
           {streakCopy}
         </Animated.Text>
 
-        {/* ── Streak ring ── */}
-        <Animated.View entering={FadeIn.duration(300).delay(200)} style={styles.ringRow}>
-          <StreakRing streak={currentStreak} />
-        </Animated.View>
-
-        {/* ── Stats row ── */}
+        {/* ── Stats row — what you did (before the streak reward) ── */}
         <View style={styles.statsRow}>
           <StatPill
             value={`${doneCount}/${total}`}
             label="Exercises"
-            delay={420}
+            delay={340}
           />
           {focusSummary ? (
             <StatPill
               value={focusSummary.split(/,\s*|\s*&\s*/)[0]?.trim() ?? focusSummary}
               label="Focus Area"
-              delay={500}
+              delay={420}
             />
           ) : null}
         </View>
+
+        {/* ── Streak ring — celebration reward, after the stats ── */}
+        <Animated.View entering={FadeIn.duration(300).delay(480)} style={styles.ringRow}>
+          <StreakRing streak={currentStreak} />
+        </Animated.View>
 
         {/* ── Tomorrow preview ── */}
         {tomorrowExName && (
@@ -348,6 +348,7 @@ export default function CompleteScreen() {
             entering={FadeInUp.duration(340).delay(560).springify()}
             style={styles.tomorrowCard}
           >
+            <View style={styles.tomorrowAccent} />
             <Text style={styles.tomorrowLabel}>TOMORROW</Text>
             <Text style={styles.tomorrowText}>
               Starting with: {tomorrowExName}
@@ -386,29 +387,29 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
 
-  // Check circle
+  // Check circle — demoted to supporting icon, not hero element
   checkCircle: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    marginBottom: SP[5],
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    marginBottom: SP[3],
     shadowColor: COLORS.accent,
-    shadowOpacity: 0.45,
-    shadowRadius: 28,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 12,
+    shadowOpacity: 0.3,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 8,
   },
   checkGradient: {
     flex: 1,
-    borderRadius: 36,
+    borderRadius: 26,
     alignItems: "center",
     justifyContent: "center",
   },
   checkGlyph: {
-    fontSize: 34,
+    fontSize: 22,
     color: "#0A0A0A",
     fontFamily: "Poppins-SemiBold",
-    lineHeight: 40,
+    lineHeight: 28,
   },
 
   // Headlines
@@ -421,22 +422,22 @@ const styles = StyleSheet.create({
     marginBottom: SP[2],
   },
   subline: {
-    fontSize: 15,
+    fontSize: 14,
     fontFamily: "Poppins-Regular",
     color: COLORS.sub,
     textAlign: "center",
-    lineHeight: 24,
-    marginBottom: SP[6],
+    lineHeight: 22,
+    marginBottom: SP[5],
     paddingHorizontal: SP[4],
   },
 
-  // Streak ring
+  // Streak ring — proportionally tighter, single clear hero number
   ringRow: {
-    marginBottom: SP[6],
+    marginBottom: SP[5],
   },
   ringContainer: {
-    width: 120,
-    height: 120,
+    width: 90,
+    height: 90,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -446,32 +447,33 @@ const styles = StyleSheet.create({
     gap: 0,
   },
   ringStreak: {
-    fontSize: 36,
+    fontSize: 28,
     fontFamily: "Poppins-SemiBold",
     color: COLORS.text,
-    lineHeight: 40,
+    lineHeight: 32,
     includeFontPadding: false,
   },
   ringFlame: {
-    fontSize: 18,
-    lineHeight: 22,
+    fontSize: 14,
+    lineHeight: 18,
   },
 
-  // Stats
+  // Stats — equal flex width so both cards are balanced
   statsRow: {
     flexDirection: "row",
     gap: SP[3],
-    marginBottom: SP[5],
+    marginBottom: SP[4],
+    width: "100%",
   },
   statPill: {
+    flex: 1,
     backgroundColor: "rgba(22,22,22,0.90)",
     borderRadius: RADII.lg,
     borderWidth: 1,
     borderColor: COLORS.cardBorder,
     paddingVertical: SP[3],
-    paddingHorizontal: SP[5],
+    paddingHorizontal: SP[3],
     alignItems: "center",
-    minWidth: 110,
   },
   statValue: {
     fontSize: 20,
@@ -482,20 +484,31 @@ const styles = StyleSheet.create({
   statLabel: {
     fontSize: 11,
     fontFamily: "Poppins-Regular",
-    color: COLORS.sub,
-    marginTop: 2,
-    letterSpacing: 0.5,
+    color: COLORS.muted,
+    marginTop: 3,
+    letterSpacing: 1,
+    textTransform: "uppercase",
   },
 
-  // Tomorrow card
+  // Tomorrow card — matches stat card pattern; thin lime top accent instead of full border
   tomorrowCard: {
     width: "100%",
-    backgroundColor: "rgba(180,243,77,0.06)",
+    backgroundColor: "rgba(22,22,22,0.90)",
     borderRadius: RADII.lg,
     borderWidth: 1,
-    borderColor: COLORS.accentBorder,
-    padding: SP[4],
+    borderColor: COLORS.cardBorder,
+    paddingVertical: SP[4],
+    paddingHorizontal: SP[5],
     alignItems: "center",
+    overflow: "hidden",
+  },
+  tomorrowAccent: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 3,
+    backgroundColor: COLORS.accent,
   },
   tomorrowLabel: {
     fontSize: 10,
@@ -505,7 +518,7 @@ const styles = StyleSheet.create({
     marginBottom: SP[1],
   },
   tomorrowText: {
-    fontSize: 13,
+    fontSize: 14,
     fontFamily: "Poppins-Regular",
     color: COLORS.sub,
     textAlign: "center",

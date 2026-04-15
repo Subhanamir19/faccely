@@ -1,5 +1,9 @@
-// C:\SS\facely\app\(tabs)\score.tsx
-// Simplified score screen - shows only the summary card with Back/Advanced Analysis buttons
+// app/(tabs)/score.tsx
+// Scoring screen — Quench-Rating-style 2-col metric grid.
+//
+// Data sources:
+//   useScores()   → current scan scores (always present after any scan)
+//   useInsights() → per-metric deltas + overall delta (scan_count ≥ 2 only)
 
 import React, { useMemo } from "react";
 import {
@@ -8,102 +12,83 @@ import {
   Alert,
   ImageBackground,
   Pressable,
+  ScrollView,
   useWindowDimensions,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { router } from "expo-router";
 
-import MetricCardShell from "@/components/layout/MetricCardShell";
-import ScoresSummaryCard from "@/components/scores/ScoresSummaryCard";
-import useMetricSizing from "@/components/layout/useMetricSizing";
+import ScoringGrid, { type ScoringMetric } from "@/components/scores/ScoringGrid";
 import PillNavButton from "@/components/ui/PillNavButton";
 import Text from "@/components/ui/T";
 import { COLORS, SP } from "@/lib/tokens";
 import { useScores } from "../../store/scores";
+import { useInsights } from "../../store/insights";
 import { useAdvancedAnalysisConsent } from "@/hooks/useAdvancedAnalysisConsent";
 
-// ---------------------------------------------------------------------------
-// Types & defaults
-// ---------------------------------------------------------------------------
-type MetricDefinition = {
-  apiKey: string;
-  label: string;
-  defaultScore: number;
-};
+// ─── Metric definitions ───────────────────────────────────────────────────────
+// Maps API key → display label used in ScoringGrid / ANCHORS.
 
-const METRIC_DEFINITIONS: MetricDefinition[] = [
-  { apiKey: "jawline", label: "Jawline", defaultScore: 64 },
-  { apiKey: "facial_symmetry", label: "Facial Symmetry", defaultScore: 72 },
-  { apiKey: "cheekbones", label: "Cheekbones", defaultScore: 58 },
+type MetricDef = { apiKey: string; label: string; defaultScore: number };
+
+const METRIC_DEFS: MetricDef[] = [
+  { apiKey: "jawline",           label: "Jawline",                defaultScore: 64 },
+  { apiKey: "facial_symmetry",   label: "Facial Symmetry",        defaultScore: 72 },
+  { apiKey: "cheekbones",        label: "Cheekbones",             defaultScore: 58 },
   { apiKey: "sexual_dimorphism", label: "Masculinity/Femininity", defaultScore: 81 },
-  { apiKey: "skin_quality", label: "Skin Quality", defaultScore: 69 },
-  { apiKey: "eyes_symmetry", label: "Eye Symmetry", defaultScore: 62 },
-  { apiKey: "nose_harmony", label: "Nose Balance", defaultScore: 74 },
+  { apiKey: "skin_quality",      label: "Skin Quality",           defaultScore: 69 },
+  { apiKey: "eyes_symmetry",     label: "Eye Symmetry",           defaultScore: 62 },
+  { apiKey: "nose_harmony",      label: "Nose Balance",           defaultScore: 74 },
 ];
 
-type MetricScore = {
-  key: string;
-  label: string;
-  score: number;
-};
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-function applyApiScores(api: any): MetricScore[] {
-  const scores = api?.scores ?? api;
-  return METRIC_DEFINITIONS.map(({ apiKey, label, defaultScore }) => {
-    const raw = Number(scores?.[apiKey]);
-    const val = Number.isFinite(raw) ? Math.max(0, Math.min(100, raw)) : null;
-    return {
-      key: label,
-      label,
-      score: val ?? defaultScore,
-    };
+function buildMetrics(apiScores: Record<string, number> | null): ScoringMetric[] {
+  return METRIC_DEFS.map(({ apiKey, label, defaultScore }) => {
+    const raw = Number(apiScores?.[apiKey]);
+    const score = Number.isFinite(raw) ? Math.max(0, Math.min(100, raw)) : defaultScore;
+    return { label, score };
   });
 }
 
-function calculateTotalScore(metrics: MetricScore[]): number {
+function computeOverall(metrics: ScoringMetric[]): number {
   if (!metrics.length) return 0;
-  const sum = metrics.reduce((acc, m) => acc + m.score, 0);
-  return Math.round(sum / metrics.length);
+  return Math.round(metrics.reduce((sum, m) => sum + m.score, 0) / metrics.length);
 }
 
-// ---------------------------------------------------------------------------
-// Main Screen
-// ---------------------------------------------------------------------------
+// ─── Screen ───────────────────────────────────────────────────────────────────
+
 export default function ScoreScreen() {
   const insets = useSafeAreaInsets();
-  const { height: SH } = useWindowDimensions();
-  const { imageUri, sideImageUri, scores, explLoading } = useScores();
-  const sizing = useMetricSizing();
+  const { width: SW } = useWindowDimensions();
 
-  // Spacing that scales down on shorter screens (SE, older iPhones)
-  const vSpaceLg = Math.max(12, Math.round(SH * 0.018)); // ~14px on 812, 12px on 667
-  const vSpaceMd = Math.max(8,  Math.round(SH * 0.012)); // ~10px on 812, 8px on 667
+  const { imageUri, sideImageUri, scores, explLoading } = useScores();
+  const { data: insightData } = useInsights();
   const { checkAndPromptConsent, ConsentModal } = useAdvancedAnalysisConsent();
 
-  // Build metrics from API scores or use defaults
-  const metrics = useMemo<MetricScore[]>(() => {
-    if (scores) {
-      return applyApiScores(scores);
-    }
-    return METRIC_DEFINITIONS.map(({ label, defaultScore }) => ({
-      key: label,
-      label,
-      score: defaultScore,
-    }));
-  }, [scores]);
+  // ── Current scores
+  const metrics = useMemo<ScoringMetric[]>(
+    () => buildMetrics(scores as any),
+    [scores]
+  );
+  const totalScore = useMemo(() => computeOverall(metrics), [metrics]);
 
-  const totalScore = useMemo(() => calculateTotalScore(metrics), [metrics]);
+  // ── Delta data (only meaningful when scan_count ≥ 2)
+  const dashboardMetrics = insightData?.metrics ?? [];
+  const overallDelta = useMemo<number | null>(() => {
+    const overall = insightData?.overall;
+    if (!overall) return null;
+    return overall.current - overall.baseline;
+  }, [insightData]);
 
-  // Handle back navigation
-  const handleBack = () => {
-    router.back();
-  };
+  // ── Card width: full screen minus horizontal padding
+  const HORIZONTAL_PAD = SP[4]; // 16 each side
+  const cardWidth = SW - HORIZONTAL_PAD * 2;
 
-  // Handle advanced analysis navigation
+  // ── Navigation
+  const handleBack = () => router.back();
+
   const handleAdvanced = async () => {
     if (!scores || !imageUri || !sideImageUri) {
       Alert.alert(
@@ -120,6 +105,7 @@ export default function ScoreScreen() {
   return (
     <View style={styles.screen}>
       <ConsentModal />
+
       {/* Background */}
       <ImageBackground
         source={require("../../assets/bg/score-bg.jpg")}
@@ -129,66 +115,64 @@ export default function ScoreScreen() {
         <View style={styles.scrim} />
       </ImageBackground>
 
-      {/* Content */}
-      <View style={[styles.container, { paddingTop: insets.top + vSpaceLg }]}>
+      {/* Scrollable content */}
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={[
+          styles.content,
+          { paddingTop: insets.top + SP[5], paddingBottom: insets.bottom + SP[8] },
+        ]}
+        showsVerticalScrollIndicator={false}
+      >
         {/* Header */}
-        <Animated.View entering={FadeInDown.duration(400).delay(100)} style={[styles.header, { marginBottom: vSpaceLg }]}>
+        <Animated.View
+          entering={FadeInDown.duration(400).delay(100)}
+          style={styles.header}
+        >
           <Text variant="h2" color="text">Your Scores</Text>
           <Text variant="caption" color="sub" style={styles.subtitle}>
-            Overall facial analysis results
+            Facial analysis breakdown — all 8 metrics
           </Text>
         </Animated.View>
 
-        {/* Score Summary Card */}
-        <Animated.View
-          entering={FadeInDown.duration(500).delay(200)}
-          style={styles.cardContainer}
-        >
-          <MetricCardShell
-            withOuterPadding={false}
-            renderSurface={false}
-            sizing={sizing}
-          >
-            {(usableWidth) => (
-              <ScoresSummaryCard
-                metrics={metrics}
-                totalScore={totalScore}
-                width={usableWidth}
-                active={true}
-                imageUri={imageUri}
-              />
-            )}
-          </MetricCardShell>
+        {/* Scoring grid */}
+        <Animated.View entering={FadeInDown.duration(500).delay(200)}>
+          <ScoringGrid
+            metrics={metrics}
+            totalScore={totalScore}
+            dashboardMetrics={dashboardMetrics}
+            overallDelta={overallDelta}
+            imageUri={imageUri}
+            active
+            cardWidth={cardWidth}
+          />
         </Animated.View>
 
-        {/* Footer with buttons */}
+        {/* Action buttons */}
         <Animated.View
           entering={FadeInDown.duration(400).delay(400)}
-          style={[styles.footer, { paddingTop: vSpaceMd, paddingBottom: insets.bottom + vSpaceLg }]}
+          style={styles.buttonRow}
         >
-          <View style={styles.buttonRow}>
-            <PillNavButton
-              label="Back"
-              kind="ghost"
-              onPress={handleBack}
-            />
-            <PillNavButton
-              label="Advanced Analysis"
-              kind="solid"
-              onPress={handleAdvanced}
-              disabled={explLoading}
-              loading={explLoading}
-            />
-          </View>
+          <PillNavButton
+            label="Back"
+            kind="ghost"
+            onPress={handleBack}
+          />
+          <PillNavButton
+            label="Advanced Analysis"
+            kind="solid"
+            onPress={handleAdvanced}
+            disabled={explLoading}
+            loading={explLoading}
+          />
         </Animated.View>
-      </View>
+      </ScrollView>
     </View>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Styles
-// ---------------------------------------------------------------------------
+// ─── Styles ───────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
@@ -196,29 +180,24 @@ const styles = StyleSheet.create({
   },
   scrim: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.35)",
+    backgroundColor: "rgba(0,0,0,0.40)",
   },
-  container: {
+  scroll: {
     flex: 1,
+  },
+  content: {
     paddingHorizontal: SP[4],
+    gap: SP[4],
   },
   header: {
-    // marginBottom overridden inline with responsive vSpaceLg
+    gap: SP[1],
   },
   subtitle: {
     marginTop: SP[1],
   },
-  cardContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  footer: {
-    // paddingTop and paddingBottom overridden inline with responsive values
-  },
   buttonRow: {
     flexDirection: "row",
     gap: SP[3],
+    marginTop: SP[2],
   },
-
 });
