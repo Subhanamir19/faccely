@@ -31,7 +31,8 @@
       "WebSearch",
       "WebFetch(domain:www.remotion.dev)",
       "WebFetch(domain:github.com)",
-      "Bash(npx skills *)"
+      "Bash(npx skills *)",
+      "WebFetch(domain:raw.githubusercontent.com)"
     ]
   }
 }

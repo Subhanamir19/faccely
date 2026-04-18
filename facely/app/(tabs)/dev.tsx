@@ -32,6 +32,8 @@ import { useAdvancedAnalysis } from "@/store/advancedAnalysis";
 import { useScores } from "@/store/scores";
 import type { AdvancedAnalysis } from "@/lib/api/advancedAnalysis";
 import ProgramHero from "@/components/program/ProgramHero";
+import InsightPulseCard, { PulseType } from "@/components/ui/InsightPulseCard";
+import { useNotifications } from "@/store/notifications";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -39,23 +41,33 @@ import ProgramHero from "@/components/program/ProgramHero";
 const CONSENT_KEY = "advanced_analysis_consent";
 
 const ONBOARDING_SCREENS: { label: string; route: string }[] = [
+  // Entry
+  { label: "Hook",             route: "/(onboarding)/hook" },
+  { label: "Intro",            route: "/(onboarding)/intro" },
   { label: "Splash",           route: "/(onboarding)/splash" },
-  { label: "Transformation",   route: "/(onboarding)/transformation" },
-  { label: "Goals",            route: "/(onboarding)/goals" },
+  { label: "Welcome",          route: "/(onboarding)/welcome" },
+  // Main flow
   { label: "Use Case",         route: "/(onboarding)/use-case" },
+  { label: "Goals",            route: "/(onboarding)/goals" },
   { label: "Gender",           route: "/(onboarding)/gender" },
   { label: "Age",              route: "/(onboarding)/age" },
   { label: "Ethnicity",        route: "/(onboarding)/ethnicity" },
   { label: "Edge",             route: "/(onboarding)/edge" },
-  { label: "Face Scan",        route: "/(onboarding)/face-scan" },
+  { label: "Scan",             route: "/(onboarding)/scan" },
   { label: "Trust",            route: "/(onboarding)/trust" },
-  { label: "Score Teaser",     route: "/(onboarding)/score-teaser" },
   { label: "Improve Areas",    route: "/(onboarding)/improve-areas" },
   { label: "Time Dedication",  route: "/(onboarding)/time-dedication" },
   { label: "Routine Animation",route: "/(onboarding)/routine-animation" },
-  { label: "Results Reveal",   route: "/(onboarding)/results-reveal" },
   { label: "Score Projection", route: "/(onboarding)/score-projection" },
+  { label: "Transformation",   route: "/(onboarding)/transformation" },
   { label: "Paywall",          route: "/(onboarding)/paywall" },
+  { label: "Score Teaser",     route: "/(onboarding)/score-teaser" },
+  { label: "Building Plan",    route: "/(onboarding)/building-plan" },
+  // Orphans (preview only — not reachable from main flow)
+  { label: "Face Scan (alt)",  route: "/(onboarding)/face-scan" },
+  { label: "Results Reveal",   route: "/(onboarding)/results-reveal" },
+  { label: "Experience",       route: "/(onboarding)/experience" },
+  { label: "Time Commitment",  route: "/(onboarding)/time-commitment" },
 ];
 
 // ---------------------------------------------------------------------------
@@ -130,6 +142,47 @@ export default function DevScreen() {
     skin:       { color: "", color_score: 73, color_verdict: "", quality: "", quality_score: 60, quality_verdict: "" },
   };
 
+  // Insight Pulse preview
+  const PULSE_VARIANTS: {
+    type: PulseType;
+    message: string;
+    detail: string;
+    ctaLabel: string;
+  }[] = [
+    {
+      type: "momentum",
+      message: "Jawline definition improved 4.1% this week",
+      detail: "Based on your last 3 scans. Your best streak yet — mewing + posture work is showing.",
+      ctaLabel: "View Full Breakdown",
+    },
+    {
+      type: "alert",
+      message: "Facial symmetry dipped 2.3% since last scan",
+      detail: "Could be sleep, hydration, or lighting. Don't sweat it — scan again tomorrow.",
+      ctaLabel: "See What Changed",
+    },
+    {
+      type: "milestone",
+      message: "New personal best — overall score: 8.3 / 10",
+      detail: "Top 18% in facial harmony this month. You're trending up across 5 metrics.",
+      ctaLabel: "See Full Report",
+    },
+    {
+      type: "insight",
+      message: "Your cheekbone score has improved 3 weeks in a row",
+      detail: "Consistent gains suggest your routine is working. Keep the mewing pressure consistent.",
+      ctaLabel: "View Trend",
+    },
+    {
+      type: "nudge",
+      message: "It's been 4 days since your last scan",
+      detail: "",
+      ctaLabel: "",
+    },
+  ];
+  const [pulseVariantIdx, setPulseVariantIdx] = useState(0);
+  const [pulseKey, setPulseKey] = useState(0); // bump to remount
+
   // Life modal previews
   type LifeModal = "comeback" | "streak" | "halfway" | "didyouknow";
   const [lifeModal, setLifeModal] = useState<LifeModal | null>(null);
@@ -177,6 +230,63 @@ export default function DevScreen() {
       >
         <T style={styles.screenTitle}>Dev Tools</T>
 
+        {/* ── Insight Pulse Preview ─────────────────────────────────── */}
+        <GlassCard style={styles.card}>
+          <SectionHeader
+            title="Insight Pulse Card"
+            subtitle="In-app notification banner — tap card to expand, × to dismiss"
+          />
+
+          {/* Live preview inline */}
+          <InsightPulseCard
+            key={pulseKey}
+            type={PULSE_VARIANTS[pulseVariantIdx].type}
+            message={PULSE_VARIANTS[pulseVariantIdx].message}
+            detail={PULSE_VARIANTS[pulseVariantIdx].detail || undefined}
+            ctaLabel={PULSE_VARIANTS[pulseVariantIdx].ctaLabel || undefined}
+            autoDismissMs={0}
+            onDismiss={() => setPulseKey((k) => k + 1)}
+          />
+
+          {/* Variant switcher */}
+          <View style={styles.row}>
+            <DevButton
+              label="◀  Prev"
+              onPress={() => {
+                setPulseVariantIdx((i) => (i - 1 + PULSE_VARIANTS.length) % PULSE_VARIANTS.length);
+                setPulseKey((k) => k + 1);
+              }}
+            />
+            <DevButton
+              label="Next  ▶"
+              onPress={() => {
+                setPulseVariantIdx((i) => (i + 1) % PULSE_VARIANTS.length);
+                setPulseKey((k) => k + 1);
+              }}
+            />
+          </View>
+
+          <DevButton
+            label="↺  Replay Animation"
+            accent
+            onPress={() => setPulseKey((k) => k + 1)}
+          />
+
+          <T style={styles.sectionSubtitle} variant="small" color="sub">
+            {pulseVariantIdx + 1} / {PULSE_VARIANTS.length} — {PULSE_VARIANTS[pulseVariantIdx].type.toUpperCase()}
+          </T>
+
+          <View style={styles.divider} />
+
+          <DevButton
+            label="🗑  Reset All Notification Cooldowns"
+            onPress={async () => {
+              await useNotifications.getState().resetCooldowns();
+              Alert.alert("Reset", "All cooldowns cleared — notifications will re-evaluate on next dashboard focus.");
+            }}
+          />
+        </GlassCard>
+
         {/* ── Onboarding ─────────────────────────────────────────────── */}
         <GlassCard style={styles.card}>
           <SectionHeader
@@ -186,9 +296,9 @@ export default function DevScreen() {
 
           {/* Full sequence launcher */}
           <DevButton
-            label="▶  Run Full Sequence (from Intro)"
+            label="▶  Run Full Sequence (from Hook)"
             accent
-            onPress={() => router.push("/(onboarding)/splash")}
+            onPress={() => router.push("/(onboarding)/hook")}
           />
 
           {/* Divider */}

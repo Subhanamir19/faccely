@@ -118,7 +118,7 @@ export default function ScoreProjectionScreen() {
 
   const handleContinue = useCallback(() => {
     hapticSuccess();
-    router.push("/(onboarding)/paywall");
+    router.push("/(onboarding)/transformation");
   }, []);
 
   return (

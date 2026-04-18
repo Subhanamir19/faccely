@@ -223,6 +223,7 @@ export default function TakePicture() {
   const [capturing, setCapturing] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [chooserOpen, setChooserOpen] = useState(false);
+  const [cameraFacing, setCameraFacing] = useState<"front" | "back">("front");
   const cameraRef = useRef<CameraView>(null);
   // Prevents concurrent handleChosen calls (e.g. double-tap gallery)
   const handlingRef = useRef(false);
@@ -707,12 +708,21 @@ export default function TakePicture() {
 
             <View style={{ marginTop: 22, paddingHorizontal: 24, alignSelf: "stretch" }}>
               <LimeButton
-                label={submitting ? "Analyzing…" : "Proceed to score"}
+                label={submitting ? "Analyzing…" : "Analyze photos"}
                 onPress={useBoth}
                 disabled={!canContinue}
                 loading={submitting}
               />
             </View>
+
+            <Pressable
+              onPress={() => { setFrontalUri(null); setSideUri(null); setPose("frontal"); setStep("intro"); }}
+              style={{ marginTop: 14 }}
+            >
+              <Text style={{ color: "rgba(255,255,255,0.35)", fontSize: 13, fontFamily: Platform.select({ ios: "Poppins-Regular", android: "Poppins-Regular", default: "Poppins-Regular" }), textAlign: "center" }}>
+                Start over
+              </Text>
+            </Pressable>
           </SafeAreaView>
         </View>
       )}
@@ -764,33 +774,35 @@ export default function TakePicture() {
             </View>
           ) : (
             <>
-              <CameraView ref={cameraRef} active={true} facing="front" style={StyleSheet.absoluteFill} />
+              <CameraView ref={cameraRef} active={true} facing={cameraFacing} style={StyleSheet.absoluteFill} />
 
-              {/* Mesh + oval ring overlay */}
+              {/* Oval guide — sits in the upper 55% of the screen so it never collides with controls */}
               <Svg pointerEvents="none" style={StyleSheet.absoluteFill} width={window.width} height={window.height}>
-                <FaceMeshOverlay
-                  cx={window.width / 2}
-                  cy={window.height * 0.38}
-                  rx={window.width * 0.31}
-                  ry={window.height * 0.24}
-                />
+                {pose === "frontal" && (
+                  <FaceMeshOverlay
+                    cx={window.width / 2}
+                    cy={window.height * 0.33}
+                    rx={window.width * 0.28}
+                    ry={window.height * 0.19}
+                  />
+                )}
                 <Ellipse
                   cx={window.width / 2}
-                  cy={window.height * 0.38}
-                  rx={window.width * 0.31}
-                  ry={window.height * 0.24}
+                  cy={window.height * 0.33}
+                  rx={pose === "side" ? window.width * 0.20 : window.width * 0.28}
+                  ry={pose === "side" ? window.height * 0.22 : window.height * 0.19}
                   stroke={ACCENT}
                   strokeWidth={3}
                   fill="none"
                 />
               </Svg>
 
-              {/* Instruction label — lightweight, no card background */}
+              {/* Instruction label — sits above the oval */}
               <View
                 pointerEvents="none"
                 style={{
                   position: "absolute",
-                  top: 72,
+                  top: 56,
                   left: 0,
                   right: 0,
                   alignItems: "center",
@@ -805,7 +817,7 @@ export default function TakePicture() {
               </View>
 
               {/* Bottom controls */}
-              <View style={{ position: "absolute", bottom: 0, left: 0, right: 0, paddingBottom: 88, paddingTop: 24, alignItems: "center", gap: 24 }}>
+              <View style={{ position: "absolute", bottom: 0, left: 0, right: 0, paddingBottom: 48, paddingTop: 16, alignItems: "center", gap: 14 }}>
 
                 {/* Capture button — disabled while a capture is in flight */}
                 <Pressable
@@ -854,10 +866,43 @@ export default function TakePicture() {
                   </Text>
                 </Pressable>
 
-                {/* Skip */}
-                <Pressable onPress={() => setCameraOpen(false)}>
+                {/* Flip camera */}
+                <Pressable
+                  onPress={() => setCameraFacing((f) => (f === "front" ? "back" : "front"))}
+                  style={({ pressed }) => ({
+                    paddingHorizontal: 18,
+                    paddingVertical: 8,
+                    borderRadius: 20,
+                    backgroundColor: "rgba(255,255,255,0.08)",
+                    borderWidth: 1,
+                    borderColor: "rgba(255,255,255,0.15)",
+                    opacity: pressed ? 0.65 : 1,
+                  })}
+                >
+                  <Text style={{ color: "rgba(255,255,255,0.7)", fontSize: 13, fontFamily: "Poppins-Regular" }}>
+                    Flip camera
+                  </Text>
+                </Pressable>
+
+                {/* Cancel */}
+                <Pressable
+                  onPress={() => {
+                    if (frontalUri) {
+                      Alert.alert(
+                        "Cancel scan?",
+                        "Your frontal photo will be lost and you'll need to start over.",
+                        [
+                          { text: "Keep scanning", style: "cancel" },
+                          { text: "Cancel scan", style: "destructive", onPress: () => { setCameraOpen(false); setStep("intro"); setFrontalUri(null); setSideUri(null); setPose("frontal"); } },
+                        ]
+                      );
+                    } else {
+                      setCameraOpen(false);
+                    }
+                  }}
+                >
                   <Text style={{ color: "rgba(255,255,255,0.35)", fontSize: 13, fontFamily: "Poppins-Regular" }}>
-                    Skip for now
+                    Cancel
                   </Text>
                 </Pressable>
               </View>

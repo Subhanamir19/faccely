@@ -163,9 +163,27 @@ const barSx = StyleSheet.create({
   },
 });
 
+// ─── Trait icons ──────────────────────────────────────────────────────────────
+
+const TRAIT_ICONS: Record<string, ReturnType<typeof require>> = {
+  "jawline.projection":        require("../../advanced-analysis-icons/advanced-analysis-icons-new/chin--projection.jpeg"),
+  "cheekbones.face_fat":       require("../../advanced-analysis-icons/advanced-analysis-icons-new/face--fat.jpeg"),
+  "jawline.development":       require("../../advanced-analysis-icons/advanced-analysis-icons-new/jawline--development.jpeg"),
+  "cheekbones.bone_structure": require("../../advanced-analysis-icons/advanced-analysis-icons-new/BONE-STRUCTURE.jpeg"),
+  "cheekbones.maxilla":        require("../../advanced-analysis-icons/advanced-analysis-icons-new/maxilla--.jpeg"),
+  "cheekbones.width":          require("../../advanced-analysis-icons/advanced-analysis-icons-new/cheekbones--width.jpeg"),
+  "eyes.canthal_tilt":         require("../../advanced-analysis-icons/advanced-analysis-icons-new/canthal--tilt.jpeg"),
+  "eyes.symmetry":             require("../../advanced-analysis-icons/advanced-analysis-icons-new/eyes--symmetry.jpeg"),
+  "eyes.eye_type":             require("../../advanced-analysis-icons/advanced-analysis-icons-new/eye--type.jpeg"),
+  "eyes.brow_volume":          require("../../advanced-analysis-icons/advanced-analysis-icons-new/eyebrows--densiy.jpeg"),
+  "jawline.gonial_angle":      require("../../advanced-analysis-icons/advanced-analysis-icons-new/gonial--angle.jpeg"),
+  "skin.quality":              require("../../advanced-analysis-icons/advanced-analysis-icons-new/skin--quality.jpeg"),
+  "skin.color":                require("../../advanced-analysis-icons/advanced-analysis-icons-new/SKIN--COLOR.jpeg"),
+};
+
 // ─── Trait card ───────────────────────────────────────────────────────────────
 
-const BADGE_SIZE = ms(26);
+const ICON_SIZE = ms(44);
 
 function TraitCard({ item, rank, enterDelay }: { item: TraitItem; rank: number; enterDelay: number }) {
   const isTop = rank === 1;
@@ -174,6 +192,8 @@ function TraitCard({ item, rank, enterDelay }: { item: TraitItem; rank: number; 
   const scaleStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
   }));
+
+  const iconSource = TRAIT_ICONS[item.id];
 
   return (
     <Animated.View
@@ -200,9 +220,15 @@ function TraitCard({ item, rank, enterDelay }: { item: TraitItem; rank: number; 
         )}
 
         <View style={cardSx.row}>
-          {/* Rank badge */}
-          <View style={[cardSx.badge, isTop && cardSx.badgeTop]}>
-            <Text style={[cardSx.badgeNum, isTop && cardSx.badgeNumTop]}>{rank}</Text>
+          {/* Metric icon */}
+          <View style={[cardSx.iconWrap, isTop && cardSx.iconWrapTop]}>
+            {iconSource ? (
+              <Image
+                source={iconSource}
+                style={cardSx.iconImg}
+                resizeMode="cover"
+              />
+            ) : null}
           </View>
 
           {/* Body */}
@@ -246,30 +272,24 @@ const cardSx = StyleSheet.create({
   },
   row: {
     flexDirection: "row",
-    alignItems:    "flex-start",
+    alignItems:    "center",
     gap:           sw(12),
   },
-  badge: {
-    width:           BADGE_SIZE,
-    height:          BADGE_SIZE,
-    borderRadius:    999,
-    backgroundColor: "#E0E0E0",
-    alignItems:      "center",
-    justifyContent:  "center",
-    marginTop:       sh(1),
-    flexShrink:      0,
+  iconWrap: {
+    width:        ICON_SIZE,
+    height:       ICON_SIZE,
+    borderRadius: ms(10),
+    overflow:     "hidden",
+    flexShrink:   0,
+    borderWidth:  1.5,
+    borderColor:  "rgba(0,0,0,0.08)",
   },
-  badgeTop: {
-    backgroundColor: COLORS.accent,
+  iconWrapTop: {
+    borderColor: "rgba(100,160,0,0.30)",
   },
-  badgeNum: {
-    fontSize:    ms(11),
-    fontFamily:  Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
-    color:       "#AAAAAA",
-    lineHeight:  ms(15),
-  },
-  badgeNumTop: {
-    color: "#0B1A00",
+  iconImg: {
+    width:  "100%",
+    height: "100%",
   },
   topRow: {
     flexDirection:  "row",
@@ -404,7 +424,7 @@ export function BlueprintModal({ data, imageUri, visible, onDismiss }: Blueprint
                 {targets.length}{" "}
                 <Text style={m.headlineWord}>{targets.length === 1 ? "trait" : "traits"} to target</Text>
               </Text>
-              <Text style={m.headlineSub}>Ranked by impact on your face</Text>
+              <Text style={m.headlineSub}>Focus on these things first</Text>
             </View>
 
             {/* Live pill */}

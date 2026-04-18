@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { fetchInsights, type InsightData } from "../lib/api/insights";
+import { logger } from "../lib/logger";
 
 // ---------------------------------------------------------------------------
 // Module-level mutable refs — outside Zustand state so they never trigger re-renders.
@@ -72,7 +73,7 @@ export const useInsights = create<State & Actions>((set, get) => ({
       set({ data: result, loading: false, isDirty: false });
     } catch (err: any) {
       if (gen !== _fetchGeneration) return;
-      console.error("[insights] fetch failed:", err?.message);
+      logger.error("[insights] fetch failed:", err?.message);
       set({ loading: false, error: err?.message ?? "Failed to load insights" });
     }
   },

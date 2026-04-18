@@ -7,3 +7,8 @@ __tests__/
 *.test.ts
 *.test.tsx
 .npm-cache/
+../.agents
+**/.agents
+**/.agents/**
+.agents
+.agents/**

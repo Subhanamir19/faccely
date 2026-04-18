@@ -2,6 +2,7 @@ import { z } from "zod";
 import { API_BASE } from "./config";
 import { requestJSON, DEFAULT_REQUEST_TIMEOUT_MS } from "./client";
 import { buildAuthHeadersAsync } from "./authHeaders";
+import { logger } from "./logger";
 
 const ProgramExerciseSchema = z
   .object({
@@ -124,6 +125,6 @@ export async function syncTaskCompletion(
     });
   } catch (err) {
     // Non-blocking: log but don't throw
-    console.warn("[tasks] Sync failed (non-blocking):", err);
+    logger.warn("[tasks] Sync failed (non-blocking):", err);
   }
 }

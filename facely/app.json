@@ -2,7 +2,7 @@
   "expo": {
     "name": "Sigma Max",
     "slug": "sigmamax-app",
-    "version": "1.5.0",
+    "version": "1.6.0",
     "orientation": "portrait",
     "icon": "./assets/sigmamax-real-updatred-logo.jpeg",
     "userInterfaceStyle": "light",
@@ -13,7 +13,7 @@
     },
     "ios": {
       "supportsTablet": false,
-      "buildNumber": "12",
+      "buildNumber": "13",
       "bundleIdentifier": "com.sigmamax.app",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,

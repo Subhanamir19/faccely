@@ -1,6 +1,8 @@
 // app/_layout.tsx
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { View, Platform } from "react-native";
+import UpdateModal from "@/components/ui/UpdateModal";
+import { checkForUpdate, type UpdateStatus } from "@/lib/updateCheck";
 import * as NavigationBar from "expo-navigation-bar";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
@@ -10,6 +12,7 @@ import {
   Poppins_500Medium,
   Poppins_600SemiBold,
 } from "@expo-google-fonts/poppins";
+import { MaterialCommunityIcons, Ionicons } from "@expo/vector-icons";
 import LoadingOverlay from "../components/ui/LoadingOverlay";
 import "react-native-reanimated";
 import { useRoutineStore } from "../store/routineStore";
@@ -26,10 +29,15 @@ import { useTasksStore } from "@/store/tasks";
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
 export default function RootLayout() {
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ available: false });
+  const [updateDismissed, setUpdateDismissed] = useState(false);
+
   const [fontsLoaded, fontError] = useFonts({
     "Poppins-Regular":  Poppins_400Regular,
     "Poppins-Medium":   Poppins_500Medium,
     "Poppins-SemiBold": Poppins_600SemiBold,
+    ...MaterialCommunityIcons.font,
+    ...Ionicons.font,
   });
   const authInitialized = useAuthStore((state) => state.initialized);
   const idToken = useAuthStore((state) => state.idToken);
@@ -42,7 +50,7 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (Platform.OS === "android") {
-      void NavigationBar.setBackgroundColorAsync("#0B0B0B");
+      void NavigationBar.setBackgroundColorAsync("#0E0B08");
       void NavigationBar.setButtonStyleAsync("light");
     }
   }, []);
@@ -83,6 +91,12 @@ export default function RootLayout() {
     logger.log("[Auth] Token present:", idToken ? `${idToken.slice(0, 10)}...` : "none");
   }, [authInitialized, idToken]);
 
+  // Check for app updates once auth is initialized
+  useEffect(() => {
+    if (!authInitialized) return;
+    checkForUpdate().then(setUpdateStatus).catch(() => {});
+  }, [authInitialized]);
+
   // Initialize RevenueCat after auth is ready and set up customer info listener
   useEffect(() => {
     if (!authInitialized) return;
@@ -120,8 +134,8 @@ export default function RootLayout() {
     <ErrorBoundary>
       <AuthProvider>
         {fontsLoaded || fontError ? (
-          <View style={{ flex: 1, backgroundColor: "#0B0B0B" }}>
-            <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: "#0B0B0B" } }}>
+          <View style={{ flex: 1, backgroundColor: "#0E0B08" }}>
+            <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: "#0E0B08" } }}>
               <Stack.Screen name="index" />
               <Stack.Screen name="(auth)" />
               <Stack.Screen name="(onboarding)" />
@@ -130,6 +144,15 @@ export default function RootLayout() {
               <Stack.Screen name="reset-onboarding" />
             </Stack>
             <LoadingOverlay />
+            {updateStatus.available && (
+              <UpdateModal
+                visible={!updateDismissed}
+                latestVersion={updateStatus.latestVersion}
+                message={updateStatus.message}
+                forced={updateStatus.forced}
+                onDismiss={() => setUpdateDismissed(true)}
+              />
+            )}
           </View>
         ) : null}
       </AuthProvider>

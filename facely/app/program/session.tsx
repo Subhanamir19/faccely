@@ -93,6 +93,12 @@ const EXERCISE_IMAGE_POSITION: Record<string, string> = {
   "side-tongue":       "center",
 };
 
+// Vertical offset (px) for video exercises — negative = shift content up so
+// the face is centred in the circular crop. Adjust per-exercise as needed.
+const EXERCISE_VIDEO_OFFSET: Record<string, number> = {
+  "fish-face": -24,
+};
+
 // ---------------------------------------------------------------------------
 // Exercises that use a single static image with a looping zoom animation
 // ---------------------------------------------------------------------------
@@ -134,6 +140,7 @@ function CircleFrame({
   size,
   exerciseKey,
   prepCountdown,
+  videoOffset,
 }: {
   videoSrc: any;
   imagePair?: any[];
@@ -145,6 +152,7 @@ function CircleFrame({
   size: number;
   exerciseKey: string;
   prepCountdown: number;
+  videoOffset?: number;
 }) {
   const [poseIndex, setPoseIndex] = useState(0);
   const zoomScale = useSharedValue(1);
@@ -250,21 +258,7 @@ function CircleFrame({
           justifyContent: "center",
         }}
       >
-        {prepCountdown > 0 ? (
-          // 3-second black countdown inside the circle before exercise starts
-          <Animated.Text
-            key={prepCountdown}
-            entering={ZoomIn.duration(280).springify()}
-            style={{
-              color: COLORS.accent,
-              fontSize: Math.round(innerSize * 0.42),
-              fontFamily: "Poppins-SemiBold",
-              lineHeight: Math.round(innerSize * 0.50),
-            }}
-          >
-            {prepCountdown}
-          </Animated.Text>
-        ) : zoomImage ? (
+        {zoomImage ? (
           <Animated.View style={[StyleSheet.absoluteFill, zoomStyle]}>
             <Image
               source={zoomImage}
@@ -281,17 +275,48 @@ function CircleFrame({
             contentPosition={imagePairPosition ?? "center"}
           />
         ) : videoSrc ? (
+          // Always mounted so it preloads during the prep countdown;
+          // shouldPlay is gated so it only starts after prep ends.
           <Video
             key={exerciseKey}
             source={videoSrc}
-            style={{ width: "100%", height: "100%" }}
+            style={[
+              StyleSheet.absoluteFill,
+              videoOffset != null
+                ? { top: videoOffset, bottom: -videoOffset }
+                : undefined,
+            ]}
             resizeMode={ResizeMode.COVER}
-            shouldPlay
+            shouldPlay={prepCountdown <= 0 && !isPaused}
             isLooping
             isMuted
           />
         ) : (
           <View style={{ flex: 1, backgroundColor: "#1C1C1C", width: "100%" }} />
+        )}
+
+        {/* Black overlay + countdown during the 3-second prep phase.
+            Sits on top of the (already-loading) video so it stays hidden. */}
+        {prepCountdown > 0 && (
+          <View
+            style={[
+              StyleSheet.absoluteFill,
+              { backgroundColor: "#000000", alignItems: "center", justifyContent: "center" },
+            ]}
+          >
+            <Animated.Text
+              key={prepCountdown}
+              entering={ZoomIn.duration(280).springify()}
+              style={{
+                color: COLORS.accent,
+                fontSize: Math.round(innerSize * 0.42),
+                fontFamily: "Poppins-SemiBold",
+                lineHeight: Math.round(innerSize * 0.50),
+              }}
+            >
+              {prepCountdown}
+            </Animated.Text>
+          </View>
         )}
       </View>
     </View>
@@ -471,6 +496,7 @@ export default function SessionScreen() {
   const imagePair         = current ? (EXERCISE_IMAGE_PAIRS[current.exerciseId] ?? undefined) : undefined;
   const imagePairPosition = current ? (EXERCISE_IMAGE_POSITION[current.exerciseId] ?? "center") : "center";
   const zoomImage         = current ? (EXERCISE_ZOOM_IMAGES[current.exerciseId] ?? undefined) : undefined;
+  const videoOffset       = current ? (EXERCISE_VIDEO_OFFSET[current.exerciseId] ?? undefined) : undefined;
   const total      = exercises.length;
 
   // ---------------------------------------------------------------------------
@@ -832,6 +858,7 @@ export default function SessionScreen() {
             size={circleSize}
             exerciseKey={current?.exerciseId ?? ""}
             prepCountdown={prepCountdown}
+            videoOffset={videoOffset}
           />
         </Animated.View>
 

@@ -45,8 +45,10 @@ import Svg, {
 import { useRouter, useFocusEffect } from "expo-router";
 import { TrendingUp, Flame } from "lucide-react-native";
 import Text from "@/components/ui/T";
+import InsightPulseCard from "@/components/ui/InsightPulseCard";
 import { COLORS, SP, RADII, TYPE, SHADOWS } from "@/lib/tokens";
 import { useInsights } from "@/store/insights";
+import { useNotifications } from "@/store/notifications";
 import { useScores } from "@/store/scores";
 import { useAdvancedAnalysis } from "@/store/advancedAnalysis";
 import { useTasksStore } from "@/store/tasks";
@@ -60,6 +62,8 @@ import type {
   LatestAdvanced,
 } from "@/lib/api/insights";
 import type { AdvancedAnalysis } from "@/lib/api/advancedAnalysis";
+import { pickTopFive } from "@/lib/submetrics";
+import { TopFiveCard } from "@/components/dashboard/TopFiveCard";
 
 const AnimatedTextInput = Animated.createAnimatedComponent(TextInput);
 
@@ -110,7 +114,7 @@ const CHANGE_ICON: Record<string, string> = {
 
 const METRIC_LABELS: Record<string, string> = {
   jawline:           "Jawline",
-  facial_symmetry:   "Facial Symmetry",
+  facial_symmetry:   "Symmetry",
   skin_quality:      "Skin Quality",
   cheekbones:        "Cheekbones",
   eyes_symmetry:     "Eye Symmetry",
@@ -414,7 +418,7 @@ function MetricCard3D({
           ]}
         >
           <LinearGradient
-            colors={["#FFFFFF", "#E8E8E8"]}
+            colors={["#FAF7EF", "#EFE8D7"]}
             start={{ x: 0.5, y: 0 }}
             end={{ x: 0.5, y: 1 }}
             style={StyleSheet.absoluteFill}
@@ -612,23 +616,10 @@ const { width: SCREEN_W } = Dimensions.get("window");
 const GRAPH_H = 100;
 const GRAPH_W = SCREEN_W - SP[4] * 2 - SP[6] * 2;
 
-/* Regular dot — springs in with stagger */
-function GraphDot({
-  cx,
-  cy,
-  delay,
-}: {
-  cx: number;
-  cy: number;
-  delay: number;
-}) {
-  const anim = useSharedValue(0);
-  useEffect(() => {
-    anim.value = withDelay(delay, withSpring(1, { damping: 14, stiffness: 200 }));
-  }, []);
-  const dotProps = useAnimatedProps(() => ({ r: 3.5 * anim.value, opacity: anim.value }));
+/* Regular dot — static, always visible */
+function GraphDot({ cx, cy }: { cx: number; cy: number }) {
   return (
-    <AnimatedCircle cx={cx} cy={cy} fill="#000" stroke={LIME.primary} strokeWidth={1.5} animatedProps={dotProps} />
+    <Circle cx={cx} cy={cy} r={3.5} fill="#000" stroke={LIME.primary} strokeWidth={1.5} />
   );
 }
 
@@ -768,14 +759,9 @@ function MiniGraph({
         </SvgText>
       ))}
 
-      {/* Regular dots — stagger in alongside the line draw */}
+      {/* Regular dots */}
       {coords.slice(0, -1).map((c, i) => (
-        <GraphDot
-          key={i}
-          cx={c.x}
-          cy={c.y}
-          delay={Math.round((i / (coords.length - 1)) * 1300 + 120)}
-        />
+        <GraphDot key={i} cx={c.x} cy={c.y} />
       ))}
 
       {/* Last dot — always visible, pulsing */}
@@ -1491,6 +1477,7 @@ export default function DashboardScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { data, loading, error, loadInsights, invalidate, startPolling } = useInsights();
+  const { active: activeNotification, evaluate: evaluateNotification, dismiss: dismissNotification, hide: hideNotification } = useNotifications();
   const currentStreak = useTasksStore((s) => s.currentStreak);
   const advancedData = useAdvancedAnalysis((s) => s.data);
   const authUser = useAuthStore((s) => s.user);
@@ -1530,8 +1517,16 @@ export default function DashboardScreen() {
   useFocusEffect(
     useCallback(() => {
       loadInsights();
-    }, [loadInsights])
+      // On blur: slide the notification away without writing a cooldown.
+      // It will re-evaluate and reappear on the next visit.
+      return () => hideNotification();
+    }, [loadInsights, hideNotification])
   );
+
+  // Re-evaluate which notification to show whenever insight data refreshes.
+  useEffect(() => {
+    evaluateNotification(data ?? null);
+  }, [data]);
 
   // Single unified background poll — covers both pending insight and pending
   // advanced analysis. Only one interval runs at a time (store-level guard).
@@ -1558,7 +1553,7 @@ export default function DashboardScreen() {
   const history       = data?.history ?? [];
   const scanCount     = data?.scan_count ?? 0;
   const joinedDaysAgo = data?.joined_days_ago ?? 0;
-  const latestAdvanced   = data?.latest_advanced ?? null;
+  const latestAdvanced   = data?.latest_advanced ?? (advancedData as LatestAdvanced | null) ?? null;
   const previousAdvanced = data?.previous_advanced ?? null;
 
   // Overall delta — use AI content when available, fall back to raw scan math
@@ -1641,6 +1636,9 @@ export default function DashboardScreen() {
           <MetricGrid metrics={metrics} latestAdvanced={latestAdvanced} previousAdvanced={previousAdvanced} />
         )}
 
+        {/* ── Section 5b: Top 5 trainable sub-metrics (improving / to target) ── */}
+        <TopFiveCard result={pickTopFive(latestAdvanced, previousAdvanced, scanCount)} />
+
         {/* ── Section 6: AI Coach ── (removed) */}
         {false && content && (
           <Animated.View entering={FadeInDown.delay(560).duration(450)}>
@@ -1695,10 +1693,20 @@ export default function DashboardScreen() {
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
-      {/* Background gradient */}
+      {/* Background gradient — warm near-black for vibe */}
       <LinearGradient
-        colors={["#000000", "#0B0B0B"]}
+        colors={["#0E0B08", "#14100A"]}
         style={StyleSheet.absoluteFill}
+      />
+
+      {/* Atmospheric lime glow behind header — gives the top section warmth */}
+      <LinearGradient
+        colors={["rgba(180,243,77,0.10)", "rgba(180,243,77,0.00)"]}
+        locations={[0, 1]}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 1 }}
+        style={styles.headerGlow}
+        pointerEvents="none"
       />
 
       <ScrollView
@@ -1721,10 +1729,16 @@ export default function DashboardScreen() {
             <Text style={styles.headerWelcome}>WELCOME BACK!</Text>
             {userName ? <Text style={styles.headerName}>{userName}</Text> : null}
           </View>
-          {/* Streak pill */}
+          {/* Streak pill — warm orange gradient for vibe */}
           <View style={styles.streakPillBase}>
             <View style={styles.streakPillFace}>
-              <Flame size={16} color="#FF6B1A" strokeWidth={1.5} fill="#FF8C42" />
+              <LinearGradient
+                colors={["#FF9544", "#FF6B1A"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={StyleSheet.absoluteFill}
+              />
+              <Flame size={16} color="#2A1000" strokeWidth={2} fill="#FFD9B8" />
               <Text style={styles.streakText}>{currentStreak} day streak</Text>
             </View>
           </View>
@@ -1732,6 +1746,24 @@ export default function DashboardScreen() {
 
         {renderBody()}
       </ScrollView>
+
+      {/* ── Insight Pulse — absolute overlay, slides in from top ── */}
+      {activeNotification && (
+        <View
+          style={[styles.notificationOverlay, { top: insets.top + SP[3] }]}
+          pointerEvents="box-none"
+        >
+          <InsightPulseCard
+            key={activeNotification.key}
+            type={activeNotification.type}
+            message={activeNotification.message}
+            detail={activeNotification.detail}
+            ctaLabel={activeNotification.ctaLabel}
+            autoDismissMs={5000}
+            onDismiss={dismissNotification}
+          />
+        </View>
+      )}
     </View>
   );
 }
@@ -1743,13 +1775,28 @@ export default function DashboardScreen() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: "#000000",
+    backgroundColor: "#0E0B08",
+  },
+
+  headerGlow: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 340,
   },
 
   scrollContent: {
     paddingHorizontal: SP[4],
     paddingTop: SP[3],
     gap: SP[3],
+  },
+
+  notificationOverlay: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    zIndex: 50,
   },
 
   /* Header */
@@ -1775,12 +1822,12 @@ const styles = StyleSheet.create({
 
   streakPillBase: {
     borderRadius: RADII.pill,
-    backgroundColor: "#000",
-    shadowColor: "#000",
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.4,
-    elevation: 4,
+    backgroundColor: "#A84004",
+    shadowColor: "#FF6B1A",
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.45,
+    elevation: 8,
   },
   streakPillFace: {
     flexDirection: "row",
@@ -1789,14 +1836,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: SP[4],
     paddingVertical: SP[2],
     borderRadius: RADII.pill,
-    backgroundColor: "#1C1C1C",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
+    borderColor: "rgba(255,255,255,0.22)",
+    overflow: "hidden",
   },
   streakText: {
     fontSize: 13,
     fontFamily: "Poppins-SemiBold",
-    color: "#FFFFFF",
+    color: "#2A1000",
   },
 
   /* Glass card */
@@ -1942,10 +1989,10 @@ const styles = StyleSheet.create({
   metricRowBase: {
     width: METRIC_COL_W,
     borderRadius: RADII.xl,
-    backgroundColor: "#B0B0B0",
+    backgroundColor: "#9E9380",
     paddingBottom: METRIC_DEPTH,
-    shadowColor: "#ffffff",
-    shadowOpacity: 0.12,
+    shadowColor: "#F4E4C4",
+    shadowOpacity: 0.14,
     shadowRadius: 14,
     shadowOffset: { width: 0, height: 6 },
     elevation: 8,

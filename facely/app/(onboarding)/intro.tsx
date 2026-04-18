@@ -217,9 +217,9 @@ export default function IntroScreen() {
 
         {/* Header */}
         <Animated.View style={[styles.header, headerStyle]}>
-          <Text style={styles.title}>Let's Personalize{"\n"}Your Ascension</Text>
+          <Text style={styles.title}>Let's Personalize{"\n"}Your Glowup</Text>
           <Text style={styles.subtitle}>
-            A few quick questions to design your custom ascension plan
+            A few quick questions to design your custom glowup plan
           </Text>
         </Animated.View>
 
@@ -236,7 +236,7 @@ export default function IntroScreen() {
           <StepRow
             icon={<MaterialCommunityIcons name="face-recognition" size={38} color={ACCENT} />}
             label="Step 2"
-            description="3D face scan"
+            description="Face analysis"
             subtitle="AI maps your unique facial features"
             delayMs={D.step2}
             isLast={false}
@@ -261,7 +261,7 @@ export default function IntroScreen() {
         <Animated.View style={[styles.footer, btnStyle]}>
           <LimeButton
             label="Let's Go"
-            onPress={() => router.replace("/(onboarding)/transformation")}
+            onPress={() => router.replace("/(onboarding)/use-case")}
           />
         </Animated.View>
 

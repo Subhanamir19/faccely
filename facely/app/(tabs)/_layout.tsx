@@ -35,7 +35,7 @@ function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   );
 
   return (
-    <View style={{ height: reservedHeight, backgroundColor: "#0B0B0B" }}>
+    <View style={{ height: reservedHeight, backgroundColor: "#0E0B08" }}>
       {/* Absolutely positioned pill floats on top of the reserved space */}
       <View style={[styles.wrapper, { bottom: safeBottom + PILL_GAP_BOTTOM }]}>
         <View style={styles.pill}>
@@ -93,10 +93,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     gap: 4,
     shadowColor: "#000000",
-    shadowOpacity: 0.50,
-    shadowRadius: 28,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 18,
+    shadowOpacity: 0.22,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
   },
   tab: {
     flex: 1,
@@ -121,8 +121,8 @@ export default function TabsLayout() {
       tabBar={(props) => <FloatingTabBar {...props} />}
       screenOptions={{
         headerShown: false,
-        tabBarStyle: { backgroundColor: "#0B0B0B", borderTopWidth: 0, elevation: 0 },
-        sceneContainerStyle: { backgroundColor: "#0B0B0B" },
+        tabBarStyle: { backgroundColor: "#0E0B08", borderTopWidth: 0, elevation: 0 },
+        sceneContainerStyle: { backgroundColor: "#0E0B08" },
       }}
     >
       {/* Tab 1: daily */}
@@ -167,15 +167,12 @@ export default function TabsLayout() {
       {/* hidden */}
       <Tabs.Screen name="sigma" options={{ href: null }} />
 
-      {/* Dev — visible in __DEV__ builds only */}
+      {/* Dev */}
       <Tabs.Screen
         name="dev"
         options={{
           title: "Dev",
-          href: __DEV__ ? undefined : null,
-          tabBarIcon: __DEV__
-            ? ({ color, size }) => <Wrench color={color} size={size ?? 24} />
-            : undefined,
+          tabBarIcon: ({ color, size }) => <Wrench color={color} size={size ?? 24} />,
         }}
       />
 

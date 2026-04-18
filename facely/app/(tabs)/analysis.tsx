@@ -27,6 +27,7 @@ import Animated, {
   Easing,
 } from "react-native-reanimated";
 import { Sparkles, Target, AlertCircle, ChevronDown, ChevronRight } from "lucide-react-native";
+import { MetricDetailCard } from "@/components/analysis/MetricDetailCard";
 
 import Text from "@/components/ui/T";
 import { COLORS, SP, RADII } from "@/lib/tokens";
@@ -114,78 +115,78 @@ type SubDef = {
 const SUBMETRIC_DEFS: SubDef[] = [
   {
     id: "cheekbones.width", group: "cheekbones", key: "width", label: "Cheekbones Width", category: "CHEEKS", emoji: "😊",
-    icon: require("../../advanced-analysis-icons/cheekbones-width.jpeg"),
-    idealRange: "Bizygomatic width ~130% of midface height. Wide but proportional to the forehead.",
+    icon: require("../../advanced-analysis-icons/advanced-analysis-icons-new/cheekbones--width.jpeg"),
+    idealRange: "Cheekbones should be wider than the forehead is tall, giving the face a strong, broad midface. Wide but still proportional — not exaggerated.",
   },
   {
     id: "cheekbones.maxilla", group: "cheekbones", key: "maxilla", label: "Maxilla", category: "CHEEKS", emoji: "🦷",
-    icon: require("../../advanced-analysis-icons/maxilla.jpeg"),
-    idealRange: "Forward-set, well-developed maxilla. Anterior projection lifts the midface and supports the orbital rims.",
+    icon: require("../../advanced-analysis-icons/advanced-analysis-icons-new/maxilla--.jpeg"),
+    idealRange: "The upper jaw bone should sit forward, giving the cheek area a lifted, full appearance from both the front and side view.",
   },
   {
     id: "cheekbones.bone_structure", group: "cheekbones", key: "bone_structure", label: "Bone Structure", category: "CHEEKS", emoji: "🦴",
-    icon: require("../../advanced-analysis-icons/bone structure.jpeg"),
-    idealRange: "High, prominent cheekbones with visible sculpting. Malar eminence above the ear canal level.",
+    icon: require("../../advanced-analysis-icons/advanced-analysis-icons-new/BONE-STRUCTURE.jpeg"),
+    idealRange: "High, defined cheekbones that cast a subtle shadow below them. The high point should sit level with or above the ears.",
   },
   {
     id: "cheekbones.face_fat", group: "cheekbones", key: "face_fat", label: "Face Fat", category: "CHEEKS", emoji: "🫦",
-    icon: require("../../advanced-analysis-icons/face fat.jpeg"),
-    idealRange: "Very lean to lean (~10–14% BF). Buccal fat recedes enough to expose cheekbone shadow.",
+    icon: require("../../advanced-analysis-icons/advanced-analysis-icons-new/face--fat.jpeg"),
+    idealRange: "Low enough body fat (~10–14%) for the cheeks to appear hollow under the cheekbones, creating a chiseled shadow beneath them.",
   },
   {
-    id: "cheekbones.fwhr", group: "cheekbones", key: "fwhr", label: "fWHR", category: "CHEEKS", emoji: "📏",
-    icon: require("../../advanced-analysis-icons/FWHR.png"),
-    idealRange: "Facial width-to-height ratio. Ideal: ~1.9–2.0 (masculine), ~1.6–1.8 (feminine). Wider = higher androgen exposure signal.",
+    id: "cheekbones.fwhr", group: "cheekbones", key: "fwhr", label: "Face Width Ratio", category: "CHEEKS", emoji: "📏",
+    icon: require("../../advanced-analysis-icons/advanced-analysis-icons-new/FWHR--.jpeg"),
+    idealRange: "How wide your face is compared to its height between the brows and upper lip. Wider reads as more masculine (~1.9–2.0), narrower as more feminine (~1.6–1.8).",
   },
   {
     id: "jawline.development", group: "jawline", key: "development", label: "Jaw Development", category: "JAW", emoji: "💪",
-    icon: require("../../advanced-analysis-icons/jawline development.jpeg"),
-    idealRange: "Sharp, visible edge from frontal view at distance. Mandible cortical bone density creates a defined inferior border.",
+    icon: require("../../advanced-analysis-icons/advanced-analysis-icons-new/jawline--development.jpeg"),
+    idealRange: "The jaw edge should be clearly visible from the front as a sharp, defined line running from ear to chin — visible even at a distance.",
   },
   {
     id: "jawline.gonial_angle", group: "jawline", key: "gonial_angle", label: "Gonial Angle", category: "JAW", emoji: "📐",
-    icon: require("../../advanced-analysis-icons/gonial-angle.jpeg"),
-    idealRange: "Ideal: 95–115°. Tighter angle = sharper, more visible jaw corner. Above 125° the corner disappears.",
+    icon: require("../../advanced-analysis-icons/advanced-analysis-icons-new/gonial--angle.jpeg"),
+    idealRange: "The sharpness of your jaw corner. Ideal is 95–115°. Tighter corners look stronger and more chiseled. Above 125°, the corner blends away and the jaw looks round.",
   },
   {
     id: "jawline.projection", group: "jawline", key: "projection", label: "Chin Projection", category: "JAW", emoji: "👤",
-    icon: require("../../advanced-analysis-icons/chin-projection.jpeg"),
-    idealRange: "Chin tip aligns with or slightly exceeds the nose tip on Ricketts' E-line. Strong projection = defined profile.",
+    icon: require("../../advanced-analysis-icons/advanced-analysis-icons-new/chin--projection.jpeg"),
+    idealRange: "The chin should stick out to roughly the same level as the nose tip from a side view. More projection means a stronger, more defined profile.",
   },
   {
     id: "jawline.ramus", group: "jawline", key: "ramus", label: "Ramus Height", category: "JAW", emoji: "📐",
-    icon: require("../../advanced-analysis-icons/ramus.png"),
-    idealRange: "Tall, near-vertical ramus (>50% of total jaw length, ~90° from horizontal). More vertical = stronger jaw corner appearance.",
+    icon: require("../../advanced-analysis-icons/advanced-analysis-icons-new/ramus--height.jpeg"),
+    idealRange: "The vertical part of the jaw (from the ear down to the jaw corner) should be tall and nearly straight up-and-down. Taller and more vertical = stronger-looking jaw corners.",
   },
   {
     id: "eyes.canthal_tilt", group: "eyes", key: "canthal_tilt", label: "Canthal Tilt", category: "EYES", emoji: "👁️",
-    icon: require("../../advanced-analysis-icons/canthal tilt.jpeg"),
-    idealRange: "Ideal: +3° to +5° positive (outer corner higher than inner). Hunter-eye aesthetic. Negative tilt softens intensity.",
+    icon: require("../../advanced-analysis-icons/advanced-analysis-icons-new/canthal--tilt.jpeg"),
+    idealRange: "The outer corner of the eye should sit slightly higher (+3° to +5°) than the inner corner. This upward tilt gives a focused, intense look. Downward-tilted eyes appear softer and more passive.",
   },
   {
     id: "eyes.eye_type", group: "eyes", key: "eye_type", label: "Eye Type", category: "EYES", emoji: "👀",
-    icon: require("../../advanced-analysis-icons/eye-type.jpeg"),
-    idealRange: "Hunter or almond shape — lid tension, no visible lower white (sclera). Forward orbital rim placement helps.",
+    icon: require("../../advanced-analysis-icons/advanced-analysis-icons-new/eye--type.jpeg"),
+    idealRange: "Almond or 'hunter' shaped eyes with tight lids and no white visible below the iris. This shape gives a sharp, focused appearance rather than a wide or sleepy look.",
   },
   {
     id: "eyes.brow_volume", group: "eyes", key: "brow_volume", label: "Brow Volume", category: "EYES", emoji: "🤨",
-    icon: require("../../advanced-analysis-icons/eyebrows-density.jpeg"),
-    idealRange: "Full, well-defined brow with clear arch. Tail extends past the lateral canthus. Frames and anchors the eye.",
+    icon: require("../../advanced-analysis-icons/advanced-analysis-icons-new/eyebrows--densiy.jpeg"),
+    idealRange: "Thick, well-groomed brows with a clear arch. The tail should extend past the outer corner of the eye. Full brows frame the face and make the eye area look stronger.",
   },
   {
     id: "eyes.symmetry", group: "eyes", key: "symmetry", label: "Eye Symmetry", category: "EYES", emoji: "👁️",
-    icon: require("../../advanced-analysis-icons/eye-symmetry.jpeg"),
-    idealRange: "Difference < 2mm in height and width between eyes. Slight asymmetry is normal; >3mm is visible at conversational distance.",
+    icon: require("../../advanced-analysis-icons/advanced-analysis-icons-new/eyes--symmetry.jpeg"),
+    idealRange: "Both eyes should look the same size and height. A difference under 2mm is barely noticeable. Over 3mm becomes clearly visible in normal face-to-face conversation.",
   },
   {
     id: "skin.color", group: "skin", key: "color", label: "Skin Color", category: "SKIN", emoji: "🎨",
-    icon: require("../../advanced-analysis-icons/ski color.jpeg"),
-    idealRange: "Even, consistent tone with no hyperpigmentation, redness, or blotchiness. Uniform melanin distribution.",
+    icon: require("../../advanced-analysis-icons/advanced-analysis-icons-new/SKIN--COLOR.jpeg"),
+    idealRange: "Skin tone should be even and consistent with no dark spots, redness, or patchy areas. A clear, uniform complexion across the entire face.",
   },
   {
     id: "skin.quality", group: "skin", key: "quality", label: "Skin Quality", category: "SKIN", emoji: "✨",
-    icon: require("../../advanced-analysis-icons/skin quality.jpeg"),
-    idealRange: "Smooth texture, minimal visible pores, no active breakouts. Light reflects evenly — no diffuse roughness.",
+    icon: require("../../advanced-analysis-icons/advanced-analysis-icons-new/skin--quality.jpeg"),
+    idealRange: "Skin should be smooth with small, tight pores and no active breakouts. When light hits it, it should reflect evenly rather than scatter across a rough surface.",
   },
 ];
 
@@ -349,7 +350,7 @@ function ShimmerCard({ index }: { index: number }) {
 }
 
 // ---------------------------------------------------------------------------
-// Metric card — the main accordion item
+// Metric card — original accordion behavior preserved; tap also opens detail modal
 // ---------------------------------------------------------------------------
 
 function IdealRangeRow({ text, accentColor }: { text: string; accentColor: string }) {
@@ -364,13 +365,12 @@ function IdealRangeRow({ text, accentColor }: { text: string; accentColor: strin
   );
 }
 
-function MetricCard({ item }: { item: FlatMetric }) {
+function MetricCard({ item, onPress }: { item: FlatMetric; onPress: (m: FlatMetric) => void }) {
   const cfg         = STATUS_CONFIG[item.status];
   const isNeedsWork = item.section === "needs_work";
   const isWorking   = item.section === "working";
 
-  // needs_work cards start expanded — commentary is always visible
-  const [expanded, setExpanded]       = useState(isNeedsWork);
+  const [expanded]                     = useState(isNeedsWork);
   const [typedText, setTypedText]     = useState("");
   const [idealOpen, setIdealOpen]     = useState(false);
   const hasAnimated                   = useRef(false);
@@ -382,17 +382,8 @@ function MetricCard({ item }: { item: FlatMetric }) {
   const idealProgress  = useSharedValue(0);
 
   const toggle = useCallback(() => {
-    if (!hasCommentary || isNeedsWork) return;
-    const next = !expanded;
-    setExpanded(next);
-    chevronRot.value     = withSpring(next ? 1 : 0, { damping: 12, stiffness: 220 });
-    revealProgress.value = withSpring(next ? 1 : 0, { damping: 16, stiffness: 200 });
-    // Collapse ideal range when main card collapses
-    if (!next) {
-      setIdealOpen(false);
-      idealProgress.value = withSpring(0, { damping: 16, stiffness: 200 });
-    }
-  }, [expanded, hasCommentary, isNeedsWork]);
+    onPress(item);
+  }, [item, onPress]);
 
   const toggleIdeal = useCallback(() => {
     if (!hasIdealRange) return;
@@ -401,7 +392,6 @@ function MetricCard({ item }: { item: FlatMetric }) {
     idealProgress.value = withSpring(next ? 1 : 0, { damping: 16, stiffness: 200 });
   }, [idealOpen, hasIdealRange]);
 
-  // Typewriter — auto-runs on mount for needs_work; once per open otherwise
   useEffect(() => {
     if (!expanded || !item.commentary) return;
     if (hasAnimated.current) { setTypedText(item.commentary); return; }
@@ -432,10 +422,7 @@ function MetricCard({ item }: { item: FlatMetric }) {
     overflow:  "hidden" as const,
   }));
 
-  // Card visual style varies per section zone
-  const cardSx = isNeedsWork ? sx.cardNeedsWork : isWorking ? sx.cardWorking : sx.card;
-
-  // Accent color for ideal range dot — matches section tone
+  const cardSx     = isNeedsWork ? sx.cardNeedsWork : isWorking ? sx.cardWorking : sx.card;
   const idealAccent = isNeedsWork ? C.alarmIcon : isWorking ? C.fineIcon : C.neutralIcon;
 
   return (
@@ -448,7 +435,7 @@ function MetricCard({ item }: { item: FlatMetric }) {
         onPress={toggle}
         style={({ pressed }) => [
           sx.cardHeader,
-          pressed && !isNeedsWork && { opacity: 0.82, transform: [{ scale: 0.984 }] },
+          pressed && { opacity: 0.82, transform: [{ scale: 0.984 }] },
         ]}
         accessibilityRole="button"
         accessibilityLabel={`${item.label}, ${item.verdict}${isNeedsWork && item.commentary ? ". " + item.commentary : ""}`}
@@ -467,7 +454,7 @@ function MetricCard({ item }: { item: FlatMetric }) {
           <Text style={sx.metricLabel} numberOfLines={2}>{item.label}</Text>
         </View>
 
-        {/* Verdict pill + chevron (chevron hidden for needs_work — always open) */}
+        {/* Verdict pill + chevron */}
         <View style={sx.rightGroup}>
           <View style={[sx.pillDepth, { backgroundColor: cfg.pillBorder }]}>
             <View style={[sx.pillFace, { backgroundColor: cfg.pillBg }]}>
@@ -484,7 +471,7 @@ function MetricCard({ item }: { item: FlatMetric }) {
         </View>
       </Pressable>
 
-      {/* ── needs_work: commentary always visible, red-tinted inset card ── */}
+      {/* ── needs_work: commentary always visible ── */}
       {isNeedsWork && hasCommentary && (
         <View style={sx.expandedWrapDirect}>
           <View style={sx.expandedCardDark}>
@@ -495,7 +482,6 @@ function MetricCard({ item }: { item: FlatMetric }) {
               )}
             </Text>
           </View>
-          {/* Ideal range toggle — always visible on needs_work expanded cards */}
           {hasIdealRange && (
             <>
               <Pressable
@@ -532,7 +518,6 @@ function MetricCard({ item }: { item: FlatMetric }) {
                 )}
               </Text>
             </View>
-            {/* Ideal range toggle — inside accordion */}
             {hasIdealRange && (
               <>
                 <Pressable
@@ -576,9 +561,11 @@ function MetricCard({ item }: { item: FlatMetric }) {
 function SectionBlock({
   sectionKey,
   metrics,
+  onCardPress,
 }: {
-  sectionKey: SectionKey;
-  metrics: FlatMetric[];
+  sectionKey:  SectionKey;
+  metrics:     FlatMetric[];
+  onCardPress: (m: FlatMetric) => void;
 }) {
   if (metrics.length === 0) return null;
 
@@ -587,12 +574,11 @@ function SectionBlock({
   const zone   = ZONE_CONFIG[sectionKey];
 
   return (
-    // Zone slab — tinted background unique to each section
     <Animated.View
       entering={FadeInDown.duration(380).delay(sectionKey === "working" ? 60 : sectionKey === "okay" ? 160 : 260)}
       style={[sx.sectionZone, { backgroundColor: zone.zoneBg, borderColor: zone.zoneBrd }]}
     >
-      {/* Zone header: title left, count right (large accent number) */}
+      {/* Zone header */}
       <View style={sx.zoneHeader}>
         <View style={sx.sectionTitleRow}>
           <View style={[sx.sectionDot, { backgroundColor: cfg.dotColor }]} />
@@ -603,13 +589,13 @@ function SectionBlock({
         </Text>
       </View>
 
-      {/* Thin accent divider — colored by section status */}
+      {/* Accent divider */}
       <View style={[sx.zoneDivider, { backgroundColor: zone.dividerClr + "30" }]} />
 
       {/* Cards */}
       <View style={sx.cardList}>
         {metrics.map((item) => (
-          <MetricCard key={item.id} item={item} />
+          <MetricCard key={item.id} item={item} onPress={onCardPress} />
         ))}
       </View>
     </Animated.View>
@@ -627,9 +613,13 @@ function AnalysisContent({ data }: { data: AdvancedAnalysis }) {
   const okay      = useMemo(() => metrics.filter((m) => m.section === "okay"),       [metrics]);
   const needsWork = useMemo(() => metrics.filter((m) => m.section === "needs_work"), [metrics]);
 
+  // ── Detail modal state ────────────────────────────────────────────────────
+  const [selectedMetric, setSelectedMetric] = useState<FlatMetric | null>(null);
+  const handleCardPress  = useCallback((m: FlatMetric) => setSelectedMetric(m), []);
+  const handleModalClose = useCallback(() => setSelectedMetric(null),            []);
+
   const workingFraction = metrics.length > 0 ? working.length / metrics.length : 0;
 
-  // Animate the progress bar fill
   const barWidth = useSharedValue(0);
   useEffect(() => {
     barWidth.value = withTiming(workingFraction * 100, {
@@ -644,7 +634,6 @@ function AnalysisContent({ data }: { data: AdvancedAnalysis }) {
       {/* ── Reference-style page header ── */}
       <Animated.View entering={FadeInDown.duration(340)} style={sx.refHeader}>
 
-        {/* Row 1: score pill + ANALYSIS RESULTS label */}
         <View style={sx.refTopRow}>
           <View style={sx.refPillDepth}>
             <View style={sx.refPill}>
@@ -658,7 +647,6 @@ function AnalysisContent({ data }: { data: AdvancedAnalysis }) {
           </View>
         </View>
 
-        {/* Row 2: description */}
         <Animated.Text
           entering={FadeInDown.duration(340).delay(80)}
           style={sx.refDesc}
@@ -666,7 +654,6 @@ function AnalysisContent({ data }: { data: AdvancedAnalysis }) {
           A balanced aesthetic breakdown to highlight your striking features, and identify areas for structural improvement and refinement.
         </Animated.Text>
 
-        {/* Row 3: progress bar + count */}
         <Animated.View
           entering={FadeInDown.duration(340).delay(140)}
           style={sx.refBarRow}
@@ -682,9 +669,9 @@ function AnalysisContent({ data }: { data: AdvancedAnalysis }) {
       </Animated.View>
 
       {/* ── Three sections ── */}
-      <SectionBlock sectionKey="working"    metrics={working}   />
-      <SectionBlock sectionKey="okay"       metrics={okay}      />
-      <SectionBlock sectionKey="needs_work" metrics={needsWork} />
+      <SectionBlock sectionKey="working"    metrics={working}   onCardPress={handleCardPress} />
+      <SectionBlock sectionKey="okay"       metrics={okay}      onCardPress={handleCardPress} />
+      <SectionBlock sectionKey="needs_work" metrics={needsWork} onCardPress={handleCardPress} />
 
       {/* ── Footer CTA ── */}
       <Animated.View
@@ -710,6 +697,12 @@ function AnalysisContent({ data }: { data: AdvancedAnalysis }) {
           </Pressable>
         </View>
       </Animated.View>
+
+      {/* ── Detail card modal ── */}
+      <MetricDetailCard
+        metric={selectedMetric}
+        onDismiss={handleModalClose}
+      />
     </>
   );
 }

@@ -110,7 +110,7 @@ export default function TransformationScreen() {
 
         {/* Progress bar */}
         <View style={styles.progressTrack}>
-          <View style={[styles.progressFill, { width: "6%" }]} />
+          <View style={[styles.progressFill, { width: "96%" }]} />
         </View>
 
         {/* Header */}
@@ -179,7 +179,7 @@ export default function TransformationScreen() {
         <View style={styles.footer}>
           <LimeButton
             label="Begin My Ascension"
-            onPress={() => router.replace("/(onboarding)/use-case")}
+            onPress={() => router.push("/(onboarding)/paywall")}
           />
         </View>
 

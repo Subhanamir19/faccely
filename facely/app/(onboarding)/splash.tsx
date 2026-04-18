@@ -140,7 +140,7 @@ export default function SplashScreen() {
         <Animated.View style={[styles.btnWrap, btnStyle]}>
           <LimeButton
             label="Continue"
-            onPress={() => router.replace("/(onboarding)/transformation")}
+            onPress={() => router.replace("/(onboarding)/use-case")}
           />
         </Animated.View>
       </Animated.View>

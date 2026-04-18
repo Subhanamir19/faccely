@@ -1950,6 +1950,7 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
+    paddingHorizontal: sw(28),
     borderRadius: sw(RADII.pill),
   },
   startSessionText: {
@@ -2327,8 +2328,9 @@ const styles = StyleSheet.create({
   floatingBtnWrap: {
     position: "absolute",
     bottom: sh(SP[4]),
-    left: sw(SP[4]),
-    right: sw(SP[4]),
+    left: 0,
+    right: 0,
+    alignItems: "center",
   },
 
   // Task cards — 3D depth style
