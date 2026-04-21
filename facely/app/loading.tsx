@@ -272,9 +272,10 @@ export default function LoadingScreen() {
         if (!storedImageUri || !storedScores) {
           throw new Error("Scores not found. Please run analysis again.");
         }
-        await useAdvancedAnalysis.getState().fetch();
+        const { data, error: advError } = await useAdvancedAnalysis
+          .getState()
+          .ensureFetched();
         if (cancelled) return;
-        const { data, error: advError } = useAdvancedAnalysis.getState();
         if (!data) {
           throw new Error(advError ?? "Advanced analysis did not return results.");
         }

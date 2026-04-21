@@ -1100,7 +1100,7 @@ const sx = StyleSheet.create({
   sectionCountLarge: {
     fontSize: ms(26, 0.3),
     fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
-    letterSpacing: -1,
+    letterSpacing: -0.3,
   },
   cardList: { gap: sh(8) },
 
