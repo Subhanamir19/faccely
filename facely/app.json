@@ -13,11 +13,11 @@
     },
     "ios": {
       "supportsTablet": false,
-      "buildNumber": "15",
+      "buildNumber": "16",
       "bundleIdentifier": "com.sigmamax.app",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "NSCameraUsageDescription": "SigmaMax needs camera access to analyze your facial features and provide personalized recommendations.",
+        "NSCameraUsageDesci just ription": "SigmaMax needs camera access to analyze your facial features and provide personalized recommendations.",
         "NSPhotoLibraryUsageDescription": "SigmaMax needs photo library access to analyze photos of your face."
       }
     },
