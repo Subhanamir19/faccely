@@ -202,7 +202,7 @@ export async function logoutUser(): Promise<void> {
  * Returns an unsubscribe function
  */
 export function addCustomerInfoUpdateListener(): () => void {
-  const listenerResult = Purchases.addCustomerInfoUpdateListener((customerInfo: CustomerInfo) => {
+  const listener = (customerInfo: CustomerInfo) => {
     const hasEntitlement = typeof customerInfo.entitlements.active[ENTITLEMENT_ID] !== "undefined";
 
     logger.log("[RevenueCat] Customer info updated:", {
@@ -210,16 +210,12 @@ export function addCustomerInfoUpdateListener(): () => void {
       activeEntitlements: Object.keys(customerInfo.entitlements.active),
     });
 
-    // Update store with new entitlement status (never touches promoActivated)
     useSubscriptionStore.getState().setRevenueCatEntitlement(hasEntitlement);
-  });
+  };
 
-  // Handle both SDK versions: newer returns a function, older returns { remove: () => void }
+  Purchases.addCustomerInfoUpdateListener(listener);
+
   return () => {
-    if (typeof listenerResult === "function") {
-      listenerResult();
-    } else if (listenerResult && typeof listenerResult.remove === "function") {
-      listenerResult.remove();
-    }
+    Purchases.removeCustomerInfoUpdateListener(listener);
   };
 }

@@ -8,7 +8,6 @@ import {
   StatusBar,
   SafeAreaView,
   ScrollView,
-  Platform,
   PanResponder,
   Dimensions,
 } from "react-native";
@@ -16,16 +15,16 @@ import { router } from "expo-router";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import LimeButton from "@/components/ui/LimeButton";
-import { COLORS, RADII, SP } from "@/lib/tokens";
+import { COLORS, RADII, SP, TYPE } from "@/lib/tokens";
 
 /* ─── layout constants ───────────────────────────────────────── */
 const { width: W } = Dimensions.get("window");
-const H_PAD    = 24;
+const H_PAD    = SP[6];
 const CARD_W   = W - H_PAD * 2;
 const IMG_H    = Math.round(CARD_W * 1.0);  // square — matches reference
 const HANDLE_R = 20;
 const ACCENT   = COLORS.accent;
-const BG       = "#0B0B0B";
+const BG       = COLORS.bgBottom;
 
 const BEFORE_IMG = require("@/assets/before.jpeg");
 const AFTER_IMG  = require("@/assets/after.jpeg");
@@ -197,33 +196,29 @@ const styles = StyleSheet.create({
   progressTrack: {
     height: 4,
     width: "100%",
-    borderRadius: 99,
+    borderRadius: RADII.circle,
     backgroundColor: COLORS.track,
     overflow: "hidden",
-    marginTop: 8,
-    marginBottom: 16,
+    marginTop: SP[2],
+    marginBottom: SP[4],
   },
   progressFill: {
     height: "100%",
     backgroundColor: ACCENT,
-    borderRadius: 99,
+    borderRadius: RADII.circle,
   },
 
   // header
-  header: { marginBottom: 14 },
+  header: { marginBottom: SP[3] + 2 },
   title: {
-    color: "#FFFFFF",
-    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
-    fontSize: 30,
-    lineHeight: 38,
+    ...TYPE.h2,
+    color: COLORS.text,
     letterSpacing: -0.5,
-    marginBottom: 8,
+    marginBottom: SP[2],
   },
   subtitle: {
+    ...TYPE.bodySemiBold,
     color: COLORS.sub,
-    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
-    fontSize: 16,
-    lineHeight: 23,
   },
 
   sliderContainer: {
@@ -249,33 +244,32 @@ const styles = StyleSheet.create({
   // badges
   badge: {
     position: "absolute",
-    top: 12,
+    top: SP[3],
     paddingHorizontal: 9,
-    paddingVertical: 6,
-    borderRadius: 10,
+    paddingVertical: SP[1] + 2,
+    borderRadius: RADII.sm,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.10)",
     overflow: "hidden",
   },
-  badgeLeft:  { left: 10 },
-  badgeRight: { right: 10, borderColor: "rgba(180,243,77,0.22)" },
+  badgeLeft:  { left: SP[2] + 2 },
+  badgeRight: { right: SP[2] + 2, borderColor: "rgba(180,243,77,0.22)" },
   badgeLabel: {
     color: "rgba(255,255,255,0.70)",
-    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
+    fontFamily: "Poppins-SemiBold",
     fontSize: 9,
     lineHeight: 13,
     letterSpacing: 0.9,
   },
   badgeScoreRow: { flexDirection: "row", alignItems: "flex-end" },
   badgeNum: {
-    color: "#FFFFFF",
-    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
-    fontSize: 20,
+    ...TYPE.h4,
+    color: COLORS.text,
     lineHeight: 24,
   },
   badgeDenom: {
+    ...TYPE.smallSemiBold,
     color: "rgba(255,255,255,0.55)",
-    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
     fontSize: 11,
     lineHeight: 18,
     marginLeft: 1,
@@ -309,7 +303,7 @@ const styles = StyleSheet.create({
   // ── testimonial ───────────────────────────────────────────────
   testimonialCard: {
     width: CARD_W,
-    marginTop: 14,
+    marginTop: SP[3] + 2,
     borderRadius: RADII.lg,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.07)",
@@ -320,16 +314,14 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.03)",
   },
   quote: {
+    ...TYPE.bodySemiBold,
     color: COLORS.textHigh,
-    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
-    fontSize: 15,
-    lineHeight: 23,
-    marginBottom: 12,
+    marginBottom: SP[3],
   },
   dividerLine: {
     height: 1,
     backgroundColor: "rgba(255,255,255,0.07)",
-    marginBottom: 12,
+    marginBottom: SP[3],
   },
   testimonialFooter: {
     flexDirection: "row",
@@ -337,36 +329,30 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   testimonialName: {
-    color: "#FFFFFF",
-    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
-    fontSize: 14,
-    lineHeight: 18,
+    ...TYPE.captionSemiBold,
+    color: COLORS.text,
   },
   stars: { flexDirection: "row", gap: 2 },
 
   scroll: { flex: 1 },
-  scrollContent: { paddingBottom: 8 },
+  scrollContent: { paddingBottom: SP[2] },
 
-  metricsSection: { marginTop: 20 },
+  metricsSection: { marginTop: SP[5] },
   metricsTitle: {
-    color: "#FFFFFF",
-    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
-    fontSize: 20,
-    lineHeight: 26,
+    ...TYPE.h4,
+    color: COLORS.text,
     letterSpacing: -0.3,
-    marginBottom: 4,
+    marginBottom: SP[1],
   },
   metricsSub: {
+    ...TYPE.captionSemiBold,
     color: COLORS.sub,
-    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
-    fontSize: 14,
-    lineHeight: 20,
-    marginBottom: 14,
+    marginBottom: SP[3] + 2,
   },
   metricsGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 10,
+    gap: SP[2] + 2,
   },
   metricCard: {
     width: (CARD_W - 10) / 2,
@@ -374,40 +360,35 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.07)",
     borderRadius: RADII.md,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
+    paddingHorizontal: SP[3] + 2,
+    paddingVertical: SP[3] + 2,
   },
   metricIconWrap: {
     width: 36,
     height: 36,
-    borderRadius: 10,
+    borderRadius: RADII.sm,
     backgroundColor: "rgba(180,243,77,0.10)",
     borderWidth: 1,
     borderColor: "rgba(180,243,77,0.18)",
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 10,
+    marginBottom: SP[2] + 2,
   },
   metricLabel: {
+    ...TYPE.captionSemiBold,
     color: COLORS.sub,
-    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
-    fontSize: 13,
-    lineHeight: 18,
-    marginBottom: 4,
+    marginBottom: SP[1],
   },
   metricScoreRow: { flexDirection: "row", alignItems: "center" },
   metricA: {
+    ...TYPE.bodySemiBold,
     color: "rgba(255,255,255,0.40)",
-    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
-    fontSize: 16,
     lineHeight: 20,
   },
   metricArrow: { color: "rgba(255,255,255,0.25)", fontSize: 13 },
   metricB: {
+    ...TYPE.button,
     color: COLORS.accent,
-    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
-    fontSize: 18,
-    lineHeight: 22,
   },
 
   // footer

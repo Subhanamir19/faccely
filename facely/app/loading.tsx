@@ -7,6 +7,7 @@ import CinematicLoader from "@/components/ui/CinematicLoader";
 
 import { useOnboarding } from "@/store/onboarding";
 import { useScores } from "../store/scores";
+import { useAdvancedAnalysis } from "@/store/advancedAnalysis";
 import { ensureJpegCompressed } from "../lib/api/media";
 import { useAuthStore } from "@/store/auth";
 
@@ -112,7 +113,6 @@ export default function LoadingScreen() {
   const params = useLocalSearchParams<Params>();
   const analyzePair = useScores((state) => state.analyzePair);
   const explainPair = useScores((state) => state.explainPair);
-  const explain = useScores((state) => state.explain);
 
   const mode = normalizeMode(takeFirst(params.mode));
   const front = takeFirst(params.front);
@@ -272,11 +272,12 @@ export default function LoadingScreen() {
         if (!storedImageUri || !storedScores) {
           throw new Error("Scores not found. Please run analysis again.");
         }
-        const ok = await explain(storedImageUri, storedScores);
-        if (!ok) {
-          throw new Error("Advanced analysis did not return results.");
-        }
+        await useAdvancedAnalysis.getState().fetch();
         if (cancelled) return;
+        const { data, error: advError } = useAdvancedAnalysis.getState();
+        if (!data) {
+          throw new Error(advError ?? "Advanced analysis did not return results.");
+        }
         setIsLoading(false);
         router.replace("/(tabs)/analysis");
       } catch (error) {
@@ -314,7 +315,6 @@ export default function LoadingScreen() {
     };
   }, [
     analyzePair,
-    explain,
     explainPair,
     completed,
     onboardingHydrated,

@@ -165,12 +165,6 @@ export default function IndexGate() {
     return <Redirect href="/(onboarding)/splash" />;
   }
 
-  // User completed onboarding but has no subscription — free tier.
-  // Route to the main app (daily tab is free; locked tabs show upgrade gate).
-  if (onboardingCompleted) {
-    return <Redirect href="/(tabs)/program" />;
-  }
-
-  // Completed questions but hasn't finished the full onboarding funnel — go to paywall.
+  // No access — always send to paywall. There is no free tier.
   return <Redirect href="/(onboarding)/paywall" />;
 }

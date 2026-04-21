@@ -771,6 +771,190 @@ function MiniGraph({
 }
 
 /* -------------------------------------------------------------------------- */
+/*  JourneyCard — light cream card with dashed progress graph                 */
+/* -------------------------------------------------------------------------- */
+
+const JOURNEY_GREEN      = "#36C94A";
+const JOURNEY_GREEN_DEEP = "#1E9A2E";
+const JOURNEY_GREEN_SOFT = "#9EE6A6";
+const JOURNEY_CARD_BG    = "#FFF8E7";
+const JOURNEY_INK        = "#1C2418";
+const JOURNEY_SUB        = "#8A8576";
+
+const JOURNEY_GRAPH_W = SCREEN_W - SP[4] * 2 - SP[5] * 2;
+const JOURNEY_GRAPH_H = 96;
+
+function JourneyGraph({
+  points,
+  width  = JOURNEY_GRAPH_W,
+  height = JOURNEY_GRAPH_H,
+}: {
+  points: number[];
+  width?:  number;
+  height?: number;
+}) {
+  if (points.length < 2) return null;
+
+  const padLeft  = 22; // room for Y-axis labels (0/50/100)
+  const padRight = 10;
+  const padTop   = 8;
+  const padBot   = 10;
+  const innerW   = width - padLeft - padRight;
+  const innerH   = height - padTop - padBot;
+
+  // Fixed 0..100 scale so Y-axis labels are meaningful
+  const toX = (i: number) => padLeft + (i / (points.length - 1)) * innerW;
+  const toY = (p: number) => padTop + (1 - Math.max(0, Math.min(100, p)) / 100) * innerH;
+
+  const coords   = points.map((p, i) => ({ x: toX(i), y: toY(p) }));
+  const first    = coords[0];
+  const last     = coords[coords.length - 1];
+  const linePath = `M ${first.x},${first.y} ${coords.slice(1).map((c) => `L ${c.x},${c.y}`).join(" ")}`;
+  const fillPath = `${linePath} L ${last.x},${height - padBot + 2} L ${first.x},${height - padBot + 2} Z`;
+
+  // Reveal: fade + upward settle for the line, fill fades in after
+  const lineOpacity = useSharedValue(0);
+  const lineShift   = useSharedValue(8);
+  const fillA       = useSharedValue(0);
+  const dotScale    = useSharedValue(0);
+
+  useEffect(() => {
+    lineOpacity.value = 0;
+    lineShift.value   = 8;
+    fillA.value       = 0;
+    dotScale.value    = 0;
+    lineOpacity.value = withDelay(120, withTiming(1, { duration: 700, easing: Easing.out(Easing.cubic) }));
+    lineShift.value   = withDelay(120, withTiming(0, { duration: 900, easing: Easing.out(Easing.cubic) }));
+    fillA.value       = withDelay(400, withTiming(1, { duration: 700, easing: Easing.out(Easing.quad) }));
+    dotScale.value    = withDelay(900, withSpring(1, { damping: 10, stiffness: 180 }));
+  }, [points]);
+
+  const lineStyle = useAnimatedStyle(() => ({
+    opacity:   lineOpacity.value,
+    transform: [{ translateY: lineShift.value }],
+  }));
+  const fillProps = useAnimatedProps(() => ({ fillOpacity: fillA.value }));
+  const dotProps  = useAnimatedProps(() => ({ r: 5 * dotScale.value }));
+  const haloProps = useAnimatedProps(() => ({ r: 9 * dotScale.value, opacity: 0.22 * dotScale.value }));
+
+  return (
+    <Animated.View style={[{ width, height }, lineStyle]}>
+      <Svg width={width} height={height}>
+        <Defs>
+          <SvgGradient id="journeyFill" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0%"   stopColor={JOURNEY_GREEN_SOFT} stopOpacity="0.75" />
+            <Stop offset="100%" stopColor={JOURNEY_GREEN_SOFT} stopOpacity="0.00" />
+          </SvgGradient>
+        </Defs>
+
+        {/* Horizontal grid lines at 50 (mid) */}
+        <Line
+          x1={padLeft} y1={toY(50)}
+          x2={width - padRight} y2={toY(50)}
+          stroke="rgba(28,36,24,0.08)"
+          strokeWidth={1}
+          strokeDasharray="3,4"
+        />
+
+        {/* Y-axis score labels — 0 / 50 / 100 */}
+        {[100, 50, 0].map((score) => (
+          <SvgText
+            key={score}
+            x={2}
+            y={toY(score) + 3}
+            fontSize="9"
+            fontWeight="600"
+            fill="rgba(28,36,24,0.45)"
+            textAnchor="start"
+          >
+            {score}
+          </SvgText>
+        ))}
+
+        {/* Soft green area under the line */}
+        <AnimatedSvgPath
+          d={fillPath}
+          fill="url(#journeyFill)"
+          animatedProps={fillProps}
+        />
+
+        {/* Dashed progress line */}
+        <Path
+          d={linePath}
+          fill="none"
+          stroke={JOURNEY_GREEN}
+          strokeWidth={2.6}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeDasharray="6,5"
+        />
+
+        {/* End-point halo + solid dot */}
+        <AnimatedCircle cx={last.x} cy={last.y} fill={JOURNEY_GREEN} animatedProps={haloProps} />
+        <AnimatedCircle cx={last.x} cy={last.y} fill={JOURNEY_GREEN} animatedProps={dotProps} />
+      </Svg>
+    </Animated.View>
+  );
+}
+
+function JourneyCard({
+  scanCount,
+  joinedDaysAgo,
+  overallDelta,
+  graphPoints,
+}: {
+  scanCount:     number;
+  joinedDaysAgo: number;
+  overallDelta:  number;
+  graphPoints:   number[];
+}) {
+  const deltaInt  = Math.round(overallDelta);
+  const isUp      = deltaInt >= 0;
+  const deltaAbs  = Math.abs(deltaInt);
+  const deltaStr  = `${isUp ? "+" : "−"}${deltaAbs}`;
+  const directionWord = isUp ? "up" : "down";
+
+  return (
+    <View style={styles.journeyBase}>
+      <View style={styles.journeyFace}>
+
+        {/* ── Header row ── */}
+        <View style={styles.journeyHeader}>
+          <View style={{ flex: 1, paddingRight: SP[2] }}>
+            <View style={styles.journeyTitleRow}>
+              <Text style={styles.journeyTitle}>Your journey</Text>
+              <View style={styles.journeyTitleIcon}>
+                <TrendingUp size={11} color="#FFFFFF" strokeWidth={3.2} />
+              </View>
+            </View>
+            <Text style={styles.journeySubtitle} numberOfLines={1}>
+              {scanCount} scans · {joinedDaysAgo} {joinedDaysAgo === 1 ? "day" : "days"} · {directionWord} {deltaAbs} points!
+            </Text>
+          </View>
+
+          {/* +N pill — green with darker depth */}
+          <View style={styles.journeyPillDepth}>
+            <View style={styles.journeyPillFace}>
+              <Text style={styles.journeyPillText}>{deltaStr}</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* ── Graph ── */}
+        <View style={styles.journeyGraphWrap}>
+          <JourneyGraph points={graphPoints} />
+          <View style={styles.journeyDayLabels}>
+            <Text style={styles.journeyDayLabel}>DAY 1</Text>
+            <Text style={styles.journeyDayLabel}>TODAY</Text>
+          </View>
+        </View>
+
+      </View>
+    </View>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
 /*  HeroCard — side-by-side: ring left, score info right                      */
 /* -------------------------------------------------------------------------- */
 
@@ -1589,37 +1773,20 @@ export default function DashboardScreen() {
           />
         </Animated.View>
 
-        {/* ── Section 3: Progress Over Time ── */}
+        {/* ── Section 3: Your journey ── */}
         {graphPoints.length >= 2 && (
           <Animated.View entering={FadeInDown.delay(180).duration(450)}>
-            <View style={styles.trendBase}>
-              <View style={styles.trendFace}>
-                <LinearGradient colors={["#1C1C1C", "#0F0F0F"]} style={StyleSheet.absoluteFill} />
-
-                {/* Header row: title+subtitle left, filter pill right */}
-                <View style={styles.trendHeader}>
-                  <View>
-                    <Text style={styles.trendTitle}>Progress Over Time</Text>
-                    <Text style={styles.trendSubtitle}>
-                      {scanCount} {scanCount === 1 ? "scan" : "scans"} · {joinedDaysAgo} days
-                    </Text>
-                  </View>
-                  <View style={styles.trendFilterPill}>
-                    <Text style={styles.trendFilterText}>Overall</Text>
-                  </View>
-                </View>
-
-                <MiniGraph points={graphPoints} height={120} />
-
-                {/* Day labels pinned bottom */}
-                <View style={styles.trendDayLabels}>
-                  <Text style={styles.trendDayLabel}>DAY 1</Text>
-                  <Text style={styles.trendDayLabel}>TODAY</Text>
-                </View>
-              </View>
-            </View>
+            <JourneyCard
+              scanCount={scanCount}
+              joinedDaysAgo={joinedDaysAgo}
+              overallDelta={overallDelta}
+              graphPoints={graphPoints}
+            />
           </Animated.View>
         )}
+
+        {/* ── Section 3b: Top 5 trainable sub-metrics (improving / to target) ── */}
+        <TopFiveCard result={pickTopFive(latestAdvanced, previousAdvanced, scanCount)} />
 
         {/* ── Section 4: Metric Breakdown title ── */}
         <Animated.View entering={FadeInDown.delay(240).duration(400)}>
@@ -1635,9 +1802,6 @@ export default function DashboardScreen() {
         {overall && (
           <MetricGrid metrics={metrics} latestAdvanced={latestAdvanced} previousAdvanced={previousAdvanced} />
         )}
-
-        {/* ── Section 5b: Top 5 trainable sub-metrics (improving / to target) ── */}
-        <TopFiveCard result={pickTopFive(latestAdvanced, previousAdvanced, scanCount)} />
 
         {/* ── Section 6: AI Coach ── (removed) */}
         {false && content && (
@@ -1673,7 +1837,7 @@ export default function DashboardScreen() {
                 </View>
               </View>
               <Text style={[TYPE.caption, { color: "rgba(255,255,255,0.75)", lineHeight: 22, marginTop: SP[2] }]}>
-                {content.narrative}
+                {content?.narrative}
               </Text>
             </GlassCard>
           </Animated.View>
@@ -2218,6 +2382,99 @@ const styles = StyleSheet.create({
     fontFamily: "Poppins-SemiBold",
     color: "#0F0F0F",
     letterSpacing: 0.3,
+  },
+
+  /* Journey card — light cream with dashed progress graph */
+  journeyBase: {
+    borderRadius: 22,
+    backgroundColor: "#C9B98A",           // warm tan depth layer
+    paddingBottom: 5,
+    marginBottom: SP[2],
+    shadowColor: "#000",
+    shadowOpacity: 0.18,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 6,
+  },
+  journeyFace: {
+    borderRadius: 22,
+    backgroundColor: JOURNEY_CARD_BG,
+    borderWidth: 1,
+    borderColor: "rgba(28,36,24,0.06)",
+    paddingHorizontal: SP[5],
+    paddingTop: SP[4],
+    paddingBottom: SP[4],
+    overflow: "hidden",
+  },
+  journeyHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: SP[3],
+  },
+  journeyTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SP[2],
+  },
+  journeyTitle: {
+    fontSize: 18,
+    fontFamily: "Poppins-SemiBold",
+    color: JOURNEY_INK,
+    letterSpacing: -0.2,
+  },
+  journeyTitleIcon: {
+    width: 18,
+    height: 18,
+    borderRadius: 5,
+    backgroundColor: JOURNEY_GREEN,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  journeySubtitle: {
+    fontSize: 12.5,
+    fontFamily: "Poppins-Medium",
+    color: JOURNEY_SUB,
+    marginTop: 3,
+  },
+  journeyPillDepth: {
+    backgroundColor: JOURNEY_GREEN_DEEP,
+    borderRadius: 999,
+    paddingBottom: 3,
+  },
+  journeyPillFace: {
+    backgroundColor: JOURNEY_GREEN,
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    minWidth: 54,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  journeyPillText: {
+    fontSize: 15,
+    fontFamily: "Poppins-SemiBold",
+    color: "#FFFFFF",
+    letterSpacing: -0.2,
+  },
+  journeyGraphWrap: {
+    marginTop: SP[1],
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  journeyDayLabels: {
+    width: "100%",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingLeft: 22,     // matches padLeft of JourneyGraph (Y-axis label gutter)
+    paddingRight: 10,    // matches padRight
+    marginTop: 4,
+  },
+  journeyDayLabel: {
+    fontSize: 10,
+    fontFamily: "Poppins-SemiBold",
+    color: "rgba(28,36,24,0.45)",
+    letterSpacing: 0.8,
   },
 
   /* Trend card — 3D treatment */

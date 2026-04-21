@@ -1,5 +1,5 @@
 // app/(onboarding)/building-plan.tsx
-// Animated "preparing your routine" screen — appears after time-commitment
+// Animated "preparing your routine" screen — appears after time-dedication
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { View, StyleSheet, StatusBar, Pressable } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
@@ -9,8 +9,7 @@ import Animated, { FadeIn, FadeInDown, ZoomIn, Easing } from "react-native-reani
 import Svg, { Path, Line, Ellipse, Circle, G } from "react-native-svg";
 
 import T from "@/components/ui/T";
-import { COLORS, SP, RADII } from "@/lib/tokens";
-import { useOnboarding } from "@/store/onboarding";
+import { COLORS, SP, RADII, getProgressForStep } from "@/lib/tokens";
 import { hapticSuccess } from "@/lib/haptics";
 
 /* ─── SVG illustrations ──────────────────────────────────────────────── */
@@ -169,7 +168,6 @@ const CYCLE_MS = 1300;
 
 export default function BuildingPlanScreen() {
   const insets = useSafeAreaInsets();
-  const { devPreview, setDevPreview } = useOnboarding();
 
   const [statusIdx, setStatusIdx] = useState(0);
   const [ctaVisible, setCtaVisible] = useState(false);
@@ -197,13 +195,8 @@ export default function BuildingPlanScreen() {
 
   const handleContinue = useCallback(() => {
     hapticSuccess();
-    if (devPreview) {
-      setDevPreview(false);
-      router.replace("/(tabs)/program");
-    } else {
-      router.push("/(auth)/login");
-    }
-  }, [devPreview, setDevPreview]);
+    router.push("/(auth)/login");
+  }, []);
 
   return (
     <View style={styles.screen}>
@@ -218,7 +211,7 @@ export default function BuildingPlanScreen() {
 
       {/* Progress bar */}
       <View style={[styles.progressTrack, { marginTop: insets.top + SP[3] }]}>
-        <View style={[styles.progressFill, { width: "100%" }]} />
+        <View style={[styles.progressFill, { width: `${getProgressForStep("building-plan") * 100}%` }]} />
       </View>
 
       {/* Header */}
@@ -318,7 +311,7 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: COLORS.bgTop },
 
   progressTrack: {
-    height: 8,
+    height: 6,
     marginHorizontal: SP[6],
     borderRadius: RADII.circle,
     backgroundColor: COLORS.track,
@@ -327,7 +320,7 @@ const styles = StyleSheet.create({
   },
   progressFill: {
     height: "100%",
-    backgroundColor: COLORS.accent,
+    backgroundColor: COLORS.text,
     borderRadius: RADII.circle,
   },
 

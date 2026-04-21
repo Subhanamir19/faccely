@@ -123,14 +123,15 @@ export const EXERCISE_CATALOG: ExerciseEntry[] = [
     weight: 6,
     scoreFields: ["cheekbones"],
   },
-  {
-    id: "fish-face",
-    name: "Fish Face",
-    targets: ["cheekbones", "jawline"],
-    intensity: "low",
-    weight: 7,
-    scoreFields: ["cheekbones", "jawline"],
-  },
+  // Temporarily disabled — keep the definition for future re-enabling.
+  // {
+  //   id: "fish-face",
+  //   name: "Fish Face",
+  //   targets: ["cheekbones", "jawline"],
+  //   intensity: "low",
+  //   weight: 7,
+  //   scoreFields: ["cheekbones", "jawline"],
+  // },
 
   // ── Eyes ───────────────────────────────────────────────────────────────────
   {

@@ -1,5 +1,5 @@
 // C:\SS\facely\app\(tabs)\take-picture.tsx
-import React, { useRef, useState, useCallback, useMemo } from "react";
+import React, { useRef, useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -19,7 +19,7 @@ import { CameraView, useCameraPermissions } from "expo-camera";
 import * as ImagePicker from "expo-image-picker";
 import * as FileSystem from "expo-file-system";
 import { router } from "expo-router";
-import Svg, { Line, Circle, Rect, Path, Ellipse } from "react-native-svg";
+import Svg, { Line, Circle, Rect, Path } from "react-native-svg";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import RecoveryCodeHint from "@/components/ui/RecoveryCodeHint";
@@ -161,51 +161,6 @@ function SideGuides({ w, h }: { w: number; h: number }) {
     </Svg>
   );
 }
-
-/* ============================== FACE MESH ============================== */
-const FaceMeshOverlay = React.memo(function FaceMeshOverlay({ cx, cy, rx, ry }: { cx: number; cy: number; rx: number; ry: number }) {
-  const ROWS = 12;
-  const COLS = 8;
-
-  const lines = useMemo(() => {
-    type Pt = { x: number; y: number } | null;
-    const grid: Pt[][] = [];
-
-    for (let r = 0; r <= ROWS; r++) {
-      grid[r] = [];
-      for (let c = 0; c <= COLS; c++) {
-        const nx = (c / COLS) * 2 - 1;
-        const ny = (r / ROWS) * 2 - 1;
-        grid[r][c] = nx * nx + ny * ny <= 0.95
-          ? { x: cx + nx * rx, y: cy + ny * ry }
-          : null;
-      }
-    }
-
-    const result: { x1: number; y1: number; x2: number; y2: number }[] = [];
-    for (let r = 0; r <= ROWS; r++) {
-      for (let c = 0; c <= COLS; c++) {
-        const p = grid[r]?.[c];
-        if (!p) continue;
-        const pr = grid[r]?.[c + 1];
-        if (pr) result.push({ x1: p.x, y1: p.y, x2: pr.x, y2: pr.y });
-        const pb = grid[r + 1]?.[c];
-        if (pb) result.push({ x1: p.x, y1: p.y, x2: pb.x, y2: pb.y });
-        const pd = grid[r + 1]?.[c + 1];
-        if (pd) result.push({ x1: p.x, y1: p.y, x2: pd.x, y2: pd.y });
-      }
-    }
-    return result;
-  }, [cx, cy, rx, ry]);
-
-  return (
-    <>
-      {lines.map((l, i) => (
-        <Line key={i} x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2} stroke="rgba(255,255,255,0.22)" strokeWidth={0.7} />
-      ))}
-    </>
-  );
-});
 
 
 /* ============================== SCREEN ============================== */
@@ -776,28 +731,7 @@ export default function TakePicture() {
             <>
               <CameraView ref={cameraRef} active={true} facing={cameraFacing} style={StyleSheet.absoluteFill} />
 
-              {/* Oval guide — sits in the upper 55% of the screen so it never collides with controls */}
-              <Svg pointerEvents="none" style={StyleSheet.absoluteFill} width={window.width} height={window.height}>
-                {pose === "frontal" && (
-                  <FaceMeshOverlay
-                    cx={window.width / 2}
-                    cy={window.height * 0.33}
-                    rx={window.width * 0.28}
-                    ry={window.height * 0.19}
-                  />
-                )}
-                <Ellipse
-                  cx={window.width / 2}
-                  cy={window.height * 0.33}
-                  rx={pose === "side" ? window.width * 0.20 : window.width * 0.28}
-                  ry={pose === "side" ? window.height * 0.22 : window.height * 0.19}
-                  stroke={ACCENT}
-                  strokeWidth={3}
-                  fill="none"
-                />
-              </Svg>
-
-              {/* Instruction label — sits above the oval */}
+              {/* Instruction label */}
               <View
                 pointerEvents="none"
                 style={{

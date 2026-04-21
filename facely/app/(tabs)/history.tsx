@@ -186,7 +186,7 @@ function HistoryCard({
   };
 
   const handleViewResults = () => {
-    router.push(`/history/analysis-card?scanId=${encodeURIComponent(item.id)}`);
+    router.push(`/history/score-card?scanId=${encodeURIComponent(item.id)}`);
   };
 
   return (

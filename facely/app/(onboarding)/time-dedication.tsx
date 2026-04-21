@@ -2,34 +2,39 @@
 // Asks how much time per day the user can dedicate to their routine.
 import React, { useCallback } from "react";
 import { router } from "expo-router";
+import { Zap, Target, Dumbbell, Flame } from "lucide-react-native";
 
-import { OnboardingScreen, OptionsList, Option } from "@/components/onboarding";
+import {
+  OnboardingScreenV2,
+  PillOptionsList,
+} from "@/components/onboarding";
+import type { PillOption } from "@/components/onboarding";
 import { useOnboarding } from "@/store/onboarding";
 
-const OPTIONS: Option[] = [
+const OPTIONS: PillOption[] = [
   {
     key: "5min",
     label: "5 minutes",
     description: "Quick daily habit — minimal time commitment",
-    emoji: "⚡",
+    Icon: Zap,
   },
   {
     key: "10min",
     label: "10 minutes",
     description: "Balanced routine — great for most people",
-    emoji: "🎯",
+    Icon: Target,
   },
   {
     key: "15min",
     label: "15 minutes",
     description: "Dedicated practice — noticeably faster results",
-    emoji: "💪",
+    Icon: Dumbbell,
   },
   {
     key: "20min",
     label: "20+ minutes",
     description: "Full protocol — maximum improvement",
-    emoji: "🔥",
+    Icon: Flame,
   },
 ];
 
@@ -38,39 +43,29 @@ export default function TimeDedicationScreen() {
   const saved = useOnboarding((s) => s.data.timeDedication);
 
   const handleSelect = useCallback(
-    (key: string) => {
-      setField("timeDedication", key);
-    },
-    [setField]
+    (key: string) => setField("timeDedication", key),
+    [setField],
   );
 
   const handleNext = useCallback(() => {
-    if (!saved) setField("timeDedication", "10min");
+    if (!saved) return;
     router.push("/(onboarding)/routine-animation");
-  }, [saved, setField]);
-
-  const handleSkip = useCallback(() => {
-    setField("timeDedication", "10min");
-    router.push("/(onboarding)/routine-animation");
-  }, [setField]);
+  }, [saved]);
 
   return (
-    <OnboardingScreen
+    <OnboardingScreenV2
       stepKey="time-dedication"
       title="How much time can you commit?"
       subtitle="We'll build a routine that fits your schedule"
+      heroImage={require("@/assets/onbaording-images/time-dedication.png")}
       onPrimary={handleNext}
       primaryDisabled={!saved}
-      primaryLabel="Continue"
-      showSecondary
-      secondaryLabel="Skip"
-      onSecondary={handleSkip}
     >
-      <OptionsList
+      <PillOptionsList
         options={OPTIONS}
         selected={saved ?? null}
         onSelect={handleSelect}
       />
-    </OnboardingScreen>
+    </OnboardingScreenV2>
   );
 }

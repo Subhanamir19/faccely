@@ -148,7 +148,7 @@ export default function WelcomeIntroScreen() {
 
   const handleBegin = useCallback(() => {
     globalTrack("welcome_screen_begin_tapped");
-    router.push("/(onboarding)/use-case");
+    router.push("/(onboarding)/goals");
   }, []);
 
   const emblemStyle = useAnimatedStyle(() => ({

@@ -26,7 +26,7 @@ import Animated, {
   interpolate,
   Easing,
 } from "react-native-reanimated";
-import { Sparkles, Target, AlertCircle, ChevronDown, ChevronRight } from "lucide-react-native";
+import { Sparkles, Target, AlertCircle, ChevronDown, ChevronRight, Microscope, ScanFace, LineChart, ShieldCheck } from "lucide-react-native";
 import { MetricDetailCard } from "@/components/analysis/MetricDetailCard";
 
 import Text from "@/components/ui/T";
@@ -606,7 +606,7 @@ function SectionBlock({
 // Analysis content — rendered once we have data
 // ---------------------------------------------------------------------------
 
-function AnalysisContent({ data }: { data: AdvancedAnalysis }) {
+export function AnalysisContent({ data }: { data: AdvancedAnalysis }) {
   const currentStreak = useTasksStore((s) => s.currentStreak);
   const metrics   = useMemo(() => flattenData(data), [data]);
   const working   = useMemo(() => metrics.filter((m) => m.section === "working"),    [metrics]);
@@ -692,7 +692,7 @@ function AnalysisContent({ data }: { data: AdvancedAnalysis }) {
               end={{ x: 0.5, y: 1 }}
               style={StyleSheet.absoluteFill}
             />
-            <Text style={sx.ctaBtnText}>View Program</Text>
+            <Text style={sx.ctaBtnText}>Start Your Routine</Text>
             <ChevronRight size={ms(16)} color="#0B1A00" strokeWidth={2.5} />
           </Pressable>
         </View>
@@ -712,20 +712,57 @@ function AnalysisContent({ data }: { data: AdvancedAnalysis }) {
 // ---------------------------------------------------------------------------
 
 function EmptyState() {
+  const benefits = [
+    { Icon: ScanFace,    label: "15 facial sub-metrics" },
+    { Icon: LineChart,   label: "Personalized ideal ranges"   },
+    { Icon: ShieldCheck, label: "Private — scans stay on device" },
+  ];
+
   return (
     <View style={sx.emptyWrap}>
-      <Text style={sx.emptyIcon}>🔬</Text>
-      <Text style={sx.emptyTitle}>No scan data</Text>
-      <Text style={sx.emptySub}>
-        Run a face scan to unlock your full advanced analysis.
-      </Text>
-      <View style={sx.ctaDepth}>
+      <Animated.View entering={FadeInDown.duration(380)} style={sx.emptyIconFrame}>
+        <View style={sx.emptyIconGlow} />
+        <View style={sx.emptyIconCore}>
+          <Microscope size={ms(30)} color={COLORS.accent} strokeWidth={1.8} />
+        </View>
+      </Animated.View>
+
+      <Animated.View entering={FadeInDown.duration(380).delay(80)} style={sx.emptyLabelRow}>
+        <View style={sx.emptyLabelDot} />
+        <Text style={sx.emptyLabelText}>ADVANCED ANALYSIS</Text>
+      </Animated.View>
+
+      <Animated.Text entering={FadeInDown.duration(380).delay(140)} style={sx.emptyTitle}>
+        Unlock your full breakdown
+      </Animated.Text>
+
+      <Animated.Text entering={FadeInDown.duration(380).delay(200)} style={sx.emptySub}>
+        Capture a face scan and we'll generate a detailed report across your cheeks, jaw, eyes, and skin.
+      </Animated.Text>
+
+      <Animated.View entering={FadeInDown.duration(380).delay(260)} style={sx.emptyBenefits}>
+        {benefits.map(({ Icon, label }, i) => (
+          <View key={i} style={sx.benefitRow}>
+            <View style={sx.benefitIconBox}>
+              <Icon size={ms(14)} color={COLORS.accent} strokeWidth={2.2} />
+            </View>
+            <Text style={sx.benefitText}>{label}</Text>
+          </View>
+        ))}
+      </Animated.View>
+
+      <Animated.View
+        entering={FadeInDown.duration(380).delay(340)}
+        style={[sx.ctaDepth, sx.emptyCta]}
+      >
         <Pressable
           onPress={() => router.push("/(tabs)/take-picture")}
           style={({ pressed }) => [
             sx.ctaBtn,
             { transform: [{ translateY: pressed ? 5 : 0 }] },
           ]}
+          accessibilityRole="button"
+          accessibilityLabel="Start face scan"
         >
           <LinearGradient
             colors={[COLORS.accentLight, COLORS.accent]}
@@ -733,9 +770,10 @@ function EmptyState() {
             end={{ x: 0.5, y: 1 }}
             style={StyleSheet.absoluteFill}
           />
-          <Text style={sx.ctaBtnText}>Scan Now</Text>
+          <Text style={sx.ctaBtnText}>Start Face Scan</Text>
+          <ChevronRight size={ms(16)} color="#0B1A00" strokeWidth={2.6} />
         </Pressable>
-      </View>
+      </Animated.View>
     </View>
   );
 }
@@ -884,24 +922,24 @@ const sx = StyleSheet.create({
 
   // ── Header ──
   header: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
+    alignItems: "center",
     paddingHorizontal: sw(20),
     paddingTop: sh(14),
     paddingBottom: sh(10),
   },
   headerTitle: {
-    fontSize: ms(24, 0.3),
+    fontSize: ms(22, 0.3),
     fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
     color: C.textPrimary,
     letterSpacing: -0.4,
+    textAlign: "center",
   },
   headerSub: {
     fontSize: ms(12.5, 0.3),
     fontFamily: Platform.select({ ios: "Poppins-Regular", android: "Poppins-Regular", default: "Poppins-Regular" }),
     color: C.textMuted,
-    marginTop: sh(2),
+    marginTop: sh(3),
+    textAlign: "center",
   },
   liveRow: {
     flexDirection: "row",
@@ -1300,24 +1338,99 @@ const sx = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingTop: sh(80),
-    gap: sh(14),
-    paddingHorizontal: sw(8),
+    paddingTop: sh(48),
+    paddingBottom: sh(40),
+    paddingHorizontal: sw(20),
   },
-  emptyIcon: { fontSize: ms(44), lineHeight: ms(52) },
+  emptyIconFrame: {
+    width: ms(84),
+    height: ms(84),
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: sh(22),
+  },
+  emptyIconGlow: {
+    position: "absolute",
+    width: ms(84),
+    height: ms(84),
+    borderRadius: ms(42),
+    backgroundColor: COLORS.accentGlow,
+    opacity: 0.9,
+  },
+  emptyIconCore: {
+    width: ms(64),
+    height: ms(64),
+    borderRadius: ms(20),
+    backgroundColor: "#121C05",
+    borderWidth: 1,
+    borderColor: COLORS.accentBorder,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  emptyLabelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: sw(7),
+    marginBottom: sh(10),
+  },
+  emptyLabelDot: {
+    width: sw(6),
+    height: sw(6),
+    borderRadius: 999,
+    backgroundColor: C.fineIcon,
+  },
+  emptyLabelText: {
+    fontSize: ms(10.5, 0.3),
+    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
+    color: C.textMuted,
+    letterSpacing: 1.8,
+  },
   emptyTitle: {
-    fontSize: ms(22, 0.3),
+    fontSize: ms(24, 0.3),
     fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
     color: C.textPrimary,
     textAlign: "center",
+    letterSpacing: -0.4,
+    marginBottom: sh(10),
   },
   emptySub: {
-    fontSize: ms(14, 0.3),
+    fontSize: ms(13.5, 0.3),
     fontFamily: Platform.select({ ios: "Poppins-Regular", android: "Poppins-Regular", default: "Poppins-Regular" }),
-    color: C.textMuted,
+    color: C.textBody,
     textAlign: "center",
     lineHeight: ms(21),
-    marginBottom: sh(8),
+    maxWidth: sw(300),
+  },
+  emptyBenefits: {
+    alignSelf: "stretch",
+    gap: sh(10),
+    marginTop: sh(24),
+    marginBottom: sh(28),
+    paddingHorizontal: sw(8),
+  },
+  benefitRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: sw(12),
+  },
+  benefitIconBox: {
+    width: ms(28),
+    height: ms(28),
+    borderRadius: ms(8),
+    backgroundColor: "#121C05",
+    borderWidth: 1,
+    borderColor: COLORS.accentBorder,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  benefitText: {
+    fontSize: ms(13, 0.3),
+    fontFamily: Platform.select({ ios: "Poppins-Medium", android: "Poppins-Medium", default: "Poppins-Medium" }),
+    color: C.textBody,
+    flex: 1,
+  },
+  emptyCta: {
+    alignSelf: "stretch",
   },
 
   // ── Error state ──

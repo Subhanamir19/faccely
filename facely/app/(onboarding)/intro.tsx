@@ -261,7 +261,7 @@ export default function IntroScreen() {
         <Animated.View style={[styles.footer, btnStyle]}>
           <LimeButton
             label="Let's Go"
-            onPress={() => router.replace("/(onboarding)/use-case")}
+            onPress={() => router.replace("/(onboarding)/goals")}
           />
         </Animated.View>
 

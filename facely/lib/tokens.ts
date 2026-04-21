@@ -243,41 +243,47 @@ export const SHADOWS = {
   },
 };
 
-// Onboarding flow configuration
+// Onboarding flow configuration — the canonical user-facing sequence.
+// Order here is authoritative; the progress bar fills linearly across it.
+// Orphan/alt screens (hook, intro, welcome, experience, face-scan, results-reveal,
+// building-plan, reviews) map to a sibling via PROGRESS_ALIASES below.
 export const ONBOARDING_FLOW = {
   steps: [
-    { key: "informatory", label: "Informatory" },
-    { key: "use-case", label: "Use Case" },
-    { key: "experience", label: "Experience" },
+    { key: "splash", label: "Splash" },
+    { key: "warmup", label: "Warmup" },
     { key: "goals", label: "Goals" },
-    { key: "age", label: "Age" },
-    { key: "ethnicity", label: "Ethnicity" },
     { key: "gender", label: "Gender" },
-    { key: "edge", label: "Edge" },
-    { key: "trust", label: "Trust" },
-    { key: "face-scan", label: "Face Scan" },
+    { key: "age", label: "Birthday" },
+    { key: "ethnicity", label: "Ethnicity" },
     { key: "scan", label: "Scan" },
-    { key: "score-teaser", label: "Score Teaser" },
+    { key: "trust", label: "Trust" },
     { key: "improve-areas", label: "Improve Areas" },
     { key: "time-dedication", label: "Time Dedication" },
     { key: "routine-animation", label: "Routine Animation" },
-    { key: "building-plan", label: "Building Plan" },
-    { key: "reviews", label: "Reviews" },
+    { key: "score-projection", label: "Score Projection" },
+    { key: "features", label: "Features" },
     { key: "transformation", label: "Transformation" },
     { key: "paywall", label: "Paywall" },
+    { key: "score-teaser", label: "Score Teaser" },
   ],
-  // Total question steps: use-case (1) through scan (9)
-  totalProgressSteps: 9,
 } as const;
 
+// Orphans / alt entries resolve to the step they visually follow.
+const PROGRESS_ALIASES: Record<string, string> = {
+  "face-scan": "scan",
+  "results-reveal": "score-teaser",
+  "building-plan": "transformation",
+  reviews: "transformation",
+  experience: "goals",
+  intro: "splash",
+  hook: "splash",
+  welcome: "splash",
+};
+
 export function getProgressForStep(stepKey: string): number {
-  const idx = ONBOARDING_FLOW.steps.findIndex((s) => s.key === stepKey);
-  if (idx <= 0) return 0; // informatory has no progress
-  // Post-scan screens and paywall always show full progress
-  if ([
-    "face-scan", "scan", "score-teaser", "improve-areas",
-    "time-dedication", "routine-animation",
-    "paywall", "building-plan", "reviews", "transformation",
-  ].includes(stepKey)) return 1;
-  return Math.min(1, idx / ONBOARDING_FLOW.totalProgressSteps);
+  const key = PROGRESS_ALIASES[stepKey] ?? stepKey;
+  const idx = ONBOARDING_FLOW.steps.findIndex((s) => s.key === key);
+  if (idx <= 0) return 0; // splash (or unknown) has no progress
+  const last = ONBOARDING_FLOW.steps.length - 1;
+  return Math.min(1, idx / last);
 }

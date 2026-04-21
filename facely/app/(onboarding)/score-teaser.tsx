@@ -11,6 +11,7 @@ import {
   ImageBackground,
   Platform,
   Text,
+  useWindowDimensions,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
@@ -18,42 +19,35 @@ import Animated, { FadeInDown } from "react-native-reanimated";
 import { router } from "expo-router";
 
 import CinematicLoader from "@/components/ui/CinematicLoader";
-import MetricCardShell from "@/components/layout/MetricCardShell";
-import ScoresSummaryCard from "@/components/scores/ScoresSummaryCard";
-import useMetricSizing from "@/components/layout/useMetricSizing";
+import ScoringGrid, { type ScoringMetric } from "@/components/scores/ScoringGrid";
 import T from "@/components/ui/T";
 import { COLORS, SP } from "@/lib/tokens";
 import { useScores } from "../../store/scores";
 import { hapticSuccess, hapticLight } from "@/lib/haptics";
+import { useAdvancedAnalysisConsent } from "@/hooks/useAdvancedAnalysisConsent";
 
 // ---------------------------------------------------------------------------
-// Metric definitions — identical to score.tsx
+// Metric definitions — identical to (tabs)/score.tsx
 // ---------------------------------------------------------------------------
 const METRIC_DEFINITIONS = [
   { apiKey: "jawline",           label: "Jawline",                defaultScore: 0 },
   { apiKey: "facial_symmetry",   label: "Facial Symmetry",        defaultScore: 0 },
   { apiKey: "cheekbones",        label: "Cheekbones",             defaultScore: 0 },
-  { apiKey: "sexual_dimorphism", label: "Masculinity/Femininity",  defaultScore: 0 },
+  { apiKey: "sexual_dimorphism", label: "Masculinity/Femininity", defaultScore: 0 },
   { apiKey: "skin_quality",      label: "Skin Quality",           defaultScore: 0 },
   { apiKey: "eyes_symmetry",     label: "Eye Symmetry",           defaultScore: 0 },
   { apiKey: "nose_harmony",      label: "Nose Balance",           defaultScore: 0 },
 ] as const;
 
-type MetricScore = { key: string; label: string; score: number };
-
-function applyApiScores(api: any): MetricScore[] {
-  const raw = api?.scores ?? api;
+function buildMetrics(apiScores: Record<string, number> | null | undefined): ScoringMetric[] {
   return METRIC_DEFINITIONS.map(({ apiKey, label, defaultScore }) => {
-    const v = Number(raw?.[apiKey]);
-    return {
-      key: label,
-      label,
-      score: Number.isFinite(v) ? Math.max(0, Math.min(100, v)) : defaultScore,
-    };
+    const raw = Number(apiScores?.[apiKey]);
+    const score = Number.isFinite(raw) ? Math.max(0, Math.min(100, raw)) : defaultScore;
+    return { label, score };
   });
 }
 
-function calculateTotal(metrics: MetricScore[]): number {
+function computeOverall(metrics: ScoringMetric[]): number {
   if (!metrics.length) return 0;
   return Math.round(metrics.reduce((acc, m) => acc + m.score, 0) / metrics.length);
 }
@@ -70,8 +64,9 @@ const FONT = Platform.select({
 // ---------------------------------------------------------------------------
 export default function ScoreTeaserScreen() {
   const insets  = useSafeAreaInsets();
+  const { width: SW } = useWindowDimensions();
   const { imageUri, scores, loading } = useScores();
-  const sizing  = useMetricSizing();
+  const { checkAndPromptConsent, ConsentModal } = useAdvancedAnalysisConsent();
 
   // Fallback: if analysis finished but scores didn't arrive (network/server
   // error), skip the teaser and enter the app so the user isn't stuck.
@@ -84,33 +79,36 @@ export default function ScoreTeaserScreen() {
   // Safety net: if backend hangs and never responds, send user into the app
   // after 20s so they're never stuck on the loader indefinitely.
   useEffect(() => {
+    if (!loading) return;
     const timeout = setTimeout(() => {
       router.replace("/(tabs)/program");
     }, 20_000);
     return () => clearTimeout(timeout);
-  }, []);
+  }, [loading]);
 
   const footerH = insets.bottom + 88;
+  const HORIZONTAL_PAD = SP[4];
+  const cardWidth = SW - HORIZONTAL_PAD * 2;
 
-  const metrics = useMemo<MetricScore[]>(() => {
-    if (scores) return applyApiScores(scores);
-    return METRIC_DEFINITIONS.map(({ label, defaultScore }) => ({
-      key: label, label, score: defaultScore,
-    }));
-  }, [scores]);
+  const metrics = useMemo<ScoringMetric[]>(
+    () => buildMetrics(scores as any),
+    [scores]
+  );
+  const totalScore = useMemo(() => computeOverall(metrics), [metrics]);
 
-  const totalScore = useMemo(() => calculateTotal(metrics), [metrics]);
-
-  const handleCTA = useCallback(() => {
+  const handleCTA = useCallback(async () => {
     hapticSuccess();
-    router.replace("/(tabs)/program");
-  }, []);
+    const agreed = await checkAndPromptConsent();
+    if (!agreed) return;
+    router.push({ pathname: "/loading", params: { mode: "advanced", phase: "analysis" } });
+  }, [checkAndPromptConsent]);
 
   // Show cinematic loader while analyzePair is in flight
   if (loading) return <CinematicLoader loading />;
 
   return (
     <View style={styles.screen}>
+      <ConsentModal />
 
       <ImageBackground
         source={require("../../assets/bg/score-bg.jpg")}
@@ -142,21 +140,15 @@ export default function ScoreTeaserScreen() {
             showsVerticalScrollIndicator={false}
             alwaysBounceVertical={false}
           >
-            <MetricCardShell
-              withOuterPadding={false}
-              renderSurface={false}
-              sizing={sizing}
-            >
-              {(usableWidth) => (
-                <ScoresSummaryCard
-                  metrics={metrics}
-                  totalScore={totalScore}
-                  width={usableWidth}
-                  active={true}
-                  imageUri={imageUri}
-                />
-              )}
-            </MetricCardShell>
+            <ScoringGrid
+              metrics={metrics}
+              totalScore={totalScore}
+              dashboardMetrics={[]}
+              overallDelta={null}
+              imageUri={imageUri}
+              active
+              cardWidth={cardWidth}
+            />
           </ScrollView>
         </Animated.View>
       </View>
@@ -181,7 +173,7 @@ export default function ScoreTeaserScreen() {
               { transform: [{ translateY: pressed ? DEPTH - 1 : 0 }] },
             ]}
           >
-            <Text style={styles.btnText}>Start Your Routine</Text>
+            <Text style={styles.btnText}>Advanced Analysis</Text>
           </Pressable>
         </View>
       </Animated.View>
@@ -219,7 +211,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    alignItems: "center",
     paddingTop: SP[2],
   },
   footer: {

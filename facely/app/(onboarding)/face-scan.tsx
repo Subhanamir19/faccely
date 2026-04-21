@@ -25,14 +25,14 @@ import * as Haptics from "expo-haptics";
 import { ensureJpegCompressed } from "../../lib/api/media";
 import { useScores } from "../../store/scores";
 import { logger } from "@/lib/logger";
-import { COLORS, SP, getProgressForStep, RADII } from "@/lib/tokens";
+import { COLORS, SP, TYPE, getProgressForStep, RADII } from "@/lib/tokens";
 
-const ACCENT = "#B4F34D";
-const ACCENT_LIGHT = "#CCFF6B";
-const TEXT = "#FFFFFF";
-const TEXT_DIM = "rgba(255,255,255,0.72)";
-const CARD_BORDER = "rgba(255,255,255,0.08)";
-const BG = "#0B0B0B";
+const ACCENT = COLORS.accent;
+const ACCENT_LIGHT = COLORS.accentLight;
+const TEXT = COLORS.text;
+const TEXT_DIM = COLORS.dim;
+const CARD_BORDER = COLORS.cardBorder;
+const BG = COLORS.bgBottom;
 
 function toFileUri(u: string) {
   if (u.startsWith("file://") || u.startsWith("http")) return u;
@@ -105,8 +105,8 @@ function LimeButton({
           {
             alignSelf: "center",
             width: "86%",
-            borderRadius: 26,
-            paddingVertical: 16,
+            borderRadius: RADII.pill,
+            paddingVertical: SP[4],
             alignItems: "center",
             justifyContent: "center",
             backgroundColor: "rgba(255,255,255,0.10)",
@@ -114,7 +114,7 @@ function LimeButton({
           style,
         ]}
       >
-        <Text style={{ color: TEXT_DIM, fontSize: 16, fontFamily: "Poppins-SemiBold" }}>
+        <Text style={{ color: TEXT_DIM, ...TYPE.bodySemiBold }}>
           {title}
         </Text>
       </Pressable>
@@ -126,8 +126,8 @@ function LimeButton({
         {
           alignSelf: "center",
           width: "86%",
-          borderRadius: 26,
-          backgroundColor: "#6B9A1E",
+          borderRadius: RADII.pill,
+          backgroundColor: COLORS.accentDepth,
           paddingBottom: DEPTH,
         },
         style,
@@ -136,15 +136,15 @@ function LimeButton({
       <Pressable
         onPress={onPress}
         style={({ pressed }) => ({
-          borderRadius: 26,
-          paddingVertical: 16,
+          borderRadius: RADII.pill,
+          paddingVertical: SP[4],
           alignItems: "center",
           justifyContent: "center",
           backgroundColor: ACCENT,
           transform: [{ translateY: pressed ? DEPTH - 1 : 0 }],
         })}
       >
-        <Text style={{ color: BG, fontSize: 16, fontFamily: "Poppins-SemiBold" }}>{title}</Text>
+        <Text style={{ color: BG, ...TYPE.bodySemiBold }}>{title}</Text>
       </Pressable>
     </View>
   );
@@ -172,19 +172,18 @@ function ChooserModal({
         <View
           style={{
             backgroundColor: "#1A1A1A",
-            borderTopLeftRadius: 24,
-            borderTopRightRadius: 24,
-            padding: 24,
-            gap: 12,
+            borderTopLeftRadius: RADII.xl,
+            borderTopRightRadius: RADII.xl,
+            padding: SP[6],
+            gap: SP[3],
             borderWidth: 1,
             borderColor: CARD_BORDER,
           }}
         >
           <Text
             style={{
+              ...TYPE.button,
               color: TEXT,
-              fontFamily: "Poppins-SemiBold",
-              fontSize: 17,
               textAlign: "center",
               marginBottom: 2,
             }}
@@ -193,11 +192,10 @@ function ChooserModal({
           </Text>
           <Text
             style={{
+              ...TYPE.caption,
               color: TEXT_DIM,
-              fontFamily: "Poppins-Regular",
-              fontSize: 13,
               textAlign: "center",
-              marginBottom: 8,
+              marginBottom: SP[2],
             }}
           >
             {pose === "frontal"
@@ -206,11 +204,11 @@ function ChooserModal({
           </Text>
           <LimeButton title="Take Photo" onPress={onCamera} />
           <Pressable onPress={onGallery} style={{ alignSelf: "center", marginTop: 4 }}>
-            <Text style={{ color: ACCENT, fontFamily: "Poppins-SemiBold", fontSize: 15 }}>
+            <Text style={{ color: ACCENT, ...TYPE.bodySemiBold, fontSize: 15 }}>
               Pick From Gallery
             </Text>
           </Pressable>
-          <View style={{ height: 8 }} />
+          <View style={{ height: SP[2] }} />
         </View>
       </Pressable>
     </Modal>
@@ -373,7 +371,7 @@ export default function OnboardingFaceScan() {
                 left: 0,
                 right: 0,
                 bottom: 0,
-                padding: 20,
+                padding: SP[5],
                 backgroundColor: "rgba(0,0,0,0.35)",
                 flexDirection: "row",
                 justifyContent: "center",
@@ -411,7 +409,7 @@ export default function OnboardingFaceScan() {
             <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
           </View>
 
-          <View style={{ paddingHorizontal: 24, marginTop: 12 }}>
+          <View style={{ paddingHorizontal: SP[6], marginTop: SP[3] }}>
             <Text
               style={{
                 color: TEXT,
@@ -425,18 +423,17 @@ export default function OnboardingFaceScan() {
             </Text>
             <Text
               style={{
+                ...TYPE.body,
                 color: TEXT_DIM,
-                fontFamily: "Poppins-Regular",
                 fontSize: 15,
-                lineHeight: 22,
-                marginTop: 6,
+                marginTop: SP[1] + 2,
               }}
             >
               Two photos — frontal and side — for your full facial analysis
             </Text>
           </View>
 
-          <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 20 }}>
+          <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: SP[5] }}>
             <View style={{ width: "100%", maxWidth: 400, borderRadius: 24, overflow: "hidden", backgroundColor: "#000" }}>
               <View style={{ width: "100%", aspectRatio: 0.85, backgroundColor: "#000", overflow: "hidden" }}>
                 <Image
@@ -453,16 +450,14 @@ export default function OnboardingFaceScan() {
                 pointerEvents="none"
               />
 
-              <View style={{ paddingHorizontal: 20, paddingBottom: 24, alignItems: "center", marginTop: -16 }}>
+              <View style={{ paddingHorizontal: SP[5], paddingBottom: SP[6], alignItems: "center", marginTop: -SP[4] }}>
                 <Text
                   style={{
+                    ...TYPE.h3,
                     color: TEXT,
                     textAlign: "center",
-                    fontFamily: "Poppins-SemiBold",
-                    fontSize: 22,
-                    lineHeight: 30,
                     letterSpacing: -0.3,
-                    marginBottom: 18,
+                    marginBottom: SP[4] + 2,
                   }}
                 >
                   Get your accurate{"\n"}facial score
@@ -471,9 +466,9 @@ export default function OnboardingFaceScan() {
                 <View
                   style={{
                     width: "88%",
-                    borderRadius: 28,
-                    backgroundColor: "#6B9A1E",
-                    paddingBottom: 6,
+                    borderRadius: RADII.pill,
+                    backgroundColor: COLORS.accentDepth,
+                    paddingBottom: SP[1] + 2,
                     shadowColor: ACCENT,
                     shadowOpacity: 0.5,
                     shadowRadius: 24,
@@ -489,7 +484,7 @@ export default function OnboardingFaceScan() {
                     hitSlop={8}
                     style={({ pressed }) => ({
                       height: 56,
-                      borderRadius: 28,
+                      borderRadius: RADII.pill,
                       overflow: "hidden",
                       transform: [{ translateY: pressed ? 5 : 0 }],
                     })}
@@ -499,9 +494,9 @@ export default function OnboardingFaceScan() {
                       locations={[0, 1]}
                       start={{ x: 0.5, y: 0 }}
                       end={{ x: 0.5, y: 1 }}
-                      style={{ flex: 1, alignItems: "center", justifyContent: "center", borderRadius: 28 }}
+                      style={{ flex: 1, alignItems: "center", justifyContent: "center", borderRadius: RADII.pill }}
                     >
-                      <Text style={{ color: BG, fontFamily: "Poppins-SemiBold", fontSize: 18, lineHeight: 22 }}>
+                      <Text style={{ ...TYPE.button, color: BG }}>
                         Begin Scan
                       </Text>
                     </LinearGradient>
@@ -538,32 +533,32 @@ export default function OnboardingFaceScan() {
             <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
           </View>
 
-          <View style={{ flex: 1, alignItems: "center", paddingHorizontal: 18 }}>
-            <Text style={{ color: TEXT, fontSize: 20, marginTop: 16, marginBottom: 6, fontFamily: "Poppins-SemiBold" }}>
+          <View style={{ flex: 1, alignItems: "center", paddingHorizontal: SP[5] }}>
+            <Text style={{ ...TYPE.h4, color: TEXT, marginTop: SP[4], marginBottom: SP[1] + 2 }}>
               Review your photos
             </Text>
-            <Text style={{ color: TEXT_DIM, fontFamily: "Poppins-Regular", fontSize: 13, textAlign: "center", marginBottom: 20 }}>
+            <Text style={{ ...TYPE.caption, color: TEXT_DIM, textAlign: "center", marginBottom: SP[5] }}>
               Make sure your face is clearly visible and well-lit
             </Text>
 
-            <View style={{ width: "92%", flexDirection: "row", justifyContent: "space-between", gap: 12 }}>
+            <View style={{ width: "92%", flexDirection: "row", justifyContent: "space-between", gap: SP[3] }}>
               <View style={{ flex: 1 }}>
-                <Text style={{ color: TEXT_DIM, marginBottom: 6, fontFamily: "Poppins-Medium" }}>Frontal</Text>
-                <View style={{ width: "100%", aspectRatio: 3 / 4, borderRadius: 16, overflow: "hidden", borderWidth: 1.5, borderColor: "rgba(255,255,255,0.12)", backgroundColor: "#000" }}>
+                <Text style={{ ...TYPE.captionMedium, color: TEXT_DIM, marginBottom: SP[1] + 2 }}>Frontal</Text>
+                <View style={{ width: "100%", aspectRatio: 3 / 4, borderRadius: RADII.md, overflow: "hidden", borderWidth: 1.5, borderColor: CARD_BORDER, backgroundColor: "#000" }}>
                   <Image source={{ uri: frontalUri! }} style={{ width: "100%", height: "100%" }} resizeMode="cover" />
                 </View>
-                <Pressable onPress={() => changePose("frontal")} style={{ marginTop: 10 }}>
-                  <Text style={{ color: ACCENT, fontFamily: "Poppins-SemiBold" }}>Retake</Text>
+                <Pressable onPress={() => changePose("frontal")} style={{ marginTop: SP[2] + 2 }}>
+                  <Text style={{ ...TYPE.captionSemiBold, color: ACCENT }}>Retake</Text>
                 </Pressable>
               </View>
 
               <View style={{ flex: 1 }}>
-                <Text style={{ color: TEXT_DIM, marginBottom: 6, fontFamily: "Poppins-Medium" }}>Side</Text>
-                <View style={{ width: "100%", aspectRatio: 3 / 4, borderRadius: 16, overflow: "hidden", borderWidth: 1.5, borderColor: "rgba(255,255,255,0.12)", backgroundColor: "#000" }}>
+                <Text style={{ ...TYPE.captionMedium, color: TEXT_DIM, marginBottom: SP[1] + 2 }}>Side</Text>
+                <View style={{ width: "100%", aspectRatio: 3 / 4, borderRadius: RADII.md, overflow: "hidden", borderWidth: 1.5, borderColor: CARD_BORDER, backgroundColor: "#000" }}>
                   <Image source={{ uri: sideUri! }} style={{ width: "100%", height: "100%" }} resizeMode="cover" />
                 </View>
-                <Pressable onPress={() => changePose("side")} style={{ marginTop: 10 }}>
-                  <Text style={{ color: ACCENT, fontFamily: "Poppins-SemiBold" }}>Retake</Text>
+                <Pressable onPress={() => changePose("side")} style={{ marginTop: SP[2] + 2 }}>
+                  <Text style={{ ...TYPE.captionSemiBold, color: ACCENT }}>Retake</Text>
                 </Pressable>
               </View>
             </View>
@@ -572,7 +567,7 @@ export default function OnboardingFaceScan() {
               title={submitting ? "Processing…" : "Analyze My Face"}
               onPress={handleAnalyze}
               disabled={!canContinue}
-              style={{ marginTop: 28, width: "92%" }}
+              style={{ marginTop: SP[7], width: "92%" }}
             />
           </View>
         </SafeAreaView>

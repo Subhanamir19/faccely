@@ -7,6 +7,7 @@ export default function OnboardingLayout() {
       initialRouteName="splash"
     >
       <Stack.Screen name="splash" />
+      <Stack.Screen name="warmup" />
       <Stack.Screen name="goals" />
       <Stack.Screen name="pain-points" />
       <Stack.Screen name="transformation" />
@@ -21,6 +22,7 @@ export default function OnboardingLayout() {
       <Stack.Screen name="routine-animation" />
       <Stack.Screen name="routine-preview" />
       <Stack.Screen name="score-projection" />
+      <Stack.Screen name="features" />
       <Stack.Screen name="paywall" />
       <Stack.Screen name="score-teaser" />
     </Stack>

@@ -26,7 +26,7 @@ import Reanimated, {
 } from "react-native-reanimated";
 
 import { useOnboarding } from "@/store/onboarding";
-import { COLORS, SP, RADII, getProgressForStep } from "@/lib/tokens";
+import { COLORS, SP, TYPE, RADII, getProgressForStep } from "@/lib/tokens";
 import { hapticSuccess } from "@/lib/haptics";
 
 /* ── Hand-drawn SVG icons ────────────────────────────────────
@@ -376,7 +376,7 @@ export default function RoutineAnimationScreen() {
               ]}
             >
               <LinearGradient
-                colors={["#CCFF6B", "#B4F34D"]}
+                colors={[COLORS.accentLight, COLORS.accent]}
                 start={{ x: 0.5, y: 0 }}
                 end={{ x: 0.5, y: 1 }}
                 style={styles.ctaGradient}
@@ -405,7 +405,7 @@ const styles = StyleSheet.create({
   },
   progressFill: {
     height: "100%",
-    backgroundColor: COLORS.accent,
+    backgroundColor: COLORS.text,
     borderRadius: RADII.circle,
   },
 
@@ -414,16 +414,12 @@ const styles = StyleSheet.create({
     marginBottom: SP[4],
   },
   heading: {
-    fontFamily: "Poppins-SemiBold",
-    fontSize: 26,
-    lineHeight: 34,
-    color: "#FFFFFF",
+    ...TYPE.h2,
+    color: COLORS.text,
     letterSpacing: -0.4,
   },
   subheading: {
-    fontFamily: "Poppins-Regular",
-    fontSize: 14,
-    lineHeight: 20,
+    ...TYPE.caption,
     color: "rgba(255,255,255,0.50)",
     marginTop: SP[2],
   },
@@ -468,14 +464,11 @@ const styles = StyleSheet.create({
 
   itemText: { flex: 1 },
   itemLabel: {
-    fontFamily: "Poppins-SemiBold",
-    fontSize: 14,
-    color: "#FFFFFF",
-    lineHeight: 20,
+    ...TYPE.captionSemiBold,
+    color: COLORS.text,
   },
   itemSublabel: {
-    fontFamily: "Poppins-Regular",
-    fontSize: 12,
+    ...TYPE.small,
     color: "rgba(255,255,255,0.45)",
     marginTop: 2,
   },
@@ -496,9 +489,7 @@ const styles = StyleSheet.create({
     minHeight: 40,
   },
   statusText: {
-    fontFamily: "Poppins-SemiBold",
-    fontSize: 12,
-    lineHeight: 18,
+    ...TYPE.smallSemiBold,
     color: "rgba(255,255,255,0.35)",
     textAlign: "center",
   },
@@ -508,26 +499,25 @@ const styles = StyleSheet.create({
     paddingTop: SP[2],
   },
   ctaDepth: {
-    borderRadius: 28,
-    backgroundColor: "#6B9A1E",
-    paddingBottom: 6,
+    borderRadius: RADII.pill,
+    backgroundColor: COLORS.accentDepth,
+    paddingBottom: SP[1] + 2,
     shadowColor: COLORS.accent,
     shadowOpacity: 0.50,
     shadowRadius: 24,
     shadowOffset: { width: 0, height: 10 },
     elevation: 12,
   },
-  ctaInner: { height: 56, borderRadius: 28, overflow: "hidden" },
+  ctaInner: { height: 56, borderRadius: RADII.pill, overflow: "hidden" },
   ctaGradient: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 28,
+    borderRadius: RADII.pill,
   },
   ctaText: {
-    fontFamily: "Poppins-SemiBold",
-    fontSize: 17,
-    color: "#0B0B0B",
+    ...TYPE.button,
+    color: COLORS.bgBottom,
     letterSpacing: -0.2,
   },
 });

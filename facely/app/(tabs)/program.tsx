@@ -776,14 +776,6 @@ function WorkoutCard({
           />
         )}
 
-        {/* All-done overlay */}
-        {allDone && (
-          <View style={styles.allDoneImgOverlay}>
-            <View style={styles.allDoneCircle}>
-              <Check size={sw(22)} color="#000" strokeWidth={2.5} />
-            </View>
-          </View>
-        )}
       </View>
 
       {/* ── Progress row ── */}

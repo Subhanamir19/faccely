@@ -10,27 +10,26 @@ import {
   Modal,
   StatusBar,
   SafeAreaView,
-  Platform,
   StyleSheet,
-  useWindowDimensions,
 } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
 import * as FileSystem from "expo-file-system";
 import { router } from "expo-router";
-import Svg, { Line, Ellipse } from "react-native-svg";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 
 import { ensureJpegCompressed } from "@/lib/api/media";
 import { useOnboarding } from "@/store/onboarding";
 import { logger } from "@/lib/logger";
+import { COLORS, TYPE, SP, RADII } from "@/lib/tokens";
 
-const ACCENT = "#B4F34D";
-const ACCENT_LIGHT = "#CCFF6B";
-const TEXT = "#FFFFFF";
-const TEXT_DIM = "rgba(255,255,255,0.72)";
-const BG = "#0B0B0B";
+const ACCENT = COLORS.accent;
+const ACCENT_LIGHT = COLORS.accentLight;
+const TEXT = COLORS.text;
+const TEXT_DIM = COLORS.dim;
+const BG = COLORS.bgBottom;
 
 type Step = "intro" | "review";
 
@@ -76,42 +75,6 @@ async function persistCompressedResult<T extends { uri: string; name: string }>(
   return { ...result, uri: dest };
 }
 
-/* ───────────────────────── face mesh ───────────────────────── */
-function FaceMeshOverlay({ cx, cy, rx, ry }: { cx: number; cy: number; rx: number; ry: number }) {
-  const ROWS = 12;
-  const COLS = 8;
-  type Pt = { x: number; y: number } | null;
-  const grid: Pt[][] = [];
-  for (let r = 0; r <= ROWS; r++) {
-    grid[r] = [];
-    for (let c = 0; c <= COLS; c++) {
-      const nx = (c / COLS) * 2 - 1;
-      const ny = (r / ROWS) * 2 - 1;
-      grid[r][c] = nx * nx + ny * ny <= 0.95 ? { x: cx + nx * rx, y: cy + ny * ry } : null;
-    }
-  }
-  const lines: { x1: number; y1: number; x2: number; y2: number }[] = [];
-  for (let r = 0; r <= ROWS; r++) {
-    for (let c = 0; c <= COLS; c++) {
-      const p = grid[r]?.[c];
-      if (!p) continue;
-      const pr = grid[r]?.[c + 1];
-      if (pr) lines.push({ x1: p.x, y1: p.y, x2: pr.x, y2: pr.y });
-      const pb = grid[r + 1]?.[c];
-      if (pb) lines.push({ x1: p.x, y1: p.y, x2: pb.x, y2: pb.y });
-      const pd = grid[r + 1]?.[c + 1];
-      if (pd) lines.push({ x1: p.x, y1: p.y, x2: pd.x, y2: pd.y });
-    }
-  }
-  return (
-    <>
-      {lines.map((l, i) => (
-        <Line key={i} x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2} stroke="rgba(255,255,255,0.22)" strokeWidth={0.7} />
-      ))}
-    </>
-  );
-}
-
 /* ───────────────────────── main screen ───────────────────────── */
 export default function OnboardingScanScreen() {
   const [perm, requestPerm] = useCameraPermissions();
@@ -126,7 +89,7 @@ export default function OnboardingScanScreen() {
   const cameraRef = useRef<CameraView>(null);
 
   const { setScanPhotos } = useOnboarding();
-  const window = useWindowDimensions();
+  const insets = useSafeAreaInsets();
 
   const openCamera = async () => {
     if (!perm?.granted) {
@@ -257,31 +220,27 @@ export default function OnboardingScanScreen() {
         ) : (
           <>
             <CameraView ref={cameraRef} active={cameraOpen} facing="front" style={StyleSheet.absoluteFill} />
-            <Svg pointerEvents="none" style={StyleSheet.absoluteFill} width={window.width} height={window.height}>
-              <FaceMeshOverlay cx={window.width / 2} cy={window.height * 0.42} rx={window.width * 0.33} ry={window.height * 0.27} />
-              <Ellipse cx={window.width / 2} cy={window.height * 0.42} rx={window.width * 0.33} ry={window.height * 0.27} stroke="#4DD9FF" strokeWidth={3} fill="none" />
-            </Svg>
 
             {/* Top instruction card */}
-            <View pointerEvents="none" style={{ position: "absolute", top: 52, left: 20, right: 20, backgroundColor: "rgba(38,34,28,0.86)", borderRadius: 20, paddingHorizontal: 20, paddingVertical: 18, alignItems: "center" }}>
-              <View style={{ width: 38, height: 38, marginBottom: 10, position: "relative" }}>
+            <View pointerEvents="none" style={{ position: "absolute", top: insets.top + SP[3], left: SP[5], right: SP[5], backgroundColor: "rgba(38,34,28,0.86)", borderRadius: RADII.xl, paddingHorizontal: SP[5], paddingVertical: SP[4], alignItems: "center" }}>
+              <View style={{ width: 28, height: 28, marginBottom: 6, position: "relative" }}>
                 {[
                   { top: 0, left: 0, bT: true, bL: true },
                   { top: 0, right: 0, bT: true, bR: true },
                   { bottom: 0, left: 0, bB: true, bL: true },
                   { bottom: 0, right: 0, bB: true, bR: true },
                 ].map((c, i) => (
-                  <View key={i} style={{ position: "absolute", width: 12, height: 12, top: c.top ?? undefined, left: c.left ?? undefined, right: (c as any).right ?? undefined, bottom: c.bottom ?? undefined, borderTopWidth: c.bT ? 2.5 : 0, borderLeftWidth: c.bL ? 2.5 : 0, borderRightWidth: (c as any).bR ? 2.5 : 0, borderBottomWidth: c.bB ? 2.5 : 0, borderColor: "#fff" }} />
+                  <View key={i} style={{ position: "absolute", width: 10, height: 10, top: c.top ?? undefined, left: c.left ?? undefined, right: (c as any).right ?? undefined, bottom: c.bottom ?? undefined, borderTopWidth: 2.2, borderLeftWidth: c.bL ? 2.2 : 0, borderRightWidth: (c as any).bR ? 2.2 : 0, borderBottomWidth: c.bB ? 2.2 : 0, borderColor: "#fff", borderTopColor: c.bT ? "#fff" : "transparent" }} />
                 ))}
               </View>
-              <Text style={{ color: "#fff", fontSize: 22, fontFamily: "Poppins-SemiBold", marginBottom: 4 }}>
+              <Text style={{ color: TEXT, ...TYPE.h4, marginBottom: 3 }}>
                 {pose === "frontal" ? "Face Forward" : "Turn to Your Side"}
               </Text>
-              <Text style={{ color: "rgba(255,255,255,0.72)", fontSize: 13, fontFamily: "Poppins-Regular", textAlign: "center" }}>
+              <Text style={{ color: TEXT_DIM, ...TYPE.small, textAlign: "center" }}>
                 {pose === "frontal" ? "Center your face, neutral expression" : "Align your profile with the oval"}
               </Text>
               {/* step dots */}
-              <View style={{ flexDirection: "row", gap: 6, marginTop: 12 }}>
+              <View style={{ flexDirection: "row", gap: 6, marginTop: 10 }}>
                 {[0, 1].map((i) => (
                   <View key={i} style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: (pose === "frontal" ? i === 0 : i === 1) ? ACCENT : "rgba(255,255,255,0.25)" }} />
                 ))}
@@ -289,7 +248,7 @@ export default function OnboardingScanScreen() {
             </View>
 
             {/* Bottom controls */}
-            <View style={{ position: "absolute", bottom: 0, left: 0, right: 0, paddingBottom: 44, alignItems: "center", gap: 20 }}>
+            <View style={{ position: "absolute", bottom: 0, left: 0, right: 0, paddingBottom: Math.max(insets.bottom + SP[4], SP[8]), alignItems: "center", gap: SP[4] }}>
               <Pressable
                 onPress={capture}
                 style={({ pressed }) => ({ width: 80, height: 80, borderRadius: 40, borderWidth: 4, borderColor: "rgba(255,255,255,0.45)", alignItems: "center", justifyContent: "center", backgroundColor: "#fff", transform: [{ scale: pressed ? 0.93 : 1 }] })}
@@ -303,10 +262,10 @@ export default function OnboardingScanScreen() {
                 <View style={{ width: 18, height: 18, flexDirection: "row", flexWrap: "wrap", gap: 2 }}>
                   {[0, 1, 2, 3].map((i) => <View key={i} style={{ width: 7, height: 7, borderRadius: 1.5, backgroundColor: "rgba(255,255,255,0.7)" }} />)}
                 </View>
-                <Text style={{ color: "rgba(255,255,255,0.85)", fontSize: 14, fontFamily: "Poppins-Regular" }}>Choose from Library</Text>
+                <Text style={{ color: "rgba(255,255,255,0.85)", ...TYPE.caption }}>Choose from Library</Text>
               </Pressable>
               <Pressable onPress={() => setCameraOpen(false)}>
-                <Text style={{ color: "rgba(255,255,255,0.35)", fontSize: 13, fontFamily: "Poppins-Regular" }}>Skip for now</Text>
+                <Text style={{ color: "rgba(255,255,255,0.35)", ...TYPE.caption }}>Skip for now</Text>
               </Pressable>
             </View>
           </>
@@ -322,7 +281,7 @@ export default function OnboardingScanScreen() {
         <StatusBar barStyle="light-content" />
         {cameraModal}
         <SafeAreaView style={{ flex: 1 }}>
-          <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 20 }}>
+          <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: SP[5] }}>
             <View style={{ width: "100%", maxWidth: 400, borderRadius: 24, overflow: "hidden", backgroundColor: "#000" }}>
               {/* Face image */}
               <View style={{ width: "100%", aspectRatio: 0.85, backgroundColor: "#000", overflow: "hidden" }}>
@@ -340,7 +299,7 @@ export default function OnboardingScanScreen() {
                 pointerEvents="none"
               />
               {/* Content */}
-              <View style={{ paddingHorizontal: 20, paddingBottom: 24, alignItems: "center", marginTop: -20 }}>
+              <View style={{ paddingHorizontal: SP[5], paddingBottom: SP[6], alignItems: "center", marginTop: -SP[5] }}>
                 <Text style={styles.introTitle}>Now let's analyze{"\n"}your face</Text>
                 <Text style={styles.introSubtitle}>
                   Takes 10 seconds. You'll see your scores right after.{"\n"}Your data stays private forever.
@@ -357,7 +316,7 @@ export default function OnboardingScanScreen() {
                   </Pressable>
                 </View>
 
-                <Pressable onPress={skipScan} style={{ marginTop: 16, alignItems: "center" }}>
+                <Pressable onPress={skipScan} style={{ marginTop: SP[4], alignItems: "center" }}>
                   <Text style={styles.skipLabel}>Skip scan for now</Text>
                   <Text style={styles.skipSub}>You can always do it later</Text>
                 </Pressable>
@@ -374,27 +333,27 @@ export default function OnboardingScanScreen() {
     <View style={{ flex: 1, backgroundColor: BG }}>
       <StatusBar barStyle="light-content" />
       {cameraModal}
-      <SafeAreaView style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 18 }}>
+      <SafeAreaView style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: SP[5] }}>
         <Text style={styles.reviewTitle}>Review your photos</Text>
 
-        <View style={{ width: "92%", flexDirection: "row", justifyContent: "space-between", gap: 12 }}>
+        <View style={{ width: "92%", flexDirection: "row", justifyContent: "space-between", gap: SP[3] }}>
           {([
             { label: "Frontal", uri: frontalUri, p: "frontal" as const },
             { label: "Side", uri: sideUri, p: "side" as const },
           ]).map(({ label, uri, p }) => (
             <View key={label} style={{ flex: 1 }}>
-              <Text style={{ color: TEXT_DIM, marginBottom: 6, fontFamily: "Poppins-Regular", fontSize: 13 }}>{label}</Text>
-              <View style={{ width: "100%", aspectRatio: 3 / 4, borderRadius: 16, overflow: "hidden", borderWidth: 1.5, borderColor: "rgba(255,255,255,0.12)", backgroundColor: "#111" }}>
+              <Text style={{ color: TEXT_DIM, marginBottom: SP[1] + 2, ...TYPE.caption }}>{label}</Text>
+              <View style={{ width: "100%", aspectRatio: 3 / 4, borderRadius: RADII.md, overflow: "hidden", borderWidth: 1.5, borderColor: COLORS.cardBorder, backgroundColor: "#111" }}>
                 {uri && <Image source={{ uri }} style={{ width: "100%", height: "100%" }} resizeMode="cover" />}
               </View>
-              <Pressable onPress={() => retake(p)} style={{ marginTop: 10 }}>
-                <Text style={{ color: ACCENT, fontFamily: "Poppins-SemiBold", fontSize: 13 }}>Retake</Text>
+              <Pressable onPress={() => retake(p)} style={{ marginTop: SP[2] + 2 }}>
+                <Text style={{ color: ACCENT, ...TYPE.captionSemiBold }}>Retake</Text>
               </Pressable>
             </View>
           ))}
         </View>
 
-        <View style={[styles.ctaShadow, { marginTop: 22, width: "92%" }]}>
+        <View style={[styles.ctaShadow, { marginTop: SP[5] + 2, width: "92%" }]}>
           <Pressable
             onPress={submitPhotos}
             disabled={!frontalUri || !sideUri || submitting}
@@ -412,27 +371,23 @@ export default function OnboardingScanScreen() {
 
 const styles = StyleSheet.create({
   introTitle: {
+    ...TYPE.h2,
     color: TEXT,
     textAlign: "center",
-    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
-    fontSize: 26,
-    lineHeight: 34,
     letterSpacing: -0.3,
-    marginBottom: 10,
+    marginBottom: SP[2] + 2,
   },
   introSubtitle: {
+    ...TYPE.caption,
     color: TEXT_DIM,
     textAlign: "center",
-    fontFamily: Platform.select({ ios: "Poppins-Regular", android: "Poppins-Regular", default: "Poppins-Regular" }),
-    fontSize: 14,
-    lineHeight: 22,
-    marginBottom: 22,
+    marginBottom: SP[5] + 2,
   },
   ctaShadow: {
     width: "88%",
-    borderRadius: 28,
-    backgroundColor: "#6B9A1E",
-    paddingBottom: 6,
+    borderRadius: RADII.pill,
+    backgroundColor: COLORS.accentDepth,
+    paddingBottom: SP[1] + 2,
     shadowColor: ACCENT,
     shadowOpacity: 0.5,
     shadowRadius: 24,
@@ -441,35 +396,31 @@ const styles = StyleSheet.create({
   },
   ctaInner: {
     height: 56,
-    borderRadius: 28,
+    borderRadius: RADII.pill,
     overflow: "hidden",
   },
   ctaGradient: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 28,
+    borderRadius: RADII.pill,
   },
   ctaText: {
+    ...TYPE.button,
     color: BG,
-    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
-    fontSize: 17,
   },
   skipLabel: {
+    ...TYPE.captionSemiBold,
     color: TEXT_DIM,
-    fontFamily: "Poppins-SemiBold",
-    fontSize: 14,
   },
   skipSub: {
+    ...TYPE.small,
     color: "rgba(255,255,255,0.35)",
-    fontFamily: "Poppins-Regular",
-    fontSize: 12,
     marginTop: 2,
   },
   reviewTitle: {
+    ...TYPE.h4,
     color: TEXT,
-    fontSize: 20,
-    marginBottom: 14,
-    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
+    marginBottom: SP[3] + 2,
   },
 });

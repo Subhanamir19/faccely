@@ -526,7 +526,7 @@ export function getOverallScore(
 
 export const METRIC_TOP_EXERCISES: Record<MetricKey, string[]> = {
   jawline:           ["chin-tucks", "jaw-resistance"],
-  cheekbones:        ["fish-face", "alternating-cheek-puffs"],
+  cheekbones:        ["alternating-cheek-puffs"],
   eyes_symmetry:     ["hunter-eyes-1", "hunter-eyes-2"],
   nose_harmony:      ["slim-nose-massage", "nose-massage"],
   skin_quality:      ["lymphatic-drainage", "gua-sha"],

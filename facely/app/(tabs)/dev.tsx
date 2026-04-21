@@ -40,34 +40,38 @@ import { useNotifications } from "@/store/notifications";
 // ---------------------------------------------------------------------------
 const CONSENT_KEY = "advanced_analysis_consent";
 
-const ONBOARDING_SCREENS: { label: string; route: string }[] = [
-  // Entry
-  { label: "Hook",             route: "/(onboarding)/hook" },
-  { label: "Intro",            route: "/(onboarding)/intro" },
-  { label: "Splash",           route: "/(onboarding)/splash" },
-  { label: "Welcome",          route: "/(onboarding)/welcome" },
-  // Main flow
-  { label: "Use Case",         route: "/(onboarding)/use-case" },
-  { label: "Goals",            route: "/(onboarding)/goals" },
-  { label: "Gender",           route: "/(onboarding)/gender" },
-  { label: "Age",              route: "/(onboarding)/age" },
-  { label: "Ethnicity",        route: "/(onboarding)/ethnicity" },
-  { label: "Edge",             route: "/(onboarding)/edge" },
-  { label: "Scan",             route: "/(onboarding)/scan" },
-  { label: "Trust",            route: "/(onboarding)/trust" },
-  { label: "Improve Areas",    route: "/(onboarding)/improve-areas" },
-  { label: "Time Dedication",  route: "/(onboarding)/time-dedication" },
-  { label: "Routine Animation",route: "/(onboarding)/routine-animation" },
-  { label: "Score Projection", route: "/(onboarding)/score-projection" },
-  { label: "Transformation",   route: "/(onboarding)/transformation" },
-  { label: "Paywall",          route: "/(onboarding)/paywall" },
-  { label: "Score Teaser",     route: "/(onboarding)/score-teaser" },
-  { label: "Building Plan",    route: "/(onboarding)/building-plan" },
-  // Orphans (preview only — not reachable from main flow)
-  { label: "Face Scan (alt)",  route: "/(onboarding)/face-scan" },
-  { label: "Results Reveal",   route: "/(onboarding)/results-reveal" },
-  { label: "Experience",       route: "/(onboarding)/experience" },
-  { label: "Time Commitment",  route: "/(onboarding)/time-commitment" },
+// Actual sequence the user sees from a fresh install.
+// Entry is /(onboarding)/splash (see app/index.tsx). Each step's router.push
+// traced to confirm the chain. End: /(tabs)/program.
+const ONBOARDING_FLOW_SCREENS: { label: string; route: string }[] = [
+  { label: "Splash",            route: "/(onboarding)/splash" },           // → warmup
+  { label: "Warmup",            route: "/(onboarding)/warmup" },           // → goals
+  { label: "Goals",             route: "/(onboarding)/goals" },            // → gender
+  { label: "Gender",            route: "/(onboarding)/gender" },           // → age
+  { label: "Birthday",          route: "/(onboarding)/age" },              // → ethnicity
+  { label: "Ethnicity",         route: "/(onboarding)/ethnicity" },        // → scan
+  { label: "Scan",              route: "/(onboarding)/scan" },             // → trust
+  { label: "Trust",             route: "/(onboarding)/trust" },            // → improve-areas
+  { label: "Improve Areas",     route: "/(onboarding)/improve-areas" },    // → time-dedication
+  { label: "Time Dedication",   route: "/(onboarding)/time-dedication" },  // → routine-animation
+  { label: "Routine Animation", route: "/(onboarding)/routine-animation" },// → score-projection
+  { label: "Score Projection",  route: "/(onboarding)/score-projection" }, // → features
+  { label: "Features",          route: "/(onboarding)/features" },         // → transformation
+  { label: "Transformation",    route: "/(onboarding)/transformation" },   // → paywall
+  { label: "Paywall",           route: "/(onboarding)/paywall" },          // → score-teaser
+  { label: "Score Teaser",      route: "/(onboarding)/score-teaser" },     // → (tabs)/program
+];
+
+// Screens that exist but are NOT reachable from the main splash → score-teaser flow.
+// Preview only.
+const ONBOARDING_ORPHANS: { label: string; route: string; note: string }[] = [
+  { label: "Hook",            route: "/(onboarding)/hook",           note: "alt entry — only used by loading.tsx for returning users" },
+  { label: "Intro",           route: "/(onboarding)/intro",          note: "routes to goals, but nothing routes to intro except hook" },
+  { label: "Welcome",         route: "/(onboarding)/welcome",        note: "legacy entry — no inbound route" },
+  { label: "Experience",      route: "/(onboarding)/experience",     note: "no inbound route" },
+  { label: "Face Scan (alt)", route: "/(onboarding)/face-scan",      note: "alt to /scan" },
+  { label: "Results Reveal",  route: "/(onboarding)/results-reveal", note: "legacy" },
+  { label: "Building Plan",   route: "/(onboarding)/building-plan",  note: "unlinked" },
 ];
 
 // ---------------------------------------------------------------------------
@@ -287,34 +291,59 @@ export default function DevScreen() {
           />
         </GlassCard>
 
-        {/* ── Onboarding ─────────────────────────────────────────────── */}
+        {/* ── Onboarding Flow ────────────────────────────────────────── */}
         <GlassCard style={styles.card}>
           <SectionHeader
-            title="Onboarding"
-            subtitle="Jump to any screen or run the full sequence"
+            title="Onboarding Flow"
+            subtitle="Screens in the order they appear to the user"
           />
 
           {/* Full sequence launcher */}
           <DevButton
-            label="▶  Run Full Sequence (from Hook)"
+            label="▶  Run Full Sequence (from Splash)"
             accent
-            onPress={() => router.push("/(onboarding)/hook")}
+            onPress={() => router.push("/(onboarding)/splash")}
           />
 
-          {/* Divider */}
           <View style={styles.divider} />
 
-          {/* Individual screens */}
-          <T style={styles.subLabel}>Individual screens</T>
+          <T style={styles.subLabel}>Step-by-step · tap to preview</T>
           <View style={styles.screenGrid}>
-            {ONBOARDING_SCREENS.map(({ label, route }) => (
+            {ONBOARDING_FLOW_SCREENS.map(({ label, route }, idx) => (
               <TouchableOpacity
                 key={route}
-                style={styles.screenChip}
+                style={styles.flowChip}
                 onPress={() => router.push(route as any)}
                 activeOpacity={0.7}
               >
+                <View style={styles.flowIndex}>
+                  <T style={styles.flowIndexText}>{String(idx + 1).padStart(2, "0")}</T>
+                </View>
                 <T style={styles.screenChipText}>{label}</T>
+                <T style={styles.screenChipArrow}>→</T>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </GlassCard>
+
+        {/* ── Orphan Onboarding Screens ──────────────────────────────── */}
+        <GlassCard style={styles.card}>
+          <SectionHeader
+            title="Orphan Screens"
+            subtitle="Exist but not reachable from the main onboarding flow"
+          />
+          <View style={styles.screenGrid}>
+            {ONBOARDING_ORPHANS.map(({ label, route, note }) => (
+              <TouchableOpacity
+                key={route}
+                style={styles.orphanChip}
+                onPress={() => router.push(route as any)}
+                activeOpacity={0.7}
+              >
+                <View style={{ flex: 1 }}>
+                  <T style={styles.screenChipText}>{label}</T>
+                  <T style={styles.orphanNote}>{note}</T>
+                </View>
                 <T style={styles.screenChipArrow}>→</T>
               </TouchableOpacity>
             ))}
@@ -624,6 +653,21 @@ export default function DevScreen() {
             }}
           />
           <DevButton
+            label="✓  Complete All Exercises (preview all-done state)"
+            accent
+            onPress={() => {
+              const { today, completeTask } = useTasksStore.getState();
+              if (!today) {
+                Alert.alert("No tasks", "Today's tasks are not loaded yet.");
+                return;
+              }
+              today.tasks.forEach((t) => {
+                if (t.status !== "completed") completeTask(t.exerciseId);
+              });
+              router.push("/(tabs)/program" as any);
+            }}
+          />
+          <DevButton
             label="↺  Uncheck All Exercises"
             accent
             onPress={() => {
@@ -923,6 +967,56 @@ const styles = StyleSheet.create({
   screenChipArrow: {
     fontSize: 14,
     color: COLORS.sub,
+  },
+
+  // Numbered flow chip
+  flowChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SP[3],
+    paddingHorizontal: SP[3],
+    paddingVertical: SP[3],
+    borderRadius: RADII.md,
+    backgroundColor: COLORS.whiteGlass,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: COLORS.cardBorder,
+  },
+  flowIndex: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: COLORS.accentGlow,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: COLORS.accentBorder,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  flowIndexText: {
+    fontSize: 11,
+    color: COLORS.accent,
+    fontFamily: "Poppins-SemiBold",
+    letterSpacing: 0.4,
+  },
+
+  // Orphan chip — muted styling
+  orphanChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: SP[4],
+    paddingVertical: SP[3],
+    borderRadius: RADII.md,
+    backgroundColor: "rgba(255,255,255,0.02)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(255,255,255,0.08)",
+    borderStyle: "dashed",
+  },
+  orphanNote: {
+    fontSize: 11,
+    color: COLORS.sub,
+    fontFamily: "Poppins-Regular",
+    marginTop: 2,
+    fontStyle: "italic",
   },
 
   // Dev buttons

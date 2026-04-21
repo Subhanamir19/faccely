@@ -5,7 +5,7 @@ import { Tabs } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import * as Haptics from "expo-haptics";
-import { Scan, CircleCheckBig, UserRound, TrendingUp, Wrench } from "lucide-react-native";
+import { Scan, CircleCheckBig, UserRound, TrendingUp } from "lucide-react-native";
 
 const ACTIVE_ICON   = "#FFFFFF";
 const INACTIVE_ICON = "rgba(255,255,255,0.38)";
@@ -117,7 +117,7 @@ const styles = StyleSheet.create({
 export default function TabsLayout() {
   return (
     <Tabs
-      initialRouteName="program"
+      initialRouteName="take-picture"
       tabBar={(props) => <FloatingTabBar {...props} />}
       screenOptions={{
         headerShown: false,
@@ -125,21 +125,21 @@ export default function TabsLayout() {
         sceneContainerStyle: { backgroundColor: "#0E0B08" },
       }}
     >
-      {/* Tab 1: daily */}
-      <Tabs.Screen
-        name="program"
-        options={{
-          title: "Daily",
-          tabBarIcon: ({ color, size }) => <CircleCheckBig color={color} size={size ?? 24} />,
-        }}
-      />
-
-      {/* Tab 2: scan */}
+      {/* Tab 1: scan */}
       <Tabs.Screen
         name="take-picture"
         options={{
           title: "Scan",
           tabBarIcon: ({ color, size }) => <Scan color={color} size={size ?? 24} />,
+        }}
+      />
+
+      {/* Tab 2: exercises */}
+      <Tabs.Screen
+        name="program"
+        options={{
+          title: "Daily",
+          tabBarIcon: ({ color, size }) => <CircleCheckBig color={color} size={size ?? 24} />,
         }}
       />
 
@@ -167,14 +167,8 @@ export default function TabsLayout() {
       {/* hidden */}
       <Tabs.Screen name="sigma" options={{ href: null }} />
 
-      {/* Dev */}
-      <Tabs.Screen
-        name="dev"
-        options={{
-          title: "Dev",
-          tabBarIcon: ({ color, size }) => <Wrench color={color} size={size ?? 24} />,
-        }}
-      />
+      {/* Dev — hidden */}
+      <Tabs.Screen name="dev" options={{ href: null }} />
 
       {/* Keep routes, hide from bar */}
       <Tabs.Screen name="history"    options={{ href: null }} />

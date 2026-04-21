@@ -4,9 +4,9 @@ import { getJSON, setJSON } from "@/lib/storage";
 
 type OnboardingData = {
   age?: number;
+  dob?: string; // ISO YYYY-MM-DD, source of truth; `age` is derived
   ethnicity?: string;
   gender?: string;
-  useCase?: string;
   looksmaxxingExperience?: string;
   goals?: string[];
   improveFocus?: string[];
