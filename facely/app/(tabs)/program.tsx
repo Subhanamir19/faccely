@@ -55,34 +55,25 @@ import { useProfile } from "@/store/profile";
 import { getExerciseIcon } from "@/lib/exerciseIcons";
 import { useExerciseSettings } from "@/store/exerciseSettings";
 import { getJSON, setJSON } from "@/lib/storage";
+import {
+  CARD_FACE_IMAGES,
+  CARD_FACE_LABELS,
+  CARD_FACE_FOCUS,
+  resolveCardTarget,
+  aggregateIntensity,
+  intensityBoostPct,
+} from "@/lib/faceTargets";
+import WorkoutPreview from "@/components/program/WorkoutPreview";
+import RoutineList from "@/components/program/RoutineList";
+import SpeechBubble from "@/components/program/SpeechBubble";
+import RingLoader from "@/components/ui/RingLoader";
 
 // ---------------------------------------------------------------------------
 // Face header images — maps dominant target area to analysis image
 // ---------------------------------------------------------------------------
 
-const CARD_FACE_IMAGES: Record<string, any> = {
-  cheekbones: require("../../assets/analysis-image-new/midface-area.jpeg"),
-  jawline:    require("../../assets/analysis-image-new/jawline analysis.jpeg"),
-  eyes:       require("../../assets/analysis-image-new/eye area naalysis.jpeg"),
-  skin:       require("../../assets/analysis-image-new/skin analysis.jpeg"),
-};
-
-const CARD_FACE_LABELS: Record<string, string> = {
-  jawline:    "Lower Face",
-  cheekbones: "Midface",
-  eyes:       "Eye Area",
-  nose:       "Nose",
-  skin:       "Skin",
-  all:        "Full Face",
-};
-
-// Vertical crop — focus on the relevant facial zone
-const CARD_FACE_FOCUS: Record<string, string> = {
-  cheekbones: "center 42%",
-  jawline:    "center 62%",
-  eyes:       "center 26%",
-  skin:       "center 36%",
-};
+// CARD_FACE_IMAGES / LABELS / FOCUS + resolveCardTarget live in @/lib/faceTargets
+// (shared with WorkoutPreview). Kept here only: bubble + muscle overlays for the card.
 
 // Speech bubble annotation text per zone
 const BUBBLE_TEXT: Record<string, string> = {
@@ -112,20 +103,7 @@ const MUSCLE_TEXT: Record<string, string> = {
   skin:       "Frontalis\nmuscle",
 };
 
-function resolveCardTarget(tasks: { targets: string[] }[]): string {
-  const counts: Record<string, number> = {};
-  const priority = ["jawline", "cheekbones", "eyes", "skin"];
-  for (const task of tasks) {
-    for (const t of task.targets) {
-      counts[t] = (counts[t] ?? 0) + 1;
-    }
-  }
-  // Pick the highest-priority target that appears at least once
-  for (const p of priority) {
-    if (counts[p]) return p;
-  }
-  return "cheekbones";
-}
+// resolveCardTarget moved to @/lib/faceTargets
 
 // ---------------------------------------------------------------------------
 // Screen metrics — used for proportional card sizing
@@ -259,41 +237,22 @@ function TasksLoadingScreen() {
   );
 
   const [phraseIndex, setPhraseIndex] = useState(0);
-  const progressWidth = useSharedValue(0);
 
   useEffect(() => {
-    progressWidth.value = withTiming(1, { duration: 2700 });
     const tick = setInterval(() => {
       setPhraseIndex((i) => Math.min(i + 1, phrases.length - 1));
-    }, 900);
+    }, 1100);
     return () => clearInterval(tick);
-  }, []);
+  }, [phrases.length]);
 
-  const barStyle = useAnimatedStyle(() => ({
-    width: `${progressWidth.value * 100}%`,
-  }));
+  const title = firstName ? `${firstName}'s Workout` : "Today's Workout";
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <Animated.View entering={FadeIn.duration(300)} exiting={FadeOut.duration(250)} style={styles.loadingWrap}>
-        <Text style={styles.loadingTitle}>{firstName ? `${firstName}'s Workout` : "Today's Workout"}</Text>
-
-        <View style={styles.progressTrackLoading}>
-          <Animated.View style={[styles.progressFillLoading, barStyle]} />
-        </View>
-
-        <View style={styles.phraseContainer}>
-          <Animated.Text
-            key={phraseIndex}
-            entering={FadeIn.duration(400)}
-            exiting={FadeOut.duration(250)}
-            style={styles.loadingPhrase}
-          >
-            {phrases[phraseIndex]}
-          </Animated.Text>
-        </View>
-      </Animated.View>
-    </SafeAreaView>
+    <RingLoader
+      kind="mascot"
+      title={title}
+      subtitle={phrases[phraseIndex]}
+    />
   );
 }
 
@@ -482,84 +441,7 @@ function StreakBadge() {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Speech bubble annotation — floats over the hero face image
-// ---------------------------------------------------------------------------
-
-function SpeechBubble({
-  text,
-  top,
-  right,
-  left,
-  delay = 240,
-  floatPhase = 0,
-}: {
-  text: string;
-  top: string | number;
-  right?: number;
-  left?: number;
-  delay?: number;
-  floatPhase?: number;  // ms offset so bubbles float out of sync
-}) {
-  const [displayed, setDisplayed] = useState("");
-  const floatY = useSharedValue(0);
-
-  // Typewriter
-  useEffect(() => {
-    setDisplayed("");
-    let i = 0;
-    let interval: ReturnType<typeof setInterval> | null = null;
-
-    const startTimer = setTimeout(() => {
-      interval = setInterval(() => {
-        i++;
-        setDisplayed(text.slice(0, i));
-        if (i >= text.length && interval) {
-          clearInterval(interval);
-          interval = null;
-        }
-      }, 52);
-    }, delay + 160);
-
-    return () => {
-      clearTimeout(startTimer);
-      if (interval) clearInterval(interval);
-    };
-  }, [text, delay]);
-
-  // Float — starts after entrance, limited to ±3.5px, phase-offset per bubble
-  useEffect(() => {
-    const t = setTimeout(() => {
-      floatY.value = withRepeat(
-        withSequence(
-          withTiming(-3.5, { duration: 1800, easing: Easing.inOut(Easing.sin) }),
-          withTiming( 3.5, { duration: 1800, easing: Easing.inOut(Easing.sin) }),
-        ),
-        -1,
-        false,
-      );
-    }, delay + floatPhase + 400);
-    return () => clearTimeout(t);
-  }, []);
-
-  const floatStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: floatY.value }],
-  }));
-
-  return (
-    <Animated.View
-      entering={FadeInDown.delay(delay).duration(380).springify().damping(18).stiffness(160)}
-      style={[
-        styles.bubbleWrap,
-        { top: top as any, ...(right !== undefined ? { right } : { left }) },
-        floatStyle,
-      ]}
-      accessibilityLabel={text}
-    >
-      <Text style={styles.bubbleText}>{displayed}</Text>
-    </Animated.View>
-  );
-}
+// SpeechBubble moved to @/components/program/SpeechBubble (shared with WorkoutPreview)
 
 // ---------------------------------------------------------------------------
 // Face target card — images + info
@@ -592,15 +474,7 @@ function parseFocusAreas(focusSummary: string): string[] {
     .slice(0, 2); // cap at 2 for layout
 }
 
-/** Collapses 5 task intensities into one session-level descriptor. */
-function aggregateIntensity(tasks: DailyTask[]): "high" | "medium" | "low" {
-  if (!tasks.length) return "medium";
-  const counts = { high: 0, medium: 0, low: 0 };
-  for (const t of tasks) counts[t.intensity] = (counts[t.intensity] ?? 0) + 1;
-  if (counts.high >= 3) return "high";
-  if (counts.low >= 3)  return "low";
-  return "medium";
-}
+// aggregateIntensity moved to @/lib/faceTargets
 
 const INTENSITY_VERB: Record<string, string> = {
   high:   "Intense",
@@ -680,7 +554,7 @@ function WorkoutCard({
   const totalSecs  = tasks.reduce((sum, t) => sum + getDuration(t.exerciseId), 0);
   const totalMins  = Math.max(1, Math.round(totalSecs / 60));
   const intensity  = aggregateIntensity(tasks);
-  const boostPct   = intensity === "high" ? 3 : intensity === "low" ? 1 : 2;
+  const boostPct   = intensityBoostPct(intensity);
 
   useEffect(() => {
     if (completedCount > 0) {
@@ -1476,6 +1350,15 @@ export default function TasksScreen() {
   const [confirmProtocol, setConfirmProtocol]     = useState<ProtocolTask | null>(null);
   const [showAllDoneOverlay, setShowAllDoneOverlay] = useState(false);
 
+  // Tab presents a preview screen first; "Start"/"Review" on preview reveals the list.
+  // Reset to preview every time the tab gains focus so returning users always see it.
+  const [phase, setPhase] = useState<"preview" | "list">("preview");
+  useFocusEffect(
+    useCallback(() => {
+      setPhase("preview");
+    }, []),
+  );
+
   // Life modals
   type LifeModal = "comeback" | "streak" | "halfway" | "didyouknow";
   const [activeLifeModal, setActiveLifeModal]     = useState<LifeModal | null>(null);
@@ -1681,105 +1564,25 @@ export default function TasksScreen() {
 
   if (introVisible || loading || !today) return <TasksLoadingScreen />;
 
+  if (phase === "preview") {
+    return (
+      <WorkoutPreview
+        tasks={tasks}
+        onStart={() => setPhase("list")}
+      />
+    );
+  }
+
   return (
-    <SafeAreaView style={styles.safe}>
-
-      {/* ── Single scrollable body ── */}
-      <Animated.ScrollView
-        onScroll={scrollHandler}
-        scrollEventThrottle={16}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={[
-          styles.scrollContent,
-          tasks.some((t) => t.status === "pending") && styles.scrollContentWithBtn,
-        ]}
-      >
-        {/* Workout card — fades away on scroll */}
-        <Animated.View
-          entering={FadeIn.duration(400)}
-          style={[styles.cardSection, cardFadeStyle]}
-        >
-          <WorkoutCard
-            tasks={tasks}
-            focusSummary={today.focusSummary}
-            overloadLabel={today.tasks[0]?.overloadLabel ?? "Base"}
-            completedCount={completedCount}
-            totalCount={totalCount}
-          />
-        </Animated.View>
-
-        {/* Thin divider between card and list */}
-        <View style={styles.listDivider} />
-
-        {/* Exercises section header */}
-        <View style={styles.sectionHeader}>
-          <View style={styles.sectionAccentBar} />
-          <Text style={styles.sectionTitle}>Exercises</Text>
-          <Text style={styles.sectionHint}>
-            {tasks.every((t) => t.status !== "pending")
-              ? "All done"
-              : `${tasks.filter((t) => t.status === "pending").length} left`}
-          </Text>
-        </View>
-
-        {/* Exercise rows */}
-        <View style={styles.exerciseList}>
-          {tasks.map((task, idx) => (
-            <Animated.View
-              key={task.exerciseId}
-              entering={FadeInDown.duration(300).delay(idx * 50)}
-            >
-              <ExerciseRow
-                task={task}
-                onStart={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  router.push({
-                    pathname: "/program/guide/[exerciseId]",
-                    params: { exerciseId: task.exerciseId },
-                  });
-                }}
-                onMarkDone={() => setMarkDoneTask(task)}
-              />
-            </Animated.View>
-          ))}
-
-          {/* ── Protocols ── */}
-          {today.protocols?.length > 0 && (
-            <>
-              <View style={styles.protocolsHeader}>
-                <View style={styles.sectionAccentBar} />
-                <Text style={styles.protocolsTitle}>Diet</Text>
-                <Text style={styles.sectionHint}>
-                  {today.protocols.every((p) => p.status === "done") ? "All done" : `${today.protocols.filter((p) => p.status === "pending").length} left`}
-                </Text>
-              </View>
-              {today.protocols.map((protocol, idx) => (
-                <Animated.View
-                  key={protocol.id}
-                  entering={FadeInDown.duration(300).delay((tasks.length + idx) * 50)}
-                >
-                  <ProtocolRow
-                    protocol={protocol}
-                    onPress={() => setConfirmProtocol(protocol)}
-                  />
-                </Animated.View>
-              ))}
-            </>
-          )}
-        </View>
-      </Animated.ScrollView>
-
-      {/* ── Floating Start Session button — sits above scroll ── */}
-      {tasks.some((t) => t.status === "pending") && (
-        <View style={styles.floatingBtnWrap} pointerEvents="box-none">
-          <StartSessionBtn
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-              router.push("/program/session");
-            }}
-          />
-        </View>
-      )}
+    <View style={styles.safe}>
+      <RoutineList
+        tasks={tasks}
+        onBack={() => setPhase("preview")}
+        onStart={() => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          router.push("/program/session");
+        }}
+      />
 
       {/* ── Modals ── */}
       <MarkDoneModal
@@ -1860,7 +1663,7 @@ export default function TasksScreen() {
         fact={currentFact}
         onClose={closeLifeModal}
       />
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -1871,37 +1674,6 @@ export default function TasksScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: COLORS.bgBottom },
-
-  // Loading
-  loadingWrap: { flex: 1, alignItems: "center", justifyContent: "center", gap: sh(SP[4]) },
-  loadingTitle: { color: COLORS.text, fontSize: ms(22), fontFamily: "Poppins-SemiBold" },
-  progressTrackLoading: {
-    width: sw(120),
-    height: sh(2),
-    borderRadius: sw(1),
-    backgroundColor: "rgba(255,255,255,0.10)",
-    overflow: "hidden",
-  },
-  progressFillLoading: {
-    height: "100%",
-    borderRadius: sw(1),
-    backgroundColor: COLORS.accent,
-  },
-  phraseContainer: {
-    height: sh(18),
-    alignItems: "center",
-    justifyContent: "center",
-    width: "100%",
-    paddingHorizontal: sw(SP[6]),
-  },
-  loadingPhrase: {
-    position: "absolute",
-    color: COLORS.sub,
-    fontSize: ms(13),
-    fontFamily: "Poppins-SemiBold",
-    textAlign: "center",
-    width: "100%",
-  },
 
   // Layout — unified scroll
   scrollContent: {
@@ -2101,30 +1873,6 @@ const styles = StyleSheet.create({
     height: sh(64),
   },
 
-  // ── Speech bubble annotation ────────────────────────────────────────────
-  bubbleWrap: {
-    position: "absolute",
-    backgroundColor: "#FFFFFF",
-    borderRadius: sw(6),
-    paddingHorizontal: sw(6),
-    paddingVertical: sh(4),
-    minWidth: sw(64),
-    maxWidth: sw(82),
-    minHeight: sh(24),
-    shadowColor: "#000000",
-    shadowOffset: { width: 0, height: sh(1.5) },
-    shadowOpacity: 0.16,
-    shadowRadius: sw(4),
-    elevation: 4,
-  },
-  bubbleText: {
-    fontSize: ms(8),
-    fontFamily: "Poppins-SemiBold",
-    color: "#0D0D0D",
-    letterSpacing: 0.1,
-    lineHeight: ms(11.5),
-    textAlign: "left",
-  },
   // ── Progress row ────────────────────────────────────────────────────────
   progressRow: {
     flexDirection: "row",

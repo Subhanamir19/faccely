@@ -1,4 +1,4 @@
-﻿.git
+.git
 *.log
 .DS_Store
 *.md
@@ -12,3 +12,16 @@ __tests__/
 **/.agents/**
 .agents
 .agents/**
+
+# Keep archive small — EAS rebuilds native dirs from config plugins
+node_modules/
+ios/build/
+ios/Pods/
+ios/DerivedData/
+android/build/
+android/.gradle/
+android/app/build/
+.expo/
+*.ipa
+*.apk
+coverage/

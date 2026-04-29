@@ -34,6 +34,8 @@ import type { AdvancedAnalysis } from "@/lib/api/advancedAnalysis";
 import ProgramHero from "@/components/program/ProgramHero";
 import InsightPulseCard, { PulseType } from "@/components/ui/InsightPulseCard";
 import { useNotifications } from "@/store/notifications";
+import RingLoader, { type RingLoaderKind } from "@/components/ui/RingLoader";
+import { Image as RNImage } from "react-native";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -51,8 +53,7 @@ const ONBOARDING_FLOW_SCREENS: { label: string; route: string }[] = [
   { label: "Birthday",          route: "/(onboarding)/age" },              // → ethnicity
   { label: "Ethnicity",         route: "/(onboarding)/ethnicity" },        // → scan
   { label: "Scan",              route: "/(onboarding)/scan" },             // → trust
-  { label: "Trust",             route: "/(onboarding)/trust" },            // → improve-areas
-  { label: "Improve Areas",     route: "/(onboarding)/improve-areas" },    // → time-dedication
+  { label: "Trust",             route: "/(onboarding)/trust" },            // → time-dedication
   { label: "Time Dedication",   route: "/(onboarding)/time-dedication" },  // → routine-animation
   { label: "Routine Animation", route: "/(onboarding)/routine-animation" },// → score-projection
   { label: "Score Projection",  route: "/(onboarding)/score-projection" }, // → features
@@ -67,6 +68,7 @@ const ONBOARDING_FLOW_SCREENS: { label: string; route: string }[] = [
 const ONBOARDING_ORPHANS: { label: string; route: string; note: string }[] = [
   { label: "Hook",            route: "/(onboarding)/hook",           note: "alt entry — only used by loading.tsx for returning users" },
   { label: "Intro",           route: "/(onboarding)/intro",          note: "routes to goals, but nothing routes to intro except hook" },
+  { label: "Improve Areas",   route: "/(onboarding)/improve-areas",  note: "removed from live flow — duplicated goals selection" },
   { label: "Welcome",         route: "/(onboarding)/welcome",        note: "legacy entry — no inbound route" },
   { label: "Experience",      route: "/(onboarding)/experience",     note: "no inbound route" },
   { label: "Face Scan (alt)", route: "/(onboarding)/face-scan",      note: "alt to /scan" },
@@ -137,6 +139,8 @@ export default function DevScreen() {
 
   // Blueprint modal preview
   const [blueprintVisible, setBlueprintVisible] = useState(false);
+  const [loaderPreviewVisible, setLoaderPreviewVisible] = useState(false);
+  const [loaderKindIdx, setLoaderKindIdx] = useState(0);
   const { data: advancedData } = useAdvancedAnalysis();
   const { imageUri } = useScores();
   const MOCK_ADVANCED: AdvancedAnalysis = {
@@ -373,6 +377,22 @@ export default function DevScreen() {
             label="▶  Preview Modal"
             accent
             onPress={() => setBlueprintVisible(true)}
+          />
+        </GlassCard>
+
+        {/* ── Loaders Preview ───────────────────────────────────────── */}
+        <GlassCard style={styles.card}>
+          <SectionHeader
+            title="Loaders"
+            subtitle="Ring loader — mascot · user photo · brand. Switch via header."
+          />
+          <DevButton
+            label="▶  Preview All Loaders"
+            accent
+            onPress={() => {
+              setLoaderKindIdx(0);
+              setLoaderPreviewVisible(true);
+            }}
           />
         </GlassCard>
 
@@ -786,6 +806,68 @@ export default function DevScreen() {
         visible={blueprintVisible}
         onDismiss={() => setBlueprintVisible(false)}
       />
+
+      {/* ── Loaders preview ──────────────────────────────────────────── */}
+      <Modal
+        visible={loaderPreviewVisible}
+        animationType="fade"
+        presentationStyle="fullScreen"
+        onRequestClose={() => setLoaderPreviewVisible(false)}
+      >
+        {(() => {
+          const KINDS: { kind: RingLoaderKind; label: string; title: string; subtitle: string }[] = [
+            { kind: "mascot", label: "Mascot",     title: "Building your routine",  subtitle: "Personalising your daily plan" },
+            { kind: "photo",  label: "Photo Scan", title: "Analyzing your face",    subtitle: "Mapping proportions & harmony" },
+            { kind: "brand",  label: "Brand",      title: "Preparing SigmaMax",     subtitle: "Setting things up" },
+          ];
+          const current = KINDS[loaderKindIdx];
+          const fallbackPhoto = RNImage.resolveAssetSource(
+            require("../../assets/loading/face-loader.jpg")
+          ).uri;
+          const photoUri =
+            current.kind === "photo" ? (imageUri ?? fallbackPhoto) : undefined;
+          return (
+            <View style={{ flex: 1, backgroundColor: COLORS.lightBg }}>
+              <RingLoader
+                kind={current.kind}
+                photoUri={photoUri}
+                title={current.title}
+                subtitle={current.subtitle}
+              />
+
+              {/* Floating header — switcher + close */}
+              <SafeAreaView
+                pointerEvents="box-none"
+                style={{ position: "absolute", top: 0, left: 0, right: 0 }}
+              >
+                <View style={styles.previewHeader}>
+                  <T style={[styles.previewTitle, { color: COLORS.lightText }]}>
+                    Loader · {current.label}
+                  </T>
+                  <View style={styles.previewActions}>
+                    <Pressable
+                      onPress={() => setLoaderKindIdx((i) => (i + 1) % KINDS.length)}
+                      hitSlop={12}
+                      style={[styles.previewBtn, { backgroundColor: "rgba(0,0,0,0.06)" }]}
+                    >
+                      <T style={[styles.previewBtnText, { color: COLORS.lightText }]}>
+                        ↺  Switch
+                      </T>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => setLoaderPreviewVisible(false)}
+                      hitSlop={12}
+                      style={[styles.previewBtn, styles.previewBtnClose]}
+                    >
+                      <T style={styles.previewBtnText}>✕  Close</T>
+                    </Pressable>
+                  </View>
+                </View>
+              </SafeAreaView>
+            </View>
+          );
+        })()}
+      </Modal>
 
       {/* Day Complete preview modal */}
       <DayCompleteModal

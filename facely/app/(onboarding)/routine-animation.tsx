@@ -12,7 +12,6 @@ import {
   Easing,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { LinearGradient } from "expo-linear-gradient";
 import { Svg, Circle, Path, Line, Ellipse } from "react-native-svg";
 import { router } from "expo-router";
 import Reanimated, {
@@ -26,8 +25,13 @@ import Reanimated, {
 } from "react-native-reanimated";
 
 import { useOnboarding } from "@/store/onboarding";
-import { COLORS, SP, TYPE, RADII, getProgressForStep } from "@/lib/tokens";
+import { COLORS, SP, RADII, getProgressForStep } from "@/lib/tokens";
+import { ms, sh, sw } from "@/lib/responsive";
 import { hapticSuccess } from "@/lib/haptics";
+
+const FONT_BOLD = "ProximaNova-Bold";
+const LIME = "#B4F34D";        // bright fill — progress, arcs, tint, check chip
+const LIME_BORDER_RGBA = "180,243,77"; // matches LIME, used in animated border interpolations
 
 /* ── Hand-drawn SVG icons ────────────────────────────────────
    Same illustrated style as building-plan.tsx for visual
@@ -122,7 +126,7 @@ function CheckIcon() {
     <Svg width={15} height={15} viewBox="0 0 15 15">
       <Path
         d="M 2.5 7.5 L 6 11 L 12.5 4"
-        fill="none" stroke="#0B0B0B" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"
+        fill="none" stroke="#0B0B0B" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"
       />
     </Svg>
   );
@@ -215,14 +219,14 @@ function RoutineItemRow({
   }, []);
 
   const cardStyle = useAnimatedStyle(() => ({
-    borderColor: `rgba(180,243,77,${interpolate(glowValue.value, [0, 0.12, 1], [0.07, 0.15, 0.50])})`,
-    shadowColor: COLORS.accent,
-    shadowOpacity: interpolate(glowValue.value, [0, 0.12, 1], [0, 0.04, 0.28]),
-    shadowRadius: 12,
+    borderColor: `rgba(${LIME_BORDER_RGBA},${interpolate(glowValue.value, [0, 0.12, 1], [0, 0.28, 0.65])})`,
+    shadowColor: LIME,
+    shadowOpacity: interpolate(glowValue.value, [0, 0.12, 1], [0.06, 0.14, 0.30]),
+    shadowRadius: 18,
   }));
 
   const tintStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(tintValue.value, [0, 0.28, 1], [0, 0.022, 0.07]),
+    opacity: interpolate(tintValue.value, [0, 0.28, 1], [0, 0.06, 0.18]),
   }));
 
   const checkStyle = useAnimatedStyle(() => ({
@@ -252,12 +256,12 @@ function RoutineItemRow({
           {/* Track ring */}
           <Circle
             cx={ARC_CX} cy={ARC_CY} r={ARC_RADIUS}
-            stroke="rgba(255,255,255,0.07)" strokeWidth={2} fill="none"
+            stroke="rgba(0,0,0,0.07)" strokeWidth={2} fill="none"
           />
           {/* Animated progress arc */}
           <AnimatedCircle
             cx={ARC_CX} cy={ARC_CY} r={ARC_RADIUS}
-            stroke={COLORS.accent} strokeWidth={3.5}
+            stroke={LIME} strokeWidth={3.5}
             fill="none"
             strokeDasharray={`${CIRCUMFERENCE} ${CIRCUMFERENCE}`}
             strokeDashoffset={arcOffset}
@@ -329,13 +333,7 @@ export default function RoutineAnimationScreen() {
 
   return (
     <View style={styles.screen}>
-      <StatusBar barStyle="light-content" />
-      <LinearGradient
-        colors={[COLORS.bgTop, "#050508"]}
-        style={StyleSheet.absoluteFill}
-        start={{ x: 0.5, y: 0 }}
-        end={{ x: 0.5, y: 1 }}
-      />
+      <StatusBar barStyle="dark-content" />
 
       {/* Progress bar */}
       <View style={[styles.progressTrack, { marginTop: insets.top + SP[3] }]}>
@@ -367,22 +365,15 @@ export default function RoutineAnimationScreen() {
       {/* Sticky CTA */}
       <View style={[styles.ctaContainer, { paddingBottom: insets.bottom + SP[4] }]}>
         {ctaReady && (
-          <Reanimated.View entering={FadeInDown.duration(420)} style={styles.ctaDepth}>
+          <Reanimated.View entering={FadeInDown.duration(420)}>
             <Pressable
               onPress={handleContinue}
               style={({ pressed }) => [
-                styles.ctaInner,
-                { transform: [{ translateY: pressed ? 5 : 0 }] },
+                styles.cta,
+                pressed && { backgroundColor: COLORS.ctaBlackPressed },
               ]}
             >
-              <LinearGradient
-                colors={[COLORS.accentLight, COLORS.accent]}
-                start={{ x: 0.5, y: 0 }}
-                end={{ x: 0.5, y: 1 }}
-                style={styles.ctaGradient}
-              >
-                <Text style={styles.ctaText}>View My Custom Routine</Text>
-              </LinearGradient>
+              <Text style={styles.ctaText}>VIEW MY CUSTOM ROUTINE</Text>
             </Pressable>
           </Reanimated.View>
         )}
@@ -393,20 +384,20 @@ export default function RoutineAnimationScreen() {
 
 /* ── Styles ──────────────────────────────────────────────────── */
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: COLORS.bgTop },
+  screen: { flex: 1, backgroundColor: COLORS.lightBg },
 
   progressTrack: {
-    height: 6,
+    height: sh(6),
     marginHorizontal: SP[5],
-    borderRadius: RADII.circle,
-    backgroundColor: COLORS.track,
+    borderRadius: 999,
+    backgroundColor: COLORS.lightHairline,
     overflow: "hidden",
     marginBottom: SP[5],
   },
   progressFill: {
     height: "100%",
-    backgroundColor: COLORS.text,
-    borderRadius: RADII.circle,
+    backgroundColor: LIME,
+    borderRadius: 999,
   },
 
   header: {
@@ -414,13 +405,17 @@ const styles = StyleSheet.create({
     marginBottom: SP[4],
   },
   heading: {
-    ...TYPE.h2,
-    color: COLORS.text,
-    letterSpacing: -0.4,
+    fontFamily: FONT_BOLD,
+    fontSize: ms(28),
+    lineHeight: ms(34),
+    color: COLORS.lightText,
+    letterSpacing: -0.5,
   },
   subheading: {
-    ...TYPE.caption,
-    color: "rgba(255,255,255,0.50)",
+    fontFamily: "Poppins-Regular",
+    fontSize: ms(14),
+    lineHeight: ms(20),
+    color: COLORS.lightSub,
     marginTop: SP[2],
   },
 
@@ -433,19 +428,20 @@ const styles = StyleSheet.create({
   itemRow: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.05)",
-    borderRadius: RADII.xl,
+    backgroundColor: COLORS.lightCard,
+    borderRadius: RADII.lg,
     borderWidth: 1,
-    borderColor: COLORS.cardBorder,
     paddingVertical: SP[3],
     paddingHorizontal: SP[4],
     gap: SP[4],
-    overflow: "hidden", // keeps tint overlay within rounded corners
-    shadowOffset: { width: 0, height: 2 },
+    overflow: "hidden",
+    // Idle/scanning shadow lives in cardStyle (animated). Keep a soft default
+    // so the card has weight even before its animation starts.
+    shadowOffset: { width: 0, height: 4 },
   },
   tintOverlay: {
-    borderRadius: RADII.xl,
-    backgroundColor: COLORS.accent,
+    borderRadius: RADII.lg,
+    backgroundColor: LIME,
   },
 
   iconWrapper: {
@@ -455,29 +451,32 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   itemIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: ms(42),
+    height: ms(42),
+    borderRadius: ms(21),
     alignItems: "center",
     justifyContent: "center",
   },
 
   itemText: { flex: 1 },
   itemLabel: {
-    ...TYPE.captionSemiBold,
-    color: COLORS.text,
+    fontFamily: FONT_BOLD,
+    fontSize: ms(14),
+    color: COLORS.lightText,
+    letterSpacing: -0.1,
   },
   itemSublabel: {
-    ...TYPE.small,
-    color: "rgba(255,255,255,0.45)",
+    fontFamily: "Poppins-Regular",
+    fontSize: ms(12),
+    color: COLORS.lightSub,
     marginTop: 2,
   },
 
   checkCircle: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: COLORS.accent,
+    width: ms(28),
+    height: ms(28),
+    borderRadius: ms(14),
+    backgroundColor: LIME,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -486,11 +485,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: SP[5],
     paddingVertical: SP[3],
     alignItems: "center",
-    minHeight: 40,
+    minHeight: sh(40),
   },
   statusText: {
-    ...TYPE.smallSemiBold,
-    color: "rgba(255,255,255,0.35)",
+    fontFamily: FONT_BOLD,
+    fontSize: ms(12),
+    color: COLORS.lightSub,
+    letterSpacing: 0.2,
     textAlign: "center",
   },
 
@@ -498,26 +499,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: SP[5],
     paddingTop: SP[2],
   },
-  ctaDepth: {
-    borderRadius: RADII.pill,
-    backgroundColor: COLORS.accentDepth,
-    paddingBottom: SP[1] + 2,
-    shadowColor: COLORS.accent,
-    shadowOpacity: 0.50,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 12,
-  },
-  ctaInner: { height: 56, borderRadius: RADII.pill, overflow: "hidden" },
-  ctaGradient: {
-    flex: 1,
+  cta: {
+    minHeight: sh(54),
+    borderRadius: 999,
+    backgroundColor: COLORS.ctaBlack,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: RADII.pill,
+    paddingVertical: sh(14),
   },
   ctaText: {
-    ...TYPE.button,
-    color: COLORS.bgBottom,
-    letterSpacing: -0.2,
+    fontFamily: FONT_BOLD,
+    fontSize: ms(14),
+    color: "#FFFFFF",
+    letterSpacing: 1.0,
   },
 });

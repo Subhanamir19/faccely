@@ -1,53 +1,70 @@
-// C:\SS\facely\components\ui\LoadingOverlay.tsx
+// components/ui/LoadingOverlay.tsx
+// Lightweight modal spinner for short-lived background work. Light surface
+// on a dimmed backdrop so it stays consistent with the app's light system.
 import React from "react";
-import { Modal, View, ActivityIndicator, Text, Platform } from "react-native";
+import {
+  ActivityIndicator,
+  Modal,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+
 import { useLoading } from "@/store/loading";
+import { COLORS, SP } from "@/lib/tokens";
+import { ms, sw } from "@/lib/responsive";
+
+const LIME = "#B4F34D";
 
 export default function LoadingOverlay() {
   const visible = useLoading((s) => s.count > 0);
 
   return (
-    <Modal visible={visible} animationType="fade" transparent statusBarTranslucent>
-      <View
-        style={{
-          flex: 1,
-          backgroundColor: "rgba(0,0,0,0.35)",
-          alignItems: "center",
-          justifyContent: "center",
-          paddingHorizontal: 24,
-        }}
-      >
-        <View
-          style={{
-            width: 140,
-            paddingVertical: 20,
-            paddingHorizontal: 16,
-            borderRadius: 18,
-            backgroundColor: "#0E0F10",
-            borderWidth: 1,
-            borderColor: "rgba(255,255,255,0.08)",
-            alignItems: "center",
-            justifyContent: "center",
-            shadowColor: "#000",
-            shadowOpacity: 0.35,
-            shadowRadius: 20,
-            shadowOffset: { width: 0, height: 10 },
-            elevation: 10,
-          }}
-        >
-          <ActivityIndicator size="large" />
-          <Text
-            style={{
-              marginTop: 10,
-              color: "rgba(255,255,255,0.85)",
-              fontSize: 14,
-              fontFamily: Platform.OS === "android" ? "Poppins-SemiBold" : undefined,
-            }}
-          >
-            Processing…
-          </Text>
+    <Modal
+      visible={visible}
+      animationType="fade"
+      transparent
+      statusBarTranslucent
+    >
+      <View style={styles.backdrop}>
+        <View style={styles.card}>
+          <ActivityIndicator size="large" color={LIME} />
+          <Text style={styles.label}>Processing…</Text>
         </View>
       </View>
     </Modal>
   );
 }
+
+const styles = StyleSheet.create({
+  backdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.35)",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: sw(SP[6]),
+  },
+  card: {
+    width: sw(150),
+    paddingVertical: ms(20),
+    paddingHorizontal: ms(16),
+    borderRadius: ms(20),
+    backgroundColor: COLORS.lightCard,
+    borderWidth: 1,
+    borderColor: COLORS.lightHairline,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000000",
+    shadowOpacity: 0.12,
+    shadowRadius: ms(22),
+    shadowOffset: { width: 0, height: ms(8) },
+    elevation: 6,
+  },
+  label: {
+    marginTop: ms(10),
+    color: COLORS.lightText,
+    fontSize: ms(13),
+    fontFamily: "Poppins-SemiBold",
+    letterSpacing: 0.2,
+  },
+});

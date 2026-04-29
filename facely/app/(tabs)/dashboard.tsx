@@ -1,7 +1,7 @@
 // app/(tabs)/dashboard.tsx
 // Progress Dashboard — full redesign with lime design system
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   ScrollView,
@@ -43,7 +43,7 @@ import Svg, {
   Text as SvgText,
 } from "react-native-svg";
 import { useRouter, useFocusEffect } from "expo-router";
-import { TrendingUp, Flame } from "lucide-react-native";
+import { TrendingUp, TrendingDown, Flame } from "lucide-react-native";
 import Text from "@/components/ui/T";
 import InsightPulseCard from "@/components/ui/InsightPulseCard";
 import { COLORS, SP, RADII, TYPE, SHADOWS } from "@/lib/tokens";
@@ -71,39 +71,42 @@ const AnimatedTextInput = Animated.createAnimatedComponent(TextInput);
 /*  Design tokens — lime palette                                               */
 /* -------------------------------------------------------------------------- */
 
+// Theme — every accent is folded into the monochrome light palette so any
+// existing consumer of LIME / VERDICT / CHANGE / DIR colors automatically
+// renders in the new restrained style.
 const LIME = {
-  primary: COLORS.accent,
-  light:   COLORS.accentLight,
-  dark:    COLORS.accentDepth,
-  dim:     "rgba(180,243,77,0.60)",   // 60% accent — no exact token
-  glow:    COLORS.accentGlow,
-  border:  COLORS.accentBorder,
-  bg:      "rgba(180,243,77,0.10)",   // 10% accent — no exact token
-  track:   "rgba(180,243,77,0.15)",   // 15% accent — no exact token
+  primary: COLORS.lightText,           // formerly accent → now solid dark
+  light:   COLORS.lightText,
+  dark:    COLORS.lightMuted,
+  dim:     COLORS.lightSub,
+  glow:    "rgba(0,0,0,0.06)",
+  border:  COLORS.lightBorder,
+  bg:      COLORS.lightSurfaceAlt,
+  track:   COLORS.lightHairline,
 };
 
 const DIR_COLOR: Record<string, string> = {
-  up:   "#B4F34D",
-  down: "#EF4444",
-  flat: "rgba(255,255,255,0.35)",
+  up:   COLORS.lightText,
+  down: COLORS.lightSub,
+  flat: COLORS.lightMuted,
 };
 
 const VERDICT_COLOR: Record<string, string> = {
-  improved: "#B4F34D",
-  same:     "rgba(255,255,255,0.45)",
-  declined: "#EF4444",
+  improved: COLORS.lightText,
+  same:     COLORS.lightSub,
+  declined: COLORS.lightMuted,
 };
 
 const VERDICT_BG: Record<string, string> = {
-  improved: "rgba(180,243,77,0.12)",
-  same:     "rgba(255,255,255,0.08)",
-  declined: "rgba(239,68,68,0.12)",
+  improved: COLORS.lightSurfaceAlt,
+  same:     COLORS.lightSurface,
+  declined: COLORS.lightSurface,
 };
 
 const CHANGE_COLOR: Record<string, string> = {
-  improving: "#B4F34D",
-  same:      "rgba(255,255,255,0.40)",
-  worse:     "#EF4444",
+  improving: COLORS.lightText,
+  same:      COLORS.lightSub,
+  worse:     COLORS.lightMuted,
 };
 
 const CHANGE_ICON: Record<string, string> = {
@@ -197,18 +200,126 @@ function getScoreTier(score: number): { label: string; color: string } {
   return                  { label: "WEAK",       color: "#EF4444" };
 }
 
+/** Tier thresholds in order (low → high) — derived from getScoreTier above. */
+const TIER_THRESHOLDS = [25, 40, 55, 70, 85] as const;
+
+/**
+ * Next tier the score is approaching. Returns null when already at top tier
+ * (≥85). Drives the "X TO ELITE" milestone pill.
+ */
+function nextTier(score: number): { threshold: number; label: string } | null {
+  for (const t of TIER_THRESHOLDS) {
+    if (score < t) return { threshold: t, label: getScoreTier(t).label };
+  }
+  return null;
+}
+
+/**
+ * Spotlight metric — biggest opportunity = (room to grow) × (current momentum,
+ * normalized). Falls back to lowest current score when no positive momentum
+ * exists. Always returns when metrics non-empty.
+ */
+function pickSpotlight(metrics: DashboardMetric[]): DashboardMetric | null {
+  if (!metrics.length) return null;
+  const scored = metrics.map((m) => ({
+    m,
+    score: (100 - m.current) * Math.max(0, m.delta + 0.1),
+  }));
+  scored.sort((a, b) => b.score - a.score);
+  const top = scored[0];
+  if (top.score > 0) return top.m;
+  // No positive momentum anywhere — surface lowest current as the focus.
+  return [...metrics].sort((a, b) => a.current - b.current)[0];
+}
+
+function pickRising(metrics: DashboardMetric[]): DashboardMetric | null {
+  if (!metrics.length) return null;
+  return [...metrics].sort((a, b) => b.delta - a.delta)[0];
+}
+
+function pickFalling(metrics: DashboardMetric[]): DashboardMetric | null {
+  if (!metrics.length) return null;
+  return [...metrics].sort((a, b) => a.delta - b.delta)[0];
+}
+
+/**
+ * Linear-regression projection of the next N days of overall scores.
+ * Returns null when too few points to fit a believable line.
+ */
+function projectGraph(points: number[], daysAhead: number): number[] | null {
+  if (points.length < 5) return null;
+  // Fit y = a + b*x using least squares with x = 0..n-1.
+  const n = points.length;
+  let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
+  for (let i = 0; i < n; i++) {
+    sumX  += i;
+    sumY  += points[i];
+    sumXY += i * points[i];
+    sumXX += i * i;
+  }
+  const denom = n * sumXX - sumX * sumX;
+  if (denom === 0) return null;
+  const b = (n * sumXY - sumX * sumY) / denom;
+  const a = (sumY - b * sumX) / n;
+
+  const out: number[] = [];
+  for (let i = 1; i <= daysAhead; i++) {
+    const y = a + b * (n - 1 + i);
+    out.push(Math.max(0, Math.min(100, y)));
+  }
+  return out;
+}
+
+/**
+ * 7-day ribbon driven by tasks-store history. Each cell:
+ *   { day: "M"|"T"|... , done: boolean, isToday: boolean, date: string }
+ * Cells are ordered Monday → Sunday so the row reads naturally.
+ */
+function buildWeekRibbon(
+  history: { date: string; streakEarned?: boolean }[],
+  todayRecord: { date: string; streakEarned?: boolean } | null,
+): { day: string; done: boolean; isToday: boolean; date: string }[] {
+  const dayLetters = ["M", "T", "W", "T", "F", "S", "S"]; // Mon..Sun
+  const allRecords = todayRecord
+    ? [todayRecord, ...history.filter((h) => h.date !== todayRecord.date)]
+    : history;
+  const byDate = new Map(allRecords.map((r) => [r.date, !!r.streakEarned]));
+
+  const today = new Date();
+  // Monday-anchor — JS Sunday=0; shift so Monday=0.
+  const jsDow = today.getDay();
+  const monOffset = (jsDow + 6) % 7; // 0 if Monday, 6 if Sunday
+  const monday = new Date(today);
+  monday.setDate(today.getDate() - monOffset);
+
+  const cells: { day: string; done: boolean; isToday: boolean; date: string }[] = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    const isToday = iso === `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+    cells.push({
+      day: dayLetters[i],
+      done: byDate.get(iso) ?? false,
+      isToday,
+      date: iso,
+    });
+  }
+  return cells;
+}
+
 /* -------------------------------------------------------------------------- */
 /*  Metric images                                                              */
 /* -------------------------------------------------------------------------- */
 
 const METRIC_IMAGES: Record<string, any> = {
-  jawline:           require("@/assets/analysis-image-new/jawline analysis.jpeg"),
-  cheekbones:        require("@/assets/analysis-image-new/cheekbones analysis.jpeg"),
-  eyes_symmetry:     require("@/assets/analysis-image-new/eye area naalysis.jpeg"),
-  skin_quality:      require("@/assets/analysis-image-new/skin analysis.jpeg"),
-  facial_symmetry:   require("@/assets/TASK-ICONS/symmetry.png"),
-  nose_harmony:      require("@/assets/TASK-ICONS/nosse.png"),
-  sexual_dimorphism: null,
+  jawline:           require("@/assets/analysis-image-new/lower-face-vector.png"),
+  cheekbones:        require("@/assets/analysis-image-new/midface-vector.png"),
+  eyes_symmetry:     require("@/assets/analysis-image-new/eyearea-vector.png"),
+  skin_quality:      require("@/assets/analysis-image-new/fullface-vector.png"),
+  facial_symmetry:   require("@/assets/analysis-image-new/fullface-vector.png"),
+  nose_harmony:      require("@/assets/analysis-image-new/nose-vector.png"),
+  sexual_dimorphism: require("@/assets/analysis-image-new/fullface-vector.png"),
 };
 
 const METRIC_PLACEHOLDER_EMOJI: Record<string, string> = {
@@ -300,32 +411,32 @@ function MetricDetailSheet({
           </View>
           <View style={{ flex: 1, gap: SP[1] }}>
             <Text style={styles.sheetMetricName}>{label}</Text>
-            <View style={[styles.tierPill, { backgroundColor: `${tier.color}18`, borderColor: `${tier.color}40`, alignSelf: "flex-start" }]}>
-              <Text style={[styles.tierText, { color: tier.color }]}>{tier.label}</Text>
+            <View style={[styles.tierPill, { alignSelf: "flex-start" }]}>
+              <Text style={styles.tierText}>{tier.label}</Text>
             </View>
           </View>
           <Pressable onPress={onClose} style={styles.sheetCloseBtn} hitSlop={12}>
-            <Text style={{ color: "rgba(255,255,255,0.45)", fontSize: 18, lineHeight: 20 }}>✕</Text>
+            <Text style={{ color: COLORS.lightMuted, fontSize: 18, lineHeight: 20 }}>✕</Text>
           </Pressable>
         </View>
 
-        {/* Score comparison row */}
+        {/* Score comparison row — monochrome, three cells with hairline dividers */}
         <View style={styles.sheetScoreRow}>
           <View style={styles.sheetScoreBox}>
             <Text style={styles.sheetScoreLabel}>BASELINE</Text>
             <Text style={styles.sheetScoreValue}>{metric.baseline.toFixed(1)}</Text>
           </View>
           <View style={styles.sheetScoreArrow}>
-            <Text style={[styles.sheetScoreDelta, { color: barColor }]}>{formatDelta(metric.delta)}</Text>
-            <Text style={{ color: barColor, fontSize: 16, lineHeight: 18 }}>→</Text>
+            <Text style={styles.sheetScoreDelta}>{formatDelta(metric.delta)}</Text>
+            <Text style={{ color: COLORS.lightSub, fontSize: 16, lineHeight: 18 }}>→</Text>
           </View>
-          <View style={[styles.sheetScoreBox, { borderColor: `${barColor}50`, backgroundColor: `${barColor}12` }]}>
-            <Text style={[styles.sheetScoreLabel, { color: barColor }]}>NOW</Text>
-            <Text style={[styles.sheetScoreValue, { color: barColor }]}>{metric.current.toFixed(1)}</Text>
+          <View style={styles.sheetScoreBox}>
+            <Text style={styles.sheetScoreLabel}>NOW</Text>
+            <Text style={styles.sheetScoreValue}>{metric.current.toFixed(1)}</Text>
           </View>
           <View style={styles.sheetScoreBox}>
             <Text style={styles.sheetScoreLabel}>BEST</Text>
-            <Text style={[styles.sheetScoreValue, metric.current >= metric.best ? { color: LIME.primary } : {}]}>
+            <Text style={styles.sheetScoreValue}>
               {metric.best.toFixed(1)}{metric.current >= metric.best ? " 🏆" : ""}
             </Text>
           </View>
@@ -343,8 +454,8 @@ function MetricDetailSheet({
                 change === "improving" ? "up" :
                 change === "worse"     ? "down" : "flat";
               const arrowColor =
-                dir === "up"   ? LIME.primary :
-                dir === "down" ? "#EF4444"    : "rgba(255,255,255,0.70)";
+                dir === "up"   ? COLORS.lightText :
+                dir === "down" ? COLORS.lightSub  : COLORS.lightMuted;
 
               return (
                 <View key={item.key} style={styles.sheetSubRow}>
@@ -352,12 +463,12 @@ function MetricDetailSheet({
                   <Text style={styles.sheetSubLabel}>{item.label}</Text>
                   {score !== null && tag && (
                     <View style={styles.sheetSubBarWrap}>
-                      <View style={[styles.sheetSubBarFill, { width: `${Math.min(100, score)}%` as any, backgroundColor: tag.color }]} />
+                      <View style={[styles.sheetSubBarFill, { width: `${Math.min(100, score)}%` as any }]} />
                     </View>
                   )}
                   {tag && (
-                    <View style={[styles.subTag3dBase, { backgroundColor: `${tag.color}55` }]}>
-                      <View style={[styles.subTag3dFace, { backgroundColor: tag.color }]}>
+                    <View style={styles.subTag3dBase}>
+                      <View style={styles.subTag3dFace}>
                         <Text style={styles.subTag3dText}>{tag.label}</Text>
                       </View>
                     </View>
@@ -464,21 +575,172 @@ function MetricGrid({
   latestAdvanced: LatestAdvanced | null;
   previousAdvanced: LatestAdvanced | null;
 }) {
+  const router = useRouter();
   const filtered = metrics.filter((m) => m.key !== "sexual_dimorphism");
   const [selected, setSelected] = useState<DashboardMetric | null>(null);
+  const [showAll, setShowAll]   = useState(false);
+
+  // Rank: spotlight (most opportunity) → rising → falling → the rest by current desc.
+  const spotlight = pickSpotlight(filtered);
+  const rising    = pickRising(filtered);
+  const falling   = pickFalling(filtered);
+
+  const featuredIds = new Set<string>();
+  if (spotlight) featuredIds.add(spotlight.key);
+  // Only feature rising/falling when distinct from spotlight AND meaningful (delta != 0).
+  const risingIsDistinct  = rising  && !featuredIds.has(rising.key)  && Math.abs(rising.delta) > 0.05;
+  const fallingIsDistinct = falling && !featuredIds.has(falling.key) && falling.delta < -0.05 && falling.key !== rising?.key;
+  if (risingIsDistinct)  featuredIds.add(rising!.key);
+  if (fallingIsDistinct) featuredIds.add(falling!.key);
+
+  const rest = filtered
+    .filter((m) => !featuredIds.has(m.key))
+    .sort((a, b) => b.current - a.current);
+  const restVisible = showAll ? rest : rest.slice(0, 0);
+
+  const handleTrainSpotlight = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    router.push("/(tabs)/program");
+  };
 
   return (
     <>
-      <View style={styles.metricGrid}>
-        {filtered.map((m, i) => (
-          <MetricCard3D
-            key={m.key}
-            metric={m}
-            delay={260 + i * 50}
-            onPress={() => setSelected(m)}
-          />
-        ))}
+      {/* Section header */}
+      <View style={styles.focusHeader}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.focusTitle}>Where to focus</Text>
+          <Text style={styles.focusSub}>Ranked by where to move next</Text>
+        </View>
+        {rest.length > 0 && (
+          <Pressable
+            onPress={() => setShowAll((v) => !v)}
+            hitSlop={8}
+            style={({ pressed }) => [styles.focusSeeAll, pressed && { opacity: 0.7 }]}
+          >
+            <Text style={styles.focusSeeAllText}>
+              {showAll ? "Hide" : `See all ${filtered.length} →`}
+            </Text>
+          </Pressable>
+        )}
       </View>
+
+      {/* Spotlight metric — L2 elevated */}
+      {spotlight && (
+        <Pressable onPress={() => setSelected(spotlight)}>
+          <View style={styles.spotlightCard}>
+            <View style={styles.spotlightHeader}>
+              <View style={styles.spotlightIcon}>
+                <Image
+                  source={METRIC_IMAGES[spotlight.key]}
+                  style={{ width: "100%", height: "100%" }}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.spotlightLabel}>FOCUS METRIC</Text>
+                <Text style={styles.spotlightName}>
+                  {(METRIC_LABELS[spotlight.key] ?? spotlight.key).toUpperCase()}
+                </Text>
+              </View>
+              <View style={styles.spotlightScoreCol}>
+                <Text style={styles.spotlightScore}>{spotlight.current.toFixed(0)}</Text>
+                <Text
+                  style={[
+                    styles.spotlightDelta,
+                    spotlight.delta < 0 && { color: COLORS.declineRed },
+                  ]}
+                >
+                  {spotlight.delta >= 0 ? "↑ " : "↓ "}
+                  {Math.abs(spotlight.delta).toFixed(1)}
+                </Text>
+              </View>
+            </View>
+
+            <Text style={styles.spotlightInsight}>
+              {spotlight.delta > 0
+                ? "Most room to grow — your gains here will move the overall fastest."
+                : spotlight.delta < 0
+                  ? "This one slipped — your next session should hit it."
+                  : "Untapped potential — start here for the biggest swing."}
+            </Text>
+
+            <Pressable
+              onPress={handleTrainSpotlight}
+              style={({ pressed }) => [styles.spotlightCta, pressed && { opacity: 0.85 }]}
+            >
+              <Text style={styles.spotlightCtaText}>TRAIN THIS METRIC →</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      )}
+
+      {/* Mid-row — Rising | Falling */}
+      {(risingIsDistinct || fallingIsDistinct) && (
+        <View style={styles.midRow}>
+          {risingIsDistinct && rising && (
+            <Pressable onPress={() => setSelected(rising)} style={{ flex: 1 }}>
+              <View style={styles.midCard}>
+                <Text style={styles.midTag}>↑ ON THE RISE</Text>
+                <Text style={styles.midName} numberOfLines={1}>
+                  {(METRIC_LABELS[rising.key] ?? rising.key).toUpperCase()}
+                </Text>
+                <View style={styles.midRowScore}>
+                  <Text style={styles.midScore}>{rising.current.toFixed(0)}</Text>
+                  <Text style={styles.midDelta}>
+                    {rising.delta >= 0 ? "+" : ""}{rising.delta.toFixed(1)}
+                  </Text>
+                </View>
+              </View>
+            </Pressable>
+          )}
+          {fallingIsDistinct && falling && (
+            <Pressable onPress={() => setSelected(falling)} style={{ flex: 1 }}>
+              <View style={styles.midCard}>
+                <Text style={[styles.midTag, styles.midTagDown]}>↓ NEEDS CARE</Text>
+                <Text style={styles.midName} numberOfLines={1}>
+                  {(METRIC_LABELS[falling.key] ?? falling.key).toUpperCase()}
+                </Text>
+                <View style={styles.midRowScore}>
+                  <Text style={styles.midScore}>{falling.current.toFixed(0)}</Text>
+                  <Text style={[styles.midDelta, { color: COLORS.declineRed }]}>
+                    {falling.delta.toFixed(1)}
+                  </Text>
+                </View>
+              </View>
+            </Pressable>
+          )}
+        </View>
+      )}
+
+      {/* Reference list — collapsed by default */}
+      {restVisible.length > 0 && (
+        <View style={styles.refList}>
+          {restVisible.map((m, i) => (
+            <Pressable key={m.key} onPress={() => setSelected(m)}>
+              <View style={[styles.refRow, i < restVisible.length - 1 && styles.refRowDivider]}>
+                <View style={styles.refIcon}>
+                  <Image
+                    source={METRIC_IMAGES[m.key]}
+                    style={{ width: "100%", height: "100%" }}
+                  />
+                </View>
+                <Text style={styles.refName} numberOfLines={1}>
+                  {(METRIC_LABELS[m.key] ?? m.key).toUpperCase()}
+                </Text>
+                <Text
+                  style={[
+                    styles.refDelta,
+                    m.delta < 0 && { color: COLORS.declineRed },
+                  ]}
+                >
+                  {m.delta > 0 ? "↑ " : m.delta < 0 ? "↓ " : "→ "}
+                  {m.delta >= 0 ? "+" : ""}{m.delta.toFixed(1)}
+                </Text>
+                <Text style={styles.refScore}>{m.current.toFixed(0)}</Text>
+              </View>
+            </Pressable>
+          ))}
+        </View>
+      )}
 
       {selected && (
         <MetricDetailSheet
@@ -559,8 +821,8 @@ function ScoreRing({
 
   const cx = size / 2;
   const cy = size / 2;
-  const glowColor  = light ? "rgba(0,0,0,0.18)" : LIME.primary;
-  const trackColor = light ? "rgba(0,0,0,0.18)" : "rgba(255,255,255,0.08)";
+  const glowColor  = "rgba(0,0,0,0.06)";
+  const trackColor = COLORS.lightSurfaceAlt;
   const arcGradId  = light ? "ringGradLight" : "ringGrad";
 
   return (
@@ -712,7 +974,7 @@ function MiniGraph({
           key={i}
           x1={padX} y1={padY + frac * innerH}
           x2={width - padXRight} y2={padY + frac * innerH}
-          stroke="rgba(255,255,255,0.06)" strokeWidth={1} strokeDasharray="3,5"
+          stroke="rgba(0,0,0,0.06)" strokeWidth={1} strokeDasharray="3,5"
         />
       ))}
 
@@ -751,8 +1013,8 @@ function MiniGraph({
           x={2}
           y={toY(score) + 4}
           fontSize="9"
-          fontWeight="600"
-          fill="rgba(255,255,255,0.35)"
+          fontFamily="ProximaNova-Bold"
+          fill="rgba(0,0,0,0.35)"
           textAnchor="start"
         >
           {score}
@@ -774,22 +1036,27 @@ function MiniGraph({
 /*  JourneyCard — light cream card with dashed progress graph                 */
 /* -------------------------------------------------------------------------- */
 
-const JOURNEY_GREEN      = "#36C94A";
-const JOURNEY_GREEN_DEEP = "#1E9A2E";
-const JOURNEY_GREEN_SOFT = "#9EE6A6";
-const JOURNEY_CARD_BG    = "#FFF8E7";
-const JOURNEY_INK        = "#1C2418";
-const JOURNEY_SUB        = "#8A8576";
+// Journey card — monochrome, matches the routine-preview surface vocabulary.
+const JOURNEY_GREEN      = COLORS.lightText;       // graph stroke + dot
+const JOURNEY_GREEN_DEEP = COLORS.lightMuted;      // (legacy depth color, now unused visually)
+const JOURNEY_GREEN_SOFT = "rgba(0,0,0,0.08)";     // graph area fill
+const JOURNEY_CARD_BG    = COLORS.lightBg;
+const JOURNEY_INK        = COLORS.lightText;
+const JOURNEY_SUB        = COLORS.lightSub;
 
 const JOURNEY_GRAPH_W = SCREEN_W - SP[4] * 2 - SP[5] * 2;
 const JOURNEY_GRAPH_H = 96;
 
 function JourneyGraph({
   points,
-  width  = JOURNEY_GRAPH_W,
-  height = JOURNEY_GRAPH_H,
+  projection = null,
+  stroke      = JOURNEY_GREEN,
+  width       = JOURNEY_GRAPH_W,
+  height      = JOURNEY_GRAPH_H,
 }: {
   points: number[];
+  projection?: number[] | null;
+  stroke?: string;
   width?:  number;
   height?: number;
 }) {
@@ -802,8 +1069,10 @@ function JourneyGraph({
   const innerW   = width - padLeft - padRight;
   const innerH   = height - padTop - padBot;
 
-  // Fixed 0..100 scale so Y-axis labels are meaningful
-  const toX = (i: number) => padLeft + (i / (points.length - 1)) * innerW;
+  // X axis spans actual + projected points so the projected segment fits.
+  const projLen = projection?.length ?? 0;
+  const totalLen = points.length + projLen;
+  const toX = (i: number) => padLeft + (i / Math.max(1, totalLen - 1)) * innerW;
   const toY = (p: number) => padTop + (1 - Math.max(0, Math.min(100, p)) / 100) * innerH;
 
   const coords   = points.map((p, i) => ({ x: toX(i), y: toY(p) }));
@@ -811,6 +1080,15 @@ function JourneyGraph({
   const last     = coords[coords.length - 1];
   const linePath = `M ${first.x},${first.y} ${coords.slice(1).map((c) => `L ${c.x},${c.y}`).join(" ")}`;
   const fillPath = `${linePath} L ${last.x},${height - padBot + 2} L ${first.x},${height - padBot + 2} Z`;
+
+  // Projection path — dashed continuation from `last` through projected points.
+  const projCoords = projection
+    ? projection.map((p, i) => ({ x: toX(points.length + i), y: toY(p) }))
+    : [];
+  const projPath = projCoords.length
+    ? `M ${last.x},${last.y} ${projCoords.map((c) => `L ${c.x},${c.y}`).join(" ")}`
+    : "";
+  const projEnd = projCoords[projCoords.length - 1];
 
   // Reveal: fade + upward settle for the line, fill fades in after
   const lineOpacity = useSharedValue(0);
@@ -863,7 +1141,7 @@ function JourneyGraph({
             x={2}
             y={toY(score) + 3}
             fontSize="9"
-            fontWeight="600"
+            fontFamily="ProximaNova-Bold"
             fill="rgba(28,36,24,0.45)"
             textAnchor="start"
           >
@@ -878,20 +1156,45 @@ function JourneyGraph({
           animatedProps={fillProps}
         />
 
-        {/* Dashed progress line */}
+        {/* Solid actual line */}
         <Path
           d={linePath}
           fill="none"
-          stroke={JOURNEY_GREEN}
+          stroke={stroke}
           strokeWidth={2.6}
           strokeLinecap="round"
           strokeLinejoin="round"
-          strokeDasharray="6,5"
         />
 
-        {/* End-point halo + solid dot */}
-        <AnimatedCircle cx={last.x} cy={last.y} fill={JOURNEY_GREEN} animatedProps={haloProps} />
-        <AnimatedCircle cx={last.x} cy={last.y} fill={JOURNEY_GREEN} animatedProps={dotProps} />
+        {/* Forward projection — dotted continuation */}
+        {projPath && (
+          <Path
+            d={projPath}
+            fill="none"
+            stroke={stroke}
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeDasharray="2,5"
+            opacity={0.45}
+          />
+        )}
+
+        {/* Endpoint of projection — hollow ring at the projected score */}
+        {projEnd && (
+          <Circle
+            cx={projEnd.x}
+            cy={projEnd.y}
+            r={4}
+            fill={COLORS.lightBg}
+            stroke={stroke}
+            strokeWidth={1.5}
+          />
+        )}
+
+        {/* Current endpoint — pulsing halo + solid dot */}
+        <AnimatedCircle cx={last.x} cy={last.y} fill={stroke} animatedProps={haloProps} />
+        <AnimatedCircle cx={last.x} cy={last.y} fill={stroke} animatedProps={dotProps} />
       </Svg>
     </Animated.View>
   );
@@ -908,49 +1211,113 @@ function JourneyCard({
   overallDelta:  number;
   graphPoints:   number[];
 }) {
-  const deltaInt  = Math.round(overallDelta);
-  const isUp      = deltaInt >= 0;
-  const deltaAbs  = Math.abs(deltaInt);
-  const deltaStr  = `${isUp ? "+" : "−"}${deltaAbs}`;
-  const directionWord = isUp ? "up" : "down";
+  const isUp        = overallDelta >= 0;
+  const deltaStr    = `${isUp ? "+" : "−"}${Math.abs(overallDelta).toFixed(1)}`;
+  const dayUnit     = joinedDaysAgo === 1 ? "day" : "days";
+  const deltaColor  = isUp ? COLORS.lightText : COLORS.declineRed;
+  const pillBg      = isUp ? COLORS.lightSurfaceAlt : COLORS.declineRedSoft;
+
+  // Forward projection — gated to ≥5 scans for fit credibility.
+  const projection = projectGraph(graphPoints, Math.max(7, joinedDaysAgo));
+  const projectedTarget = projection ? projection[projection.length - 1] : null;
+  const projectedTier   = projectedTarget !== null ? getScoreTier(projectedTarget).label : null;
+  const currentTier     = graphPoints.length ? getScoreTier(graphPoints[graphPoints.length - 1]).label : null;
+  // Only celebrate the projection when it actually predicts a tier *jump*.
+  const willJumpTier = projectedTier && currentTier && projectedTier !== currentTier;
 
   return (
     <View style={styles.journeyBase}>
       <View style={styles.journeyFace}>
-
-        {/* ── Header row ── */}
+        {/* Header — punchline, not label */}
         <View style={styles.journeyHeader}>
           <View style={{ flex: 1, paddingRight: SP[2] }}>
-            <View style={styles.journeyTitleRow}>
-              <Text style={styles.journeyTitle}>Your journey</Text>
-              <View style={styles.journeyTitleIcon}>
-                <TrendingUp size={11} color="#FFFFFF" strokeWidth={3.2} />
-              </View>
-            </View>
+            <Text style={[styles.journeyTitle, { color: deltaColor }]}>
+              {`${deltaStr} pts in ${joinedDaysAgo} ${dayUnit}`}
+            </Text>
             <Text style={styles.journeySubtitle} numberOfLines={1}>
-              {scanCount} scans · {joinedDaysAgo} {joinedDaysAgo === 1 ? "day" : "days"} · {directionWord} {deltaAbs} points!
+              {willJumpTier
+                ? `On pace for ${projectedTier}`
+                : `${scanCount} ${scanCount === 1 ? "scan" : "scans"} tracked`}
             </Text>
           </View>
-
-          {/* +N pill — green with darker depth */}
-          <View style={styles.journeyPillDepth}>
-            <View style={styles.journeyPillFace}>
-              <Text style={styles.journeyPillText}>{deltaStr}</Text>
-            </View>
+          <View style={[styles.journeyPillFace, { backgroundColor: pillBg }]}>
+            {isUp ? (
+              <TrendingUp size={18} color={deltaColor} strokeWidth={2.6} />
+            ) : (
+              <TrendingDown size={18} color={deltaColor} strokeWidth={2.6} />
+            )}
           </View>
         </View>
 
-        {/* ── Graph ── */}
+        {/* Graph */}
         <View style={styles.journeyGraphWrap}>
-          <JourneyGraph points={graphPoints} />
+          <JourneyGraph points={graphPoints} projection={projection} stroke={deltaColor} />
           <View style={styles.journeyDayLabels}>
             <Text style={styles.journeyDayLabel}>DAY 1</Text>
-            <Text style={styles.journeyDayLabel}>TODAY</Text>
+            <Text style={styles.journeyDayLabel}>
+              {projection ? "PROJECTED" : "TODAY"}
+            </Text>
           </View>
         </View>
-
       </View>
     </View>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/*  IdentityStrip — caption + week ribbon                                      */
+/* -------------------------------------------------------------------------- */
+
+function IdentityStrip({
+  userName,
+  joinedDaysAgo,
+  currentStreak,
+}: {
+  userName: string | null;
+  joinedDaysAgo: number;
+  currentStreak: number;
+}) {
+  const history     = useTasksStore((s) => s.history);
+  const todayRecord = useTasksStore((s) => s.today);
+  const cells       = buildWeekRibbon(history, todayRecord);
+
+  // Day count derives from joinedDaysAgo (clamped at 1 — Day 1 minimum).
+  const dayN = Math.max(1, joinedDaysAgo + 1);
+
+  return (
+    <Animated.View entering={FadeInDown.delay(0).duration(360)} style={styles.identityWrap}>
+      <View style={styles.identityHeader}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.identityCaption}>
+            {`Day ${dayN}${userName ? ` · ${userName}'s transformation` : " of your transformation"}`}
+          </Text>
+        </View>
+        {currentStreak > 0 && (
+          <View style={styles.identityStreak}>
+            <Flame size={13} color={COLORS.lightText} strokeWidth={2.4} />
+            <Text style={styles.identityStreakNum}>{currentStreak}</Text>
+          </View>
+        )}
+      </View>
+
+      <View style={styles.ribbonRow}>
+        {cells.map((c, i) => (
+          <View key={i} style={styles.ribbonCell}>
+            <View
+              style={[
+                styles.ribbonDot,
+                c.done    && styles.ribbonDotDone,
+                c.isToday && styles.ribbonDotToday,
+                c.isToday && !c.done && styles.ribbonDotTodayPending,
+              ]}
+            />
+            <Text style={[styles.ribbonDay, c.isToday && styles.ribbonDayToday]}>
+              {c.day}
+            </Text>
+          </View>
+        ))}
+      </View>
+    </Animated.View>
   );
 }
 
@@ -961,10 +1328,8 @@ function JourneyCard({
 function HeroCard({
   overall,
   overallDelta,
-  verdict,
   scanCount,
   joinedDaysAgo,
-  userName,
 }: {
   overall: DashboardOverall;
   overallDelta: number;
@@ -973,114 +1338,89 @@ function HeroCard({
   joinedDaysAgo: number;
   userName: string | null;
 }) {
-  const isImproved = verdict === "improved";
-  const deltaColor = overallDelta >= 0 ? LIME.primary : "#EF4444";
-
-  // Count-up animations — UI-thread driven via Reanimated shared values
   const scoreVal    = useSharedValue(0);
   const deltaVal    = useSharedValue(0);
-  const baselineVal = useSharedValue(0);
-  const bestVal     = useSharedValue(0);
 
   useEffect(() => {
-    scoreVal.value    = 0;
-    deltaVal.value    = 0;
-    baselineVal.value = 0;
-    bestVal.value     = 0;
+    scoreVal.value = 0;
+    deltaVal.value = 0;
     const cfg = { duration: 1400, easing: Easing.out(Easing.cubic) };
-    scoreVal.value    = withTiming(overall.current,         cfg);
-    deltaVal.value    = withDelay(100, withTiming(Math.abs(overallDelta), cfg));
-    baselineVal.value = withDelay(200, withTiming(overall.baseline,       cfg));
-    bestVal.value     = withDelay(300, withTiming(overall.best,           cfg));
-  }, [overall.current, overallDelta, overall.baseline, overall.best]);
+    scoreVal.value = withTiming(overall.current, cfg);
+    deltaVal.value = withDelay(100, withTiming(Math.abs(overallDelta), cfg));
+  }, [overall.current, overallDelta]);
 
-  const scoreProps    = useAnimatedProps(() => ({ text: String(Math.round(scoreVal.value)),    defaultValue: "" } as any));
-  const deltaProps    = useAnimatedProps(() => ({ text: `${overallDelta >= 0 ? "+" : "-"}${deltaVal.value.toFixed(1)}`, defaultValue: "" } as any));
-  const baselineProps = useAnimatedProps(() => ({ text: baselineVal.value.toFixed(1), defaultValue: "" } as any));
-  const bestProps     = useAnimatedProps(() => ({ text: bestVal.value.toFixed(1),     defaultValue: "" } as any));
+  const scoreProps = useAnimatedProps(() => ({
+    text: String(Math.round(scoreVal.value)),
+    defaultValue: "",
+  } as any));
+  const deltaProps = useAnimatedProps(() => ({
+    text: `${overallDelta >= 0 ? "+" : "−"}${deltaVal.value.toFixed(1)}`,
+    defaultValue: "",
+  } as any));
 
-  // Pulsing lime glow when improved
-  const glowOpacity = useSharedValue(isImproved ? 0.4 : 0);
-  useEffect(() => {
-    if (!isImproved) return;
-    glowOpacity.value = withRepeat(
-      withSequence(
-        withTiming(0.75, { duration: 1000, easing: Easing.inOut(Easing.sin) }),
-        withTiming(0.25, { duration: 1000, easing: Easing.inOut(Easing.sin) }),
-      ), -1, false,
-    );
-  }, [isImproved]);
-  const glowStyle = useAnimatedStyle(() => ({
-    shadowOpacity: glowOpacity.value,
-  }));
-
-  // On lime background, positive delta uses dark ink; negative keeps a dark red
-  const darkDeltaColor = overallDelta >= 0 ? "#0F2800" : "#7F0000";
+  // ── Derived signals — minimal, data-driven ──
+  const isPB          = scanCount >= 2 && overall.current >= overall.best;
+  const next          = nextTier(overall.current);
+  const currentTier   = getScoreTier(overall.current);
+  const deltaPositive = overallDelta >= 0;
+  const toNext        = next ? Math.max(1, Math.ceil(next.threshold - overall.current)) : null;
 
   return (
-    <Animated.View style={[styles.heroBase, glowStyle]}>
-      <View style={styles.heroFace}>
-        <LinearGradient
-          colors={[LIME.light, LIME.primary]}
-          start={{ x: 0.5, y: 0 }}
-          end={{ x: 0.5, y: 1 }}
-          style={StyleSheet.absoluteFill}
+    <View style={styles.heroBase}>
+      {/* Top meta strip — what this score IS · PB badge */}
+      <View style={styles.heroMeta}>
+        <Text style={styles.heroMetaText}>OVERALL RATING</Text>
+        {isPB && (
+          <Text style={styles.heroMetaPB}>★ PERSONAL BEST</Text>
+        )}
+      </View>
+
+      {/* Centered score + tier identity — the entire visual centerpiece */}
+      <View style={styles.heroCenter}>
+        <AnimatedTextInput
+          animatedProps={scoreProps}
+          editable={false}
+          style={[styles.heroScoreHuge, { padding: 0 }]}
         />
+        <Text style={styles.heroTierIdentity}>
+          {currentTier.label.split("").join(" ")}
+        </Text>
+      </View>
 
-        {/* Side-by-side row */}
-        <View style={styles.heroRow}>
-
-          {/* Left column — ring (light variant: dark arc on lime bg) */}
-          <View style={styles.heroRingCol}>
-            <ScoreRing score={overall.current} size={148} strokeWidth={11} light />
-            <View style={[StyleSheet.absoluteFill, { alignItems: "center", justifyContent: "center" }]} pointerEvents="none">
-              <AnimatedTextInput
-                animatedProps={scoreProps}
-                editable={false}
-                style={[styles.heroScoreBig, { color: "#0F0F0F", padding: 0 }]}
-              />
-              <Text style={[styles.heroScoreLabel, { color: "rgba(0,0,0,0.50)" }]}>OVERALL</Text>
-            </View>
-          </View>
-
-          {/* Right column — info */}
-          <View style={styles.heroInfoCol}>
-            <Text style={[styles.heroInfoTitle, { color: "rgba(0,0,0,0.55)" }]}>{userName ? `${userName}'s Progress` : "Your Progress"}</Text>
-
-            {/* Delta line */}
-            <View style={styles.heroDeltaRow}>
+      {/* Bottom context strip — delta (or BASELINE on first scan) · next tier */}
+      <View style={styles.heroBottom}>
+        <View style={styles.heroBottomCol}>
+          {scanCount === 1 ? (
+            <>
+              <View style={styles.heroBaselinePill}>
+                <Text style={styles.heroBaselinePillText}>BASELINE</Text>
+              </View>
+              <Text style={styles.heroBottomLabel}>STARTING POINT</Text>
+            </>
+          ) : (
+            <>
               <AnimatedTextInput
                 animatedProps={deltaProps}
                 editable={false}
-                style={[styles.heroDeltaNum, { color: darkDeltaColor, padding: 0 }]}
+                style={[
+                  styles.heroBottomNum,
+                  { padding: 0, color: deltaPositive ? COLORS.accent : COLORS.declineRed },
+                ]}
               />
-              <Text style={[styles.heroDeltaSince, { color: "rgba(0,0,0,0.55)" }]}> since Day 1</Text>
-            </View>
-
-            {/* Stat boxes — 2 col grid */}
-            <View style={styles.heroStatGrid}>
-              <View style={[styles.heroStatBox, { backgroundColor: "rgba(0,0,0,0.12)", borderColor: "rgba(0,0,0,0.10)" }]}>
-                <Text style={[styles.heroStatLabel, { color: "rgba(0,0,0,0.50)" }]}>DAY 1 SCORE</Text>
-                <AnimatedTextInput
-                  animatedProps={baselineProps}
-                  editable={false}
-                  style={[styles.heroStatValue, { color: "#0F0F0F", padding: 0 }]}
-                />
-              </View>
-              <View style={[styles.heroStatBox, { backgroundColor: "rgba(0,0,0,0.12)", borderColor: "rgba(0,0,0,0.10)" }]}>
-                <Text style={[styles.heroStatLabel, { color: "rgba(0,0,0,0.50)" }]}>BEST EVER</Text>
-                <AnimatedTextInput
-                  animatedProps={bestProps}
-                  editable={false}
-                  style={[styles.heroStatValue, { color: "#0F0F0F", padding: 0 }]}
-                />
-              </View>
-            </View>
-          </View>
-
+              <Text style={styles.heroBottomLabel}>FROM START</Text>
+            </>
+          )}
         </View>
+        {toNext !== null && next && (
+          <View style={[styles.heroBottomCol, { alignItems: "flex-end" }]}>
+            <Text style={[styles.heroBottomNum, { color: COLORS.accent }]}>
+              ↑{toNext}
+            </Text>
+            <Text style={styles.heroBottomLabel}>{`TO ${next.label}`}</Text>
+          </View>
+        )}
       </View>
-    </Animated.View>
+    </View>
   );
 }
 
@@ -1152,18 +1492,18 @@ function MetricRow({
           <Pressable onPress={handlePress} style={styles.metricPressable}>
             {/* Header row */}
             <View style={styles.metricHeaderRow}>
-              <Text style={[TYPE.captionSemiBold, { color: COLORS.textHigh, flex: 1 }]}>
-                {label}
+              <Text style={{ fontFamily: "ProximaNova-Bold", fontSize: 14, color: COLORS.lightText, flex: 1, letterSpacing: 0.2 }}>
+                {label.toUpperCase()}
               </Text>
               <View style={{ flexDirection: "row", alignItems: "center", gap: SP[2] }}>
-                {/* Score tier pill */}
-                <View style={[styles.tierPillSmall, { backgroundColor: `${tier.color}18`, borderColor: `${tier.color}40` }]}>
-                  <Text style={[styles.tierTextSmall, { color: tier.color }]}>{tier.label}</Text>
+                {/* Score tier pill — neutral; tier conveyed by label only */}
+                <View style={styles.tierPillSmall}>
+                  <Text style={styles.tierTextSmall}>{tier.label}</Text>
                 </View>
-                <Text style={[TYPE.captionSemiBold, { color: COLORS.text, minWidth: 32, textAlign: "right" }]}>
+                <Text style={{ fontFamily: "ProximaNova-Bold", fontSize: 16, color: COLORS.lightText, minWidth: 32, textAlign: "right" }}>
                   {metric.current.toFixed(1)}
                 </Text>
-                <Text style={{ color: "rgba(255,255,255,0.30)", fontSize: 13 }}>
+                <Text style={{ color: COLORS.lightSub, fontSize: 13 }}>
                   {expanded ? "▴" : "▾"}
                 </Text>
               </View>
@@ -1182,14 +1522,14 @@ function MetricRow({
               />
             </View>
 
-            {/* Direction badge */}
+            {/* Direction badge — monochrome chip, sign carries direction */}
             <View style={styles.directionRow}>
-              <View style={[styles.dirBadge, { borderColor: `${barColor}40`, backgroundColor: `${barColor}12` }]}>
-                <Text style={[TYPE.small, { color: barColor, fontSize: 10, fontFamily: "Poppins-SemiBold" }]}>
+              <View style={[styles.dirBadge, { backgroundColor: COLORS.lightSurfaceAlt }]}>
+                <Text style={{ fontFamily: "ProximaNova-Bold", fontSize: 11, color: COLORS.lightText, letterSpacing: 0.4 }}>
                   {dirLabel}
                 </Text>
               </View>
-              <Text style={[TYPE.small, { color: barColor, fontSize: 10 }]}>
+              <Text style={{ fontFamily: "ProximaNova-Bold", fontSize: 11, color: COLORS.lightSub }}>
                 {formatDelta(metric.delta)}
               </Text>
             </View>
@@ -1207,24 +1547,22 @@ function MetricRow({
                     <Text style={styles.beforeLabel}>BASELINE</Text>
                     <Text style={styles.beforeValue}>{metric.baseline.toFixed(1)}</Text>
                   </View>
-                  {/* Arrow + delta */}
+                  {/* Arrow + delta — monochrome */}
                   <View style={styles.arrowCol}>
-                    <Text style={[styles.arrowText, { color: barColor }]}>
-                      {metric.direction === "up" ? "→" : metric.direction === "down" ? "→" : "→"}
-                    </Text>
-                    <Text style={[styles.arrowDelta, { color: barColor }]}>
+                    <Text style={styles.arrowText}>→</Text>
+                    <Text style={styles.arrowDelta}>
                       {formatDelta(metric.delta)}
                     </Text>
                   </View>
                   {/* Current box */}
-                  <View style={[styles.afterBox, { borderColor: `${barColor}40`, backgroundColor: `${barColor}08` }]}>
-                    <Text style={[styles.afterLabel, { color: barColor }]}>NOW</Text>
-                    <Text style={[styles.afterValue, { color: barColor }]}>{metric.current.toFixed(1)}</Text>
+                  <View style={styles.afterBox}>
+                    <Text style={styles.afterLabel}>NOW</Text>
+                    <Text style={styles.afterValue}>{metric.current.toFixed(1)}</Text>
                   </View>
                   {/* Best Ever */}
                   <View style={styles.bestBox}>
                     <Text style={styles.beforeLabel}>BEST</Text>
-                    <Text style={[styles.beforeValue, metric.current >= metric.best ? { color: LIME.primary } : {}]}>
+                    <Text style={styles.beforeValue}>
                       {metric.best.toFixed(1)}{metric.current >= metric.best ? " 🏆" : ""}
                     </Text>
                   </View>
@@ -1242,17 +1580,17 @@ function MetricRow({
                         const tag = score !== null ? getSubMetricTag(score) : null;
                         return (
                           <View key={item.key} style={styles.subMetricRow}>
-                            <Text style={[TYPE.caption, { color: COLORS.muted, flex: 1 }]}>
+                            <Text style={{ fontFamily: "ProximaNova-Bold", fontSize: 13, color: COLORS.lightText, flex: 1 }}>
                               {item.label}
                             </Text>
                             {score !== null && (
-                              <Text style={[TYPE.captionSemiBold, { color: COLORS.text, marginRight: SP[2] }]}>
+                              <Text style={{ fontFamily: "ProximaNova-Bold", fontSize: 13, color: COLORS.lightText, marginRight: SP[2] }}>
                                 {score.toFixed(1)}
                               </Text>
                             )}
                             {tag && (
-                              <View style={[styles.tagPill, { borderColor: `${tag.color}40`, backgroundColor: `${tag.color}15` }]}>
-                                <Text style={[TYPE.small, { color: tag.color, fontSize: 9, fontFamily: "Poppins-SemiBold" }]}>
+                              <View style={styles.tagPill}>
+                                <Text style={{ fontFamily: "ProximaNova-Bold", fontSize: 11, color: COLORS.lightText, letterSpacing: 0.3 }}>
                                   {tag.label}
                                 </Text>
                               </View>
@@ -1533,20 +1871,22 @@ function LimeButton3D({ onPress, label }: { onPress: () => void; label: string }
         onPress={onPress}
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
-        style={{ borderRadius: 28, overflow: "hidden" }}
+        style={{ borderRadius: RADII.circle, overflow: "hidden" }}
       >
-        <Animated.View style={[{ borderRadius: 28 }, animStyle]}>
-          <LinearGradient
-            colors={["#CCFF6B", "#B4F34D"]}
-            start={{ x: 0.5, y: 0 }}
-            end={{ x: 0.5, y: 1 }}
-            style={styles.btn3dFace}
-          >
-            <Text style={[TYPE.button, { color: "#0B0B0B" }]}>{label}</Text>
-          </LinearGradient>
+        <Animated.View style={[{ borderRadius: RADII.circle, backgroundColor: COLORS.ctaBlack }, animStyle]}>
+          <View style={styles.btn3dFace}>
+            <Text style={{
+              fontFamily: "ProximaNova-Bold",
+              fontSize: 17,
+              color: "#FFFFFF",
+              letterSpacing: 0.6,
+              textAlign: "center",
+            }}>
+              {label.toUpperCase()}
+            </Text>
+          </View>
         </Animated.View>
       </Pressable>
-      <View style={styles.btn3dBase} />
     </View>
   );
 }
@@ -1558,7 +1898,7 @@ function LimeButton3D({ onPress, label }: { onPress: () => void; label: string }
 function LoadingState() {
   return (
     <View style={styles.centeredState}>
-      <Text style={[TYPE.body, { color: COLORS.muted, textAlign: "center" }]}>
+      <Text style={{ fontFamily: "ProximaNova-Bold", fontSize: 15, color: COLORS.lightSub, textAlign: "center" }}>
         Loading your progress…
       </Text>
     </View>
@@ -1568,10 +1908,10 @@ function LoadingState() {
 function ErrorState({ message }: { message: string }) {
   return (
     <View style={styles.centeredState}>
-      <Text style={[TYPE.body, { color: COLORS.error, textAlign: "center", marginBottom: SP[2] }]}>
+      <Text style={{ fontFamily: "ProximaNova-Bold", fontSize: 18, color: COLORS.lightText, textAlign: "center", marginBottom: SP[2] }}>
         Couldn't load data
       </Text>
-      <Text style={[TYPE.caption, { color: COLORS.muted, textAlign: "center" }]}>
+      <Text style={{ fontFamily: "ProximaNova-Bold", fontSize: 13, color: COLORS.lightSub, textAlign: "center" }}>
         {message}
       </Text>
     </View>
@@ -1580,12 +1920,10 @@ function ErrorState({ message }: { message: string }) {
 
 function EmptyState({
   router,
-  scanCount,
   scanLoading,
   scanFailed,
 }: {
   router: ReturnType<typeof useRouter>;
-  scanCount: number;
   scanLoading: boolean;
   scanFailed: boolean;
 }) {
@@ -1594,34 +1932,28 @@ function EmptyState({
     transform: [{ translateY: btnDepth.value }],
   }));
 
-  // Determine copy based on state
-  const title = (() => {
-    if (scanLoading) return "Analyzing Your Scan…";
-    if (scanFailed)  return "Scan Didn't Complete";
-    if (scanCount === 1) return "One More Scan Needed";
-    return "Take Your First Scan";
-  })();
+  // Reached only when scan_count === 0. Copy reflects pre-baseline states.
+  const title = scanLoading
+    ? "Analyzing Your Scan…"
+    : scanFailed
+      ? "Scan Didn't Complete"
+      : "Take Your First Scan";
 
-  const body = (() => {
-    if (scanLoading) return "Your first scan is being processed. This takes about 30 seconds.";
-    if (scanFailed)  return "Your initial scan didn't save. Take a new scan to get your baseline score.";
-    if (scanCount === 1) return "You're one scan away from unlocking your progress dashboard.";
-    return "Scan your face to get your baseline score and start tracking progress.";
-  })();
+  const body = scanLoading
+    ? "Your first scan is being processed. This takes about 30 seconds."
+    : scanFailed
+      ? "Your initial scan didn't save. Take a new scan to get your baseline score."
+      : "Scan your face to get your baseline score and start tracking progress.";
 
-  const btnLabel = (() => {
-    if (scanLoading) return null; // no button while processing
-    if (scanCount === 1) return "Scan Again";
-    return "Scan Now";
-  })();
+  const btnLabel = scanLoading ? null : "Scan Now";
 
   return (
     <View style={styles.centeredState}>
       <Animated.View entering={FadeInDown.duration(500)}>
-        <Text style={[TYPE.h3, { color: COLORS.text, textAlign: "center", marginBottom: SP[2] }]}>
+        <Text style={{ fontFamily: "ProximaNova-Bold", fontSize: 24, color: COLORS.lightText, textAlign: "center", marginBottom: SP[2], letterSpacing: -0.4 }}>
           {title}
         </Text>
-        <Text style={[TYPE.body, { color: COLORS.muted, textAlign: "center", marginBottom: SP[6] }]}>
+        <Text style={{ fontFamily: "ProximaNova-Bold", fontSize: 14, color: COLORS.lightSub, textAlign: "center", marginBottom: SP[6], lineHeight: 20 }}>
           {body}
         </Text>
         {btnLabel && (
@@ -1630,20 +1962,22 @@ function EmptyState({
               onPress={() => router.push("/(tabs)/take-picture")}
               onPressIn={() => { btnDepth.value = withSpring(4, { damping: 14, stiffness: 300 }); }}
               onPressOut={() => { btnDepth.value = withSpring(0, { damping: 14, stiffness: 300 }); }}
-              style={{ borderRadius: 28, overflow: "hidden" }}
+              style={{ borderRadius: RADII.circle, overflow: "hidden" }}
             >
-              <Animated.View style={[{ borderRadius: 28 }, animStyle]}>
-                <LinearGradient
-                  colors={["#CCFF6B", "#B4F34D"]}
-                  start={{ x: 0.5, y: 0 }}
-                  end={{ x: 0.5, y: 1 }}
-                  style={styles.btn3dFace}
-                >
-                  <Text style={[TYPE.button, { color: "#0B0B0B" }]}>{btnLabel}</Text>
-                </LinearGradient>
+              <Animated.View style={[{ borderRadius: RADII.circle, backgroundColor: COLORS.ctaBlack }, animStyle]}>
+                <View style={styles.btn3dFace}>
+                  <Text style={{
+                    fontFamily: "ProximaNova-Bold",
+                    fontSize: 17,
+                    color: "#FFFFFF",
+                    letterSpacing: 0.6,
+                    textAlign: "center",
+                  }}>
+                    {btnLabel.toUpperCase()}
+                  </Text>
+                </View>
               </Animated.View>
             </Pressable>
-            <View style={styles.btn3dBase} />
           </View>
         )}
       </Animated.View>
@@ -1750,12 +2084,14 @@ export default function DashboardScreen() {
   const renderBody = () => {
     if (loading && !data) return <LoadingState />;
     if (error && !data) return <ErrorState message={error} />;
-    if (scanCount < 2) return (
+    // After 1 scan we render the full dashboard with a "Baseline" treatment
+    // so the user sees the app's tracking surface immediately, even before
+    // the second scan unlocks deltas and the journey chart.
+    if (scanCount < 1) return (
       <EmptyState
         router={router}
-        scanCount={scanCount}
         scanLoading={scanLoading}
-        scanFailed={!scanLoading && !!scanError && scanCount === 0}
+        scanFailed={!scanLoading && !!scanError}
       />
     );
 
@@ -1788,17 +2124,7 @@ export default function DashboardScreen() {
         {/* ── Section 3b: Top 5 trainable sub-metrics (improving / to target) ── */}
         <TopFiveCard result={pickTopFive(latestAdvanced, previousAdvanced, scanCount)} />
 
-        {/* ── Section 4: Metric Breakdown title ── */}
-        <Animated.View entering={FadeInDown.delay(240).duration(400)}>
-          <Text style={[TYPE.h4, { color: COLORS.text, marginBottom: SP[1], marginTop: SP[2] }]}>
-            Metric Breakdown
-          </Text>
-          <Text style={[TYPE.small, { color: COLORS.sub, marginBottom: SP[3] }]}>
-            7 facial metrics · tap a card for a detailed breakdown
-          </Text>
-        </Animated.View>
-
-        {/* ── Section 5: Metric grid 2×4 ── */}
+        {/* ── Section 4: "Where to focus" — header lives inside MetricGrid ── */}
         {overall && (
           <MetricGrid metrics={metrics} latestAdvanced={latestAdvanced} previousAdvanced={previousAdvanced} />
         )}
@@ -1857,12 +2183,6 @@ export default function DashboardScreen() {
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
-      {/* Background gradient — warm near-black for vibe */}
-      <LinearGradient
-        colors={["#0E0B08", "#14100A"]}
-        style={StyleSheet.absoluteFill}
-      />
-
       {/* Atmospheric lime glow behind header — gives the top section warmth */}
       <LinearGradient
         colors={["rgba(180,243,77,0.10)", "rgba(180,243,77,0.00)"]}
@@ -1887,26 +2207,12 @@ export default function DashboardScreen() {
           />
         }
       >
-        {/* ── Section 1: Header ── */}
-        <Animated.View entering={FadeInDown.delay(0).duration(400)} style={styles.headerRow}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.headerWelcome}>WELCOME BACK!</Text>
-            {userName ? <Text style={styles.headerName}>{userName}</Text> : null}
-          </View>
-          {/* Streak pill — warm orange gradient for vibe */}
-          <View style={styles.streakPillBase}>
-            <View style={styles.streakPillFace}>
-              <LinearGradient
-                colors={["#FF9544", "#FF6B1A"]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={StyleSheet.absoluteFill}
-              />
-              <Flame size={16} color="#2A1000" strokeWidth={2} fill="#FFD9B8" />
-              <Text style={styles.streakText}>{currentStreak} day streak</Text>
-            </View>
-          </View>
-        </Animated.View>
+        {/* ── Identity strip: caption + week ribbon ── */}
+        <IdentityStrip
+          userName={userName}
+          joinedDaysAgo={data?.joined_days_ago ?? 0}
+          currentStreak={currentStreak}
+        />
 
         {renderBody()}
       </ScrollView>
@@ -1936,24 +2242,36 @@ export default function DashboardScreen() {
 /*  Styles                                                                     */
 /* -------------------------------------------------------------------------- */
 
+// Soft drop-shadow recipe — bumped slightly so dim-white cards read as
+// elevated against the pure-white screen.
+const SOFT_SHADOW = {
+  shadowColor: "#000000",
+  shadowOpacity: 0.08,
+  shadowRadius: 20,
+  shadowOffset: { width: 0, height: 8 },
+  elevation: 4,
+} as const;
+
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: "#0E0B08",
+    backgroundColor: COLORS.lightBg,  // pure white screen — cards float via shadow
   },
 
+  // Atmospheric glow — kept as an empty no-op so existing JSX doesn't need
+  // to be torn out. Zero height = invisible.
   headerGlow: {
     position: "absolute",
     top: 0,
     left: 0,
     right: 0,
-    height: 340,
+    height: 0,
   },
 
   scrollContent: {
-    paddingHorizontal: SP[4],
+    paddingHorizontal: SP[5],
     paddingTop: SP[3],
-    gap: SP[3],
+    gap: SP[4],
   },
 
   notificationOverlay: {
@@ -1963,35 +2281,98 @@ const styles = StyleSheet.create({
     zIndex: 50,
   },
 
-  /* Header */
+  /* Identity strip */
+  identityWrap: {
+    marginBottom: SP[2],
+  },
+  identityHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: SP[3],
+  },
+  identityCaption: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 13,
+    color: COLORS.lightSub,
+    letterSpacing: 0.1,
+  },
+  identityStreak: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: SP[2],
+    paddingVertical: 4,
+    borderRadius: RADII.circle,
+    backgroundColor: COLORS.lightCard,
+  },
+  identityStreakNum: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 12,
+    color: COLORS.lightText,
+    letterSpacing: -0.1,
+  },
+  ribbonRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  ribbonCell: {
+    alignItems: "center",
+    flex: 1,
+    gap: 6,
+  },
+  ribbonDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: COLORS.lightBorder,
+  },
+  ribbonDotDone: {
+    backgroundColor: COLORS.ctaBlack,
+  },
+  ribbonDotToday: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  ribbonDotTodayPending: {
+    backgroundColor: COLORS.lightCard,
+    borderWidth: 2,
+    borderColor: COLORS.ctaBlack,
+  },
+  ribbonDay: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 10,
+    color: COLORS.lightSub,
+    letterSpacing: 0.4,
+  },
+  ribbonDayToday: {
+    color: COLORS.lightText,
+  },
+
+  /* Legacy header / streak — kept for safety, no longer rendered */
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: SP[1],
+    marginBottom: SP[2],
   },
   headerWelcome: {
-    fontSize: 11,
-    fontFamily: "Poppins-SemiBold",
-    color: "rgba(255,255,255,0.40)",
-    letterSpacing: 1.4,
-    textTransform: "uppercase",
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 13,
+    color: COLORS.lightSub,
     marginBottom: 2,
   },
   headerName: {
-    fontSize: 30,
-    fontFamily: "Poppins-SemiBold",
-    color: "#FFFFFF",
-    lineHeight: 34,
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 28,
+    color: COLORS.lightText,
+    lineHeight: 32,
+    letterSpacing: -0.5,
   },
 
   streakPillBase: {
-    borderRadius: RADII.pill,
-    backgroundColor: "#A84004",
-    shadowColor: "#FF6B1A",
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.45,
-    elevation: 8,
+    borderRadius: RADII.circle,
+    backgroundColor: COLORS.ctaBlack,
   },
   streakPillFace: {
     flexDirection: "row",
@@ -1999,30 +2380,28 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingHorizontal: SP[4],
     paddingVertical: SP[2],
-    borderRadius: RADII.pill,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.22)",
+    borderRadius: RADII.circle,
     overflow: "hidden",
   },
   streakText: {
+    fontFamily: "ProximaNova-Bold",
     fontSize: 13,
-    fontFamily: "Poppins-SemiBold",
-    color: "#2A1000",
+    color: "#FFFFFF",
+    letterSpacing: 0.2,
   },
 
-  /* Glass card */
+  /* Glass card — repurposed as a white card with soft shadow */
   card: {
-    borderRadius: RADII.card,
-    borderWidth: 1,
-    borderColor: COLORS.cardBorder,
+    borderRadius: RADII.lg,
+    backgroundColor: COLORS.lightCard,
     overflow: "hidden",
-    ...SHADOWS.card,
+    ...SOFT_SHADOW,
   },
 
   cardInner: {
     ...StyleSheet.absoluteFillObject,
-    borderRadius: RADII.card,
-    backgroundColor: "rgba(255,255,255,0.03)",
+    borderRadius: RADII.lg,
+    backgroundColor: COLORS.lightCard,
   },
 
   cardAccentLeft: {
@@ -2031,150 +2410,336 @@ const styles = StyleSheet.create({
     top: 16,
     bottom: 16,
     width: 3,
-    backgroundColor: LIME.primary,
+    backgroundColor: COLORS.ctaBlack,
     borderRadius: 2,
   },
 
-  /* Hero card — lime gradient, matches metric cards */
+  /* Hero — L3 black card. Three info zones: meta · centerpiece · context */
   heroBase: {
-    borderRadius: RADII.card,
-    backgroundColor: LIME.dark,
-    paddingBottom: 6,
-    shadowColor: LIME.primary,
-    shadowOpacity: 0.55,
-    shadowRadius: 28,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 14,
-  },
-  heroFace: {
-    borderRadius: RADII.card,
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.15)",
+    borderRadius: RADII.lg,
+    backgroundColor: COLORS.ctaBlack,
     paddingHorizontal: SP[5],
-    paddingTop: SP[5],
+    paddingTop: SP[4],
     paddingBottom: SP[5],
   },
-  heroRow: {
+
+  /* Top meta strip */
+  heroMeta: {
     flexDirection: "row",
     alignItems: "center",
-    gap: SP[4],
+    justifyContent: "space-between",
   },
-  heroRingCol: {
-    width: 148,
-    height: 148,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  heroInfoCol: {
-    flex: 1,
-    gap: SP[2],
-  },
-  heroInfoTitle: {
-    fontSize: 13,
-    fontFamily: "Poppins-SemiBold",
+  heroMetaText: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 11,
     color: "rgba(255,255,255,0.45)",
-  },
-  heroDeltaRow: {
-    flexDirection: "row",
-    alignItems: "baseline",
-  },
-  heroDeltaNum: {
-    fontSize: 28,
-    fontFamily: "Poppins-SemiBold",
-    lineHeight: 32,
-  },
-  heroDeltaSince: {
-    fontSize: 13,
-    fontFamily: "Poppins-SemiBold",
-    color: "rgba(255,255,255,0.50)",
-  },
-  heroStatGrid: {
-    flexDirection: "row",
-    gap: SP[2],
-    marginTop: SP[1],
-  },
-  heroStatBox: {
-    flex: 1,
-    backgroundColor: "rgba(255,255,255,0.06)",
-    borderRadius: RADII.md,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-    paddingVertical: SP[3],
-    paddingHorizontal: SP[2],
-    alignItems: "center",
-  },
-  heroStatLabel: {
-    fontSize: 9,
-    fontFamily: "Poppins-SemiBold",
-    color: "rgba(255,255,255,0.35)",
     letterSpacing: 0.8,
-    marginBottom: SP[1],
   },
-  heroStatValue: {
-    fontSize: 22,
-    fontFamily: "Poppins-SemiBold",
+  heroMetaPB: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 11,
+    color: COLORS.accent,
+    letterSpacing: 0.8,
+  },
+
+  /* Centerpiece — score + tier identity, dramatic whitespace */
+  heroCenter: {
+    alignItems: "center",
+    paddingVertical: SP[8] ?? 32,
+  },
+  heroScoreHuge: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 128,
+    lineHeight: 132,
     color: "#FFFFFF",
-    lineHeight: 26,
+    letterSpacing: -4,
+    textAlign: "center",
   },
-  heroScoreBig: {
-    fontSize: 40,
-    fontFamily: "Poppins-SemiBold",
-    color: "#FFFFFF",
-    lineHeight: 44,
-  },
-  heroScoreLabel: {
-    fontSize: 10,
-    fontFamily: "Poppins-SemiBold",
-    color: "rgba(255,255,255,0.40)",
-    letterSpacing: 1.2,
+  heroTierIdentity: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 14,
+    color: "rgba(255,255,255,0.85)",
+    letterSpacing: 6,
     marginTop: -2,
+    textAlign: "center",
   },
-  tierPill: {
-    marginTop: SP[1],
+
+  /* Bottom context strip */
+  heroBottom: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    justifyContent: "space-between",
+  },
+  heroBottomCol: {
+    alignItems: "flex-start",
+  },
+  heroBottomNum: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 17,
+    letterSpacing: -0.3,
+  },
+  heroBottomLabel: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 10,
+    color: "rgba(255,255,255,0.45)",
+    letterSpacing: 0.8,
+    marginTop: 2,
+  },
+  /* Baseline pill — replaces the delta number on the first scan */
+  heroBaselinePill: {
     paddingHorizontal: SP[2],
-    paddingVertical: 2,
-    borderRadius: RADII.pill,
+    paddingVertical: 3,
+    borderRadius: RADII.circle,
+    backgroundColor: "rgba(180,243,77,0.14)",
     borderWidth: 1,
+    borderColor: "rgba(180,243,77,0.42)",
+  },
+  heroBaselinePillText: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 11,
+    color: COLORS.accent,
+    letterSpacing: 0.8,
+  },
+
+  /* Tier chip (used outside hero — keep neutral) */
+  tierPill: {
+    marginTop: SP[2],
+    paddingHorizontal: SP[3],
+    paddingVertical: 4,
+    borderRadius: RADII.circle,
+    backgroundColor: COLORS.lightSurfaceAlt,
   },
   tierText: {
-    fontSize: 9,
-    fontFamily: "Poppins-SemiBold",
-    letterSpacing: 0.6,
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 11,
+    color: COLORS.lightText,
+    letterSpacing: 0.4,
   },
-  /* Metric grid — 2 columns */
+  /* Metric grid — legacy (no longer rendered, kept for safety) */
   metricGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: SP[3],
   },
 
-  /* Metric card — compact 3D half-width card */
+  /* Where to focus — section header */
+  focusHeader: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    justifyContent: "space-between",
+    marginTop: SP[3],
+    marginBottom: SP[3],
+  },
+  focusTitle: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 22,
+    color: COLORS.lightText,
+    letterSpacing: -0.4,
+  },
+  focusSub: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 13,
+    color: COLORS.lightSub,
+    marginTop: 2,
+  },
+  focusSeeAll: {
+    paddingVertical: 4,
+  },
+  focusSeeAllText: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 13,
+    color: COLORS.lightText,
+  },
+
+  /* Spotlight metric card — L2, the largest white card on the screen */
+  spotlightCard: {
+    backgroundColor: COLORS.lightCard,
+    borderRadius: RADII.lg,
+    padding: SP[5],
+    shadowColor: "#000000",
+    shadowOpacity: 0.12,
+    shadowRadius: 28,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 6,
+  },
+  spotlightHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SP[3],
+    marginBottom: SP[4],
+  },
+  spotlightIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: RADII.md,
+    backgroundColor: COLORS.iconTileLavender,
+    overflow: "hidden",
+  },
+  spotlightLabel: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 10,
+    color: COLORS.lightSub,
+    letterSpacing: 0.8,
+    marginBottom: 2,
+  },
+  spotlightName: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 18,
+    color: COLORS.lightText,
+    letterSpacing: 0.2,
+  },
+  spotlightScoreCol: {
+    alignItems: "flex-end",
+  },
+  spotlightScore: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 32,
+    color: COLORS.lightText,
+    letterSpacing: -0.6,
+    lineHeight: 34,
+  },
+  spotlightDelta: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 12,
+    color: COLORS.lightSub,
+    marginTop: 2,
+  },
+  spotlightInsight: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 14,
+    lineHeight: 20,
+    color: COLORS.lightMuted,
+    marginBottom: SP[4],
+  },
+  spotlightCta: {
+    backgroundColor: COLORS.ctaBlack,
+    borderRadius: RADII.circle,
+    paddingVertical: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  spotlightCtaText: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 14,
+    color: "#FFFFFF",
+    letterSpacing: 0.6,
+  },
+
+  /* Mid row — Rising | Falling */
+  midRow: {
+    flexDirection: "row",
+    gap: SP[3],
+    marginTop: SP[3],
+  },
+  midCard: {
+    backgroundColor: COLORS.lightCard,
+    borderRadius: RADII.md,
+    padding: SP[4],
+    ...SOFT_SHADOW,
+  },
+  midTag: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 10,
+    color: COLORS.lightText,
+    letterSpacing: 0.6,
+    marginBottom: SP[2],
+  },
+  midTagDown: {
+    color: COLORS.declineRed,
+  },
+  midName: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 14,
+    color: COLORS.lightText,
+    letterSpacing: 0.1,
+    marginBottom: SP[2],
+  },
+  midRowScore: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    gap: 6,
+  },
+  midScore: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 24,
+    color: COLORS.lightText,
+    letterSpacing: -0.4,
+  },
+  midDelta: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 12,
+    color: COLORS.lightSub,
+  },
+
+  /* Reference list — no card chrome, just rows on the L0 surface */
+  refList: {
+    marginTop: SP[3],
+    backgroundColor: COLORS.lightCard,
+    borderRadius: RADII.md,
+    paddingHorizontal: SP[4],
+  },
+  refRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: SP[3],
+    gap: SP[3],
+  },
+  refRowDivider: {
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.lightHairline,
+  },
+  refIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: RADII.sm,
+    backgroundColor: COLORS.iconTileLavender,
+    overflow: "hidden",
+  },
+  refName: {
+    flex: 1,
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 13,
+    color: COLORS.lightText,
+    letterSpacing: 0.2,
+  },
+  refDelta: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 12,
+    color: COLORS.lightSub,
+    minWidth: 50,
+    textAlign: "right",
+  },
+  refScore: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 16,
+    color: COLORS.lightText,
+    minWidth: 30,
+    textAlign: "right",
+  },
+
+  /* Metric card — white card, lavender icon tile, soft shadow */
   metricRowBase: {
     width: METRIC_COL_W,
-    borderRadius: RADII.xl,
-    backgroundColor: "#9E9380",
-    paddingBottom: METRIC_DEPTH,
-    shadowColor: "#F4E4C4",
-    shadowOpacity: 0.14,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 8,
+    borderRadius: RADII.lg,
+    backgroundColor: COLORS.lightCard,
+    paddingBottom: 0,
+    ...SOFT_SHADOW,
   },
   metricRowFace: {
     flexDirection: "row",
     alignItems: "center",
-    borderRadius: RADII.xl,
+    borderRadius: RADII.lg,
     overflow: "hidden",
-    paddingHorizontal: SP[2],
-    paddingVertical: SP[2],
-    gap: SP[2],
+    paddingHorizontal: SP[3],
+    paddingVertical: SP[3],
+    gap: SP[3],
   },
   metricRowThumb: {
-    width: 42,
-    height: 42,
+    width: 44,
+    height: 44,
     borderRadius: RADII.md,
     overflow: "hidden",
+    backgroundColor: COLORS.iconTileLavender,
   },
   metricRowThumbImg: {
     width: "100%",
@@ -2185,76 +2750,75 @@ const styles = StyleSheet.create({
     height: "100%",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(0,0,0,0.12)",
+    backgroundColor: COLORS.iconTileLavender,
     borderRadius: RADII.md,
   },
   metricRowInfo: {
     flex: 1,
-    gap: 1,
+    gap: 2,
   },
   metricRowName: {
-    fontSize: 12,
-    fontFamily: "Poppins-SemiBold",
-    color: "#0F0F0F",
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 13,
+    color: COLORS.lightText,
+    letterSpacing: 0.2,
   },
   metricRowTier: {
-    fontSize: 9,
-    fontFamily: "Poppins-Medium",
-    color: "rgba(0,0,0,0.55)",
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 11,
+    color: COLORS.lightSub,
   },
   metricRowArrowBtn: {
-    backgroundColor: "#0F0F0F",
-    borderRadius: RADII.md,
+    backgroundColor: COLORS.ctaBlack,
+    borderRadius: RADII.circle,
     width: 30,
     height: 30,
     alignItems: "center",
     justifyContent: "center",
   },
   metricRowArrowLabel: {
-    fontSize: 9,
-    fontFamily: "Poppins-SemiBold",
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 11,
+    color: "#FFFFFF",
     letterSpacing: 0.4,
   },
   metricRowScoreCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    borderWidth: 2,
-    borderColor: "rgba(0,0,0,0.25)",
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 0,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(0,0,0,0.10)",
+    backgroundColor: COLORS.lightSurfaceAlt,
   },
   metricRowScoreText: {
-    fontSize: 11,
-    fontFamily: "Poppins-Bold",
-    color: "#0F0F0F",
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 13,
+    color: COLORS.lightText,
   },
 
-  /* Metric detail bottom sheet */
+  /* Metric detail bottom sheet — light, matches Edit/Targets sheets */
   sheetBackdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.60)",
+    backgroundColor: "rgba(0,0,0,0.45)",
   },
   sheetContainer: {
     position: "absolute",
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: "#141414",
+    backgroundColor: COLORS.lightCard,
     borderTopLeftRadius: RADII.card,
     borderTopRightRadius: RADII.card,
     paddingHorizontal: SP[5],
     paddingBottom: SP[8] ?? 32,
     paddingTop: SP[3],
-    borderTopWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
   },
   sheetHandle: {
-    width: 36,
+    width: 44,
     height: 4,
-    borderRadius: 2,
-    backgroundColor: "rgba(255,255,255,0.20)",
+    borderRadius: 999,
+    backgroundColor: COLORS.lightBorder,
     alignSelf: "center",
     marginBottom: SP[4],
   },
@@ -2265,22 +2829,23 @@ const styles = StyleSheet.create({
     marginBottom: SP[4],
   },
   sheetThumb: {
-    width: 60,
-    height: 60,
-    borderRadius: RADII.lg,
+    width: 56,
+    height: 56,
+    borderRadius: RADII.md,
     overflow: "hidden",
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor: COLORS.iconTileLavender,
   },
   sheetMetricName: {
-    fontSize: 18,
-    fontFamily: "Poppins-SemiBold",
-    color: "#FFFFFF",
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 22,
+    color: COLORS.lightText,
+    letterSpacing: -0.4,
   },
   sheetCloseBtn: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: "rgba(255,255,255,0.08)",
+    backgroundColor: COLORS.lightSurfaceAlt,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -2288,7 +2853,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    backgroundColor: "rgba(255,255,255,0.05)",
+    backgroundColor: COLORS.lightSurface,
     borderRadius: RADII.lg,
     padding: SP[4],
     marginBottom: SP[4],
@@ -2299,29 +2864,28 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: RADII.md,
     paddingVertical: SP[2],
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-    backgroundColor: "rgba(255,255,255,0.04)",
   },
   sheetScoreLabel: {
-    fontSize: 8,
-    fontFamily: "Poppins-SemiBold",
-    color: "rgba(255,255,255,0.40)",
-    letterSpacing: 0.5,
-    marginBottom: 2,
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 11,
+    color: COLORS.lightSub,
+    letterSpacing: 0.4,
+    marginBottom: 4,
   },
   sheetScoreValue: {
-    fontSize: 18,
-    fontFamily: "Poppins-SemiBold",
-    color: "#FFFFFF",
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 20,
+    color: COLORS.lightText,
+    letterSpacing: -0.3,
   },
   sheetScoreArrow: {
     alignItems: "center",
     gap: 2,
   },
   sheetScoreDelta: {
-    fontSize: 11,
-    fontFamily: "Poppins-SemiBold",
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 12,
+    color: COLORS.lightSub,
   },
   sheetSubList: {
     gap: SP[3],
@@ -2329,26 +2893,26 @@ const styles = StyleSheet.create({
   sheetSubRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: SP[2],
+    paddingVertical: SP[3],
     borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.06)",
+    borderBottomColor: COLORS.lightHairline,
   },
   sheetSubLabel: {
     flex: 1,
-    fontSize: 13,
-    fontFamily: "Poppins-Medium",
-    color: "rgba(255,255,255,0.70)",
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 14,
+    color: COLORS.lightText,
   },
   sheetSubScore: {
-    fontSize: 13,
-    fontFamily: "Poppins-SemiBold",
-    color: "#FFFFFF",
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 14,
+    color: COLORS.lightText,
     marginRight: SP[2],
   },
   sheetNoSub: {
+    fontFamily: "ProximaNova-Bold",
     fontSize: 13,
-    fontFamily: "Poppins-Regular",
-    color: "rgba(255,255,255,0.40)",
+    color: COLORS.lightSub,
     textAlign: "center",
     paddingVertical: SP[4],
   },
@@ -2356,51 +2920,45 @@ const styles = StyleSheet.create({
   /* Sub-metric progress bar */
   sheetSubBarWrap: {
     flex: 1,
-    height: 5,
+    height: 6,
     borderRadius: 3,
-    backgroundColor: "rgba(255,255,255,0.08)",
+    backgroundColor: COLORS.lightSurfaceAlt,
     marginHorizontal: SP[3],
     overflow: "hidden",
   },
   sheetSubBarFill: {
     height: "100%",
     borderRadius: 3,
+    backgroundColor: COLORS.ctaBlack,
   },
 
-  /* 3D sub-metric tag pill */
+  /* Sub-metric tag pill — light chip */
   subTag3dBase: {
-    borderRadius: RADII.pill,
-    paddingBottom: 3,
+    borderRadius: RADII.circle,
   },
   subTag3dFace: {
-    borderRadius: RADII.pill,
+    borderRadius: RADII.circle,
+    backgroundColor: COLORS.lightSurfaceAlt,
     paddingHorizontal: SP[3],
     paddingVertical: 4,
   },
   subTag3dText: {
-    fontSize: 10,
-    fontFamily: "Poppins-SemiBold",
-    color: "#0F0F0F",
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 11,
+    color: COLORS.lightText,
     letterSpacing: 0.3,
   },
 
-  /* Journey card — light cream with dashed progress graph */
+  /* Journey card — white with soft shadow, monochrome graph */
   journeyBase: {
-    borderRadius: 22,
-    backgroundColor: "#C9B98A",           // warm tan depth layer
-    paddingBottom: 5,
+    borderRadius: RADII.lg,
+    backgroundColor: COLORS.lightCard,
     marginBottom: SP[2],
-    shadowColor: "#000",
-    shadowOpacity: 0.18,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 6,
+    ...SOFT_SHADOW,
   },
   journeyFace: {
-    borderRadius: 22,
+    borderRadius: RADII.lg,
     backgroundColor: JOURNEY_CARD_BG,
-    borderWidth: 1,
-    borderColor: "rgba(28,36,24,0.06)",
     paddingHorizontal: SP[5],
     paddingTop: SP[4],
     paddingBottom: SP[4],
@@ -2418,44 +2976,42 @@ const styles = StyleSheet.create({
     gap: SP[2],
   },
   journeyTitle: {
-    fontSize: 18,
-    fontFamily: "Poppins-SemiBold",
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 22,
     color: JOURNEY_INK,
-    letterSpacing: -0.2,
+    letterSpacing: -0.4,
   },
   journeyTitleIcon: {
     width: 18,
     height: 18,
     borderRadius: 5,
-    backgroundColor: JOURNEY_GREEN,
+    backgroundColor: COLORS.ctaBlack,
     alignItems: "center",
     justifyContent: "center",
   },
   journeySubtitle: {
-    fontSize: 12.5,
-    fontFamily: "Poppins-Medium",
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 13,
     color: JOURNEY_SUB,
     marginTop: 3,
   },
   journeyPillDepth: {
-    backgroundColor: JOURNEY_GREEN_DEEP,
+    backgroundColor: "transparent",
     borderRadius: 999,
-    paddingBottom: 3,
   },
   journeyPillFace: {
-    backgroundColor: JOURNEY_GREEN,
+    width: 32,
+    height: 32,
     borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    minWidth: 54,
+    backgroundColor: COLORS.lightSurfaceAlt,
     alignItems: "center",
     justifyContent: "center",
   },
   journeyPillText: {
-    fontSize: 15,
-    fontFamily: "Poppins-SemiBold",
-    color: "#FFFFFF",
-    letterSpacing: -0.2,
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 14,
+    color: COLORS.lightText,
+    letterSpacing: 0.2,
   },
   journeyGraphWrap: {
     marginTop: SP[1],
@@ -2466,35 +3022,26 @@ const styles = StyleSheet.create({
     width: "100%",
     flexDirection: "row",
     justifyContent: "space-between",
-    paddingLeft: 22,     // matches padLeft of JourneyGraph (Y-axis label gutter)
-    paddingRight: 10,    // matches padRight
+    paddingLeft: 22,
+    paddingRight: 10,
     marginTop: 4,
   },
   journeyDayLabel: {
-    fontSize: 10,
-    fontFamily: "Poppins-SemiBold",
-    color: "rgba(28,36,24,0.45)",
-    letterSpacing: 0.8,
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 11,
+    color: COLORS.lightSub,
+    letterSpacing: 0.6,
   },
 
-  /* Trend card — 3D treatment */
+  /* Trend card — light surface, monochrome */
   trendBase: {
-    borderRadius: RADII.card,
-    backgroundColor: "#0A0A0A",
-    paddingBottom: 5,
-    shadowColor: LIME.primary,
-    shadowOpacity: 0.20,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 8,
+    borderRadius: RADII.lg,
+    backgroundColor: COLORS.lightCard,
+    ...SOFT_SHADOW,
   },
   trendFace: {
-    borderRadius: RADII.card,
+    borderRadius: RADII.lg,
     overflow: "hidden",
-    borderTopWidth: 2,
-    borderTopColor: LIME.primary,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.07)",
     paddingHorizontal: SP[5],
     paddingTop: SP[4],
     paddingBottom: SP[3],
@@ -2506,28 +3053,27 @@ const styles = StyleSheet.create({
     marginBottom: SP[3],
   },
   trendTitle: {
-    fontSize: 17,
-    fontFamily: "Poppins-SemiBold",
-    color: "#FFFFFF",
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 18,
+    color: COLORS.lightText,
+    letterSpacing: -0.3,
   },
   trendSubtitle: {
+    fontFamily: "ProximaNova-Bold",
     fontSize: 12,
-    fontFamily: "Poppins-SemiBold",
-    color: "rgba(255,255,255,0.40)",
+    color: COLORS.lightSub,
     marginTop: 2,
   },
   trendFilterPill: {
-    backgroundColor: "#1E1E1E",
-    borderRadius: RADII.pill,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
+    backgroundColor: COLORS.lightSurfaceAlt,
+    borderRadius: RADII.circle,
     paddingHorizontal: SP[3],
     paddingVertical: SP[1],
   },
   trendFilterText: {
+    fontFamily: "ProximaNova-Bold",
     fontSize: 12,
-    fontFamily: "Poppins-SemiBold",
-    color: LIME.primary,
+    color: COLORS.lightText,
   },
   trendDayLabels: {
     flexDirection: "row",
@@ -2535,10 +3081,10 @@ const styles = StyleSheet.create({
     marginTop: SP[2],
   },
   trendDayLabel: {
-    fontSize: 10,
-    fontFamily: "Poppins-SemiBold",
-    color: "rgba(255,255,255,0.30)",
-    letterSpacing: 0.8,
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 11,
+    color: COLORS.lightSub,
+    letterSpacing: 0.6,
   },
 
   /* Metric cards */
@@ -2559,18 +3105,19 @@ const styles = StyleSheet.create({
   tierPillSmall: {
     paddingHorizontal: SP[2],
     paddingVertical: 2,
-    borderRadius: RADII.pill,
-    borderWidth: 1,
+    borderRadius: RADII.circle,
+    backgroundColor: COLORS.lightSurfaceAlt,
   },
   tierTextSmall: {
-    fontSize: 8,
-    fontFamily: "Poppins-SemiBold",
-    letterSpacing: 0.5,
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 10,
+    color: COLORS.lightText,
+    letterSpacing: 0.4,
   },
   barTrack: {
-    height: 5,
+    height: 6,
     borderRadius: 3,
-    backgroundColor: "rgba(255,255,255,0.08)",
+    backgroundColor: COLORS.lightSurfaceAlt,
     marginBottom: SP[2],
     position: "relative" as const,
     overflow: "visible" as const,
@@ -2578,14 +3125,15 @@ const styles = StyleSheet.create({
   barFill: {
     height: "100%",
     borderRadius: 3,
+    backgroundColor: COLORS.ctaBlack,
   },
   baselineTick: {
     position: "absolute" as const,
     top: -3,
     width: 2,
-    height: 11,
+    height: 12,
     borderRadius: 1,
-    backgroundColor: "rgba(255,255,255,0.50)",
+    backgroundColor: COLORS.lightSub,
     marginLeft: -1,
   },
   beforeAfterRow: {
@@ -2596,70 +3144,73 @@ const styles = StyleSheet.create({
   beforeBox: {
     flex: 1,
     alignItems: "center" as const,
-    backgroundColor: "rgba(255,255,255,0.04)",
+    backgroundColor: COLORS.lightSurface,
     borderRadius: RADII.md,
     paddingVertical: SP[2],
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.07)",
   },
   arrowCol: {
     alignItems: "center" as const,
     gap: 1,
   },
   arrowText: {
+    fontFamily: "ProximaNova-Bold",
     fontSize: 16,
-    fontFamily: "Poppins-SemiBold",
+    color: COLORS.lightText,
   },
   arrowDelta: {
-    fontSize: 10,
-    fontFamily: "Poppins-SemiBold",
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 11,
+    color: COLORS.lightSub,
   },
   afterBox: {
     flex: 1,
     alignItems: "center" as const,
     borderRadius: RADII.md,
     paddingVertical: SP[2],
-    borderWidth: 1,
+    backgroundColor: COLORS.lightSurface,
   },
   bestBox: {
     flex: 1,
     alignItems: "center" as const,
-    backgroundColor: "rgba(255,255,255,0.04)",
+    backgroundColor: COLORS.lightSurface,
     borderRadius: RADII.md,
     paddingVertical: SP[2],
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.07)",
   },
   beforeLabel: {
-    fontSize: 8,
-    fontFamily: "Poppins-SemiBold",
-    color: "rgba(255,255,255,0.35)",
-    letterSpacing: 0.5,
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 10,
+    color: COLORS.lightSub,
+    letterSpacing: 0.4,
     marginBottom: 2,
   },
   beforeValue: {
-    ...TYPE.captionSemiBold,
-    color: COLORS.text,
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 14,
+    color: COLORS.lightText,
   },
   afterLabel: {
-    fontSize: 8,
-    fontFamily: "Poppins-SemiBold",
-    letterSpacing: 0.5,
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 10,
+    letterSpacing: 0.4,
     marginBottom: 2,
+    color: COLORS.lightSub,
   },
   afterValue: {
-    ...TYPE.captionSemiBold,
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 14,
+    color: COLORS.lightText,
   },
   miniBarTrack: {
-    height: 3,
+    height: 4,
     borderRadius: 2,
-    backgroundColor: "rgba(255,255,255,0.08)",
+    backgroundColor: COLORS.lightSurfaceAlt,
     overflow: "hidden" as const,
   },
   miniBarFill: {
     height: "100%",
     borderRadius: 2,
-    opacity: 0.75,
+    backgroundColor: COLORS.ctaBlack,
+    opacity: 0.85,
   },
 
   directionRow: {
@@ -2681,7 +3232,7 @@ const styles = StyleSheet.create({
 
   expandDivider: {
     height: 1,
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor: COLORS.lightHairline,
     marginBottom: SP[3],
   },
 
@@ -2693,11 +3244,9 @@ const styles = StyleSheet.create({
   statBox: {
     flex: 1,
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.04)",
+    backgroundColor: COLORS.lightSurface,
     borderRadius: RADII.md,
     paddingVertical: SP[3],
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.06)",
   },
 
   subMetricRow: {
@@ -2706,10 +3255,10 @@ const styles = StyleSheet.create({
   },
 
   tagPill: {
-    paddingHorizontal: SP[2],
-    paddingVertical: 3,
-    borderRadius: RADII.pill,
-    borderWidth: 1,
+    paddingHorizontal: SP[3],
+    paddingVertical: 4,
+    borderRadius: RADII.circle,
+    backgroundColor: COLORS.lightSurfaceAlt,
   },
 
   /* AI Coach card */
@@ -2732,8 +3281,7 @@ const styles = StyleSheet.create({
   verdictPill: {
     paddingHorizontal: SP[3],
     paddingVertical: 4,
-    borderRadius: RADII.pill,
-    borderWidth: 1,
+    borderRadius: RADII.circle,
   },
 
   /* Collapsible sections */
@@ -2770,17 +3318,17 @@ const styles = StyleSheet.create({
 
   historyRowBorder: {
     borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.06)",
+    borderBottomColor: COLORS.lightHairline,
   },
 
   scoreChip: {
     paddingHorizontal: SP[3],
     paddingVertical: SP[1],
-    borderRadius: RADII.md,
-    borderWidth: 1,
+    borderRadius: RADII.circle,
+    backgroundColor: COLORS.lightSurfaceAlt,
   },
 
-  /* 3D button */
+  /* CTA — black pill, mirrors START ROUTINE */
   ctaContainer: {
     marginTop: SP[3],
     marginBottom: SP[2],
@@ -2788,27 +3336,27 @@ const styles = StyleSheet.create({
 
   btn3dOuter: {
     position: "relative",
-    borderRadius: 28,
-    backgroundColor: "#6B9A1E",
-    ...SHADOWS.primaryBtn,
+    borderRadius: RADII.circle,
+    backgroundColor: COLORS.ctaBlack,
   },
 
   btn3dFace: {
-    height: 56,
-    borderRadius: 28,
+    minHeight: 58,
+    borderRadius: RADII.circle,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: SP[6],
+    paddingVertical: SP[4],
   },
 
   btn3dBase: {
     position: "absolute",
-    bottom: -4,
+    bottom: 0,
     left: 0,
     right: 0,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: "#6B9A1E",
+    height: 0,
+    borderRadius: RADII.circle,
+    backgroundColor: "transparent",
     zIndex: -1,
   },
 

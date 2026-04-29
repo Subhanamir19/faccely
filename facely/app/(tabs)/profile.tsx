@@ -12,9 +12,94 @@ import {
 import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
 import T from "@/components/ui/T";
-import GlassBtn from "@/components/ui/GlassBtn";
-import GlassCard from "@/components/ui/GlassCard";
-import { COLORS } from "@/lib/tokens";
+import { COLORS, RADII, SP } from "@/lib/tokens";
+import { sw, sh, ms } from "@/lib/responsive";
+
+// Local light replacements for GlassCard / GlassBtn — shared components are
+// dark-glass and used elsewhere; restyling them globally would break those
+// surfaces. Defined inline so this screen owns its light vocabulary.
+const SOFT_SHADOW = {
+  shadowColor: "#000000",
+  shadowOpacity: 0.08,
+  shadowRadius: 20,
+  shadowOffset: { width: 0, height: 8 },
+  elevation: 4,
+} as const;
+
+const FONT = "ProximaNova-Bold";
+
+function LightCard({
+  children,
+  style,
+}: {
+  children: React.ReactNode;
+  style?: any;
+}) {
+  return (
+    <View
+      style={[
+        {
+          backgroundColor: COLORS.lightCard,
+          borderRadius: RADII.lg,
+          padding: SP[4],
+          ...SOFT_SHADOW,
+        },
+        style,
+      ]}
+    >
+      {children}
+    </View>
+  );
+}
+
+function LightBtn({
+  label,
+  onPress,
+  variant = "secondary",
+  disabled,
+}: {
+  label: string;
+  onPress?: () => void;
+  variant?: "primary" | "secondary" | "danger";
+  disabled?: boolean;
+}) {
+  const bg =
+    disabled
+      ? COLORS.lightSurfaceAlt
+      : variant === "primary"
+        ? COLORS.ctaBlack
+        : variant === "danger"
+          ? COLORS.declineRedSoft
+          : COLORS.lightSurfaceAlt;
+  const fg =
+    disabled
+      ? COLORS.lightSub
+      : variant === "primary"
+        ? "#FFFFFF"
+        : variant === "danger"
+          ? COLORS.declineRed
+          : COLORS.lightText;
+  return (
+    <Pressable
+      onPress={disabled ? undefined : onPress}
+      disabled={disabled}
+      style={({ pressed }) => ({
+        minHeight: sh(52),
+        borderRadius: 999,
+        backgroundColor: bg,
+        alignItems: "center",
+        justifyContent: "center",
+        paddingVertical: sh(14),
+        paddingHorizontal: SP[6],
+        opacity: pressed && !disabled ? 0.85 : 1,
+      })}
+    >
+      <T style={{ color: fg, fontFamily: FONT, fontSize: ms(14), letterSpacing: 0.4 }}>
+        {label.toUpperCase()}
+      </T>
+    </Pressable>
+  );
+}
 import { supabase } from "@/lib/supabase/client";
 import { useAuthStore } from "@/store/auth";
 import { useOnboarding } from "@/store/onboarding";
@@ -274,7 +359,7 @@ export default function ProfileScreen() {
             </View>
           </View>
           <View style={styles.avatarButton}>
-            <GlassBtn
+            <LightBtn
               label={changingPhoto ? "Changing..." : "Change photo"}
               onPress={handleChangePhoto}
               disabled={changingPhoto || deletingAccount || isHydrating}
@@ -282,7 +367,7 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        <GlassCard style={styles.card}>
+        <LightCard style={styles.card}>
           <View style={styles.cardHeader}>
             <T style={styles.cardLabel}>Demographics</T>
             <T style={styles.cardSubtext}>Basic profile details</T>
@@ -296,7 +381,7 @@ export default function ProfileScreen() {
                 value={nameInput}
                 onChangeText={(v) => { setNameInput(v); setNameSaved(false); }}
                 placeholder="Your name"
-                placeholderTextColor="rgba(255,255,255,0.25)"
+                placeholderTextColor={COLORS.lightSub}
                 returnKeyType="done"
                 onSubmitEditing={async () => {
                   await setDisplayName(nameInput);
@@ -330,9 +415,9 @@ export default function ProfileScreen() {
             <T style={styles.rowLabel}>Age</T>
             <T style={styles.rowValue}>{age}</T>
           </View>
-        </GlassCard>
+        </LightCard>
 
-        <GlassCard style={styles.card}>
+        <LightCard style={styles.card}>
           <View style={styles.cardHeader}>
             <T style={styles.cardLabel}>Subscription</T>
             <T style={styles.cardSubtext}>
@@ -345,27 +430,26 @@ export default function ProfileScreen() {
           </View>
           <View style={styles.subscriptionActions}>
             <View style={styles.subscriptionBtn}>
-              <GlassBtn
+              <LightBtn
                 label={restoringPurchases ? "Restoring..." : "Restore Purchases"}
-                variant="glass"
                 onPress={handleRestorePurchases}
                 disabled={restoringPurchases || isHydrating}
               />
             </View>
           </View>
-        </GlassCard>
+        </LightCard>
 
 
-        <GlassCard style={styles.card}>
+        <LightCard style={styles.card}>
           <T
             style={styles.privacyLink}
             onPress={() => WebBrowser.openBrowserAsync("https://third-tamarillo-756.notion.site/Privacy-Policy-30266c2b427680a29ba5e586b5913999")}
           >
             Privacy Policy ↗
           </T>
-        </GlassCard>
+        </LightCard>
 
-        <GlassCard style={styles.card}>
+        <LightCard style={styles.card}>
           <View style={styles.cardHeader}>
             <T style={styles.cardLabel}>Recovery Code</T>
             <T style={styles.cardSubtext}>
@@ -393,22 +477,22 @@ export default function ProfileScreen() {
                 {generating ? "Generating your code…" : "Loading…"}
               </T>
             )}
-          </GlassCard>
+          </LightCard>
 
         <View style={styles.dangerZone}>
-          <GlassCard style={styles.dangerCard}>
+          <LightCard style={styles.dangerCard}>
             <T style={styles.dangerLabel}>Danger zone</T>
             <View style={styles.dangerButtons}>
               <View style={styles.dangerBtn}>
-                <GlassBtn
+                <LightBtn
                   label="Delete account"
-                  variant="glass"
+                  variant="danger"
                   onPress={handleDeleteAccount}
                   disabled={deletingAccount || loggingOut || isHydrating}
                 />
               </View>
               <View style={styles.dangerBtn}>
-                <GlassBtn
+                <LightBtn
                   label={loggingOut ? "Logging out..." : "Log out"}
                   variant="primary"
                   onPress={handleLogout}
@@ -416,7 +500,7 @@ export default function ProfileScreen() {
                 />
               </View>
             </View>
-          </GlassCard>
+          </LightCard>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -426,45 +510,41 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: COLORS.bgBottom,
+    backgroundColor: COLORS.lightBg,
   },
   scrollContent: {
-    paddingHorizontal: 20,
-    paddingVertical: 28,
-    gap: 18,
+    paddingHorizontal: SP[5],
+    paddingVertical: SP[6],
+    gap: SP[4],
   },
   hydratingLabel: {
-    color: COLORS.sub,
+    color: COLORS.lightSub,
+    fontFamily: FONT,
     marginBottom: 4,
-    fontSize: 13,
+    fontSize: ms(13),
     textAlign: "center",
   },
   avatarSection: {
     alignItems: "center",
-    gap: 14,
-    marginTop: 6,
-    marginBottom: 4,
+    gap: sh(14),
+    marginTop: sh(6),
+    marginBottom: sh(4),
   },
   avatarRing: {
-    width: 132,
-    height: 132,
-    borderRadius: 66,
+    width: ms(132),
+    height: ms(132),
+    borderRadius: ms(66),
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: COLORS.card,
-    borderWidth: 2,
-    borderColor: COLORS.cardBorder,
-    shadowColor: COLORS.shadow,
-    shadowOpacity: 0.3,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 10 },
+    backgroundColor: COLORS.lightCard,
+    ...SOFT_SHADOW,
   },
   avatarInner: {
-    width: 118,
-    height: 118,
-    borderRadius: 59,
+    width: ms(118),
+    height: ms(118),
+    borderRadius: ms(59),
     overflow: "hidden",
-    backgroundColor: "#111",
+    backgroundColor: COLORS.iconTileLavender,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -473,169 +553,167 @@ const styles = StyleSheet.create({
     height: "100%",
   },
   avatarButton: {
-    width: 180,
+    width: ms(180),
   },
   card: {
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    // LightCard provides its own padding/radius/shadow; only override here
+    // when a specific card needs different chrome.
   },
   cardHeader: {
-    marginBottom: 10,
+    marginBottom: SP[3],
   },
   cardLabel: {
-    color: COLORS.text,
-    fontSize: 16,
-    letterSpacing: -0.2,
+    color: COLORS.lightText,
+    fontFamily: FONT,
+    fontSize: ms(18),
+    letterSpacing: -0.3,
   },
   cardSubtext: {
     marginTop: 4,
-    color: COLORS.sub,
-    fontSize: 13,
-    fontFamily: "Poppins-Regular",
+    color: COLORS.lightSub,
+    fontFamily: FONT,
+    fontSize: ms(13),
   },
   accountRow: {
     paddingVertical: 6,
   },
   primaryText: {
-    color: COLORS.text,
-    fontSize: 18,
+    color: COLORS.lightText,
+    fontFamily: FONT,
+    fontSize: ms(18),
     letterSpacing: -0.2,
   },
   subText: {
-    color: COLORS.sub,
-    fontSize: 14,
-    fontFamily: "Poppins-Regular",
+    color: COLORS.lightSub,
+    fontFamily: FONT,
+    fontSize: ms(14),
     marginTop: 4,
   },
   row: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingVertical: 10,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: COLORS.cardBorder,
+    paddingVertical: sh(12),
+    borderTopWidth: 1,
+    borderTopColor: COLORS.lightHairline,
   },
   rowLabel: {
-    color: COLORS.sub,
-    fontSize: 14,
+    color: COLORS.lightSub,
+    fontFamily: FONT,
+    fontSize: ms(14),
   },
   rowValue: {
-    color: COLORS.text,
-    fontSize: 15,
+    color: COLORS.lightText,
+    fontFamily: FONT,
+    fontSize: ms(15),
   },
   nameInputRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: sw(8),
     flex: 1,
     justifyContent: "flex-end",
   },
   nameInput: {
-    color: COLORS.text,
-    fontSize: 15,
-    fontFamily: "Poppins-Regular",
+    color: COLORS.lightText,
+    fontFamily: FONT,
+    fontSize: ms(15),
     textAlign: "right",
     flex: 1,
     paddingVertical: 0,
   },
   nameSaveBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
-    backgroundColor: "rgba(255,255,255,0.07)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
+    paddingHorizontal: sw(12),
+    paddingVertical: sh(6),
+    borderRadius: 999,
+    backgroundColor: COLORS.lightSurfaceAlt,
   },
   nameSaveBtnText: {
-    color: COLORS.accent,
-    fontSize: 12,
-    fontFamily: "Poppins-SemiBold",
+    color: COLORS.lightText,
+    fontFamily: FONT,
+    fontSize: ms(12),
+    letterSpacing: 0.2,
   },
   dangerZone: {
-    marginTop: 10,
+    marginTop: SP[3],
   },
   dangerCard: {
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    backgroundColor: "rgba(255,0,0,0.02)",
-    borderColor: "rgba(255,0,0,0.15)",
+    backgroundColor: COLORS.lightCard,
   },
   dangerLabel: {
-    color: COLORS.sub,
-    fontSize: 14,
-    marginBottom: 12,
-    letterSpacing: 0.2,
+    color: COLORS.lightSub,
+    fontFamily: FONT,
+    fontSize: ms(13),
+    marginBottom: SP[3],
+    letterSpacing: 0.4,
   },
   dangerButtons: {
     flexDirection: "column",
-    gap: 12,
+    gap: sh(12),
   },
   dangerBtn: {
     width: "100%",
   },
   subscriptionActions: {
     flexDirection: "column",
-    gap: 12,
-    marginTop: 8,
+    gap: sh(12),
+    marginTop: SP[2],
   },
   subscriptionBtn: {
     width: "100%",
   },
   upgradeBanner: {
-    backgroundColor: "rgba(180,243,77,0.08)",
-    borderWidth: 1,
-    borderColor: "rgba(180,243,77,0.22)",
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
+    backgroundColor: COLORS.lightSurfaceAlt,
+    borderRadius: RADII.md,
+    paddingVertical: sh(12),
+    paddingHorizontal: sw(14),
     gap: 4,
   },
   upgradeBannerText: {
-    color: COLORS.accent,
-    fontSize: 15,
-    fontFamily: "Poppins-SemiBold",
+    color: COLORS.lightText,
+    fontFamily: FONT,
+    fontSize: ms(15),
   },
   upgradeBannerSub: {
-    color: "rgba(255,255,255,0.45)",
-    fontSize: 12,
-    fontFamily: "Poppins-Regular",
+    color: COLORS.lightSub,
+    fontFamily: FONT,
+    fontSize: ms(12),
   },
   recoveryRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingVertical: 6,
-    gap: 12,
+    paddingVertical: sh(8),
+    gap: sw(12),
   },
   recoveryCode: {
-    color: COLORS.accent,
-    fontSize: 18,
-    fontFamily: "Poppins-SemiBold",
+    color: COLORS.lightText,
+    fontFamily: FONT,
+    fontSize: ms(18),
     letterSpacing: 2,
     flex: 1,
   },
   copyBtn: {
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 10,
-    backgroundColor: "rgba(255,255,255,0.07)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
+    paddingHorizontal: sw(14),
+    paddingVertical: sh(8),
+    borderRadius: 999,
+    backgroundColor: COLORS.lightSurfaceAlt,
   },
   copyBtnText: {
-    color: COLORS.text,
-    fontSize: 13,
-    fontFamily: "Poppins-SemiBold",
+    color: COLORS.lightText,
+    fontFamily: FONT,
+    fontSize: ms(13),
   },
   generatingLabel: {
-    color: COLORS.sub,
-    fontSize: 13,
-    fontFamily: "Poppins-Regular",
+    color: COLORS.lightSub,
+    fontFamily: FONT,
+    fontSize: ms(13),
     marginTop: 4,
   },
   privacyLink: {
-    color: COLORS.sub,
-    fontSize: 14,
+    color: COLORS.lightSub,
+    fontFamily: FONT,
+    fontSize: ms(14),
     textDecorationLine: "underline",
     textAlign: "center",
     paddingVertical: 4,

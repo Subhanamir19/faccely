@@ -1,65 +1,73 @@
 // app/(onboarding)/intro.tsx
+// "Here's how this works" — 3 steps, each a clean white card with a sage
+// chip housing a lucide icon and step copy. Steps reveal in sequence; the
+// connector between them draws on after each card. CTA is a black pill,
+// matching the rest of the system.
+
 import React, { useEffect } from "react";
 import {
   View,
-  Text,
   StyleSheet,
   StatusBar,
+  Pressable,
   SafeAreaView,
-  Platform,
 } from "react-native";
 import { router } from "expo-router";
 import { MaterialCommunityIcons, Ionicons } from "@expo/vector-icons";
-import { LinearGradient } from "expo-linear-gradient";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withTiming,
   withDelay,
-  withRepeat,
-  withSequence,
   withSpring,
   Easing,
-  interpolate,
 } from "react-native-reanimated";
-import LimeButton from "@/components/ui/LimeButton";
-import { COLORS } from "@/lib/tokens";
 
-const ACCENT = COLORS.accent;
-const BG = "#0B0B0B";
-const CIRCLE = 78;
+import T from "@/components/ui/T";
+import { COLORS, SP, RADII } from "@/lib/tokens";
+import { ms, sh, sw } from "@/lib/responsive";
 
-/* ─── timing constants ─────────────────────────────────────── */
-const FADE_DUR = 260;
-const SLIDE_DUR = 300;
-const DRAW_DUR  = 340;
-const PULSE_DUR = 1800;
+const FONT_BOLD = "ProximaNova-Bold";
+const LIME = "#B4F34D";        // bright fill — connector line
+const SAGE = "#3F7A2A";        // dark readable — text & icon strokes on lime-soft
+const SAGE_SOFT = "#ECFCCB";   // pale lime — chip backgrounds
 
-// delay ladder (ms)
+const SOFT_SHADOW = {
+  shadowColor: "#000000",
+  shadowOpacity: 0.06,
+  shadowRadius: ms(14),
+  shadowOffset: { width: 0, height: ms(4) },
+  elevation: 2,
+} as const;
+
+// Animation timing
+const FADE_DUR  = 280;
+const SLIDE_DUR = 320;
+const DRAW_DUR  = 320;
+
 const D = {
-  header:  0,
-  step1:   220,
-  conn1:   430,
-  step2:   520,
-  conn2:   730,
-  step3:   820,
-  badge:   1020,
-  button:  1120,
-};
+  header: 0,
+  step1:  220,
+  conn1:  430,
+  step2:  520,
+  conn2:  730,
+  step3:  820,
+  badge:  1020,
+  button: 1120,
+} as const;
 
-/* ─── reusable fade + slide-up hook ────────────────────────── */
 function useFadeSlide(delayMs: number) {
-  const opacity   = useSharedValue(0);
+  const opacity    = useSharedValue(0);
   const translateY = useSharedValue(18);
 
   useEffect(() => {
     opacity.value = withDelay(
       delayMs,
-      withTiming(1, { duration: FADE_DUR, easing: Easing.out(Easing.cubic) })
+      withTiming(1, { duration: FADE_DUR, easing: Easing.out(Easing.cubic) }),
     );
     translateY.value = withDelay(
       delayMs,
-      withTiming(0, { duration: SLIDE_DUR, easing: Easing.out(Easing.cubic) })
+      withTiming(0, { duration: SLIDE_DUR, easing: Easing.out(Easing.cubic) }),
     );
   }, []);
 
@@ -69,14 +77,12 @@ function useFadeSlide(delayMs: number) {
   }));
 }
 
-/* ─── connector: height draws from 0 ───────────────────────── */
-function AnimatedConnector({ delayMs }: { delayMs: number }) {
+function Connector({ delayMs }: { delayMs: number }) {
   const progress = useSharedValue(0);
-
   useEffect(() => {
     progress.value = withDelay(
       delayMs,
-      withTiming(1, { duration: DRAW_DUR, easing: Easing.out(Easing.cubic) })
+      withTiming(1, { duration: DRAW_DUR, easing: Easing.out(Easing.cubic) }),
     );
   }, []);
 
@@ -86,68 +92,13 @@ function AnimatedConnector({ delayMs }: { delayMs: number }) {
     transformOrigin: "top",
   }));
 
-  // dots fade in together with the line
-  const dotStyle = useAnimatedStyle(() => ({
-    opacity: progress.value,
-  }));
-
   return (
     <View style={styles.connectorWrap}>
-      <Animated.View style={[styles.connectorDot, dotStyle]} />
-      <Animated.View style={[styles.connectorDot, dotStyle]} />
       <Animated.View style={[styles.connectorLine, lineStyle]} />
-      <Animated.View style={[styles.connectorDot, dotStyle]} />
-      <Animated.View style={[styles.connectorDot, dotStyle]} />
     </View>
   );
 }
 
-/* ─── icon circle with breathing glow ──────────────────────── */
-function PulsingCircle({
-  children,
-  delayMs,
-}: {
-  children: React.ReactNode;
-  delayMs: number;
-}) {
-  const glow = useSharedValue(0);
-
-  useEffect(() => {
-    // start pulsing after the circle has appeared
-    glow.value = withDelay(
-      delayMs + 400,
-      withRepeat(
-        withSequence(
-          withTiming(1, { duration: PULSE_DUR, easing: Easing.inOut(Easing.ease) }),
-          withTiming(0, { duration: PULSE_DUR, easing: Easing.inOut(Easing.ease) })
-        ),
-        -1,
-        false
-      )
-    );
-  }, []);
-
-  const glowStyle = useAnimatedStyle(() => ({
-    shadowOpacity: interpolate(glow.value, [0, 1], [0.18, 0.55]),
-    shadowRadius:  interpolate(glow.value, [0, 1], [12, 24]),
-    transform: [{ scale: interpolate(glow.value, [0, 1], [1, 1.04]) }],
-  }));
-
-  return (
-    <Animated.View style={[styles.iconCircleShadow, glowStyle]}>
-      <LinearGradient
-        colors={["rgba(180,243,77,0.16)", "rgba(180,243,77,0.04)"]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.iconCircle}
-      >
-        {children}
-      </LinearGradient>
-    </Animated.View>
-  );
-}
-
-/* ─── single step row ──────────────────────────────────────── */
 function StepRow({
   icon,
   label,
@@ -168,42 +119,33 @@ function StepRow({
   return (
     <View>
       <Animated.View style={[styles.stepRow, rowStyle]}>
-        <View style={styles.leftCol}>
-          <PulsingCircle delayMs={delayMs}>{icon}</PulsingCircle>
-        </View>
+        <View style={styles.iconChip}>{icon}</View>
         <View style={styles.stepText}>
-          <Text style={styles.stepLabel}>{label}</Text>
-          <Text style={styles.stepDescription}>{description}</Text>
-          <Text style={styles.stepSubtitle}>{subtitle}</Text>
+          <T style={styles.stepLabel}>{label}</T>
+          <T style={styles.stepDescription}>{description}</T>
+          <T style={styles.stepSubtitle}>{subtitle}</T>
         </View>
       </Animated.View>
 
       {!isLast && (
-        <View style={styles.leftCol}>
-          <AnimatedConnector delayMs={delayMs + 200} />
+        <View style={styles.connectorAlign}>
+          <Connector delayMs={delayMs + 200} />
         </View>
       )}
     </View>
   );
 }
 
-/* ─── screen ───────────────────────────────────────────────── */
 export default function IntroScreen() {
   const headerStyle = useFadeSlide(D.header);
   const badgeStyle  = useFadeSlide(D.badge);
 
-  // button springs up
+  // Button springs up
   const btnOpacity   = useSharedValue(0);
   const btnTranslate = useSharedValue(22);
   useEffect(() => {
-    btnOpacity.value = withDelay(
-      D.button,
-      withTiming(1, { duration: FADE_DUR })
-    );
-    btnTranslate.value = withDelay(
-      D.button,
-      withSpring(0, { damping: 14, stiffness: 200, mass: 0.7 })
-    );
+    btnOpacity.value   = withDelay(D.button, withTiming(1, { duration: FADE_DUR }));
+    btnTranslate.value = withDelay(D.button, withSpring(0, { damping: 14, stiffness: 200, mass: 0.7 }));
   }, []);
   const btnStyle = useAnimatedStyle(() => ({
     opacity: btnOpacity.value,
@@ -212,38 +154,38 @@ export default function IntroScreen() {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={BG} />
+      <StatusBar barStyle="dark-content" />
       <SafeAreaView style={styles.safeArea}>
 
         {/* Header */}
         <Animated.View style={[styles.header, headerStyle]}>
-          <Text style={styles.title}>Let's Personalize{"\n"}Your Glowup</Text>
-          <Text style={styles.subtitle}>
-            A few quick questions to design your custom glowup plan
-          </Text>
+          <T style={styles.title}>Let's personalize{"\n"}your glowup</T>
+          <T style={styles.subtitle}>
+            A few quick questions to design your custom plan
+          </T>
         </Animated.View>
 
         {/* Steps */}
         <View style={styles.stepsContainer}>
           <StepRow
-            icon={<MaterialCommunityIcons name="comment-question-outline" size={40} color={ACCENT} />}
-            label="Step 1"
+            icon={<MaterialCommunityIcons name="comment-question-outline" size={ms(28)} color={SAGE} />}
+            label="STEP 1"
             description="Quick questions"
             subtitle="Tell us about your goals & lifestyle"
             delayMs={D.step1}
             isLast={false}
           />
           <StepRow
-            icon={<MaterialCommunityIcons name="face-recognition" size={38} color={ACCENT} />}
-            label="Step 2"
+            icon={<MaterialCommunityIcons name="face-recognition" size={ms(28)} color={SAGE} />}
+            label="STEP 2"
             description="Face analysis"
             subtitle="AI maps your unique facial features"
             delayMs={D.step2}
             isLast={false}
           />
           <StepRow
-            icon={<MaterialCommunityIcons name="auto-fix" size={40} color={ACCENT} />}
-            label="Step 3"
+            icon={<MaterialCommunityIcons name="auto-fix" size={ms(28)} color={SAGE} />}
+            label="STEP 3"
             description="Your custom plan"
             subtitle="A precision plan built just for you"
             delayMs={D.step3}
@@ -251,18 +193,23 @@ export default function IntroScreen() {
           />
         </View>
 
-        {/* Badge */}
+        {/* Trust badge */}
         <Animated.View style={[styles.badgeRow, badgeStyle]}>
-          <Ionicons name="time-outline" size={15} color={ACCENT} style={{ marginRight: 6 }} />
-          <Text style={styles.badgeText}>Takes 60 seconds</Text>
+          <Ionicons name="time-outline" size={ms(14)} color={SAGE} style={{ marginRight: 6 }} />
+          <T style={styles.badgeText}>Takes 60 seconds</T>
         </Animated.View>
 
         {/* CTA */}
         <Animated.View style={[styles.footer, btnStyle]}>
-          <LimeButton
-            label="Let's Go"
+          <Pressable
             onPress={() => router.replace("/(onboarding)/goals")}
-          />
+            style={({ pressed }) => [
+              styles.cta,
+              pressed && { backgroundColor: COLORS.ctaBlackPressed },
+            ]}
+          >
+            <T style={styles.ctaText}>LET'S GO</T>
+          </Pressable>
         </Animated.View>
 
       </SafeAreaView>
@@ -270,104 +217,120 @@ export default function IntroScreen() {
   );
 }
 
-/* ─── styles ───────────────────────────────────────────────── */
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: BG },
-  safeArea:  { flex: 1, paddingHorizontal: 26 },
+const ICON_CHIP = ms(56);
 
-  // header
-  header:   { marginTop: 44, marginBottom: 40 },
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: COLORS.lightBg },
+  safeArea:  { flex: 1, paddingHorizontal: SP[6] },
+
+  header: { marginTop: sh(28), marginBottom: sh(28) },
   title: {
-    color: "#FFFFFF",
-    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
-    fontSize: 30,
-    lineHeight: 38,
+    color: COLORS.lightText,
+    fontFamily: FONT_BOLD,
+    fontSize: ms(28),
+    lineHeight: ms(34),
     letterSpacing: -0.5,
-    marginBottom: 10,
+    marginBottom: sh(8),
   },
   subtitle: {
-    color: COLORS.sub,
-    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
-    fontSize: 15,
-    lineHeight: 22,
+    color: COLORS.lightSub,
+    fontFamily: "Poppins-Regular",
+    fontSize: ms(14),
+    lineHeight: ms(20),
   },
 
-  // steps
   stepsContainer: { flex: 1, justifyContent: "center" },
-  stepRow:        { flexDirection: "row", alignItems: "center" },
-  leftCol:        { width: CIRCLE, alignItems: "center" },
 
-  // circle — shadow lives on the outer Animated.View so it can animate
-  iconCircleShadow: {
-    width: CIRCLE,
-    height: CIRCLE,
-    borderRadius: CIRCLE / 2,
-    shadowColor: ACCENT,
-    shadowOpacity: 0.18,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 0 },
+  stepRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: sw(16),
+    backgroundColor: COLORS.lightCard,
+    borderRadius: RADII.lg,
+    paddingVertical: SP[4],
+    paddingHorizontal: SP[4],
+    ...SOFT_SHADOW,
   },
-  iconCircle: {
-    width: CIRCLE,
-    height: CIRCLE,
-    borderRadius: CIRCLE / 2,
+  iconChip: {
+    width: ICON_CHIP,
+    height: ICON_CHIP,
+    borderRadius: ICON_CHIP / 2,
+    backgroundColor: SAGE_SOFT,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1.5,
-    borderColor: "rgba(180,243,77,0.28)",
+    flexShrink: 0,
   },
 
-  // text
-  stepText: { marginLeft: 20, flex: 1 },
+  stepText: { flex: 1 },
   stepLabel: {
-    color: ACCENT,
-    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
-    fontSize: 12,
-    lineHeight: 16,
-    letterSpacing: 0.6,
-    marginBottom: 3,
+    color: SAGE,
+    fontFamily: FONT_BOLD,
+    fontSize: ms(11),
+    lineHeight: ms(14),
+    letterSpacing: 1.2,
+    marginBottom: sh(3),
   },
   stepDescription: {
-    color: "#FFFFFF",
-    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
-    fontSize: 22,
-    lineHeight: 28,
+    color: COLORS.lightText,
+    fontFamily: FONT_BOLD,
+    fontSize: ms(18),
+    lineHeight: ms(24),
     letterSpacing: -0.2,
-    marginBottom: 4,
+    marginBottom: sh(4),
   },
   stepSubtitle: {
-    color: COLORS.sub,
-    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
-    fontSize: 13,
-    lineHeight: 18,
+    color: COLORS.lightSub,
+    fontFamily: "Poppins-Regular",
+    fontSize: ms(13),
+    lineHeight: ms(18),
   },
 
-  // connector
-  connectorWrap: { alignItems: "center", paddingVertical: 6, gap: 4 },
-  connectorDot:  { width: 3, height: 3, borderRadius: 2, backgroundColor: "rgba(180,243,77,0.45)" },
-  connectorLine: { width: 1.5, height: 28, backgroundColor: "rgba(180,243,77,0.25)", transformOrigin: "top" },
+  // Connector — short vertical line, indented to align with the icon chip
+  connectorAlign: {
+    paddingLeft: SP[4] + ICON_CHIP / 2 - 1, // card padding + half chip - half line
+    paddingVertical: sh(4),
+  },
+  connectorWrap: { alignItems: "flex-start" },
+  connectorLine: {
+    width: 2,
+    height: sh(20),
+    backgroundColor: LIME,
+    opacity: 0.55,
+    transformOrigin: "top",
+  },
 
-  // badge
   badgeRow: {
     flexDirection: "row",
     alignItems: "center",
     alignSelf: "center",
-    backgroundColor: "rgba(180,243,77,0.07)",
-    borderWidth: 1,
-    borderColor: "rgba(180,243,77,0.18)",
-    borderRadius: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 9,
-    marginTop: 8,
-    marginBottom: 32,
+    backgroundColor: SAGE_SOFT,
+    borderRadius: 999,
+    paddingHorizontal: SP[4],
+    paddingVertical: sh(8),
+    marginTop: SP[3],
+    marginBottom: SP[5],
   },
   badgeText: {
-    color: ACCENT,
-    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
-    fontSize: 13,
-    lineHeight: 18,
+    color: SAGE,
+    fontFamily: FONT_BOLD,
+    fontSize: ms(12),
+    lineHeight: ms(16),
+    letterSpacing: 0.4,
   },
 
-  // footer
-  footer: { paddingBottom: 24 },
+  footer: { paddingBottom: sh(8) },
+  cta: {
+    minHeight: sh(54),
+    borderRadius: 999,
+    backgroundColor: COLORS.ctaBlack,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: sh(14),
+  },
+  ctaText: {
+    fontFamily: FONT_BOLD,
+    fontSize: ms(14),
+    color: "#FFFFFF",
+    letterSpacing: 1.0,
+  },
 });

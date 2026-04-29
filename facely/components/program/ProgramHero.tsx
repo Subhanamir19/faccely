@@ -148,7 +148,7 @@ export default function ProgramHero({
       {/* ── Bust portrait ──────────────────────────────────────── */}
       <Animated.View style={[s.bust, bustStyle]}>
         <Image
-          source={require("../../assets/hero/mascot-bust.png")}
+          source={require("../../assets/sigmamax-logo-for-splash screen.png")}
           style={s.bustImg}
           resizeMode="contain"
         />

@@ -38,7 +38,7 @@ export default function GenderScreen() {
       stepKey="gender"
       title="What's your gender?"
       subtitle="This helps us provide more accurate analysis results"
-      heroImage={require("@/assets/onbaording-images/gender.png")}
+      centered
       onPrimary={handleNext}
       primaryDisabled={!selected}
     >

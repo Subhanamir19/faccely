@@ -1,14 +1,16 @@
 // app/(onboarding)/splash.tsx
-// First screen — top-half video bleed + dark rounded shelf with copy & CTA.
+// First impression — cinematic top-half video bleeds into a clean white shelf
+// that holds the headline and primary CTA. The contrast (dark video → light
+// surface) does the visual heavy-lifting; copy stays in the bold, restrained
+// typography of the rest of the app.
 
 import React, { useEffect } from "react";
 import {
   View,
-  Text,
   StyleSheet,
   StatusBar,
-  Dimensions,
-  Platform,
+  Pressable,
+  useWindowDimensions,
 } from "react-native";
 import { Video, ResizeMode } from "expo-av";
 import { LinearGradient } from "expo-linear-gradient";
@@ -22,35 +24,25 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 
-import LimeButton from "@/components/ui/LimeButton";
-import { COLORS, RADII } from "@/lib/tokens";
+import T from "@/components/ui/T";
+import { COLORS, RADII, SP } from "@/lib/tokens";
+import { ms, sh } from "@/lib/responsive";
 
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
+const FONT_BOLD = "ProximaNova-Bold";
+const SAGE = "#3F7A2A";
+
 const VIDEO = require("../../assets/first screen onboarding.mp4");
 
-const FONT: string = Platform.select({
-  ios: "Poppins-SemiBold",
-  android: "Poppins-SemiBold",
-  default: "Poppins-SemiBold",
-}) as string;
-
-const { height: SH } = Dimensions.get("window");
-// Video zone = top 52 % of screen
-const VIDEO_H = Math.round(SH * 0.52);
-
-// ---------------------------------------------------------------------------
-// Screen
-// ---------------------------------------------------------------------------
 export default function SplashScreen() {
   const insets = useSafeAreaInsets();
+  const { height: winH } = useWindowDimensions();
 
-  // Shelf slides up + fades in
+  // Video occupies top ~52 % so the shelf has room for headline + CTA.
+  const videoHeight = Math.round(winH * 0.52);
+
+  // Shelf slides up + fades in, then copy cascades.
   const shelfY       = useSharedValue(40);
   const shelfOpacity = useSharedValue(0);
-
-  // Copy items stagger inside the shelf
   const headOpacity  = useSharedValue(0);
   const headY        = useSharedValue(16);
   const subOpacity   = useSharedValue(0);
@@ -60,11 +52,9 @@ export default function SplashScreen() {
   useEffect(() => {
     const ease = Easing.out(Easing.cubic);
 
-    // Shelf arrives first
-    shelfY.value       = withTiming(0,  { duration: 520, easing: ease });
-    shelfOpacity.value = withTiming(1,  { duration: 420, easing: ease });
+    shelfY.value       = withTiming(0, { duration: 520, easing: ease });
+    shelfOpacity.value = withTiming(1, { duration: 420, easing: ease });
 
-    // Then text cascades in
     headOpacity.value  = withDelay(260, withTiming(1, { duration: 380, easing: ease }));
     headY.value        = withDelay(260, withTiming(0, { duration: 380, easing: ease }));
 
@@ -78,17 +68,12 @@ export default function SplashScreen() {
     opacity: shelfOpacity.value,
     transform: [{ translateY: shelfY.value }],
   }));
-
-  const headStyle = useAnimatedStyle(() => ({
+  const headStyle  = useAnimatedStyle(() => ({
     opacity: headOpacity.value,
     transform: [{ translateY: headY.value }],
   }));
-
-  const subStyle = useAnimatedStyle(() => ({
-    opacity: subOpacity.value,
-  }));
-
-  const btnStyle = useAnimatedStyle(() => ({
+  const subStyle   = useAnimatedStyle(() => ({ opacity: subOpacity.value }));
+  const btnStyle   = useAnimatedStyle(() => ({
     opacity: btnOpacity.value,
     transform: [{ translateY: btnY.value }],
   }));
@@ -97,8 +82,8 @@ export default function SplashScreen() {
     <View style={styles.root}>
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
-      {/* ── Video zone (top half, edge-to-edge) ─────────────────── */}
-      <View style={[styles.videoZone, { height: VIDEO_H + insets.top }]}>
+      {/* ── Video zone ───────────────────────────────────────────── */}
+      <View style={[styles.videoZone, { height: videoHeight + insets.top }]}>
         <Video
           source={VIDEO}
           style={StyleSheet.absoluteFill}
@@ -107,20 +92,20 @@ export default function SplashScreen() {
           isMuted
           shouldPlay
         />
-        {/* Gradient feathers the bottom edge into the shelf */}
+        {/* Feather the bottom edge into the white shelf for a clean seam. */}
         <LinearGradient
-          colors={["transparent", "rgba(0,0,0,0.18)", "#000"]}
-          locations={[0.55, 0.8, 1]}
+          colors={["transparent", "rgba(255,255,255,0.4)", COLORS.lightBg]}
+          locations={[0.55, 0.85, 1]}
           style={StyleSheet.absoluteFill}
         />
       </View>
 
-      {/* ── Dark shelf (overlaps the video bottom by ~OVERLAP) ──── */}
+      {/* ── Light shelf — overlaps the video edge with a rounded top ── */}
       <Animated.View
         style={[
           styles.shelf,
           shelfStyle,
-          { paddingBottom: Math.max(insets.bottom, 24) },
+          { paddingBottom: Math.max(insets.bottom, sh(24)) },
         ]}
       >
         {/* Drag pill */}
@@ -131,82 +116,96 @@ export default function SplashScreen() {
           {"There's a face\nunder your face."}
         </Animated.Text>
 
-        {/* Sub-copy */}
+        {/* Sub-copy — sage accents the brand promise without shouting */}
         <Animated.Text style={[styles.sub, subStyle]}>
-          SigmaMax helps you unlock it.
+          <T style={styles.subBrand}>SigmaMax</T> helps you unlock it.
         </Animated.Text>
 
         {/* CTA */}
         <Animated.View style={[styles.btnWrap, btnStyle]}>
-          <LimeButton
-            label="Continue"
+          <Pressable
             onPress={() => router.replace("/(onboarding)/warmup")}
-          />
+            style={({ pressed }) => [
+              styles.cta,
+              pressed && { backgroundColor: COLORS.ctaBlackPressed },
+            ]}
+          >
+            <T style={styles.ctaText}>CONTINUE</T>
+          </Pressable>
         </Animated.View>
       </Animated.View>
     </View>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Styles
-// ---------------------------------------------------------------------------
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: "#000",
+    backgroundColor: COLORS.lightBg,
   },
 
-  // Video fills top half, edge-to-edge including status bar
   videoZone: {
     width: "100%",
     overflow: "hidden",
   },
 
-  // Shelf: dark card that slides up from below, overlapping the video bottom
   shelf: {
     flex: 1,
-    backgroundColor: "#000",
+    backgroundColor: COLORS.lightBg,
     borderTopLeftRadius: RADII.xl,
     borderTopRightRadius: RADII.xl,
-    marginTop: -RADII.xl,            // pulls up to overlap video edge
-    paddingTop: 16,
-    paddingHorizontal: 28,
-    gap: 0,
-    // Thin lime hairline along the top curve
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: "rgba(180,243,77,0.20)",
+    marginTop: -RADII.xl, // overlap video edge
+    paddingTop: SP[3],
+    paddingHorizontal: SP[6],
   },
 
-  // Subtle drag-handle pill at the top of the shelf
+  // Subtle handle at the top of the shelf
   pill: {
     alignSelf: "center",
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: "rgba(255,255,255,0.14)",
-    marginBottom: 28,
+    width: ms(36),
+    height: ms(4),
+    borderRadius: ms(2),
+    backgroundColor: COLORS.lightHairline,
+    marginBottom: SP[5],
   },
 
   headline: {
-    fontFamily: FONT,
-    fontSize: 38,
-    lineHeight: 46,
-    letterSpacing: -1.1,
-    color: "#FFFFFF",
-    marginBottom: 12,
+    fontFamily: FONT_BOLD,
+    fontSize: ms(36),
+    lineHeight: ms(42),
+    letterSpacing: -1.0,
+    color: COLORS.lightText,
+    marginBottom: SP[3],
   },
 
   sub: {
-    fontFamily: FONT,
-    fontSize: 16,
-    lineHeight: 24,
-    letterSpacing: -0.1,
-    color: COLORS.accent,
-    marginBottom: 36,
+    fontFamily: "Poppins-Regular",
+    fontSize: ms(15),
+    lineHeight: ms(22),
+    color: COLORS.lightSub,
+    marginBottom: SP[6],
+  },
+  subBrand: {
+    fontFamily: FONT_BOLD,
+    color: SAGE,
   },
 
   btnWrap: {
     width: "100%",
+    marginTop: "auto",
+  },
+  cta: {
+    minHeight: sh(54),
+    borderRadius: 999,
+    backgroundColor: COLORS.ctaBlack,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: sh(14),
+  },
+  ctaText: {
+    fontFamily: FONT_BOLD,
+    fontSize: ms(14),
+    color: "#FFFFFF",
+    letterSpacing: 1.0,
   },
 });

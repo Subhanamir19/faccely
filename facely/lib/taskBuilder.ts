@@ -3,6 +3,7 @@
 
 import {
   selectDailyTasks,
+  getExerciseById,
   type SelectionInput,
   type TaskPick,
   type ScoreField,
@@ -14,6 +15,26 @@ export type RoutineTaskPick = TaskPick & {
   overloadTier: number;   // 0 = base, 1 = week 2, 2 = week 4
   overloadLabel: string;  // "Base" | "Week 2" | "Week 4"
 };
+
+/**
+ * Build a RoutineTaskPick from a catalog exercise id — used when the user
+ * manually adds an exercise via the Edit sheet (no scoring/algorithm path).
+ * Returns null if the id is not in the catalog.
+ */
+export function makeRoutineTaskFromId(id: string): RoutineTaskPick | null {
+  const e = getExerciseById(id);
+  if (!e) return null;
+  return {
+    exerciseId: e.id,
+    name: e.name,
+    reason: "Added by you",
+    targets: e.targets,
+    intensity: e.intensity,
+    protocolType: "facial_exercise",
+    overloadTier: 0,
+    overloadLabel: "Base",
+  };
+}
 
 export type BuildInput = SelectionInput & {
   skinScore?: number | null;

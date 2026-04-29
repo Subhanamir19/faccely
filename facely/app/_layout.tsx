@@ -36,6 +36,7 @@ export default function RootLayout() {
     "Poppins-Regular":  Poppins_400Regular,
     "Poppins-Medium":   Poppins_500Medium,
     "Poppins-SemiBold": Poppins_600SemiBold,
+    "ProximaNova-Bold": require("../assets/fonts/ProximaNova-Bold.otf"),
     ...MaterialCommunityIcons.font,
     ...Ionicons.font,
   });

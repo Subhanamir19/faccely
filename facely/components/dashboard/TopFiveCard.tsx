@@ -14,46 +14,45 @@ import Text from "@/components/ui/T";
 import { ms, sw, sh } from "@/lib/responsive";
 import { MetricDetailCard, type DetailMetric } from "@/components/analysis/MetricDetailCard";
 import type { TopFiveResult, SubMetricRow } from "@/lib/submetrics";
+import { COLORS } from "@/lib/tokens";
 
 // ---------------------------------------------------------------------------
-// Visual tokens — warm cream sheet with colorful numbered rows
+// Visual tokens — light surface to match the redesigned dashboard
 // ---------------------------------------------------------------------------
 
 const C = {
-  // Sheet
-  sheetBg:        "#FFF8E7",
-  sheetDepth:     "#C9B98A",
-  sheetBorder:    "rgba(28,36,24,0.06)",
+  sheetBg:        COLORS.lightCard,
+  sheetDepth:     "transparent",
+  sheetBorder:    "transparent",
+  ink:            COLORS.lightText,
+  inkMuted:       COLORS.lightSub,
+  avatarBg:       COLORS.iconTileLavender,
+  avatarDepth:    COLORS.lightBorder,
 
-  // Text
-  ink:            "#1C2418",
-  inkMuted:       "#8A8576",
-  avatarBg:       "#D9D9D9",
-  avatarDepth:    "#BEBEBE",
+  // Rank badge — neutral light chip
+  countBg:        COLORS.lightSurfaceAlt,
+  countDepth:     "transparent",
 
-  // Count badge (top-right, red)
-  countBg:        "#F04A4A",
-  countDepth:     "#C12D2D",
+  // Title icon chip — black on white
+  titleChipRed:   COLORS.ctaBlack,
+  titleChipBlue:  COLORS.ctaBlack,
+  titleChipWhite: COLORS.lightBg,
 
-  // Title chip (target/dart)
-  titleChipRed:   "#F04A4A",
-  titleChipBlue:  "#3BA7F5",
-  titleChipWhite: "#FFFFFF",
-
-  // Locked-state colors (dark fallback)
-  lockedBg:       "#141414",
-  lockedBrd:      "#222222",
-  lockedIcon:     "#808080",
-  lockedText:     "#FFFFFF",
+  // Locked / empty
+  lockedBg:       COLORS.lightCard,
+  lockedBrd:      COLORS.lightBorder,
+  lockedIcon:     COLORS.lightSub,
+  lockedText:     COLORS.lightText,
 } as const;
 
-// Per-row palette (1..5)
+// Numbered row palette — all collapse to a single neutral so the row reads
+// as "rank N" not as a colour-coded category.
 const ROW_PALETTE = [
-  { border: "#F45B5B", depth: "#C83B3B", badge: "#F45B5B" }, // 1 red
-  { border: "#F5B93B", depth: "#C98C1C", badge: "#F5B93B" }, // 2 amber
-  { border: "#B569D6", depth: "#8943AB", badge: "#B569D6" }, // 3 purple
-  { border: "#4BA8E8", depth: "#2A7FB8", badge: "#4BA8E8" }, // 4 blue
-  { border: "#6CC24A", depth: "#4A9A2C", badge: "#6CC24A" }, // 5 green
+  { border: COLORS.lightBorder, depth: "transparent", badge: COLORS.ctaBlack },
+  { border: COLORS.lightBorder, depth: "transparent", badge: COLORS.ctaBlack },
+  { border: COLORS.lightBorder, depth: "transparent", badge: COLORS.ctaBlack },
+  { border: COLORS.lightBorder, depth: "transparent", badge: COLORS.ctaBlack },
+  { border: COLORS.lightBorder, depth: "transparent", badge: COLORS.ctaBlack },
 ] as const;
 
 const CARD_RADIUS   = ms(22);
@@ -90,11 +89,6 @@ function Row({
         accessibilityRole="button"
         accessibilityLabel={`${item.label}, ${item.verdict}`}
       >
-        {/* Numbered circle badge — left */}
-        <View style={[rowStyles.numBadge, { backgroundColor: palette.badge }]}>
-          <Text style={rowStyles.numText}>{index + 1}</Text>
-        </View>
-
         {/* Icon / avatar */}
         <View style={rowStyles.iconBox}>
           {item.icon ? (
@@ -106,14 +100,14 @@ function Row({
 
         {/* Label + meta */}
         <View style={rowStyles.labelBlock}>
-          <Text style={rowStyles.metricLabel} numberOfLines={1}>{item.label}</Text>
+          <Text style={rowStyles.metricLabel} numberOfLines={1}>{item.label.toUpperCase()}</Text>
           <Text style={rowStyles.metaText} numberOfLines={1}>
             {item.category} · {item.verdict}
           </Text>
         </View>
 
-        {/* Chevron — matches row accent */}
-        <ChevronRight size={ms(18)} color={palette.border} strokeWidth={2.6} />
+        {/* Chevron — quiet affordance */}
+        <ChevronRight size={ms(18)} color={C.inkMuted} strokeWidth={2.4} />
       </Pressable>
     </Animated.View>
   );
@@ -138,7 +132,7 @@ export function TopFiveCard({ result }: { result: TopFiveResult }) {
       >
         <View style={styles.lockedRow}>
           <View style={styles.lockedIconBadge}>
-            <Sparkles size={ms(14)} color={C.lockedIcon} strokeWidth={2.4} />
+            <Sparkles size={ms(16)} color={C.ink} strokeWidth={2.4} />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.lockedTitle}>Top 5 Insights</Text>
@@ -157,8 +151,8 @@ export function TopFiveCard({ result }: { result: TopFiveResult }) {
           accessibilityRole="button"
           accessibilityLabel="Run advanced analysis"
         >
-          <Text style={styles.lockedCtaText}>Run Advanced Analysis</Text>
-          <ChevronRight size={ms(14)} color={C.lockedText} strokeWidth={2.4} />
+          <Text style={styles.lockedCtaText}>RUN ADVANCED ANALYSIS</Text>
+          <ChevronRight size={ms(14)} color="#FFFFFF" strokeWidth={2.4} />
         </Pressable>
       </Animated.View>
     );
@@ -244,30 +238,27 @@ export function TopFiveCard({ result }: { result: TopFiveResult }) {
 // Styles
 // ---------------------------------------------------------------------------
 
-const FONT_SEMI = Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" });
-const FONT_MED  = Platform.select({ ios: "Poppins-Medium",   android: "Poppins-Medium",   default: "Poppins-Medium" });
-const FONT_REG  = Platform.select({ ios: "Poppins-Regular",  android: "Poppins-Regular",  default: "Poppins-Regular" });
+const FONT_SEMI = "ProximaNova-Bold";
+const FONT_MED  = "ProximaNova-Bold";
+const FONT_REG  = "ProximaNova-Bold";
 
 const styles = StyleSheet.create({
   sheetDepth: {
-    borderRadius: ms(24),
-    backgroundColor: C.sheetDepth,
-    paddingBottom: 5,
+    borderRadius: ms(18),
+    backgroundColor: C.sheetBg,
     marginTop: sh(8),
-    shadowColor: "#000",
-    shadowOpacity: 0.18,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 6,
+    shadowColor: "#000000",
+    shadowOpacity: 0.08,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 4,
   },
   sheetFace: {
-    borderRadius: ms(24),
+    borderRadius: ms(18),
     backgroundColor: C.sheetBg,
-    borderWidth: 1,
-    borderColor: C.sheetBorder,
-    paddingTop: sh(16),
-    paddingBottom: sh(16),
-    paddingHorizontal: sw(14),
+    paddingTop: sh(18),
+    paddingBottom: sh(14),
+    paddingHorizontal: sw(16),
     overflow: "hidden",
   },
 
@@ -287,167 +278,152 @@ const styles = StyleSheet.create({
     gap: sw(8),
   },
   title: {
-    fontSize: ms(18, 0.3),
+    fontSize: ms(20, 0.3),
     fontFamily: FONT_SEMI,
     color: C.ink,
-    letterSpacing: -0.3,
+    letterSpacing: -0.4,
   },
   subtitle: {
-    fontSize: ms(12, 0.3),
+    fontSize: ms(13, 0.3),
     fontFamily: FONT_MED,
     color: C.inkMuted,
     marginTop: sh(2),
   },
 
-  // Layered target chip next to title
+  // Title icon chip — solid black circle with white glyph
   titleChip: {
-    width: ms(20),
-    height: ms(20),
+    width: ms(22),
+    height: ms(22),
+    borderRadius: ms(11),
+    backgroundColor: C.titleChipRed,
     alignItems: "center",
     justifyContent: "center",
   },
-  titleChipOuter: {
-    position: "absolute",
-    width: ms(20),
-    height: ms(20),
-    borderRadius: ms(10),
-    backgroundColor: C.titleChipWhite,
-    borderWidth: 2,
-    borderColor: C.titleChipRed,
-  },
-  titleChipMid: {
-    position: "absolute",
-    width: ms(13),
-    height: ms(13),
-    borderRadius: ms(7),
-    backgroundColor: C.titleChipRed,
-  },
+  titleChipOuter: { display: "none" },
+  titleChipMid:   { display: "none" },
   titleChipInner: {
-    width: ms(8),
-    height: ms(8),
-    borderRadius: ms(4),
+    width: ms(22),
+    height: ms(22),
     alignItems: "center",
     justifyContent: "center",
   },
 
-  // Red count badge
+  // Count badge — neutral chip
   countDepth: {
-    backgroundColor: C.countDepth,
+    backgroundColor: "transparent",
     borderRadius: ms(999),
-    paddingBottom: 3,
   },
   countFace: {
     backgroundColor: C.countBg,
     borderRadius: ms(999),
-    width: ms(30),
-    height: ms(30),
+    width: ms(32),
+    height: ms(32),
     alignItems: "center",
     justifyContent: "center",
   },
   countText: {
     fontSize: ms(15, 0.3),
     fontFamily: FONT_SEMI,
-    color: "#FFFFFF",
+    color: C.ink,
     letterSpacing: -0.3,
   },
 
   rowList: { gap: sh(10) },
 
-  // ── Locked / empty state (kept dark as before) ──
+  // ── Locked / empty state — light theme ──
   lockedZone: {
-    borderRadius: ms(20),
-    borderWidth: 1,
+    borderRadius: ms(18),
     backgroundColor: C.lockedBg,
-    borderColor: C.lockedBrd,
-    paddingTop: sh(14),
+    paddingTop: sh(16),
     paddingBottom: sh(16),
-    paddingHorizontal: sw(12),
+    paddingHorizontal: sw(16),
     marginTop: sh(8),
+    shadowColor: "#000000",
+    shadowOpacity: 0.08,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 4,
   },
   lockedRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: sw(10),
-    marginBottom: sh(12),
+    marginBottom: sh(14),
   },
   lockedIconBadge: {
-    width: ms(28),
-    height: ms(28),
+    width: ms(32),
+    height: ms(32),
     borderRadius: ms(8),
-    borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#1E1E1E",
-    borderColor: "#2C2C2C",
+    backgroundColor: COLORS.iconTileLavender,
   },
   lockedTitle: {
-    fontSize: ms(15, 0.3),
+    fontSize: ms(16, 0.3),
     fontFamily: FONT_SEMI,
     color: C.lockedText,
-    letterSpacing: -0.1,
+    letterSpacing: -0.2,
   },
   lockedSubtitle: {
-    fontSize: ms(11.5, 0.3),
+    fontSize: ms(12, 0.3),
     fontFamily: FONT_REG,
     color: C.lockedIcon,
-    marginTop: sh(1),
+    marginTop: sh(2),
   },
   lockedCta: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: sw(6),
-    backgroundColor: "#1E1E1E",
-    borderRadius: ms(12),
-    borderWidth: 1,
-    borderColor: "#2C2C2C",
-    paddingVertical: sh(10),
-    paddingHorizontal: sw(14),
+    backgroundColor: COLORS.ctaBlack,
+    borderRadius: ms(999),
+    paddingVertical: sh(12),
+    paddingHorizontal: sw(16),
   },
   lockedCtaText: {
     fontSize: ms(13, 0.3),
     fontFamily: FONT_SEMI,
-    color: C.lockedText,
-    letterSpacing: -0.1,
+    color: "#FFFFFF",
+    letterSpacing: 0.4,
   },
 });
 
 const rowStyles = StyleSheet.create({
   cardDepth: {
     borderRadius: CARD_RADIUS,
-    paddingBottom: 4,
   },
   cardFace: {
     flexDirection: "row",
     alignItems: "center",
-    gap: sw(10),
+    gap: sw(12),
     backgroundColor: C.sheetBg,
     borderRadius: CARD_RADIUS,
-    borderWidth: 2,
-    paddingLeft: sw(8),
-    paddingRight: sw(12),
-    paddingVertical: sh(9),
+    borderWidth: 0,
+    paddingLeft: sw(4),
+    paddingRight: sw(8),
+    paddingVertical: sh(6),
     overflow: "hidden",
   },
   numBadge: {
-    width: ms(26),
-    height: ms(26),
+    width: ms(24),
+    height: ms(24),
     borderRadius: ms(999),
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
+    backgroundColor: COLORS.lightSurfaceAlt,
   },
   numText: {
-    fontSize: ms(13, 0.3),
+    fontSize: ms(12, 0.3),
     fontFamily: FONT_SEMI,
-    color: "#FFFFFF",
+    color: C.ink,
     letterSpacing: -0.2,
-    lineHeight: ms(15),
+    lineHeight: ms(14),
   },
   iconBox: {
     width: ICON_BOX_SIZE,
     height: ICON_BOX_SIZE,
-    borderRadius: ICON_RADIUS,
+    borderRadius: ms(12),
     backgroundColor: C.avatarBg,
     alignItems: "center",
     justifyContent: "center",
@@ -457,7 +433,7 @@ const rowStyles = StyleSheet.create({
   metricIcon: {
     width: ICON_BOX_SIZE,
     height: ICON_BOX_SIZE,
-    borderRadius: ICON_RADIUS,
+    borderRadius: ms(12),
   },
   metricEmoji: {
     fontSize: ms(18),
@@ -473,7 +449,7 @@ const rowStyles = StyleSheet.create({
     fontFamily: FONT_SEMI,
     color: C.ink,
     lineHeight: ms(17),
-    letterSpacing: -0.1,
+    letterSpacing: 0.1,
   },
   metaText: {
     fontSize: ms(11, 0.3),

@@ -12,7 +12,6 @@ import {
   Image,
   ImageSourcePropType,
 } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import {
@@ -32,9 +31,21 @@ import Animated, {
 } from "react-native-reanimated";
 
 import T from "@/components/ui/T";
-import LimeButton from "@/components/ui/LimeButton";
 import { COLORS, SP, RADII, getProgressForStep } from "@/lib/tokens";
+import { ms, sh, sw } from "@/lib/responsive";
 import { hapticLight, hapticSuccess } from "@/lib/haptics";
+
+const FONT_BOLD = "ProximaNova-Bold";
+const LIME = "#B4F34D";        // bright fill — progress bar
+const SAGE = "#3F7A2A";        // dark readable — text on light/lime-soft surfaces
+const SAGE_SOFT = "#ECFCCB";   // pale lime — eyebrow pill, feature-1 chip bg
+const SOFT_SHADOW = {
+  shadowColor: "#000000",
+  shadowOpacity: 0.06,
+  shadowRadius: ms(20),
+  shadowOffset: { width: 0, height: ms(8) },
+  elevation: 4,
+} as const;
 
 const STEP_KEY = "features";
 
@@ -45,16 +56,13 @@ type Feature = {
   title: string;
   desc: string;
   image: ImageSourcePropType;
-  accent: string;
-  gradFrom: string;     // gradient start (top-left), tinted accent
-  gradTo: string;       // gradient end (bottom-right), near-black
-  border: string;
-  badgeBg: string;
-  tilt: string;         // phone rotation
-  chipLabel: string;    // tiny all-caps label
-  chipHeadline?: string;     // big payload
-  chipHeadlineSub?: string;  // small meta under headline
-  chipRows?: ChipRow[];      // checklist rows (alternative to headline)
+  accent: string;          // accent hue used for icon, chip border & label
+  accentSoft: string;      // very soft tint, used for icon-badge bg
+  tilt: string;            // phone rotation
+  chipLabel: string;       // tiny all-caps label
+  chipHeadline?: string;   // big payload
+  chipHeadlineSub?: string;
+  chipRows?: ChipRow[];
 };
 
 const FEATURES: Feature[] = [
@@ -63,11 +71,8 @@ const FEATURES: Feature[] = [
     title: "Get an accurate score",
     desc: "A real rating of your looks. No flattery, no guesswork.",
     image: require("@/assets/onbaording-images/scoring.png"),
-    accent: COLORS.accent,
-    gradFrom: "rgba(180,243,77,0.22)",
-    gradTo: "rgba(180,243,77,0.02)",
-    border: "rgba(180,243,77,0.24)",
-    badgeBg: "rgba(180,243,77,0.18)",
+    accent: SAGE,
+    accentSoft: SAGE_SOFT,
     tilt: "-5deg",
     chipLabel: "YOUR SCORE",
     chipHeadline: "77 / 100",
@@ -78,11 +83,8 @@ const FEATURES: Feature[] = [
     title: "Know your weakest points",
     desc: "See exactly what's holding your score back.",
     image: require("@/assets/onbaording-images/weakest-points.png"),
-    accent: "#F5A524",
-    gradFrom: "rgba(245,165,36,0.22)",
-    gradTo: "rgba(245,165,36,0.02)",
-    border: "rgba(245,165,36,0.24)",
-    badgeBg: "rgba(245,165,36,0.18)",
+    accent: "#B5891A",
+    accentSoft: "#FBE9C2",
     tilt: "4deg",
     chipLabel: "NEEDS WORK",
     chipRows: [
@@ -96,11 +98,8 @@ const FEATURES: Feature[] = [
     title: "Get a daily routine",
     desc: "Simple habits, built around your weak points.",
     image: require("@/assets/onbaording-images/routine.png"),
-    accent: "#60A5FA",
-    gradFrom: "rgba(96,165,250,0.22)",
-    gradTo: "rgba(96,165,250,0.02)",
-    border: "rgba(96,165,250,0.24)",
-    badgeBg: "rgba(96,165,250,0.20)",
+    accent: "#2563EB",
+    accentSoft: "#E0EAFF",
     tilt: "-5deg",
     chipLabel: "TODAY'S PLAN",
     chipRows: [
@@ -127,7 +126,7 @@ export default function FeaturesScreen() {
 
   return (
     <View style={styles.screen}>
-      <StatusBar barStyle="light-content" />
+      <StatusBar barStyle="dark-content" />
 
       <View style={[styles.topRow, { paddingTop: insets.top + SP[2] }]}>
         <Pressable
@@ -135,9 +134,12 @@ export default function FeaturesScreen() {
           accessibilityRole="button"
           accessibilityLabel="Go back"
           hitSlop={12}
-          style={styles.backBtn}
+          style={({ pressed }) => [
+            styles.backBtn,
+            pressed && { opacity: 0.7 },
+          ]}
         >
-          <ChevronLeft size={20} color={COLORS.text} strokeWidth={2.5} />
+          <ChevronLeft size={ms(20)} color={COLORS.lightText} strokeWidth={2.5} />
         </Pressable>
         <ProgressBar progress={progress} />
       </View>
@@ -145,23 +147,21 @@ export default function FeaturesScreen() {
       <ScrollView
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingBottom: insets.bottom + 120 },
+          { paddingBottom: insets.bottom + sh(120) },
         ]}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.pillWrap}>
           <View style={styles.pill}>
-            <T variant="smallSemiBold" color="accent">
-              Here's the plan
-            </T>
+            <T style={styles.pillText}>HERE'S THE PLAN</T>
           </View>
         </View>
 
         <T style={styles.headline}>
-          {"You don't just get a\nscore, you get a map ⚡"}
+          {"You don't just get a\nscore, you get a map"}
         </T>
 
-        <T variant="body" color="sub" style={styles.subhead}>
+        <T style={styles.subhead}>
           Three things the app does for you.
         </T>
 
@@ -171,13 +171,21 @@ export default function FeaturesScreen() {
           ))}
         </View>
 
-        <T variant="caption" color="sub" style={styles.closingLine}>
+        <T style={styles.closingLine}>
           Everything adapts as your score improves.
         </T>
       </ScrollView>
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + SP[3] }]}>
-        <LimeButton label="Continue" onPress={handleContinue} />
+        <Pressable
+          onPress={handleContinue}
+          style={({ pressed }) => [
+            styles.cta,
+            pressed && { backgroundColor: COLORS.ctaBlackPressed },
+          ]}
+        >
+          <T style={styles.ctaText}>CONTINUE</T>
+        </Pressable>
       </View>
     </View>
   );
@@ -188,15 +196,8 @@ function FeatureCard({ feature, index }: { feature: Feature; index: number }) {
   return (
     <Animated.View
       entering={FadeInDown.duration(420).delay(120 + index * 90)}
-      style={[styles.card, { borderColor: feature.border }]}
+      style={styles.card}
     >
-      <LinearGradient
-        colors={[feature.gradFrom, feature.gradTo]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={StyleSheet.absoluteFill}
-      />
-
       <View style={styles.cardTop}>
         <View style={[styles.phoneWrap, { transform: [{ rotate: feature.tilt }] }]}>
           <Image
@@ -210,16 +211,12 @@ function FeatureCard({ feature, index }: { feature: Feature; index: number }) {
       </View>
 
       <View style={styles.cardFooter}>
-        <View style={[styles.iconBadge, { backgroundColor: feature.badgeBg }]}>
-          <Icon size={22} color={feature.accent} strokeWidth={2.2} />
+        <View style={[styles.iconBadge, { backgroundColor: feature.accentSoft }]}>
+          <Icon size={ms(22)} color={feature.accent} strokeWidth={2.2} />
         </View>
         <View style={styles.cardText}>
-          <T variant="h4" color="text" style={styles.cardTitle}>
-            {feature.title}
-          </T>
-          <T variant="caption" color="sub">
-            {feature.desc}
-          </T>
+          <T style={styles.cardTitle}>{feature.title}</T>
+          <T style={styles.cardDesc}>{feature.desc}</T>
         </View>
       </View>
     </Animated.View>
@@ -228,9 +225,9 @@ function FeatureCard({ feature, index }: { feature: Feature; index: number }) {
 
 function ResultChip({ feature }: { feature: Feature }) {
   return (
-    <View style={[styles.chip, { borderColor: feature.border }]}>
+    <View style={[styles.chip, { backgroundColor: feature.accentSoft }]}>
       <View style={styles.chipLabelRow}>
-        <Sparkles size={10} color={feature.accent} strokeWidth={2.5} />
+        <Sparkles size={ms(10)} color={feature.accent} strokeWidth={2.5} />
         <T style={[styles.chipLabel, { color: feature.accent }]}>
           {feature.chipLabel}
         </T>
@@ -253,7 +250,7 @@ function ResultChip({ feature }: { feature: Feature }) {
               <T
                 style={[
                   styles.chipRowText,
-                  r.dot === "hollow" && { color: COLORS.sub },
+                  r.dot === "hollow" && { color: COLORS.lightSub },
                 ]}
                 numberOfLines={1}
               >
@@ -277,7 +274,7 @@ function Dot({ variant, color }: { variant: ChipRow["dot"]; color: string }) {
           height: 10,
           borderRadius: 5,
           borderWidth: 1.5,
-          borderColor: COLORS.sub,
+          borderColor: COLORS.lightSub,
         }}
       />
     );
@@ -310,10 +307,8 @@ function ProgressBar({ progress }: { progress: number }) {
   );
 }
 
-const BACK_SIZE = 40;
-
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: COLORS.bgTop },
+  screen: { flex: 1, backgroundColor: COLORS.lightBg },
 
   topRow: {
     flexDirection: "row",
@@ -323,26 +318,24 @@ const styles = StyleSheet.create({
     paddingBottom: SP[3],
   },
   backBtn: {
-    width: BACK_SIZE,
-    height: BACK_SIZE,
-    borderRadius: BACK_SIZE / 2,
-    backgroundColor: COLORS.whiteGlass,
-    borderWidth: 1,
-    borderColor: COLORS.cardBorder,
+    width: ms(40),
+    height: ms(40),
+    borderRadius: ms(20),
+    backgroundColor: COLORS.lightSurfaceAlt,
     alignItems: "center",
     justifyContent: "center",
   },
   progressTrack: {
     flex: 1,
-    height: 6,
-    borderRadius: RADII.circle,
-    backgroundColor: COLORS.track,
+    height: sh(6),
+    borderRadius: 999,
+    backgroundColor: COLORS.lightHairline,
     overflow: "hidden",
   },
   progressFill: {
     height: "100%",
-    backgroundColor: COLORS.text,
-    borderRadius: RADII.circle,
+    backgroundColor: LIME,
+    borderRadius: 999,
   },
 
   scrollContent: {
@@ -354,36 +347,45 @@ const styles = StyleSheet.create({
   pillWrap: { alignItems: "center", marginBottom: SP[4] },
   pill: {
     paddingHorizontal: SP[4],
-    paddingVertical: SP[2],
-    borderRadius: RADII.circle,
-    backgroundColor: COLORS.accentGlow,
-    borderWidth: 1,
-    borderColor: COLORS.accentBorder,
+    paddingVertical: sh(8),
+    borderRadius: 999,
+    backgroundColor: SAGE_SOFT,
+  },
+  pillText: {
+    fontFamily: FONT_BOLD,
+    fontSize: ms(11),
+    color: SAGE,
+    letterSpacing: 1.2,
   },
 
   headline: {
     textAlign: "center",
-    color: COLORS.text,
-    fontFamily: "Poppins-SemiBold",
-    fontSize: 32,
-    lineHeight: 38,
+    color: COLORS.lightText,
+    fontFamily: FONT_BOLD,
+    fontSize: ms(28),
+    lineHeight: ms(34),
     letterSpacing: -0.5,
     marginBottom: SP[3],
   },
   subhead: {
     textAlign: "center",
+    fontFamily: "Poppins-Regular",
+    fontSize: ms(14),
+    lineHeight: ms(20),
+    color: COLORS.lightSub,
     marginBottom: SP[6],
   },
 
   cards: { gap: SP[4] },
 
   card: {
-    borderRadius: RADII.card,
-    borderWidth: 1,
+    backgroundColor: COLORS.lightCard,
+    borderRadius: RADII.lg,
     paddingTop: SP[5],
     paddingBottom: SP[5],
     paddingHorizontal: SP[4],
     overflow: "hidden",
+    ...SOFT_SHADOW,
   },
 
   cardTop: {
@@ -393,8 +395,8 @@ const styles = StyleSheet.create({
     marginBottom: SP[5],
   },
   phoneWrap: {
-    width: 150,
-    height: 240,
+    width: sw(140),
+    height: sh(220),
     alignItems: "center",
     justifyContent: "center",
   },
@@ -403,8 +405,6 @@ const styles = StyleSheet.create({
   chip: {
     flex: 1,
     borderRadius: RADII.lg,
-    borderWidth: 1,
-    backgroundColor: "rgba(0,0,0,0.28)",
     paddingVertical: SP[3],
     paddingHorizontal: SP[3],
     gap: SP[1],
@@ -416,22 +416,22 @@ const styles = StyleSheet.create({
     marginBottom: SP[1],
   },
   chipLabel: {
-    fontSize: 10,
-    fontFamily: "Poppins-SemiBold",
+    fontSize: ms(10),
+    fontFamily: FONT_BOLD,
     letterSpacing: 1.2,
   },
   chipHeadline: {
-    color: COLORS.text,
-    fontFamily: "Poppins-SemiBold",
-    fontSize: 22,
-    lineHeight: 26,
+    color: COLORS.lightText,
+    fontFamily: FONT_BOLD,
+    fontSize: ms(22),
+    lineHeight: ms(26),
     letterSpacing: -0.3,
   },
   chipSub: {
-    color: COLORS.sub,
+    color: COLORS.lightSub,
     fontFamily: "Poppins-Regular",
-    fontSize: 12,
-    lineHeight: 16,
+    fontSize: ms(12),
+    lineHeight: ms(16),
     marginTop: 2,
   },
   chipRows: { gap: SP[2], marginTop: SP[1] },
@@ -442,10 +442,10 @@ const styles = StyleSheet.create({
   },
   chipRowText: {
     flex: 1,
-    color: COLORS.text,
-    fontFamily: "Poppins-Medium",
-    fontSize: 13,
-    lineHeight: 18,
+    color: COLORS.lightText,
+    fontFamily: "Poppins-SemiBold",
+    fontSize: ms(13),
+    lineHeight: ms(18),
   },
 
   cardFooter: {
@@ -454,17 +454,32 @@ const styles = StyleSheet.create({
     gap: SP[3],
   },
   iconBadge: {
-    width: 48,
-    height: 48,
-    borderRadius: RADII.circle,
+    width: ms(48),
+    height: ms(48),
+    borderRadius: 999,
     alignItems: "center",
     justifyContent: "center",
   },
   cardText: { flex: 1 },
-  cardTitle: { marginBottom: 2 },
+  cardTitle: {
+    fontFamily: FONT_BOLD,
+    fontSize: ms(16),
+    color: COLORS.lightText,
+    letterSpacing: -0.2,
+    marginBottom: 2,
+  },
+  cardDesc: {
+    fontFamily: "Poppins-Regular",
+    fontSize: ms(13),
+    lineHeight: ms(18),
+    color: COLORS.lightSub,
+  },
 
   closingLine: {
     textAlign: "center",
+    fontFamily: "Poppins-Regular",
+    fontSize: ms(13),
+    color: COLORS.lightSub,
     marginTop: SP[6],
   },
 
@@ -475,6 +490,20 @@ const styles = StyleSheet.create({
     bottom: 0,
     paddingHorizontal: SP[5],
     paddingTop: SP[3],
-    backgroundColor: COLORS.bgTop,
+    backgroundColor: COLORS.lightBg,
+  },
+  cta: {
+    minHeight: sh(54),
+    borderRadius: 999,
+    backgroundColor: COLORS.ctaBlack,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: sh(14),
+  },
+  ctaText: {
+    fontFamily: FONT_BOLD,
+    fontSize: ms(14),
+    color: "#FFFFFF",
+    letterSpacing: 1.0,
   },
 });

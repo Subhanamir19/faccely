@@ -6,34 +6,62 @@
 // useAdvancedAnalysis store (i.e. the most recent one the user viewed live).
 // Older scans render a graceful empty state pointing back to the score card.
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import {
   View,
   StyleSheet,
   ScrollView,
   Pressable,
+  useWindowDimensions,
 } from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
-import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { Microscope, ChevronRight } from "lucide-react-native";
 
 import Text from "@/components/ui/T";
 import BackButton from "@/components/ui/BackButton";
-import { COLORS, SP, RADII } from "@/lib/tokens";
+import { COLORS, SP } from "@/lib/tokens";
 import { ms, sw, sh } from "@/lib/responsive";
 import { useAdvancedAnalysis } from "@/store/advancedAnalysis";
 import { AnalysisContent } from "../(tabs)/analysis";
+import { fetchScanDetail } from "@/lib/api/history";
+
+const FONT_BOLD = "ProximaNova-Bold";
+const SAGE = "#3F7A2A";
+const SAGE_SOFT = "#E2F1D8";
 
 export default function HistoryAnalysisCard() {
   const insets = useSafeAreaInsets();
+  const { width: SW } = useWindowDimensions();
   const params = useLocalSearchParams<{ scanId?: string }>();
   const scanId = params?.scanId;
 
   const data = useAdvancedAnalysis((s) => s.data);
   const cachedScanId = useAdvancedAnalysis((s) => s.cachedScanId);
   const matches = !!data && !!scanId && cachedScanId === scanId;
+
+  // Carousel viewport — match (tabs)/analysis.tsx sx.scrollContent padding (sw(16) each side).
+  const viewportWidth = SW - sw(16) * 2;
+
+  // Fetch the historical scan's frontal image URL so the avatar isn't empty.
+  // ScanDetail is independent of the advanced-analysis payload and works for
+  // any scanId. Network failures fall through to a null avatar — same as
+  // before — so this is purely additive.
+  const [historicalImageUri, setHistoricalImageUri] = useState<string | null>(null);
+  useEffect(() => {
+    if (!scanId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const detail = await fetchScanDetail(scanId);
+        if (!cancelled) setHistoricalImageUri(detail.images?.front?.url ?? null);
+      } catch {
+        // swallow — leave avatar empty
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [scanId]);
 
   const handleBack = () => router.back();
   const handleBackToScore = () => {
@@ -44,12 +72,6 @@ export default function HistoryAnalysisCard() {
 
   return (
     <View style={sx.screen}>
-      <LinearGradient
-        colors={[COLORS.bgTop, COLORS.bgBottom]}
-        style={StyleSheet.absoluteFill}
-        pointerEvents="none"
-      />
-
       <View style={[sx.safeArea, { paddingTop: insets.top }]}>
         {/* ── Top bar with back button ── */}
         <View style={sx.topBar}>
@@ -73,7 +95,11 @@ export default function HistoryAnalysisCard() {
           showsVerticalScrollIndicator={false}
         >
           {matches ? (
-            <AnalysisContent data={data!} />
+            <AnalysisContent
+              data={data!}
+              viewportWidth={viewportWidth}
+              imageUri={historicalImageUri}
+            />
           ) : (
             <HistoricalEmptyState onBack={handleBackToScore} />
           )}
@@ -89,9 +115,8 @@ function HistoricalEmptyState({ onBack }: { onBack: () => void }) {
   return (
     <View style={sx.emptyWrap}>
       <Animated.View entering={FadeInDown.duration(380)} style={sx.emptyIconFrame}>
-        <View style={sx.emptyIconGlow} />
         <View style={sx.emptyIconCore}>
-          <Microscope size={ms(30)} color={COLORS.accent} strokeWidth={1.8} />
+          <Microscope size={ms(30)} color={SAGE} strokeWidth={1.8} />
         </View>
       </Animated.View>
 
@@ -117,17 +142,11 @@ function HistoricalEmptyState({ onBack }: { onBack: () => void }) {
           onPress={onBack}
           style={({ pressed }) => [
             sx.ctaBtn,
-            { transform: [{ translateY: pressed ? 5 : 0 }] },
+            pressed && { backgroundColor: COLORS.ctaBlackPressed },
           ]}
         >
-          <LinearGradient
-            colors={[COLORS.accentLight, COLORS.accent]}
-            start={{ x: 0.5, y: 0 }}
-            end={{ x: 0.5, y: 1 }}
-            style={StyleSheet.absoluteFill}
-          />
           <Text style={sx.ctaBtnText}>View Scores Instead</Text>
-          <ChevronRight size={ms(16)} color="#0B1A00" strokeWidth={2.6} />
+          <ChevronRight size={ms(16)} color="#FFFFFF" strokeWidth={2.6} />
         </Pressable>
       </Animated.View>
     </View>
@@ -137,7 +156,10 @@ function HistoricalEmptyState({ onBack }: { onBack: () => void }) {
 // ─── Styles ───────────────────────────────────────────────────────────────
 
 const sx = StyleSheet.create({
-  screen: { flex: 1 },
+  screen: {
+    flex: 1,
+    backgroundColor: COLORS.lightBg,
+  },
   safeArea: { flex: 1 },
 
   topBar: {
@@ -153,15 +175,15 @@ const sx = StyleSheet.create({
     paddingBottom: sh(10),
   },
   headerTitle: {
-    fontFamily: "Poppins-SemiBold",
+    fontFamily: FONT_BOLD,
     fontSize: ms(22),
-    color: COLORS.text,
+    color: COLORS.lightText,
     textAlign: "center",
   },
   headerSub: {
-    fontFamily: "Poppins-Regular",
+    fontFamily: FONT_BOLD,
     fontSize: ms(13),
-    color: COLORS.sub,
+    color: COLORS.lightSub,
     textAlign: "center",
     marginTop: sh(4),
   },
@@ -186,20 +208,11 @@ const sx = StyleSheet.create({
     justifyContent: "center",
     marginBottom: sh(8),
   },
-  emptyIconGlow: {
-    position: "absolute",
-    width: ms(84),
-    height: ms(84),
-    borderRadius: ms(42),
-    backgroundColor: COLORS.accentGlow,
-  },
   emptyIconCore: {
     width: ms(60),
     height: ms(60),
     borderRadius: ms(30),
-    backgroundColor: "rgba(180,243,77,0.10)",
-    borderWidth: 1,
-    borderColor: COLORS.accentBorder,
+    backgroundColor: SAGE_SOFT,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -213,34 +226,31 @@ const sx = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: COLORS.accent,
+    backgroundColor: SAGE,
   },
   emptyLabelText: {
-    fontFamily: "Poppins-SemiBold",
+    fontFamily: FONT_BOLD,
     fontSize: ms(10),
     letterSpacing: 1.5,
-    color: COLORS.accent,
+    color: SAGE,
   },
   emptyTitle: {
-    fontFamily: "Poppins-SemiBold",
+    fontFamily: FONT_BOLD,
     fontSize: ms(22),
-    color: COLORS.text,
+    color: COLORS.lightText,
     textAlign: "center",
     marginTop: sh(4),
   },
   emptySub: {
     fontFamily: "Poppins-Regular",
     fontSize: ms(14),
-    color: COLORS.sub,
+    color: COLORS.lightSub,
     textAlign: "center",
     lineHeight: ms(20),
     maxWidth: sw(300),
   },
   emptyCta: {
     marginTop: sh(20),
-    borderRadius: RADII.pill,
-    backgroundColor: COLORS.accentDepth,
-    paddingBottom: 5,
   },
   ctaBtn: {
     flexDirection: "row",
@@ -249,12 +259,13 @@ const sx = StyleSheet.create({
     gap: SP[2],
     paddingHorizontal: SP[6],
     paddingVertical: SP[3],
-    borderRadius: RADII.pill,
+    borderRadius: 999,
+    backgroundColor: COLORS.ctaBlack,
     overflow: "hidden",
   },
   ctaBtnText: {
-    fontFamily: "Poppins-SemiBold",
+    fontFamily: FONT_BOLD,
     fontSize: ms(15),
-    color: "#0B1A00",
+    color: "#FFFFFF",
   },
 });

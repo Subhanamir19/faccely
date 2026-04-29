@@ -24,11 +24,13 @@ const HERO_MARGIN = SP[3]; // horizontal margin around the hero
 const HERO_WIDTH = SCREEN_WIDTH - HERO_MARGIN * 2;
 
 const DOT_SIZE = 10;
-const DOT_COLOR = "rgba(160,160,160,0.50)";
-const DOT_COLOR_CONNECTED = COLORS.accent;
-const LINE_COLOR = "rgba(180,243,77,0.30)";
+const DOT_COLOR = "rgba(0,0,0,0.25)";
+const SAGE = "#3F7A2A";
+const DOT_COLOR_CONNECTED = SAGE;
+const LINE_COLOR = "rgba(63,122,42,0.28)";
 const LINE_WIDTH = 2;
 const GUTTER = 28;
+const FONT_BOLD = "ProximaNova-Bold";
 
 /* ── tiny sub-components ─────────────────────────────── */
 
@@ -208,7 +210,7 @@ export default function ExerciseGuideScreen() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: COLORS.bgBottom,
+    backgroundColor: COLORS.lightBg,
   },
 
   /* hero carousel */
@@ -283,7 +285,8 @@ const styles = StyleSheet.create({
 
   exerciseName: {
     ...TYPE.h2,
-    color: COLORS.text,
+    color: COLORS.lightText,
+    fontFamily: FONT_BOLD,
     marginTop: SP[5],
   },
 
@@ -291,8 +294,8 @@ const styles = StyleSheet.create({
   sectionLabel: {
     fontSize: 12,
     letterSpacing: 1.5,
-    color: COLORS.sub,
-    fontFamily: "Poppins-SemiBold",
+    color: COLORS.lightSub,
+    fontFamily: FONT_BOLD,
     marginTop: SP[6],
     marginBottom: SP[3],
   },
@@ -332,7 +335,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 15,
     lineHeight: 22,
-    color: COLORS.text,
+    color: COLORS.lightText,
     fontFamily: "Poppins-SemiBold",
     paddingBottom: SP[4],
   },
@@ -345,20 +348,18 @@ const styles = StyleSheet.create({
     gap: SP[3],
   },
   fallbackText: {
-    color: COLORS.text,
+    color: COLORS.lightText,
     fontSize: 16,
     fontFamily: "Poppins-SemiBold",
   },
   fallbackBack: {
     paddingHorizontal: SP[4],
     paddingVertical: SP[2],
-    borderRadius: RADII.pill,
-    borderWidth: 1,
-    borderColor: COLORS.cardBorder,
-    backgroundColor: "rgba(255,255,255,0.06)",
+    borderRadius: 999,
+    backgroundColor: COLORS.lightSurfaceAlt,
   },
   fallbackBackText: {
-    color: COLORS.text,
+    color: COLORS.lightText,
     fontSize: 14,
     fontFamily: "Poppins-SemiBold",
   },

@@ -110,4 +110,4 @@ export const POSE_FRAMES: Record<string, any[]> = {
 (POSE_FRAMES as any)["hunter-eyes-1"]  = POSE_FRAMES["hunter-eyes"];
 (POSE_FRAMES as any)["neck-lift-1"]    = POSE_FRAMES["neck-lift"];
 
-export const FALLBACK_FRAME = require("../assets/analysis-images/facial_symmetry.jpg");
+export const FALLBACK_FRAME = require("../assets/analysis-image-new/fullface-vector.png");

@@ -1,5 +1,5 @@
 // C:\SS\facely\app\(tabs)\take-picture.tsx
-import React, { useRef, useState, useCallback } from "react";
+import React, { useRef, useState, useCallback, useEffect } from "react";
 import {
   View,
   Text,
@@ -7,10 +7,8 @@ import {
   Alert,
   Pressable,
   Modal,
-  ScrollView,
   StatusBar,
   SafeAreaView,
-  ImageBackground,
   Platform,
   StyleSheet,
   useWindowDimensions,
@@ -19,9 +17,8 @@ import { CameraView, useCameraPermissions } from "expo-camera";
 import * as ImagePicker from "expo-image-picker";
 import * as FileSystem from "expo-file-system";
 import { router } from "expo-router";
-import Svg, { Line, Circle, Rect, Path } from "react-native-svg";
-import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
+import { Flame } from "lucide-react-native";
 import RecoveryCodeHint from "@/components/ui/RecoveryCodeHint";
 
 // NEW: shared pre-upload compressor (JPEG, max 1080px)
@@ -31,16 +28,21 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAuthStore } from "@/store/auth";
 import { getWeekScanData, checkScanLimit, WEEKLY_SCAN_LIMIT } from "@/lib/supabase/scanLimit";
 import { getNextMonday } from "@/lib/time/nextMidnight";
-import { COLORS } from "@/lib/tokens";
-import LimeButton from "@/components/ui/LimeButton";
+import { COLORS, RADII, SP } from "@/lib/tokens";
+import { sw, sh, ms } from "@/lib/responsive";
 
-/* ============================== TOKENS ============================== */
-const ACCENT       = COLORS.accent;
-const ACCENT_LIGHT = COLORS.accentLight;
-const TEXT         = COLORS.text;
-const TEXT_DIM     = COLORS.dim;
-const CARD_BORDER  = COLORS.cardBorder;
-const BG           = COLORS.bgBottom;
+// Soft drop-shadow recipe shared by all elevated surfaces — same recipe used
+// across dashboard, routine list, workout preview.
+const SOFT_SHADOW = {
+  shadowColor: "#000000",
+  shadowOpacity: 0.08,
+  shadowRadius: 20,
+  shadowOffset: { width: 0, height: 8 },
+  elevation: 4,
+} as const;
+
+// Reusable Proxima Bold font ref — file is large; avoid per-Text repetition.
+const FONT = "ProximaNova-Bold";
 
 /* ============================== HELPERS ============================== */
 function toFileUri(u: string) {
@@ -75,94 +77,6 @@ function toUserFacingMessage(err: unknown, fallback = "Network or file error") {
 type Step = "intro" | "capture" | "review";
 
 
-/* ============================== UI ============================== */
-
-/* A rounded neon frame with soft glow, sized by parent using absolute fill */
-function NeonFrame() {
-  return (
-    <>
-      <View
-        pointerEvents="none"
-        style={{
-          ...StyleSheet.absoluteFillObject,
-          borderRadius: 22,
-          borderWidth: 2,
-          borderColor: ACCENT,
-        }}
-      />
-      {/* glow */}
-      <View
-        pointerEvents="none"
-        style={{
-          ...StyleSheet.absoluteFillObject,
-          borderRadius: 22,
-          shadowColor: ACCENT,
-          shadowOpacity: 0.6,
-          shadowRadius: 20,
-          shadowOffset: { width: 0, height: 0 },
-          ...(Platform.OS === "android"
-            ? { borderWidth: 0.1, borderColor: "transparent", elevation: 6 }
-            : null),
-        }}
-      />
-    </>
-  );
-}
-
-/* SVG overlays for alignment */
-function FrontalGuides({ w, h }: { w: number; h: number }) {
-  const pad = 16;
-  const innerW = w - pad * 2;
-  const innerH = h - pad * 2;
-  const cx = w / 2;
-  const cy = h / 2;
-  return (
-    <Svg width={w} height={h} style={{ position: "absolute", left: 0, top: 0 }}>
-      <Rect x={pad} y={pad} width={innerW} height={innerH} rx={20} ry={20} stroke={ACCENT} strokeOpacity={0.35} fill="none" />
-      <Line x1={cx} y1={pad + 6} x2={cx} y2={h - pad - 6} stroke={ACCENT} strokeWidth={2} strokeOpacity={0.7} />
-      <Line x1={pad + 10} y1={cy - innerH * 0.08} x2={w - pad - 10} y2={cy - innerH * 0.08} stroke={ACCENT} strokeWidth={2} strokeOpacity={0.4} />
-      <Circle cx={cx} cy={cy + innerH * 0.05} r={innerW * 0.08} stroke={ACCENT} strokeWidth={2} strokeOpacity={0.5} fill="none" />
-      <Path
-        d={`
-          M ${cx} ${pad + 18}
-          C ${cx + innerW * 0.26} ${pad + innerH * 0.22}, ${cx + innerW * 0.26} ${h - pad - innerH * 0.18}, ${cx} ${h - pad - 10}
-          C ${cx - innerW * 0.26} ${h - pad - innerH * 0.18}, ${cx - innerW * 0.26} ${pad + innerH * 0.22}, ${cx} ${pad + 18}
-        `}
-        stroke={ACCENT}
-        strokeOpacity={0.28}
-        strokeWidth={2}
-        fill="none"
-      />
-    </Svg>
-  );
-}
-
-function SideGuides({ w, h }: { w: number; h: number }) {
-  const pad = 16;
-  const innerW = w - pad * 2;
-  const innerH = h - pad * 2;
-  const cx = w / 2;
-  return (
-    <Svg width={w} height={h} style={{ position: "absolute", left: 0, top: 0 }}>
-      <Rect x={pad} y={pad} width={innerW} height={innerH} rx={20} ry={20} stroke={ACCENT} strokeOpacity={0.35} fill="none" />
-      <Line x1={cx} y1={pad + 6} x2={cx} y2={h - pad - 6} stroke={ACCENT} strokeWidth={2} strokeOpacity={0.7} />
-      <Line x1={cx - innerW * 0.18} y1={pad + innerH * 0.36} x2={cx + innerW * 0.28} y2={pad + innerH * 0.36} stroke={ACCENT} strokeWidth={2} strokeOpacity={0.4} />
-      <Path
-        d={`
-          M ${cx + innerW * 0.24} ${pad + innerH * 0.72}
-          Q ${cx + innerW * 0.10} ${pad + innerH * 0.86}, ${cx - innerW * 0.02} ${pad + innerH * 0.74}
-        `}
-        stroke={ACCENT}
-        strokeOpacity={0.45}
-        strokeWidth={2}
-        fill="none"
-      />
-      <Circle cx={cx + innerW * 0.08} cy={pad + innerH * 0.38} r={5} fill={ACCENT} />
-    </Svg>
-  );
-}
-
-
 /* ============================== SCREEN ============================== */
 export default function TakePicture() {
   const [perm, requestPerm] = useCameraPermissions();
@@ -179,6 +93,26 @@ export default function TakePicture() {
   const [cameraOpen, setCameraOpen] = useState(false);
   const [chooserOpen, setChooserOpen] = useState(false);
   const [cameraFacing, setCameraFacing] = useState<"front" | "back">("front");
+  // Functional header chip — scans used this week / weekly limit
+  const [scansThisWeek, setScansThisWeek] = useState<number | null>(null);
+
+  // Fetch the user's weekly scan count on mount, and refresh whenever they
+  // return to the intro step (so the chip reflects a freshly-completed scan).
+  useEffect(() => {
+    if (step !== "intro") return;
+    const uid = useAuthStore.getState().uid;
+    if (!uid) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { weekCount } = await getWeekScanData(uid);
+        if (!cancelled) setScansThisWeek(weekCount);
+      } catch {
+        // Silent: chip just stays at its previous value
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [step]);
   const cameraRef = useRef<CameraView>(null);
   // Prevents concurrent handleChosen calls (e.g. double-tap gallery)
   const handlingRef = useRef(false);
@@ -321,7 +255,7 @@ export default function TakePicture() {
   };
 
   const goToHistory = () => {
-    router.push("/(tabs)/history");
+    router.push("/history" as any);
   };
 
   const useBoth = async () => {
@@ -375,101 +309,117 @@ export default function TakePicture() {
   };
 
   const renderIntro = () => (
-    <View style={{ flex: 1, backgroundColor: BG }}>
-      <StatusBar barStyle="light-content" />
+    <View style={{ flex: 1, backgroundColor: COLORS.lightBg }}>
+      <StatusBar barStyle="dark-content" />
       <SafeAreaView style={{ flex: 1 }}>
-        <View style={{ flex: 1 }}>
+        <View style={{ flex: 1, paddingHorizontal: SP[5] }}>
+          {/* Header — title + caption + light History pill */}
           <View
             style={{
-              paddingHorizontal: 24,
-              marginTop: window.height * 0.03,
+              marginTop: sh(24),
               flexDirection: "row",
               justifyContent: "space-between",
               alignItems: "center",
+              marginBottom: sh(20),
             }}
           >
-            <Text
-              style={{
-                color: "#FFFFFF",
-                fontFamily: Platform.select({
-                  ios: "Poppins-SemiBold",
-                  android: "Poppins-SemiBold",
-                  default: "Poppins-SemiBold",
-                }),
-                fontSize: headingFontSize,
-                lineHeight: headingFontSize + 6,
-                letterSpacing: -0.3,
-              }}
-            >
-              Face scan
-            </Text>
-            <View
-              style={{
-                borderRadius: 14,
-                backgroundColor: "#000000",
-                paddingBottom: 4,
-                shadowColor: ACCENT,
-                shadowOpacity: 0.15,
-                shadowRadius: 10,
-                shadowOffset: { width: 0, height: 2 },
-                elevation: 6,
-              }}
-            >
-              <Pressable
-                onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  goToHistory();
+            <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: sw(10) }}>
+              {/* Functional chip — scans used this week */}
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: sw(6),
+                  backgroundColor: COLORS.ctaBlack,
+                  paddingHorizontal: sw(12),
+                  paddingVertical: sh(8),
+                  borderRadius: 999,
                 }}
-                hitSlop={12}
-                style={({ pressed }) => ({
-                  borderRadius: 14,
-                  backgroundColor: "#1A1A1A",
-                  borderWidth: 1.5,
-                  borderColor: "#2A2A2A",
-                  paddingHorizontal: 16,
-                  paddingVertical: 7,
-                  transform: [{ translateY: pressed ? 3 : 0 }],
-                })}
               >
-                <Text
-                  style={{
-                    color: ACCENT,
-                    fontFamily: Platform.select({
-                      ios: "Poppins-SemiBold",
-                      android: "Poppins-SemiBold",
-                      default: "Poppins-SemiBold",
-                    }),
-                    fontSize: headingFontSize - 12,
-                    lineHeight: headingFontSize - 6,
-                    textShadowColor: "rgba(180,243,77,0.3)",
-                    textShadowRadius: 8,
-                    textShadowOffset: { width: 0, height: 0 },
-                  }}
-                >
-                  History
+                <Flame size={ms(14)} color={COLORS.accent} strokeWidth={2.4} />
+                <Text style={{ color: "#FFFFFF", fontFamily: FONT, fontSize: ms(13), letterSpacing: -0.1 }}>
+                  {scansThisWeek ?? 0}
                 </Text>
-              </Pressable>
+                <Text style={{ color: "rgba(255,255,255,0.55)", fontFamily: FONT, fontSize: ms(11), letterSpacing: 0.2 }}>
+                  / {WEEKLY_SCAN_LIMIT} this week
+                </Text>
+              </View>
             </View>
+            <Pressable
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                goToHistory();
+              }}
+              hitSlop={16}
+              style={({ pressed }) => ({
+                backgroundColor: COLORS.lightSurfaceAlt,
+                paddingHorizontal: sw(22),
+                paddingVertical: sh(13),
+                borderRadius: 999,
+                opacity: pressed ? 0.7 : 1,
+              })}
+            >
+              <Text style={{ color: COLORS.lightText, fontFamily: FONT, fontSize: ms(16), letterSpacing: 0.2 }}>
+                History
+              </Text>
+            </Pressable>
           </View>
 
-          {/* ── Scan card ───────────────────────────────────── */}
-          <View style={{ flex: 1, paddingHorizontal: 20, alignItems: "center", justifyContent: "center", paddingVertical: window.height * 0.02 }}>
-            <View style={{ width: "100%", maxWidth: 400, borderRadius: 24, overflow: "hidden", backgroundColor: "#000000" }}>
-              <View style={{ width: "100%", aspectRatio: 0.85, backgroundColor: "#000", overflow: "hidden" }}>
-                <Image source={require("../../assets/scanimage.jpeg")} style={{ width: "100%", height: "100%" }} resizeMode="cover" />
+          {/* ── Scan card — image hero + caption + black CTA ── */}
+          <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+            <View
+              style={{
+                width: "100%",
+                maxWidth: 400,
+                borderRadius: RADII.lg,
+                overflow: "hidden",
+                backgroundColor: COLORS.lightCard,
+                ...SOFT_SHADOW,
+              }}
+            >
+              <View style={{ width: "100%", aspectRatio: 0.85, backgroundColor: COLORS.lightCard, overflow: "hidden" }}>
+                <Image
+                  source={require("../../assets/capture-guides/frontal-guide-vector.png")}
+                  style={{ width: "100%", height: "100%" }}
+                  resizeMode="contain"
+                />
               </View>
-              <LinearGradient colors={["transparent", "rgba(0,0,0,0.75)", "#000000"]} locations={[0, 0.5, 1]} style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: "55%" }} pointerEvents="none" />
-              <View style={{ paddingHorizontal: 20, paddingBottom: 24, alignItems: "center", marginTop: -16 }}>
-                <Text style={{ color: "#FFFFFF", textAlign: "center", fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }), fontSize: 24, lineHeight: 32, letterSpacing: -0.3, marginBottom: 18 }}>
+              <View style={{ paddingHorizontal: SP[5], paddingTop: SP[5], paddingBottom: SP[5], alignItems: "center" }}>
+                <Text
+                  style={{
+                    color: COLORS.lightText,
+                    textAlign: "center",
+                    fontFamily: FONT,
+                    fontSize: ms(22),
+                    lineHeight: ms(28),
+                    letterSpacing: -0.4,
+                    marginBottom: sh(18),
+                  }}
+                >
                   Get your accurate{"\n"}facial analysis
                 </Text>
-                <View style={{ width: "88%", borderRadius: 28, backgroundColor: "#6B9A1E", paddingBottom: 6, shadowColor: ACCENT, shadowOpacity: 0.5, shadowRadius: 24, shadowOffset: { width: 0, height: 10 }, elevation: 12 }}>
-                  <Pressable onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); beginScan(); }} hitSlop={8} style={({ pressed }) => ({ height: 56, borderRadius: 28, overflow: "hidden", transform: [{ translateY: pressed ? 5 : 0 }] })}>
-                    <LinearGradient colors={[ACCENT_LIGHT, ACCENT]} locations={[0, 1]} start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }} style={{ flex: 1, alignItems: "center", justifyContent: "center", borderRadius: 28 }}>
-                      <Text style={{ color: BG, fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }), fontSize: 18, lineHeight: 22 }}>Begin scan</Text>
-                    </LinearGradient>
-                  </Pressable>
-                </View>
+                <Pressable
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                    beginScan();
+                  }}
+                  hitSlop={8}
+                  style={({ pressed }) => ({
+                    width: "100%",
+                    minHeight: sh(56),
+                    borderRadius: 999,
+                    backgroundColor: COLORS.ctaBlack,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    paddingVertical: sh(16),
+                    paddingHorizontal: SP[6],
+                    opacity: pressed ? 0.9 : 1,
+                  })}
+                >
+                  <Text style={{ color: "#FFFFFF", fontFamily: FONT, fontSize: ms(15), letterSpacing: 0.6, textAlign: "center" }}>
+                    BEGIN SCAN
+                  </Text>
+                </Pressable>
               </View>
             </View>
           </View>
@@ -487,35 +437,33 @@ export default function TakePicture() {
     title: string;
     overlay: "frontal" | "side";
   }) => (
-    <View style={{ flex: 1, backgroundColor: BG }}>
+    <View style={{ flex: 1, backgroundColor: COLORS.lightBg }}>
+      <StatusBar barStyle="dark-content" />
       <SafeAreaView style={{ flex: 1 }}>
-        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 18 }}>
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: SP[5] }}>
           <Text
             style={{
-              color: TEXT,
-              fontSize: 24,
-              lineHeight: 28,
-              marginBottom: 16,
+              color: COLORS.lightText,
+              fontFamily: FONT,
+              fontSize: ms(24),
+              lineHeight: ms(28),
+              letterSpacing: -0.4,
+              marginBottom: sh(16),
               textAlign: "center",
-              fontFamily: Platform.select({
-                ios: "Poppins-SemiBold",
-                android: "Poppins-SemiBold",
-                default: "Poppins-SemiBold",
-              }),
             }}
           >
             {title}
           </Text>
 
-          {/* Guide image — clean, no frame overlay */}
+          {/* Guide image — dim-white card with soft shadow */}
           <View
             style={{
               width: "86%",
               aspectRatio: 3 / 4,
-              borderRadius: 22,
+              borderRadius: RADII.lg,
               overflow: "hidden",
-              backgroundColor: "#000",
-              marginTop: 6,
+              backgroundColor: COLORS.lightCard,
+              ...SOFT_SHADOW,
             }}
           >
             <Image source={guideSrc} style={{ width: "100%", height: "100%" }} resizeMode="cover" />
@@ -523,32 +471,46 @@ export default function TakePicture() {
 
           <Text
             style={{
-              marginTop: 12,
-              color: TEXT_DIM,
-              fontSize: 13,
+              marginTop: sh(14),
+              color: COLORS.lightSub,
+              fontFamily: FONT,
+              fontSize: ms(13),
+              lineHeight: ms(18),
               textAlign: "center",
-              fontFamily: Platform.select({
-                ios: "Poppins-Regular",
-                android: "Poppins-Regular",
-                default: "Poppins-Regular",
-              }),
             }}
           >
             Align your face with the guides. Good lighting, neutral expression.
           </Text>
 
-          <View style={{ marginTop: 18, paddingHorizontal: 24, alignSelf: "stretch" }}>
-            <LimeButton label="Capture Photo" onPress={() => void startCamera()} />
+          {/* Black CTA */}
+          <View style={{ marginTop: sh(20), paddingHorizontal: SP[6], alignSelf: "stretch" }}>
+            <Pressable
+              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); void startCamera(); }}
+              style={({ pressed }) => ({
+                minHeight: sh(56),
+                borderRadius: 999,
+                backgroundColor: COLORS.ctaBlack,
+                alignItems: "center",
+                justifyContent: "center",
+                paddingVertical: sh(16),
+                paddingHorizontal: SP[6],
+                opacity: pressed ? 0.9 : 1,
+              })}
+            >
+              <Text style={{ color: "#FFFFFF", fontFamily: FONT, fontSize: ms(15), letterSpacing: 0.6, textAlign: "center" }}>
+                CAPTURE PHOTO
+              </Text>
+            </Pressable>
           </View>
 
-          {/* dots */}
-          <View style={{ flexDirection: "row", gap: 6, marginTop: 12 }}>
+          {/* Step dots — dark filled / hairline empty */}
+          <View style={{ flexDirection: "row", gap: 6, marginTop: sh(14) }}>
             <View
               style={{
                 width: 8,
                 height: 8,
                 borderRadius: 4,
-                backgroundColor: overlay === "frontal" ? ACCENT : "rgba(255,255,255,0.25)",
+                backgroundColor: overlay === "frontal" ? COLORS.ctaBlack : COLORS.lightBorder,
               }}
             />
             <View
@@ -556,7 +518,7 @@ export default function TakePicture() {
                 width: 8,
                 height: 8,
                 borderRadius: 4,
-                backgroundColor: overlay === "side" ? ACCENT : "rgba(255,255,255,0.25)",
+                backgroundColor: overlay === "side" ? COLORS.ctaBlack : COLORS.lightBorder,
               }}
             />
           </View>
@@ -573,108 +535,105 @@ export default function TakePicture() {
         renderGuide({
           guideSrc:
             pose === "frontal"
-              ? require("../../assets/capture-guides/frontal-guide.jpg")
-              : require("../../assets/capture-guides/side-guide.jpg"),
+              ? require("../../assets/capture-guides/frontal-guide-vector.png")
+              : require("../../assets/capture-guides/side-guy-vector.png"),
           title: pose === "frontal" ? "Take Frontal Photo" : "Take Side Photo",
           overlay: pose,
         })}
 
       {step === "review" && (
-        <View style={{ flex: 1, backgroundColor: "#000000" }}>
-          <SafeAreaView style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 18 }}>
+        <View style={{ flex: 1, backgroundColor: COLORS.lightBg }}>
+          <StatusBar barStyle="dark-content" />
+          <SafeAreaView style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: SP[5] }}>
             <Text
               style={{
-                color: TEXT,
-                fontSize: 20,
-                marginBottom: 14,
-                fontFamily: Platform.select({
-                  ios: "Poppins-SemiBold",
-                  android: "Poppins-SemiBold",
-                  default: "Poppins-SemiBold",
-                }),
+                color: COLORS.lightText,
+                fontFamily: FONT,
+                fontSize: ms(22),
+                lineHeight: ms(26),
+                letterSpacing: -0.4,
+                marginBottom: sh(18),
               }}
             >
               Review your photos
             </Text>
 
-            <View style={{ width: "92%", flexDirection: "row", justifyContent: "space-between", gap: 12 }}>
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: TEXT_DIM, marginBottom: 6 }}>Frontal</Text>
-                <View
-                  style={{
-                    width: "100%",
-                    aspectRatio: 3 / 4,
-                    borderRadius: 16,
-                    overflow: "hidden",
-                    borderWidth: 1.5,
-                    borderColor: "rgba(255,255,255,0.12)",
-                    backgroundColor: "#000",
-                  }}
-                >
-                  <Image source={{ uri: frontalUri! }} style={{ width: "100%", height: "100%" }} resizeMode="cover" />
-                </View>
-                <Pressable onPress={() => changePose("frontal")} style={{ marginTop: 10 }}>
-                  <Text
+            <View style={{ width: "92%", flexDirection: "row", justifyContent: "space-between", gap: SP[3] }}>
+              {[
+                { label: "FRONTAL", uri: frontalUri, retake: () => changePose("frontal") },
+                { label: "SIDE",    uri: sideUri,    retake: () => changePose("side") },
+              ].map(({ label, uri, retake }) => (
+                <View key={label} style={{ flex: 1 }}>
+                  <Text style={{ color: COLORS.lightSub, fontFamily: FONT, fontSize: ms(11), letterSpacing: 0.6, marginBottom: 6 }}>
+                    {label}
+                  </Text>
+                  <View
                     style={{
-                      color: ACCENT,
-                      fontFamily: Platform.select({
-                        ios: "Poppins-SemiBold",
-                        android: "Poppins-SemiBold",
-                        default: "Poppins-SemiBold",
-                      }),
+                      width: "100%",
+                      aspectRatio: 3 / 4,
+                      borderRadius: RADII.md,
+                      overflow: "hidden",
+                      backgroundColor: COLORS.lightCard,
+                      ...SOFT_SHADOW,
                     }}
                   >
-                    Retake
-                  </Text>
-                </Pressable>
-              </View>
-
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: TEXT_DIM, marginBottom: 6 }}>Side</Text>
-                <View
-                  style={{
-                    width: "100%",
-                    aspectRatio: 3 / 4,
-                    borderRadius: 16,
-                    overflow: "hidden",
-                    borderWidth: 1.5,
-                    borderColor: "rgba(255,255,255,0.12)",
-                    backgroundColor: "#000",
-                  }}
-                >
-                  <Image source={{ uri: sideUri! }} style={{ width: "100%", height: "100%" }} resizeMode="cover" />
-                </View>
-                <Pressable onPress={() => changePose("side")} style={{ marginTop: 10 }}>
-                  <Text
-                    style={{
-                      color: ACCENT,
-                      fontFamily: Platform.select({
-                        ios: "Poppins-SemiBold",
-                        android: "Poppins-SemiBold",
-                        default: "Poppins-SemiBold",
-                      }),
-                    }}
+                    <Image source={{ uri: uri! }} style={{ width: "100%", height: "100%" }} resizeMode="cover" />
+                  </View>
+                  <Pressable
+                    onPress={retake}
+                    style={({ pressed }) => ({
+                      marginTop: sh(10),
+                      alignSelf: "flex-start",
+                      backgroundColor: COLORS.lightSurfaceAlt,
+                      paddingHorizontal: sw(14),
+                      paddingVertical: sh(8),
+                      borderRadius: 999,
+                      opacity: pressed ? 0.7 : 1,
+                    })}
                   >
-                    Retake
-                  </Text>
-                </Pressable>
-              </View>
+                    <Text style={{ color: COLORS.lightText, fontFamily: FONT, fontSize: ms(12), letterSpacing: 0.4 }}>
+                      RETAKE
+                    </Text>
+                  </Pressable>
+                </View>
+              ))}
             </View>
 
-            <View style={{ marginTop: 22, paddingHorizontal: 24, alignSelf: "stretch" }}>
-              <LimeButton
-                label={submitting ? "Analyzing…" : "Analyze photos"}
+            {/* Black analyze CTA */}
+            <View style={{ marginTop: sh(24), paddingHorizontal: SP[6], alignSelf: "stretch" }}>
+              <Pressable
                 onPress={useBoth}
                 disabled={!canContinue}
-                loading={submitting}
-              />
+                style={({ pressed }) => ({
+                  minHeight: sh(56),
+                  borderRadius: 999,
+                  backgroundColor: canContinue ? COLORS.ctaBlack : COLORS.lightSurfaceAlt,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  paddingVertical: sh(16),
+                  paddingHorizontal: SP[6],
+                  opacity: pressed && canContinue ? 0.9 : 1,
+                })}
+              >
+                <Text
+                  style={{
+                    color: canContinue ? "#FFFFFF" : COLORS.lightSub,
+                    fontFamily: FONT,
+                    fontSize: ms(15),
+                    letterSpacing: 0.6,
+                    textAlign: "center",
+                  }}
+                >
+                  {submitting ? "ANALYZING…" : "ANALYZE PHOTOS"}
+                </Text>
+              </Pressable>
             </View>
 
             <Pressable
               onPress={() => { setFrontalUri(null); setSideUri(null); setPose("frontal"); setStep("intro"); }}
-              style={{ marginTop: 14 }}
+              style={{ marginTop: sh(16) }}
             >
-              <Text style={{ color: "rgba(255,255,255,0.35)", fontSize: 13, fontFamily: Platform.select({ ios: "Poppins-Regular", android: "Poppins-Regular", default: "Poppins-Regular" }), textAlign: "center" }}>
+              <Text style={{ color: COLORS.lightSub, fontSize: ms(13), fontFamily: FONT, textAlign: "center" }}>
                 Start over
               </Text>
             </Pressable>
@@ -682,37 +641,83 @@ export default function TakePicture() {
         </View>
       )}
 
-      {/* Chooser modal */}
-      <Modal transparent visible={chooserOpen} animationType="fade" onRequestClose={() => setChooserOpen(false)}>
-        <Pressable style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.80)", justifyContent: "center" }} onPress={() => setChooserOpen(false)}>
+      {/* Chooser — bottom sheet matching the Edit/Targets sheets */}
+      <Modal
+        visible={chooserOpen}
+        transparent
+        statusBarTranslucent
+        animationType="fade"
+        onRequestClose={() => setChooserOpen(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "flex-end" }}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setChooserOpen(false)} />
           <View
             style={{
-              marginHorizontal: 32,
-              backgroundColor: "#1A1A1A",
-              borderRadius: 16,
-              padding: 20,
-              gap: 12,
-              borderWidth: 1,
-              borderColor: CARD_BORDER,
+              backgroundColor: COLORS.lightBg,
+              borderTopLeftRadius: RADII.card,
+              borderTopRightRadius: RADII.card,
+              paddingHorizontal: SP[5],
+              paddingTop: SP[3],
+              paddingBottom: SP[6],
             }}
           >
-            <LimeButton label="Take Photo" onPress={startCamera} />
-            <Pressable onPress={pickFromGallery} style={{ alignSelf: "center", marginTop: 6 }}>
-              <Text
-                style={{
-                  color: ACCENT,
-                  fontFamily: Platform.select({
-                    ios: "Poppins-SemiBold",
-                    android: "Poppins-SemiBold",
-                    default: "Poppins-SemiBold",
-                  }),
-                }}
-              >
-                Pick From Gallery
+            <View
+              style={{
+                alignSelf: "center",
+                width: sw(44),
+                height: sh(4),
+                borderRadius: 999,
+                backgroundColor: COLORS.lightBorder,
+                marginBottom: SP[4],
+              }}
+            />
+            <Text style={{ fontFamily: FONT, fontSize: ms(22), color: COLORS.lightText, letterSpacing: -0.4 }}>
+              Add a photo
+            </Text>
+            <Text style={{ fontFamily: FONT, fontSize: ms(13), color: COLORS.lightSub, marginTop: sh(4), marginBottom: SP[5] }}>
+              Use the camera or pick from your library
+            </Text>
+
+            {/* Primary — black pill */}
+            <Pressable
+              onPress={startCamera}
+              style={({ pressed }) => ({
+                minHeight: sh(56),
+                borderRadius: 999,
+                backgroundColor: COLORS.ctaBlack,
+                alignItems: "center",
+                justifyContent: "center",
+                paddingVertical: sh(16),
+                paddingHorizontal: SP[6],
+                opacity: pressed ? 0.9 : 1,
+                marginBottom: SP[3],
+              })}
+            >
+              <Text style={{ color: "#FFFFFF", fontFamily: FONT, fontSize: ms(15), letterSpacing: 0.6 }}>
+                TAKE PHOTO
+              </Text>
+            </Pressable>
+
+            {/* Secondary — light pill */}
+            <Pressable
+              onPress={pickFromGallery}
+              style={({ pressed }) => ({
+                minHeight: sh(56),
+                borderRadius: 999,
+                backgroundColor: COLORS.lightSurfaceAlt,
+                alignItems: "center",
+                justifyContent: "center",
+                paddingVertical: sh(16),
+                paddingHorizontal: SP[6],
+                opacity: pressed ? 0.7 : 1,
+              })}
+            >
+              <Text style={{ color: COLORS.lightText, fontFamily: FONT, fontSize: ms(15), letterSpacing: 0.6 }}>
+                PICK FROM GALLERY
               </Text>
             </Pressable>
           </View>
-        </Pressable>
+        </View>
       </Modal>
 
       {/* Camera modal */}
@@ -720,11 +725,30 @@ export default function TakePicture() {
         <StatusBar hidden />
         <View style={{ flex: 1, backgroundColor: "#000" }}>
           {permissionDenied ? (
-            <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-              <Text style={{ color: TEXT, marginBottom: 12 }}>Camera permission required.</Text>
-              <LimeButton label="Grant Permission" onPress={() => void requestPerm()} />
-              <Pressable onPress={() => setCameraOpen(false)} style={{ marginTop: 10 }}>
-                <Text style={{ color: TEXT_DIM }}>Close</Text>
+            <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: SP[6] }}>
+              <Text style={{ color: "#FFFFFF", fontFamily: FONT, fontSize: ms(16), marginBottom: sh(16), textAlign: "center" }}>
+                Camera permission required
+              </Text>
+              <Pressable
+                onPress={() => void requestPerm()}
+                style={({ pressed }) => ({
+                  minHeight: sh(56),
+                  borderRadius: 999,
+                  backgroundColor: "#FFFFFF",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  paddingVertical: sh(16),
+                  paddingHorizontal: SP[6],
+                  opacity: pressed ? 0.85 : 1,
+                  alignSelf: "stretch",
+                })}
+              >
+                <Text style={{ color: COLORS.ctaBlack, fontFamily: FONT, fontSize: ms(15), letterSpacing: 0.6 }}>
+                  GRANT PERMISSION
+                </Text>
+              </Pressable>
+              <Pressable onPress={() => setCameraOpen(false)} style={{ marginTop: sh(14) }}>
+                <Text style={{ color: "rgba(255,255,255,0.65)", fontFamily: FONT, fontSize: ms(13) }}>Close</Text>
               </Pressable>
             </View>
           ) : (
@@ -736,41 +760,65 @@ export default function TakePicture() {
                 pointerEvents="none"
                 style={{
                   position: "absolute",
-                  top: 56,
+                  top: sh(56),
                   left: 0,
                   right: 0,
                   alignItems: "center",
                 }}
               >
-                <Text style={{ color: "#fff", fontSize: 20, fontFamily: "Poppins-SemiBold", textShadowColor: "rgba(0,0,0,0.6)", textShadowRadius: 6, textShadowOffset: { width: 0, height: 1 } }}>
+                <Text style={{
+                  color: "#FFFFFF",
+                  fontFamily: FONT,
+                  fontSize: ms(20),
+                  letterSpacing: -0.3,
+                  textShadowColor: "rgba(0,0,0,0.6)",
+                  textShadowRadius: 6,
+                  textShadowOffset: { width: 0, height: 1 },
+                }}>
                   {pose === "frontal" ? "Hold Steady" : "Turn to your side"}
                 </Text>
-                <Text style={{ color: "rgba(255,255,255,0.65)", fontSize: 13, fontFamily: "Poppins-Regular", marginTop: 4, textShadowColor: "rgba(0,0,0,0.6)", textShadowRadius: 4, textShadowOffset: { width: 0, height: 1 } }}>
+                <Text style={{
+                  color: "rgba(255,255,255,0.7)",
+                  fontFamily: FONT,
+                  fontSize: ms(13),
+                  marginTop: sh(4),
+                  textShadowColor: "rgba(0,0,0,0.6)",
+                  textShadowRadius: 4,
+                  textShadowOffset: { width: 0, height: 1 },
+                }}>
                   {pose === "frontal" ? "Keep your face centered and still" : "Align your profile with the oval"}
                 </Text>
               </View>
 
               {/* Bottom controls */}
-              <View style={{ position: "absolute", bottom: 0, left: 0, right: 0, paddingBottom: 48, paddingTop: 16, alignItems: "center", gap: 14 }}>
-
-                {/* Capture button — disabled while a capture is in flight */}
+              <View style={{
+                position: "absolute",
+                bottom: 0,
+                left: 0,
+                right: 0,
+                paddingBottom: sh(40),
+                paddingTop: SP[4],
+                alignItems: "center",
+                gap: sh(14),
+              }}>
+                {/* Shutter — large white circle */}
                 <Pressable
                   onPress={capture}
                   disabled={capturing}
                   style={({ pressed }) => ({
-                    width: 80,
-                    height: 80,
-                    borderRadius: 40,
+                    width: ms(80),
+                    height: ms(80),
+                    borderRadius: ms(40),
                     borderWidth: 4,
-                    borderColor: capturing ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.45)",
+                    borderColor: capturing ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.55)",
                     alignItems: "center",
                     justifyContent: "center",
-                    backgroundColor: "#fff",
+                    backgroundColor: "#FFFFFF",
                     opacity: capturing ? 0.5 : 1,
                     transform: [{ scale: pressed ? 0.93 : 1 }],
                   })}
                 >
-                  <View style={{ width: 62, height: 62, borderRadius: 31, backgroundColor: "#fff" }} />
+                  <View style={{ width: ms(62), height: ms(62), borderRadius: ms(31), backgroundColor: "#FFFFFF" }} />
                 </Pressable>
 
                 {/* Gallery picker */}
@@ -779,23 +827,20 @@ export default function TakePicture() {
                   style={({ pressed }) => ({
                     flexDirection: "row",
                     alignItems: "center",
-                    gap: 10,
-                    backgroundColor: "rgba(255,255,255,0.08)",
-                    borderWidth: 1,
-                    borderColor: "rgba(255,255,255,0.18)",
-                    borderRadius: 22,
-                    paddingHorizontal: 22,
-                    paddingVertical: 11,
+                    gap: sw(10),
+                    backgroundColor: "rgba(255,255,255,0.12)",
+                    borderRadius: 999,
+                    paddingHorizontal: sw(20),
+                    paddingVertical: sh(10),
                     opacity: pressed ? 0.65 : 1,
                   })}
                 >
-                  {/* Photo grid icon */}
-                  <View style={{ width: 18, height: 18, flexDirection: "row", flexWrap: "wrap", gap: 2 }}>
+                  <View style={{ width: 16, height: 16, flexDirection: "row", flexWrap: "wrap", gap: 2 }}>
                     {[0, 1, 2, 3].map((i) => (
-                      <View key={i} style={{ width: 7, height: 7, borderRadius: 1.5, backgroundColor: "rgba(255,255,255,0.7)" }} />
+                      <View key={i} style={{ width: 6, height: 6, borderRadius: 1.5, backgroundColor: "rgba(255,255,255,0.85)" }} />
                     ))}
                   </View>
-                  <Text style={{ color: "rgba(255,255,255,0.85)", fontSize: 14, fontFamily: "Poppins-Regular", letterSpacing: 0.2 }}>
+                  <Text style={{ color: "#FFFFFF", fontFamily: FONT, fontSize: ms(13), letterSpacing: 0.2 }}>
                     Choose from Library
                   </Text>
                 </Pressable>
@@ -804,16 +849,14 @@ export default function TakePicture() {
                 <Pressable
                   onPress={() => setCameraFacing((f) => (f === "front" ? "back" : "front"))}
                   style={({ pressed }) => ({
-                    paddingHorizontal: 18,
-                    paddingVertical: 8,
-                    borderRadius: 20,
-                    backgroundColor: "rgba(255,255,255,0.08)",
-                    borderWidth: 1,
-                    borderColor: "rgba(255,255,255,0.15)",
+                    paddingHorizontal: sw(18),
+                    paddingVertical: sh(8),
+                    borderRadius: 999,
+                    backgroundColor: "rgba(255,255,255,0.10)",
                     opacity: pressed ? 0.65 : 1,
                   })}
                 >
-                  <Text style={{ color: "rgba(255,255,255,0.7)", fontSize: 13, fontFamily: "Poppins-Regular" }}>
+                  <Text style={{ color: "rgba(255,255,255,0.85)", fontFamily: FONT, fontSize: ms(12), letterSpacing: 0.4 }}>
                     Flip camera
                   </Text>
                 </Pressable>
@@ -835,7 +878,7 @@ export default function TakePicture() {
                     }
                   }}
                 >
-                  <Text style={{ color: "rgba(255,255,255,0.35)", fontSize: 13, fontFamily: "Poppins-Regular" }}>
+                  <Text style={{ color: "rgba(255,255,255,0.5)", fontFamily: FONT, fontSize: ms(12) }}>
                     Cancel
                   </Text>
                 </Pressable>

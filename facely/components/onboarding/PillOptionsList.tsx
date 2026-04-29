@@ -1,12 +1,11 @@
 // components/onboarding/PillOptionsList.tsx
-// Flat dark pill-style options with a leading lucide icon.
-// Micro-interactions:
-//   • Press-in: subtle scale + depth squish (spring)
-//   • Selection: icon bounce + animated color/border transition
-//   • Active: a checkmark that scales+fades in on the right
-//   • Idle: staggered fade-in-up on mount
+// Light pill-style options with a leading lucide icon.
+// Idle:    white card surface, soft shadow, neutral icon, lightText label.
+// Active:  sage-soft background, sage thin border, sage icon, sage check chip.
+// Press:   subtle scale + downward squish (spring).
+// Mount:   staggered fade-in-up.
 import React, { useEffect } from "react";
-import { View, StyleSheet, Pressable, Platform } from "react-native";
+import { View, StyleSheet, Pressable } from "react-native";
 import Animated, {
   Easing,
   FadeInDown,
@@ -22,7 +21,19 @@ import type { LucideIcon } from "lucide-react-native";
 
 import T from "@/components/ui/T";
 import { COLORS, RADII, SP } from "@/lib/tokens";
+import { ms, sh } from "@/lib/responsive";
 import { hapticSelection } from "@/lib/haptics";
+
+const LIME = "#B4F34D";        // bright fill — active border, check chip bg
+const SAGE = "#3F7A2A";        // dark readable variant — icon stroke on lime-soft
+const SAGE_SOFT = "#ECFCCB";   // pale lime — active pill background
+const SOFT_SHADOW = {
+  shadowColor: "#000000",
+  shadowOpacity: 0.06,
+  shadowRadius: ms(14),
+  shadowOffset: { width: 0, height: ms(4) },
+  elevation: 2,
+} as const;
 
 export type PillOption = {
   key: string;
@@ -72,8 +83,8 @@ export default function PillOptionsList(props: Props) {
       {options.map((opt, idx) => (
         <Animated.View
           key={opt.key}
-          entering={FadeInDown.delay(idx * 50)
-            .duration(300)
+          entering={FadeInDown.delay(idx * 55)
+            .duration(320)
             .easing(Easing.out(Easing.cubic))}
         >
           <PillRow
@@ -112,7 +123,7 @@ function PillRow({
     });
     if (isActive) {
       iconScale.value = withSequence(
-        withSpring(1.25, { damping: 8, stiffness: 260 }),
+        withSpring(1.22, { damping: 8, stiffness: 260 }),
         withSpring(1, { damping: 10, stiffness: 200 }),
       );
     }
@@ -122,21 +133,18 @@ function PillRow({
     const bg = interpolateColor(
       active.value,
       [0, 1],
-      [COLORS.optionBg, COLORS.optionBgActive],
+      [COLORS.lightCard, SAGE_SOFT],
     );
     const border = interpolateColor(
       active.value,
       [0, 1],
-      ["rgba(255,255,255,0)", COLORS.accentBorder],
+      [COLORS.lightHairline, LIME],
     );
     const scale = 1 - press.value * 0.02;
     return {
       backgroundColor: bg,
       borderColor: border,
-      transform: [
-        { scale },
-        { translateY: press.value * 1.5 },
-      ],
+      transform: [{ scale }, { translateY: press.value * 1.5 }],
     };
   });
 
@@ -168,13 +176,14 @@ function PillRow({
         style={[
           styles.pill,
           description ? styles.pillCard : styles.pillRound,
+          !isActive && SOFT_SHADOW,
           containerStyle,
         ]}
       >
         <Animated.View style={[styles.iconWrap, iconStyle]}>
           <Icon
-            size={22}
-            color={isActive ? COLORS.accent : COLORS.sub}
+            size={ms(22)}
+            color={isActive ? SAGE : COLORS.lightSub}
             strokeWidth={2}
           />
         </Animated.View>
@@ -182,26 +191,25 @@ function PillRow({
         <View style={styles.textCol}>
           <T
             variant="bodySemiBold"
-            color={isActive ? "text" : "optionText"}
+            color="lightText"
+            style={isActive ? styles.labelActive : undefined}
           >
             {label}
           </T>
           {description && (
-            <T variant="small" color="sub" style={styles.description}>
+            <T variant="small" color="lightSub" style={styles.description}>
               {description}
             </T>
           )}
         </View>
 
         <Animated.View style={[styles.check, checkStyle]}>
-          <Check size={14} color={COLORS.bgTop} strokeWidth={3.5} />
+          <Check size={ms(14)} color={COLORS.lightText} strokeWidth={3.5} />
         </Animated.View>
       </Animated.View>
     </Pressable>
   );
 }
-
-const CHECK_SIZE = 22;
 
 const styles = StyleSheet.create({
   list: { gap: SP[3] },
@@ -209,23 +217,24 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: SP[3],
-    minHeight: 60,
+    minHeight: sh(60),
     paddingHorizontal: SP[5],
     paddingVertical: SP[3],
-    borderWidth: 1,
+    borderWidth: 1.5,
   },
-  pillRound: { borderRadius: RADII.circle },
-  pillCard: { borderRadius: RADII.xl },
+  pillRound: { borderRadius: 999 },
+  pillCard: { borderRadius: RADII.lg },
 
-  iconWrap: { width: 24, alignItems: "center", justifyContent: "center" },
+  iconWrap: { width: ms(24), alignItems: "center", justifyContent: "center" },
   textCol: { flex: 1 },
+  labelActive: { color: COLORS.lightText },
   description: { marginTop: 2 },
 
   check: {
-    width: CHECK_SIZE,
-    height: CHECK_SIZE,
-    borderRadius: CHECK_SIZE / 2,
-    backgroundColor: COLORS.accent,
+    width: ms(22),
+    height: ms(22),
+    borderRadius: ms(11),
+    backgroundColor: LIME,
     alignItems: "center",
     justifyContent: "center",
   },

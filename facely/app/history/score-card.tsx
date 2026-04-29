@@ -5,21 +5,23 @@ import React, { useEffect, useMemo, useState } from "react";
 import {
   View,
   StyleSheet,
-  ImageBackground,
-  ScrollView,
+  Pressable,
   ActivityIndicator,
   useWindowDimensions,
 } from "react-native";
+import { Image as ExpoImage } from "expo-image";
 import { useLocalSearchParams, router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { Ionicons } from "@expo/vector-icons";
 
-import ScoringGrid, { type ScoringMetric } from "@/components/scores/ScoringGrid";
-import PillNavButton from "@/components/ui/PillNavButton";
+import ScoringCarousel, { type ScoringMetric } from "@/components/scores/ScoringCarousel";
 import Text from "@/components/ui/T";
 import { COLORS, SP } from "@/lib/tokens";
+import { ms, sh, sw } from "@/lib/responsive";
 import { fetchScanDetail, type ScanDetail } from "@/lib/api/history";
+
+const FONT = "ProximaNova-Bold";
 
 // ─── Metric definitions — kept in sync with (tabs)/score.tsx ───────────────
 
@@ -46,6 +48,44 @@ function buildMetrics(apiScores: Record<string, number> | null | undefined): Sco
 function computeOverall(metrics: ScoringMetric[]): number {
   if (!metrics.length) return 0;
   return Math.round(metrics.reduce((sum, m) => sum + m.score, 0) / metrics.length);
+}
+
+// ─── Light pill button — mirrors the live score screen ─────────────────────
+
+function LightPillButton({
+  label,
+  onPress,
+  variant = "secondary",
+  fill = false,
+}: {
+  label: string;
+  onPress: () => void;
+  variant?: "primary" | "secondary";
+  fill?: boolean;
+}) {
+  const isPrimary = variant === "primary";
+  const bg = isPrimary ? COLORS.ctaBlack : COLORS.lightSurfaceAlt;
+  const fg = isPrimary ? "#FFFFFF" : COLORS.lightText;
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => ({
+        ...(fill ? { flex: 1 } : {}),
+        minHeight: sh(54),
+        borderRadius: 999,
+        backgroundColor: bg,
+        alignItems: "center",
+        justifyContent: "center",
+        paddingVertical: sh(14),
+        paddingHorizontal: SP[5],
+        opacity: pressed ? 0.85 : 1,
+      })}
+    >
+      <Text style={{ color: fg, fontFamily: FONT, fontSize: ms(13), letterSpacing: 0.4 }}>
+        {label.toUpperCase()}
+      </Text>
+    </Pressable>
+  );
 }
 
 // ─── Screen ───────────────────────────────────────────────────────────────
@@ -90,8 +130,8 @@ export default function HistoryScoreCard() {
   );
   const totalScore = useMemo(() => computeOverall(metrics), [metrics]);
 
-  const HORIZONTAL_PAD = SP[4];
-  const cardWidth = SW - HORIZONTAL_PAD * 2;
+  const HORIZONTAL_PAD = SP[5];
+  const viewportWidth = SW - HORIZONTAL_PAD * 2;
 
   const handleBack = () => router.back();
   const handleAdvanced = () => {
@@ -101,8 +141,8 @@ export default function HistoryScoreCard() {
   if (loading) {
     return (
       <View style={[styles.screen, styles.centered, { paddingTop: insets.top }]}>
-        <ActivityIndicator color={COLORS.accent} size="large" />
-        <Text variant="captionMedium" color="sub" style={{ marginTop: SP[3] }}>
+        <ActivityIndicator color={COLORS.lightText} size="large" />
+        <Text variant="captionMedium" style={{ color: COLORS.lightSub, marginTop: SP[3] }}>
           Loading scores...
         </Text>
       </View>
@@ -112,72 +152,79 @@ export default function HistoryScoreCard() {
   if (error || !detail) {
     return (
       <View style={[styles.screen, styles.centered, { paddingTop: insets.top }]}>
-        <Ionicons name="alert-circle-outline" size={40} color={COLORS.error} />
+        <Ionicons name="alert-circle-outline" size={40} color={COLORS.declineRed} />
         <Text
           variant="captionMedium"
-          style={{ color: COLORS.error, textAlign: "center", marginTop: SP[2], paddingHorizontal: SP[6] }}
+          style={{ color: COLORS.declineRed, textAlign: "center", marginTop: SP[2], paddingHorizontal: SP[6] }}
         >
           {error ?? "Could not load this scan."}
         </Text>
         <View style={{ marginTop: SP[4] }}>
-          <PillNavButton label="Back" kind="ghost" onPress={handleBack} />
+          <LightPillButton label="Back" onPress={handleBack} />
         </View>
       </View>
     );
   }
 
+  const imageUri = detail.images?.front?.url ?? null;
+
   return (
     <View style={styles.screen}>
-      <ImageBackground
-        source={require("../../assets/bg/score-bg.jpg")}
-        style={StyleSheet.absoluteFill}
-        resizeMode="cover"
-      >
-        <View style={styles.scrim} />
-      </ImageBackground>
-
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={[
+      <View
+        style={[
           styles.content,
-          { paddingTop: insets.top + SP[5], paddingBottom: insets.bottom + SP[8] },
+          {
+            paddingTop:    insets.top    + SP[5],
+            paddingBottom: insets.bottom + SP[5],
+          },
         ]}
-        showsVerticalScrollIndicator={false}
       >
-        <Animated.View
-          entering={FadeInDown.duration(400).delay(100)}
-          style={styles.header}
-        >
-          <Text variant="h2" color="text">Your Scores</Text>
-          <Text variant="caption" color="sub" style={styles.subtitle}>
-            Facial analysis breakdown — all 8 metrics
-          </Text>
+        {/* Header */}
+        <Animated.View entering={FadeInDown.duration(400).delay(100)} style={styles.header}>
+          <Text style={styles.title}>Your Scores</Text>
+          <Text style={styles.subtitle}>Facial analysis breakdown — all 8 metrics</Text>
         </Animated.View>
 
-        <Animated.View entering={FadeInDown.duration(500).delay(200)}>
-          <ScoringGrid
-            metrics={metrics}
-            totalScore={totalScore}
-            dashboardMetrics={[]}
-            overallDelta={null}
-            imageUri={detail.images?.front?.url ?? null}
-            active
-            cardWidth={cardWidth}
-          />
-        </Animated.View>
+        {/* Centered stack: avatar + carousel */}
+        <View style={styles.centerStack}>
+          <Animated.View entering={FadeInDown.duration(420).delay(160)}>
+            <View style={styles.avatarRing}>
+              {imageUri ? (
+                <ExpoImage
+                  source={{ uri: imageUri }}
+                  style={styles.avatarImg}
+                  contentFit="cover"
+                  cachePolicy="memory-disk"
+                  transition={250}
+                />
+              ) : (
+                <View style={[styles.avatarImg, styles.avatarPlaceholder]} />
+              )}
+            </View>
+          </Animated.View>
 
-        <Animated.View
-          entering={FadeInDown.duration(400).delay(400)}
-          style={styles.buttonRow}
-        >
-          <PillNavButton label="Back" kind="ghost" onPress={handleBack} />
-          <PillNavButton
+          <Animated.View entering={FadeInDown.duration(500).delay(220)} style={{ width: "100%" }}>
+            <ScoringCarousel
+              metrics={metrics}
+              totalScore={totalScore}
+              dashboardMetrics={[]}
+              overallDelta={null}
+              viewportWidth={viewportWidth}
+            />
+          </Animated.View>
+        </View>
+
+        {/* Action buttons */}
+        <Animated.View entering={FadeInDown.duration(400).delay(320)} style={styles.buttonRow}>
+          <LightPillButton label="Back" onPress={handleBack} />
+          <LightPillButton
             label="Advanced Analysis"
-            kind="solid"
+            variant="primary"
             onPress={handleAdvanced}
+            fill
           />
         </Animated.View>
-      </ScrollView>
+      </View>
     </View>
   );
 }
@@ -187,28 +234,61 @@ export default function HistoryScoreCard() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: COLORS.bgTop,
+    backgroundColor: COLORS.lightBg,
   },
   centered: {
     alignItems: "center",
     justifyContent: "center",
   },
-  scrim: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.40)",
-  },
-  scroll: {
-    flex: 1,
-  },
   content: {
-    paddingHorizontal: SP[4],
-    gap: SP[4],
+    flex: 1,
+    paddingHorizontal: SP[5],
   },
   header: {
-    gap: SP[1],
+    gap: sh(4),
+  },
+  title: {
+    fontFamily: FONT,
+    fontSize: ms(28),
+    color: COLORS.lightText,
+    lineHeight: ms(32),
+    letterSpacing: -0.5,
   },
   subtitle: {
-    marginTop: SP[1],
+    fontFamily: FONT,
+    fontSize: ms(13),
+    color: COLORS.lightSub,
+    marginTop: sh(2),
+  },
+  centerStack: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: SP[5],
+  },
+  avatarRing: {
+    width:  ms(128),
+    height: ms(128),
+    borderRadius: ms(64),
+    padding: ms(4),
+    backgroundColor: COLORS.lightCard,
+    borderWidth: 1,
+    borderColor: COLORS.lightBorder,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000000",
+    shadowOpacity: 0.10,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 5,
+  },
+  avatarImg: {
+    width:  "100%",
+    height: "100%",
+    borderRadius: ms(60),
+  },
+  avatarPlaceholder: {
+    backgroundColor: COLORS.iconTileLavender,
   },
   buttonRow: {
     flexDirection: "row",

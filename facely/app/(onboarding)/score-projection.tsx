@@ -13,7 +13,6 @@ import {
   View,
   Image,
 } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
 import Animated, {
   Easing,
   FadeInDown,
@@ -42,10 +41,15 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ChevronLeft } from "lucide-react-native";
 
 import T from "@/components/ui/T";
-import LimeButton from "@/components/ui/LimeButton";
 import { COLORS, RADII, SP, getProgressForStep } from "@/lib/tokens";
+import { ms, sh } from "@/lib/responsive";
 import { hapticLight, hapticSuccess } from "@/lib/haptics";
 import { useOnboarding } from "@/store/onboarding";
+
+const FONT_BOLD = "ProximaNova-Bold";
+const LIME = "#B4F34D";        // bright fill — chart line, fills, dots, progress
+const SAGE = "#3F7A2A";        // dark readable — text on white & lime-soft
+const SAGE_SOFT = "#ECFCCB";   // pale lime — waypoint chip bg
 
 // ---------------------------------------------------------------------------
 // Chart geometry — mirrors dashboard MiniGraph
@@ -144,20 +148,20 @@ function PulsingEndDot({ cx, cy, delay }: { cx: number; cy: number; delay: numbe
 
   return (
     <>
-      <AnimatedCircle cx={cx} cy={cy} fill={COLORS.accent} animatedProps={haloProps} />
+      <AnimatedCircle cx={cx} cy={cy} fill={LIME} animatedProps={haloProps} />
       <AnimatedCircle
         cx={cx}
         cy={cy}
         fill="none"
-        stroke={COLORS.accent}
+        stroke={LIME}
         strokeWidth={1.5}
         animatedProps={ringProps}
       />
       <AnimatedCircle
         cx={cx}
         cy={cy}
-        fill={COLORS.bgTop}
-        stroke={COLORS.accent}
+        fill={COLORS.lightBg}
+        stroke={LIME}
         strokeWidth={2}
         animatedProps={coreProps}
       />
@@ -287,9 +291,12 @@ export default function ScoreProjectionScreen() {
           accessibilityRole="button"
           accessibilityLabel="Go back"
           hitSlop={12}
-          style={styles.backBtn}
+          style={({ pressed }) => [
+            styles.backBtn,
+            pressed && { opacity: 0.7 },
+          ]}
         >
-          <ChevronLeft size={20} color={COLORS.text} strokeWidth={2.5} />
+          <ChevronLeft size={ms(20)} color={COLORS.lightText} strokeWidth={2.5} />
         </Pressable>
         <View style={styles.progressTrack}>
           <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
@@ -307,10 +314,8 @@ export default function ScoreProjectionScreen() {
         </Animated.View>
 
         <Animated.View entering={FadeInDown.duration(400).delay(80)}>
-          <T variant="h1" color="text" style={styles.headline}>
-            Your score in 90 days
-          </T>
-          <T variant="body" color="sub" style={styles.subtext}>
+          <T style={styles.headline}>Your score in 90 days</T>
+          <T style={styles.subtext}>
             If you commit to your {focusWord}, here's the trajectory
           </T>
         </Animated.View>
@@ -321,8 +326,8 @@ export default function ScoreProjectionScreen() {
             <Svg width={CHART_W} height={CHART_H}>
               <Defs>
                 <SvgGradient id="sigmaFill" x1="0" y1="0" x2="0" y2="1">
-                  <Stop offset="0%" stopColor={COLORS.accent} stopOpacity="0.32" />
-                  <Stop offset="100%" stopColor={COLORS.accent} stopOpacity="0" />
+                  <Stop offset="0%" stopColor={LIME} stopOpacity="0.42" />
+                  <Stop offset="100%" stopColor={LIME} stopOpacity="0" />
                 </SvgGradient>
               </Defs>
 
@@ -361,8 +366,8 @@ export default function ScoreProjectionScreen() {
               {/* No-routine counterfactual — solid red, draws in */}
               <AnimatedPath
                 d={PATH_NOROUTINE}
-                stroke={COLORS.error}
-                strokeOpacity={0.8}
+                stroke={COLORS.declineRed}
+                strokeOpacity={0.78}
                 strokeWidth={2.6}
                 fill="none"
                 strokeLinecap="round"
@@ -371,23 +376,23 @@ export default function ScoreProjectionScreen() {
                 animatedProps={noRouteProps}
               />
 
-              {/* Wide soft glow halo behind the sigma line (draws with line) */}
+              {/* Wide soft glow halo behind the lime line */}
               <AnimatedPath
                 d={PATH_SIGMA}
-                stroke={COLORS.accent}
+                stroke={LIME}
                 strokeWidth={14}
                 fill="none"
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                strokeOpacity={0.13}
+                strokeOpacity={0.20}
                 strokeDasharray={DASH_LEN}
                 animatedProps={sigmaProps}
               />
 
-              {/* Main projection — solid green, draws in */}
+              {/* Main projection — lime, draws in */}
               <AnimatedPath
                 d={PATH_SIGMA}
-                stroke={COLORS.accent}
+                stroke={LIME}
                 strokeWidth={3}
                 fill="none"
                 strokeLinecap="round"
@@ -396,15 +401,15 @@ export default function ScoreProjectionScreen() {
                 animatedProps={sigmaProps}
               />
 
-              {/* Start dot — static white */}
-              <Circle cx={X0} cy={Y0} r={4} fill="rgba(0,0,0,0.75)" />
+              {/* Start dot */}
+              <Circle cx={X0} cy={Y0} r={4} fill="rgba(0,0,0,0.65)" />
 
               {/* Waypoint dots */}
-              <Circle cx={wp30X} cy={wp30Y} r={3.5} fill="#FFFFFF" stroke={COLORS.accent} strokeWidth={1.5} />
-              <Circle cx={wp60X} cy={wp60Y} r={3.5} fill="#FFFFFF" stroke={COLORS.accent} strokeWidth={1.5} />
+              <Circle cx={wp30X} cy={wp30Y} r={3.5} fill="#FFFFFF" stroke={LIME} strokeWidth={1.5} />
+              <Circle cx={wp60X} cy={wp60Y} r={3.5} fill="#FFFFFF" stroke={LIME} strokeWidth={1.5} />
 
               {/* No-routine end dot */}
-              <Circle cx={XN} cy={YB} r={3.5} fill={COLORS.error} fillOpacity={0.7} />
+              <Circle cx={XN} cy={YB} r={3.5} fill={COLORS.declineRed} fillOpacity={0.7} />
 
               {/* Pulsing end dot — LastDot pattern */}
               <PulsingEndDot cx={XN} cy={YA} delay={1200} />
@@ -415,13 +420,13 @@ export default function ScoreProjectionScreen() {
               style={[styles.wpLabel, { left: wp30X - 18, top: wp30Y - 28 }, wp30Style]}
               pointerEvents="none"
             >
-              <T variant="smallSemiBold" color="accent">+{WAYPOINT_30.delta}</T>
+              <T style={styles.wpLabelText}>+{WAYPOINT_30.delta}</T>
             </Animated.View>
             <Animated.View
               style={[styles.wpLabel, { left: wp60X - 20, top: wp60Y - 28 }, wp60Style]}
               pointerEvents="none"
             >
-              <T variant="smallSemiBold" color="accent">+{WAYPOINT_60.delta}</T>
+              <T style={styles.wpLabelText}>+{WAYPOINT_60.delta}</T>
             </Animated.View>
           </View>
 
@@ -442,12 +447,12 @@ export default function ScoreProjectionScreen() {
           {/* Legend */}
           <View style={styles.legend}>
             <View style={styles.legendItem}>
-              <View style={[styles.legendLine, { backgroundColor: COLORS.accent }]} />
-              <T variant="small" style={{ color: "rgba(0,0,0,0.70)" }}>With Sigma Max</T>
+              <View style={[styles.legendLine, { backgroundColor: LIME }]} />
+              <T style={styles.legendText}>With SigmaMax</T>
             </View>
             <View style={styles.legendItem}>
-              <View style={[styles.legendLine, { backgroundColor: COLORS.error, opacity: 0.7 }]} />
-              <T variant="small" style={{ color: "rgba(0,0,0,0.70)" }}>No routine</T>
+              <View style={[styles.legendLine, { backgroundColor: COLORS.declineRed, opacity: 0.78 }]} />
+              <T style={styles.legendText}>No routine</T>
             </View>
           </View>
         </View>
@@ -460,23 +465,22 @@ export default function ScoreProjectionScreen() {
       </ScrollView>
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + SP[3] }]}>
-        <LimeButton label="See My Plan" onPress={handleContinue} />
+        <Pressable
+          onPress={handleContinue}
+          style={({ pressed }) => [
+            styles.cta,
+            pressed && { backgroundColor: COLORS.ctaBlackPressed },
+          ]}
+        >
+          <T style={styles.ctaText}>SEE MY PLAN</T>
+        </Pressable>
       </View>
-
-      <LinearGradient
-        colors={[COLORS.bgTop, COLORS.bgBottom]}
-        style={[StyleSheet.absoluteFill, { zIndex: -1 }]}
-        start={{ x: 0.5, y: 0 }}
-        end={{ x: 0.5, y: 1 }}
-      />
     </View>
   );
 }
 
-const BACK_SIZE = 40;
-
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: COLORS.bgTop },
+  screen: { flex: 1, backgroundColor: COLORS.lightBg },
 
   topRow: {
     flexDirection: "row",
@@ -486,26 +490,24 @@ const styles = StyleSheet.create({
     paddingBottom: SP[3],
   },
   backBtn: {
-    width: BACK_SIZE,
-    height: BACK_SIZE,
-    borderRadius: BACK_SIZE / 2,
-    backgroundColor: COLORS.whiteGlass,
-    borderWidth: 1,
-    borderColor: COLORS.cardBorder,
+    width: ms(40),
+    height: ms(40),
+    borderRadius: ms(20),
+    backgroundColor: COLORS.lightSurfaceAlt,
     alignItems: "center",
     justifyContent: "center",
   },
   progressTrack: {
     flex: 1,
-    height: 6,
-    borderRadius: RADII.circle,
-    backgroundColor: COLORS.track,
+    height: sh(6),
+    borderRadius: 999,
+    backgroundColor: COLORS.lightHairline,
     overflow: "hidden",
   },
   progressFill: {
     height: "100%",
-    backgroundColor: COLORS.text,
-    borderRadius: RADII.circle,
+    backgroundColor: LIME,
+    borderRadius: 999,
   },
 
   content: {
@@ -526,55 +528,28 @@ const styles = StyleSheet.create({
     height: HERO_H,
   },
   headline: {
+    fontFamily: FONT_BOLD,
+    fontSize: ms(28),
+    lineHeight: ms(34),
+    letterSpacing: -0.5,
+    color: COLORS.lightText,
     textAlign: "left",
     marginBottom: SP[2],
   },
   subtext: {
+    fontFamily: "Poppins-Regular",
+    fontSize: ms(14),
+    lineHeight: ms(20),
+    color: COLORS.lightSub,
     textAlign: "left",
     marginBottom: SP[4],
   },
 
-  scoreRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SP[3],
-    marginBottom: SP[3],
-  },
-  scoreStart: {
-    fontFamily: "Poppins-SemiBold",
-    fontSize: 30,
-    lineHeight: 36,
-    color: COLORS.text,
-    opacity: 0.45,
-    letterSpacing: -0.5,
-  },
-  arrow: {
-    fontFamily: "Poppins-SemiBold",
-    fontSize: 22,
-    lineHeight: 26,
-    color: COLORS.text,
-    opacity: 0.45,
-  },
-  scoreEnd: {
-    fontFamily: "Poppins-SemiBold",
-    fontSize: 48,
-    lineHeight: 54,
-    color: COLORS.accent,
-    letterSpacing: -1,
-  },
-  deltaChip: {
-    marginLeft: SP[1],
-    paddingHorizontal: SP[3],
-    paddingVertical: 4,
-    borderRadius: RADII.circle,
-    backgroundColor: COLORS.accent,
-  },
-
   chartCard: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: COLORS.lightCard,
     borderRadius: RADII.lg,
     borderWidth: 1,
-    borderColor: "rgba(0,0,0,0.08)",
+    borderColor: COLORS.lightHairline,
     paddingVertical: SP[4],
     paddingHorizontal: 0,
   },
@@ -588,9 +563,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 7,
     paddingVertical: 2,
     borderRadius: RADII.sm,
-    backgroundColor: "rgba(180,243,77,0.14)",
+    backgroundColor: SAGE_SOFT,
     borderWidth: 1,
-    borderColor: COLORS.accentBorder,
+    borderColor: LIME,
+  },
+  wpLabelText: {
+    fontFamily: FONT_BOLD,
+    fontSize: ms(11),
+    color: SAGE,
+    letterSpacing: 0.2,
   },
 
   xAxis: {
@@ -602,11 +583,11 @@ const styles = StyleSheet.create({
     position: "absolute",
     width: 44,
     textAlign: "center",
-    fontFamily: "Poppins-SemiBold",
+    fontFamily: FONT_BOLD,
     fontSize: 10,
     lineHeight: 14,
     letterSpacing: 0.8,
-    color: "rgba(0,0,0,0.55)",
+    color: COLORS.lightSub,
   },
 
   legend: {
@@ -625,6 +606,11 @@ const styles = StyleSheet.create({
     height: 2.5,
     borderRadius: 2,
   },
+  legendText: {
+    fontFamily: "Poppins-Regular",
+    fontSize: ms(12),
+    color: COLORS.lightSub,
+  },
 
   insightTextOnly: {
     alignItems: "center",
@@ -632,24 +618,38 @@ const styles = StyleSheet.create({
     marginBottom: SP[4],
   },
   insightLeadCentered: {
-    fontFamily: "Poppins-Medium",
-    fontSize: 13,
-    lineHeight: 18,
+    fontFamily: "Poppins-Regular",
+    fontSize: ms(13),
+    lineHeight: ms(18),
     letterSpacing: 0.2,
-    color: "rgba(255,255,255,0.70)",
+    color: COLORS.lightSub,
     textAlign: "center",
   },
   insightDeltaBig: {
-    fontFamily: "Poppins-SemiBold",
-    fontSize: 56,
-    lineHeight: 64,
+    fontFamily: FONT_BOLD,
+    fontSize: ms(56),
+    lineHeight: ms(64),
     letterSpacing: -1.5,
-    color: COLORS.accent,
+    color: SAGE,
     marginTop: SP[1],
   },
   footer: {
     paddingTop: SP[3],
     paddingHorizontal: SIDE_PAD,
-    backgroundColor: COLORS.bgTop,
+    backgroundColor: COLORS.lightBg,
+  },
+  cta: {
+    minHeight: sh(54),
+    borderRadius: 999,
+    backgroundColor: COLORS.ctaBlack,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: sh(14),
+  },
+  ctaText: {
+    fontFamily: FONT_BOLD,
+    fontSize: ms(14),
+    color: "#FFFFFF",
+    letterSpacing: 1.0,
   },
 });

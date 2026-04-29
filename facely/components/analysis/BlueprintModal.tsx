@@ -196,19 +196,17 @@ function TraitCard({ item, rank, enterDelay }: { item: TraitItem; rank: number; 
   const iconSource = TRAIT_ICONS[item.id];
 
   return (
-    <Animated.View
-      entering={FadeInDown.duration(320).delay(enterDelay)}
-      style={scaleStyle}
-    >
-      <Pressable
-        onPressIn={() => {
-          scale.value = withSpring(1.025, { damping: 16, stiffness: 280 });
-        }}
-        onPressOut={() => {
-          scale.value = withSpring(1.0, { damping: 20, stiffness: 260 });
-        }}
-        style={[cardSx.card, isTop && cardSx.cardTop]}
-      >
+    <Animated.View entering={FadeInDown.duration(320).delay(enterDelay)}>
+      <Animated.View style={scaleStyle}>
+        <Pressable
+          onPressIn={() => {
+            scale.value = withSpring(1.025, { damping: 16, stiffness: 280 });
+          }}
+          onPressOut={() => {
+            scale.value = withSpring(1.0, { damping: 20, stiffness: 260 });
+          }}
+          style={[cardSx.card, isTop && cardSx.cardTop]}
+        >
         {isTop && (
           <LinearGradient
             colors={["rgba(130,200,0,0.12)", "transparent"]}
@@ -250,6 +248,7 @@ function TraitCard({ item, rank, enterDelay }: { item: TraitItem; rank: number; 
           </View>
         </View>
       </Pressable>
+      </Animated.View>
     </Animated.View>
   );
 }

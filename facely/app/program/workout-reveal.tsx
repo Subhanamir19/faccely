@@ -27,12 +27,21 @@ import Animated, {
   interpolate,
 } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
-import { LinearGradient } from "expo-linear-gradient";
 import { COLORS, RADII, SP } from "@/lib/tokens";
 import { useTasksStore } from "@/store/tasks";
 import { useExerciseSettings } from "@/store/exerciseSettings";
 import { getExerciseIcon } from "@/lib/exerciseIcons";
-import LimeButton from "@/components/ui/LimeButton";
+
+const FONT_BOLD = "ProximaNova-Bold";
+const SAGE = "#3F7A2A";
+
+const SOFT_SHADOW = {
+  shadowColor: "#000000",
+  shadowOpacity: 0.08,
+  shadowRadius: 20,
+  shadowOffset: { width: 0, height: 8 },
+  elevation: 4,
+} as const;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -204,10 +213,6 @@ export default function WorkoutRevealScreen() {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <LinearGradient
-        colors={["#060606", "#0A0A0A", "#000000"]}
-        style={StyleSheet.absoluteFill}
-      />
 
       {/* Header */}
       <Animated.View style={[styles.header, headerStyle]}>
@@ -249,12 +254,15 @@ export default function WorkoutRevealScreen() {
           ctaStyle,
         ]}
       >
-        <LinearGradient
-          colors={["rgba(0,0,0,0)", "rgba(0,0,0,0.95)", "#000000"]}
-          style={styles.ctaGradient}
-          pointerEvents="none"
-        />
-        <LimeButton label="▶  Start Workout" onPress={handleGo} />
+        <Pressable
+          onPress={handleGo}
+          style={({ pressed }) => [
+            styles.startBtn,
+            pressed && { backgroundColor: COLORS.ctaBlackPressed },
+          ]}
+        >
+          <Text style={styles.startBtnText}>▶  START WORKOUT</Text>
+        </Pressable>
         <Pressable
           onPress={() => router.push("/program/list")}
           style={({ pressed }) => [styles.skipBtn, pressed && { opacity: 0.5 }]}
@@ -273,7 +281,7 @@ export default function WorkoutRevealScreen() {
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: "#060606",
+    backgroundColor: COLORS.lightBg,
   },
 
   // Header
@@ -290,14 +298,14 @@ const styles = StyleSheet.create({
   },
   headerLabel: {
     fontSize:      11,
-    fontFamily:    "Poppins-SemiBold",
-    color:         COLORS.accent,
+    fontFamily:    FONT_BOLD,
+    color:         SAGE,
     letterSpacing: 2.5,
   },
   headerSub: {
     fontSize:   13,
     fontFamily: "Poppins-Regular",
-    color:      COLORS.sub,
+    color:      COLORS.lightSub,
   },
 
   // Ready pulse dot
@@ -313,42 +321,41 @@ const styles = StyleSheet.create({
     height:       20,
     borderRadius: 10,
     borderWidth:  1.5,
-    borderColor:  COLORS.accent,
+    borderColor:  SAGE,
     opacity:      0.35,
   },
   readyDot: {
     width:           8,
     height:          8,
     borderRadius:    4,
-    backgroundColor: COLORS.accent,
+    backgroundColor: SAGE,
   },
 
   divider: {
     height:           1,
-    backgroundColor:  "rgba(255,255,255,0.06)",
+    backgroundColor:  COLORS.lightHairline,
     marginHorizontal: SP[5],
     marginBottom:     SP[3],
   },
 
-  // Cards
+  // Cards — white surface, soft shadow
   cardList: {
     flex:              1,
     paddingHorizontal: SP[4],
     paddingTop:        SP[1],
-    gap:               SP[2],
+    gap:               SP[3],
   },
 
   card: {
     flexDirection:   "row",
     alignItems:      "center",
-    backgroundColor: "rgba(18,18,18,0.95)",
+    backgroundColor: COLORS.lightCard,
     borderRadius:    RADII.lg,
-    borderWidth:     1,
-    borderColor:     "rgba(255,255,255,0.07)",
     paddingVertical:   SP[3],
     paddingHorizontal: SP[3],
     gap:               SP[3],
     overflow:          "hidden",
+    ...SOFT_SHADOW,
   },
   cardAccentBar: {
     position:        "absolute",
@@ -357,22 +364,22 @@ const styles = StyleSheet.create({
     bottom:          10,
     width:           3,
     borderRadius:    2,
-    backgroundColor: COLORS.accent,
+    backgroundColor: SAGE,
   },
 
   cardIndexWrap: {
     width:           28,
     height:          28,
     borderRadius:    14,
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor: COLORS.lightSurfaceAlt,
     alignItems:      "center",
     justifyContent:  "center",
     marginLeft:      SP[1],
   },
   cardIndex: {
     fontSize:   12,
-    fontFamily: "Poppins-SemiBold",
-    color:      "rgba(255,255,255,0.35)",
+    fontFamily: FONT_BOLD,
+    color:      COLORS.lightSub,
   },
 
   cardInfo: {
@@ -382,7 +389,7 @@ const styles = StyleSheet.create({
   cardName: {
     fontSize:      14,
     fontFamily:    "Poppins-SemiBold",
-    color:         COLORS.text,
+    color:         COLORS.lightText,
     letterSpacing: -0.2,
   },
   pillRow: {
@@ -391,15 +398,15 @@ const styles = StyleSheet.create({
     gap:           4,
   },
   pill: {
-    backgroundColor: "rgba(255,255,255,0.07)",
-    borderRadius:    RADII.pill,
+    backgroundColor: COLORS.lightSurfaceAlt,
+    borderRadius:    999,
     paddingHorizontal: 8,
     paddingVertical:   2,
   },
   pillText: {
     fontSize:      10,
     fontFamily:    "Poppins-Regular",
-    color:         COLORS.sub,
+    color:         COLORS.lightSub,
     textTransform: "capitalize",
   },
 
@@ -408,8 +415,8 @@ const styles = StyleSheet.create({
   },
   cardDuration: {
     fontSize:   13,
-    fontFamily: "Poppins-SemiBold",
-    color:      COLORS.accent,
+    fontFamily: FONT_BOLD,
+    color:      SAGE,
     letterSpacing: 0.3,
   },
 
@@ -419,12 +426,18 @@ const styles = StyleSheet.create({
     paddingTop:        SP[5],
     gap:               SP[2],
   },
-  ctaGradient: {
-    position: "absolute",
-    top:      -48,
-    left:     0,
-    right:    0,
-    height:   48,
+  startBtn: {
+    backgroundColor:  COLORS.ctaBlack,
+    borderRadius:     999,
+    paddingVertical:  16,
+    alignItems:       "center",
+    justifyContent:   "center",
+  },
+  startBtnText: {
+    fontFamily:    FONT_BOLD,
+    fontSize:      14,
+    color:         "#FFFFFF",
+    letterSpacing: 1.2,
   },
   skipBtn: {
     alignItems: "center",
@@ -433,6 +446,6 @@ const styles = StyleSheet.create({
   skipText: {
     fontSize:   13,
     fontFamily: "Poppins-Regular",
-    color:      COLORS.sub,
+    color:      COLORS.lightSub,
   },
 });

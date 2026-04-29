@@ -1,13 +1,16 @@
 // app/(onboarding)/hook.tsx
+// Returning-user re-entry hook. Cinematic video on top, white sheet below
+// with cascading copy and a black-pill CTA. Mirrors the splash's structure
+// so the visual language is consistent for new and returning users alike.
+
 import React, { useEffect } from "react";
 import {
   View,
-  Text,
   StyleSheet,
   StatusBar,
+  Pressable,
   SafeAreaView,
-  Platform,
-  Dimensions,
+  useWindowDimensions,
 } from "react-native";
 import { Video, ResizeMode } from "expo-av";
 import { LinearGradient } from "expo-linear-gradient";
@@ -19,15 +22,18 @@ import Animated, {
   withTiming,
   Easing,
 } from "react-native-reanimated";
-import LimeButton from "@/components/ui/LimeButton";
-import { COLORS } from "@/lib/tokens";
 
-const { width: W, height: H } = Dimensions.get("window");
-const VIDEO_H = H * 0.62;
-const BG = "#0B0B0B";
-const ACCENT = COLORS.accent;
+import T from "@/components/ui/T";
+import { COLORS, SP } from "@/lib/tokens";
+import { ms, sh } from "@/lib/responsive";
+
+const FONT_BOLD = "ProximaNova-Bold";
+const SAGE = "#3F7A2A";
 
 export default function HookScreen() {
+  const { width: W, height: H } = useWindowDimensions();
+  const videoHeight = Math.round(H * 0.62);
+
   const headOpacity   = useSharedValue(0);
   const headTranslate = useSharedValue(22);
   const sub1Opacity   = useSharedValue(0);
@@ -36,30 +42,13 @@ export default function HookScreen() {
   const ctaTranslate  = useSharedValue(16);
 
   useEffect(() => {
-    headOpacity.value = withDelay(
-      600,
-      withTiming(1, { duration: 480, easing: Easing.out(Easing.cubic) })
-    );
-    headTranslate.value = withDelay(
-      600,
-      withTiming(0, { duration: 480, easing: Easing.out(Easing.cubic) })
-    );
-    sub1Opacity.value = withDelay(
-      940,
-      withTiming(1, { duration: 380, easing: Easing.out(Easing.cubic) })
-    );
-    sub2Opacity.value = withDelay(
-      1160,
-      withTiming(1, { duration: 380, easing: Easing.out(Easing.cubic) })
-    );
-    ctaOpacity.value = withDelay(
-      1400,
-      withTiming(1, { duration: 380, easing: Easing.out(Easing.cubic) })
-    );
-    ctaTranslate.value = withDelay(
-      1400,
-      withTiming(0, { duration: 380, easing: Easing.out(Easing.cubic) })
-    );
+    const ease = Easing.out(Easing.cubic);
+    headOpacity.value   = withDelay(600,  withTiming(1, { duration: 480, easing: ease }));
+    headTranslate.value = withDelay(600,  withTiming(0, { duration: 480, easing: ease }));
+    sub1Opacity.value   = withDelay(940,  withTiming(1, { duration: 380, easing: ease }));
+    sub2Opacity.value   = withDelay(1160, withTiming(1, { duration: 380, easing: ease }));
+    ctaOpacity.value    = withDelay(1400, withTiming(1, { duration: 380, easing: ease }));
+    ctaTranslate.value  = withDelay(1400, withTiming(0, { duration: 380, easing: ease }));
   }, []);
 
   const headStyle = useAnimatedStyle(() => ({
@@ -75,50 +64,57 @@ export default function HookScreen() {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={BG} />
+      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
       {/* Video hero */}
-      <View style={styles.videoWrap}>
+      <View style={[styles.videoWrap, { width: W, height: videoHeight }]}>
         <Video
           source={require("@/assets/first screen onboarding.mp4")}
-          style={styles.video}
+          style={StyleSheet.absoluteFill}
           resizeMode={ResizeMode.COVER}
           isLooping
           isMuted
           shouldPlay
         />
+        {/* Feather into white sheet for a clean seam */}
         <LinearGradient
-          colors={["transparent", BG]}
-          style={styles.videoGradient}
+          colors={["transparent", "rgba(255,255,255,0.4)", COLORS.lightBg]}
+          locations={[0.6, 0.85, 1]}
+          style={StyleSheet.absoluteFill}
         />
       </View>
 
-      {/* Text + CTA */}
+      {/* Bottom sheet */}
       <SafeAreaView style={styles.bottom}>
         <Animated.View style={headStyle}>
-          <Text style={styles.headline}>
+          <T style={styles.headline}>
             Your potential face{"\n"}already exists.
-          </Text>
+          </T>
         </Animated.View>
 
-        <Animated.View style={sub1Style}>
-          <Text style={styles.sub}>Most people never find their way to it.</Text>
+        <Animated.View style={[styles.subWrap, sub1Style]}>
+          <T style={styles.sub}>Most people never find their way to it.</T>
         </Animated.View>
 
-        <Animated.View style={[styles.sub2Wrap, sub2Style]}>
-          <Text style={styles.sub}>
-            <Text style={styles.brand}>Sigma Max</Text>
+        <Animated.View style={[styles.subWrap, sub2Style]}>
+          <T style={styles.sub}>
+            <T style={styles.brand}>SigmaMax</T>
             {" "}shows you the path.
-          </Text>
+          </T>
         </Animated.View>
 
         <View style={styles.spacer} />
 
         <Animated.View style={[styles.ctaWrap, ctaStyle]}>
-          <LimeButton
-            label="Let's Go"
+          <Pressable
             onPress={() => router.replace("/(onboarding)/intro")}
-          />
+            style={({ pressed }) => [
+              styles.cta,
+              pressed && { backgroundColor: COLORS.ctaBlackPressed },
+            ]}
+          >
+            <T style={styles.ctaText}>LET'S GO</T>
+          </Pressable>
         </Animated.View>
       </SafeAreaView>
     </View>
@@ -128,72 +124,58 @@ export default function HookScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: BG,
+    backgroundColor: COLORS.lightBg,
   },
 
   videoWrap: {
-    width: W,
-    height: VIDEO_H,
-  },
-  video: {
-    width: W,
-    height: VIDEO_H,
-  },
-  videoGradient: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: VIDEO_H * 0.48,
+    overflow: "hidden",
   },
 
   bottom: {
     flex: 1,
-    paddingHorizontal: 26,
-    paddingTop: 20,
-    paddingBottom: 8,
-  },
-  spacer: {
-    flex: 1,
+    paddingHorizontal: SP[6],
+    paddingTop: SP[5],
+    paddingBottom: SP[2],
   },
   headline: {
-    color: "#FFFFFF",
-    fontFamily: Platform.select({
-      ios: "Poppins-SemiBold",
-      android: "Poppins-SemiBold",
-      default: "Poppins-SemiBold",
-    }),
-    fontSize: 34,
-    lineHeight: 43,
+    color: COLORS.lightText,
+    fontFamily: FONT_BOLD,
+    fontSize: ms(32),
+    lineHeight: ms(40),
     letterSpacing: -0.8,
-    marginBottom: 10,
+    marginBottom: SP[3],
+  },
+  subWrap: {
+    marginTop: 2,
   },
   sub: {
-    color: COLORS.sub,
-    fontFamily: Platform.select({
-      ios: "Poppins-SemiBold",
-      android: "Poppins-SemiBold",
-      default: "Poppins-SemiBold",
-    }),
-    fontSize: 17,
-    lineHeight: 24,
-  },
-  sub2Wrap: {
-    marginTop: 4,
-    marginBottom: 0,
+    color: COLORS.lightSub,
+    fontFamily: "Poppins-Regular",
+    fontSize: ms(16),
+    lineHeight: ms(24),
   },
   brand: {
-    color: ACCENT,
-    fontFamily: Platform.select({
-      ios: "Poppins-SemiBold",
-      android: "Poppins-SemiBold",
-      default: "Poppins-SemiBold",
-    }),
-    textShadowColor: "rgba(180,243,77,0.55)",
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 10,
+    color: SAGE,
+    fontFamily: FONT_BOLD,
   },
+
+  spacer: { flex: 1 },
+
   ctaWrap: {
-    marginBottom: 52,
+    marginBottom: SP[4],
+  },
+  cta: {
+    minHeight: sh(54),
+    borderRadius: 999,
+    backgroundColor: COLORS.ctaBlack,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: sh(14),
+  },
+  ctaText: {
+    fontFamily: FONT_BOLD,
+    fontSize: ms(14),
+    color: "#FFFFFF",
+    letterSpacing: 1.0,
   },
 });

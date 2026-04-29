@@ -1,5 +1,5 @@
 // app/(tabs)/score.tsx
-// Scoring screen — Quench-Rating-style 2-col metric grid.
+// Scoring screen — swipeable carousel of 8 metric cards.
 //
 // Data sources:
 //   useScores()   → current scan scores (always present after any scan)
@@ -10,26 +10,26 @@ import {
   View,
   StyleSheet,
   Alert,
-  ImageBackground,
+  Image,
   Pressable,
-  ScrollView,
+  ActivityIndicator,
   useWindowDimensions,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { router } from "expo-router";
 
-import ScoringGrid, { type ScoringMetric } from "@/components/scores/ScoringGrid";
-import PillNavButton from "@/components/ui/PillNavButton";
+import ScoringCarousel, { type ScoringMetric } from "@/components/scores/ScoringCarousel";
 import Text from "@/components/ui/T";
-import { COLORS, SP } from "@/lib/tokens";
+import { COLORS, RADII, SP } from "@/lib/tokens";
+import { ms, sh, sw } from "@/lib/responsive";
 import { useScores } from "../../store/scores";
 import { useInsights } from "../../store/insights";
 import { useAdvancedAnalysisConsent } from "@/hooks/useAdvancedAnalysisConsent";
 
-// ─── Metric definitions ───────────────────────────────────────────────────────
-// Maps API key → display label used in ScoringGrid / ANCHORS.
+const FONT = "ProximaNova-Bold";
 
+// ─── Metric definitions ───────────────────────────────────────────────────────
 type MetricDef = { apiKey: string; label: string; defaultScore: number };
 
 const METRIC_DEFS: MetricDef[] = [
@@ -41,8 +41,6 @@ const METRIC_DEFS: MetricDef[] = [
   { apiKey: "eyes_symmetry",     label: "Eye Symmetry",           defaultScore: 62 },
   { apiKey: "nose_harmony",      label: "Nose Balance",           defaultScore: 74 },
 ];
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function buildMetrics(apiScores: Record<string, number> | null): ScoringMetric[] {
   return METRIC_DEFS.map(({ apiKey, label, defaultScore }) => {
@@ -57,6 +55,61 @@ function computeOverall(metrics: ScoringMetric[]): number {
   return Math.round(metrics.reduce((sum, m) => sum + m.score, 0) / metrics.length);
 }
 
+// ─── Local light buttons (replace dark PillNavButton) ────────────────────────
+
+function LightPillButton({
+  label,
+  onPress,
+  variant = "secondary",
+  disabled,
+  loading,
+  fill = false,
+}: {
+  label: string;
+  onPress: () => void;
+  variant?: "primary" | "secondary";
+  disabled?: boolean;
+  loading?: boolean;
+  /** When true, button stretches to fill remaining row width. */
+  fill?: boolean;
+}) {
+  const isPrimary = variant === "primary";
+  const bg = disabled
+    ? COLORS.lightSurfaceAlt
+    : isPrimary
+      ? COLORS.ctaBlack
+      : COLORS.lightSurfaceAlt;
+  const fg = disabled
+    ? COLORS.lightSub
+    : isPrimary
+      ? "#FFFFFF"
+      : COLORS.lightText;
+  return (
+    <Pressable
+      onPress={disabled ? undefined : onPress}
+      disabled={disabled}
+      style={({ pressed }) => ({
+        ...(fill ? { flex: 1 } : {}),
+        minHeight: sh(54),
+        borderRadius: 999,
+        backgroundColor: bg,
+        alignItems: "center",
+        justifyContent: "center",
+        flexDirection: "row",
+        gap: sw(8),
+        paddingVertical: sh(14),
+        paddingHorizontal: SP[5],
+        opacity: pressed && !disabled ? 0.85 : 1,
+      })}
+    >
+      {loading && <ActivityIndicator color={fg} />}
+      <Text style={{ color: fg, fontFamily: FONT, fontSize: ms(13), letterSpacing: 0.4 }}>
+        {label.toUpperCase()}
+      </Text>
+    </Pressable>
+  );
+}
+
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function ScoreScreen() {
@@ -67,14 +120,12 @@ export default function ScoreScreen() {
   const { data: insightData } = useInsights();
   const { checkAndPromptConsent, ConsentModal } = useAdvancedAnalysisConsent();
 
-  // ── Current scores
   const metrics = useMemo<ScoringMetric[]>(
     () => buildMetrics(scores as any),
-    [scores]
+    [scores],
   );
   const totalScore = useMemo(() => computeOverall(metrics), [metrics]);
 
-  // ── Delta data (only meaningful when scan_count ≥ 2)
   const dashboardMetrics = insightData?.metrics ?? [];
   const overallDelta = useMemo<number | null>(() => {
     const overall = insightData?.overall;
@@ -82,18 +133,17 @@ export default function ScoreScreen() {
     return overall.current - overall.baseline;
   }, [insightData]);
 
-  // ── Card width: full screen minus horizontal padding
-  const HORIZONTAL_PAD = SP[4]; // 16 each side
-  const cardWidth = SW - HORIZONTAL_PAD * 2;
+  // Viewport width passed to the carousel — the screen has SP[5] horizontal pad
+  const HORIZONTAL_PAD = SP[5];
+  const viewportWidth  = SW - HORIZONTAL_PAD * 2;
 
-  // ── Navigation
   const handleBack = () => router.back();
 
   const handleAdvanced = async () => {
     if (!scores || !imageUri || !sideImageUri) {
       Alert.alert(
         "Advanced analysis unavailable",
-        "Advanced analysis needs a recent scan. Please run a new face scan first."
+        "Advanced analysis needs a recent scan. Please run a new face scan first.",
       );
       return;
     }
@@ -106,67 +156,59 @@ export default function ScoreScreen() {
     <View style={styles.screen}>
       <ConsentModal />
 
-      {/* Background */}
-      <ImageBackground
-        source={require("../../assets/bg/score-bg.jpg")}
-        style={StyleSheet.absoluteFill}
-        resizeMode="cover"
-      >
-        <View style={styles.scrim} />
-      </ImageBackground>
-
-      {/* Scrollable content */}
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={[
+      <View
+        style={[
           styles.content,
-          { paddingTop: insets.top + SP[5], paddingBottom: insets.bottom + SP[8] },
+          {
+            paddingTop:    insets.top    + SP[5],
+            paddingBottom: insets.bottom + SP[5],
+          },
         ]}
-        showsVerticalScrollIndicator={false}
       >
-        {/* Header */}
-        <Animated.View
-          entering={FadeInDown.duration(400).delay(100)}
-          style={styles.header}
-        >
-          <Text variant="h2" color="text">Your Scores</Text>
-          <Text variant="caption" color="sub" style={styles.subtitle}>
-            Facial analysis breakdown — all 8 metrics
-          </Text>
+        {/* Header — top */}
+        <Animated.View entering={FadeInDown.duration(400).delay(100)} style={styles.header}>
+          <Text style={styles.title}>Your Scores</Text>
+          <Text style={styles.subtitle}>Facial analysis breakdown — all 8 metrics</Text>
         </Animated.View>
 
-        {/* Scoring grid */}
-        <Animated.View entering={FadeInDown.duration(500).delay(200)}>
-          <ScoringGrid
-            metrics={metrics}
-            totalScore={totalScore}
-            dashboardMetrics={dashboardMetrics}
-            overallDelta={overallDelta}
-            imageUri={imageUri}
-            active
-            cardWidth={cardWidth}
-          />
-        </Animated.View>
+        {/* Centered stack: avatar + carousel + counter */}
+        <View style={styles.centerStack}>
+          {/* User avatar — circular, top of the stack */}
+          <Animated.View entering={FadeInDown.duration(420).delay(160)}>
+            <View style={styles.avatarRing}>
+              {imageUri ? (
+                <Image source={{ uri: imageUri }} style={styles.avatarImg} resizeMode="cover" />
+              ) : (
+                <View style={[styles.avatarImg, styles.avatarPlaceholder]} />
+              )}
+            </View>
+          </Animated.View>
 
-        {/* Action buttons */}
-        <Animated.View
-          entering={FadeInDown.duration(400).delay(400)}
-          style={styles.buttonRow}
-        >
-          <PillNavButton
-            label="Back"
-            kind="ghost"
-            onPress={handleBack}
-          />
-          <PillNavButton
+          {/* Carousel + counter */}
+          <Animated.View entering={FadeInDown.duration(500).delay(220)} style={{ width: "100%" }}>
+            <ScoringCarousel
+              metrics={metrics}
+              totalScore={totalScore}
+              dashboardMetrics={dashboardMetrics}
+              overallDelta={overallDelta}
+              viewportWidth={viewportWidth}
+            />
+          </Animated.View>
+        </View>
+
+        {/* Action buttons — docked at bottom */}
+        <Animated.View entering={FadeInDown.duration(400).delay(320)} style={styles.buttonRow}>
+          <LightPillButton label="Back" onPress={handleBack} />
+          <LightPillButton
             label="Advanced Analysis"
-            kind="solid"
+            variant="primary"
             onPress={handleAdvanced}
             disabled={explLoading}
             loading={explLoading}
+            fill
           />
         </Animated.View>
-      </ScrollView>
+      </View>
     </View>
   );
 }
@@ -176,28 +218,64 @@ export default function ScoreScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: COLORS.bgTop,
-  },
-  scrim: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.40)",
-  },
-  scroll: {
-    flex: 1,
+    backgroundColor: COLORS.lightBg,
   },
   content: {
-    paddingHorizontal: SP[4],
-    gap: SP[4],
+    flex: 1,
+    paddingHorizontal: SP[5],
   },
   header: {
-    gap: SP[1],
+    gap: sh(4),
+  },
+  title: {
+    fontFamily: FONT,
+    fontSize: ms(28),
+    color: COLORS.lightText,
+    lineHeight: ms(32),
+    letterSpacing: -0.5,
   },
   subtitle: {
-    marginTop: SP[1],
+    fontFamily: FONT,
+    fontSize: ms(13),
+    color: COLORS.lightSub,
+    marginTop: sh(2),
   },
+
+  // Center column: avatar + carousel + counter, vertically centered in
+  // the available space between header and buttons.
+  centerStack: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: SP[5],
+  },
+  avatarRing: {
+    width:  ms(128),
+    height: ms(128),
+    borderRadius: ms(64),
+    padding: ms(4),                    // creates the minimal frame
+    backgroundColor: COLORS.lightCard, // frame colour — barely off-white
+    borderWidth: 1,
+    borderColor: COLORS.lightBorder,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000000",
+    shadowOpacity: 0.10,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 5,
+  },
+  avatarImg: {
+    width:  "100%",
+    height: "100%",
+    borderRadius: ms(60),
+  },
+  avatarPlaceholder: {
+    backgroundColor: COLORS.iconTileLavender,
+  },
+
   buttonRow: {
     flexDirection: "row",
     gap: SP[3],
-    marginTop: SP[2],
   },
 });

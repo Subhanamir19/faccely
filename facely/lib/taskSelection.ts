@@ -252,6 +252,10 @@ export const EXERCISE_CATALOG: ExerciseEntry[] = [
 
 const EXERCISES_BY_ID = new Map(EXERCISE_CATALOG.map((e) => [e.id, e]));
 
+export function getExerciseById(id: string): ExerciseEntry | undefined {
+  return EXERCISES_BY_ID.get(id);
+}
+
 // ---------------------------------------------------------------------------
 // Goal → score field mapping
 // ---------------------------------------------------------------------------

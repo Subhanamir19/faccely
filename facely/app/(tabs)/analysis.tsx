@@ -9,8 +9,10 @@ import {
   StyleSheet,
   Pressable,
   Platform,
-  Image,
+  Image as RNImage,
+  useWindowDimensions,
 } from "react-native";
+import { Image as ExpoImage } from "expo-image";
 import { useFocusEffect } from "expo-router";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -28,6 +30,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { Sparkles, Target, AlertCircle, ChevronDown, ChevronRight, Microscope, ScanFace, LineChart, ShieldCheck } from "lucide-react-native";
 import { MetricDetailCard } from "@/components/analysis/MetricDetailCard";
+import AnalysisCarousel from "@/components/analysis/AnalysisCarousel";
 
 import Text from "@/components/ui/T";
 import { COLORS, SP, RADII } from "@/lib/tokens";
@@ -43,47 +46,65 @@ import type { AdvancedAnalysis } from "@/lib/api/advancedAnalysis";
 // Design constants — matched to reference
 // ---------------------------------------------------------------------------
 
+// Light theme palette — every "depth" / "card" / "border" key now resolves
+// to the same light vocabulary used across dashboard / routine list / scan /
+// score screens. Semantic keys preserved so STATUS_CONFIG / ZONE_CONFIG still
+// work without restructuring.
 const C = {
-  bg:          "#000000",
-  card:        "#1A1A1A",
-  cardDepth:   "#0A0A0A",
-  iconBox:     "#222222",
-  iconDepth:   "#111111",
-  expandedBg:  "#222222",
-  expandDepth: "#111111",
-  textPrimary: "#FFFFFF",
-  textMuted:   "#808080",
-  textBody:    "#A0A0A0",
-  // working (fine) — lime
-  fineText:    "#2D3B1F",
-  fineBg:      "#B4F34D",
-  fineBorder:  "#8ECA45",
-  fineIcon:    "#B4F34D",
-  // okay (neutral) — off-white
-  neutralText: "#1A1A1A",
-  neutralBg:   "#E8E8E8",
-  neutralBorder:"#C8C8C8",
-  neutralIcon: "#A0A0A0",
-  // needs work (alarming) — red
-  alarmText:   "#4A0D0D",
-  alarmBg:     "#FF6B6B",
-  alarmBorder: "#D94A4A",
-  alarmIcon:   "#FF6B6B",
+  bg:          COLORS.lightBg,
+  card:        COLORS.lightCard,
+  cardDepth:   "transparent",
+  iconBox:     COLORS.iconTileLavender,
+  iconDepth:   "transparent",
+  expandedBg:  COLORS.lightSurface,
+  expandDepth: "transparent",
+  textPrimary: COLORS.lightText,
+  textMuted:   COLORS.lightSub,
+  textBody:    COLORS.lightMuted,
 
-  // ── Zone slab backgrounds (Option C: Surface Stratification) ──
-  workingZoneBg:  "#0C1900",   // very subtle lime tint
-  workingZoneBrd: "#192E00",
-  workingCardBg:  "#142100",   // slightly lighter than zone
+  // working (fine) — sage tint
+  fineText:    "#1F3D1F",
+  fineBg:      "#E2F1D8",
+  fineBorder:  "#C7E2B4",
+  fineIcon:    "#3F7A2A",
 
-  okayZoneBg:     "#111111",   // neutral dark
-  okayZoneBrd:    "#1C1C1C",
+  // okay (neutral) — light gray
+  neutralText: COLORS.lightText,
+  neutralBg:   COLORS.lightSurfaceAlt,
+  neutralBorder: COLORS.lightBorder,
+  neutralIcon: COLORS.lightSub,
 
-  needsZoneBg:    "#160202",   // very subtle red tint
-  needsZoneBrd:   "#280808",
-  needsCardBg:    "#1F0606",   // slightly lighter than zone
-  needsCardBrd:   "#380E0E",
-  needsCardDep:   "#0D0101",
+  // needs work (alarming) — soft red
+  alarmText:   "#7A1F1F",
+  alarmBg:     COLORS.declineRedSoft,
+  alarmBorder: "#F4C0C2",
+  alarmIcon:   COLORS.declineRed,
+
+  // ── Zone slabs — flat light surfaces, no tint ──
+  workingZoneBg:  COLORS.lightCard,
+  workingZoneBrd: "transparent",
+  workingCardBg:  COLORS.lightCard,
+
+  okayZoneBg:     COLORS.lightCard,
+  okayZoneBrd:    "transparent",
+
+  needsZoneBg:    COLORS.lightCard,
+  needsZoneBrd:   "transparent",
+  needsCardBg:    COLORS.lightCard,
+  needsCardBrd:   "transparent",
+  needsCardDep:   "transparent",
 };
+
+// Soft drop-shadow recipe — same as elsewhere
+const SOFT_SHADOW = {
+  shadowColor: "#000000",
+  shadowOpacity: 0.08,
+  shadowRadius: 20,
+  shadowOffset: { width: 0, height: 8 },
+  elevation: 4,
+} as const;
+
+const FONT = "ProximaNova-Bold";
 
 // ---------------------------------------------------------------------------
 // Section thresholds
@@ -443,7 +464,7 @@ function MetricCard({ item, onPress }: { item: FlatMetric; onPress: (m: FlatMetr
         {/* Icon box */}
         <View style={[sx.iconBox, { borderBottomColor: C.iconDepth }]}>
           {item.icon ? (
-            <Image source={item.icon} style={sx.metricIcon} />
+            <RNImage source={item.icon} style={sx.metricIcon} />
           ) : (
             <Text style={sx.metricEmoji}>{item.emoji}</Text>
           )}
@@ -606,34 +627,37 @@ function SectionBlock({
 // Analysis content — rendered once we have data
 // ---------------------------------------------------------------------------
 
-export function AnalysisContent({ data }: { data: AdvancedAnalysis }) {
+export function AnalysisContent({
+  data,
+  viewportWidth,
+  imageUri,
+}: {
+  data: AdvancedAnalysis;
+  viewportWidth: number;
+  imageUri?: string | null;
+}) {
   const currentStreak = useTasksStore((s) => s.currentStreak);
   const metrics   = useMemo(() => flattenData(data), [data]);
-  const working   = useMemo(() => metrics.filter((m) => m.section === "working"),    [metrics]);
-  const okay      = useMemo(() => metrics.filter((m) => m.section === "okay"),       [metrics]);
-  const needsWork = useMemo(() => metrics.filter((m) => m.section === "needs_work"), [metrics]);
+
+  // Single carousel ordered by section: working → okay → needs_work.
+  // Section identity is conveyed via a chip on each card; chip color shifts
+  // as the user swipes between sections.
+  const ordered = useMemo(() => {
+    const working   = metrics.filter((m) => m.section === "working");
+    const okay      = metrics.filter((m) => m.section === "okay");
+    const needsWork = metrics.filter((m) => m.section === "needs_work");
+    return [...working, ...okay, ...needsWork];
+  }, [metrics]);
 
   // ── Detail modal state ────────────────────────────────────────────────────
   const [selectedMetric, setSelectedMetric] = useState<FlatMetric | null>(null);
   const handleCardPress  = useCallback((m: FlatMetric) => setSelectedMetric(m), []);
   const handleModalClose = useCallback(() => setSelectedMetric(null),            []);
 
-  const workingFraction = metrics.length > 0 ? working.length / metrics.length : 0;
-
-  const barWidth = useSharedValue(0);
-  useEffect(() => {
-    barWidth.value = withTiming(workingFraction * 100, {
-      duration: 1200,
-      easing: Easing.out(Easing.cubic),
-    });
-  }, [workingFraction]);
-  const barStyle = useAnimatedStyle(() => ({ width: `${barWidth.value}%` as any }));
-
   return (
     <>
-      {/* ── Reference-style page header ── */}
+      {/* ── Page header ── */}
       <Animated.View entering={FadeInDown.duration(340)} style={sx.refHeader}>
-
         <View style={sx.refTopRow}>
           <View style={sx.refPillDepth}>
             <View style={sx.refPill}>
@@ -647,55 +671,51 @@ export function AnalysisContent({ data }: { data: AdvancedAnalysis }) {
           </View>
         </View>
 
-        <Animated.Text
-          entering={FadeInDown.duration(340).delay(80)}
-          style={sx.refDesc}
-        >
-          A balanced aesthetic breakdown to highlight your striking features, and identify areas for structural improvement and refinement.
-        </Animated.Text>
-
-        <Animated.View
-          entering={FadeInDown.duration(340).delay(140)}
-          style={sx.refBarRow}
-        >
-          <View style={sx.barTrack}>
-            <Animated.View style={[sx.barFill, barStyle]} />
-          </View>
-          <Text style={sx.overviewCount}>
-            {working.length} / {metrics.length}
-          </Text>
-        </Animated.View>
-
       </Animated.View>
 
-      {/* ── Three sections ── */}
-      <SectionBlock sectionKey="working"    metrics={working}   onCardPress={handleCardPress} />
-      <SectionBlock sectionKey="okay"       metrics={okay}      onCardPress={handleCardPress} />
-      <SectionBlock sectionKey="needs_work" metrics={needsWork} onCardPress={handleCardPress} />
+      {/* ── Framed user avatar — same vocabulary as the score screen ── */}
+      <Animated.View entering={FadeInDown.duration(380).delay(120)} style={sx.avatarSection}>
+        <View style={sx.avatarRing}>
+          {imageUri ? (
+            <ExpoImage
+              source={{ uri: imageUri }}
+              style={sx.avatarImg}
+              contentFit="cover"
+              cachePolicy="memory-disk"
+              transition={250}
+            />
+          ) : (
+            <View style={[sx.avatarImg, sx.avatarPlaceholder]} />
+          )}
+        </View>
+      </Animated.View>
 
-      {/* ── Footer CTA ── */}
+      {/* ── Swipeable carousel of all metrics ── */}
+      <Animated.View entering={FadeInDown.duration(420).delay(160)}>
+        <AnalysisCarousel
+          metrics={ordered}
+          viewportWidth={viewportWidth}
+          onCardPress={(c) => {
+            // Carousel emits a slim CarouselMetric — find the full FlatMetric
+            // by id so the popup gets commentary + ideal range too.
+            const full = ordered.find((m) => m.id === c.id) ?? null;
+            if (full) handleCardPress(full);
+          }}
+        />
+      </Animated.View>
+
+      {/* ── Footer CTA — black pill, matches START ROUTINE elsewhere ── */}
       <Animated.View
         entering={FadeInDown.duration(340).delay(600)}
         style={sx.footerCta}
       >
-        <View style={sx.ctaDepth}>
-          <Pressable
-            onPress={() => router.push("/(tabs)/program")}
-            style={({ pressed }) => [
-              sx.ctaBtn,
-              { transform: [{ translateY: pressed ? 5 : 0 }] },
-            ]}
-          >
-            <LinearGradient
-              colors={[COLORS.accentLight, COLORS.accent]}
-              start={{ x: 0.5, y: 0 }}
-              end={{ x: 0.5, y: 1 }}
-              style={StyleSheet.absoluteFill}
-            />
-            <Text style={sx.ctaBtnText}>Start Your Routine</Text>
-            <ChevronRight size={ms(16)} color="#0B1A00" strokeWidth={2.5} />
-          </Pressable>
-        </View>
+        <Pressable
+          onPress={() => router.push("/(tabs)/program")}
+          style={({ pressed }) => [sx.ctaBtn, pressed && { opacity: 0.9 }]}
+        >
+          <Text style={sx.ctaBtnText}>START YOUR ROUTINE</Text>
+          <ChevronRight size={ms(16)} color="#FFFFFF" strokeWidth={2.5} />
+        </Pressable>
       </Animated.View>
 
       {/* ── Detail card modal ── */}
@@ -753,25 +773,16 @@ function EmptyState() {
 
       <Animated.View
         entering={FadeInDown.duration(380).delay(340)}
-        style={[sx.ctaDepth, sx.emptyCta]}
+        style={[sx.emptyCta]}
       >
         <Pressable
           onPress={() => router.push("/(tabs)/take-picture")}
-          style={({ pressed }) => [
-            sx.ctaBtn,
-            { transform: [{ translateY: pressed ? 5 : 0 }] },
-          ]}
+          style={({ pressed }) => [sx.ctaBtn, pressed && { opacity: 0.9 }]}
           accessibilityRole="button"
           accessibilityLabel="Start face scan"
         >
-          <LinearGradient
-            colors={[COLORS.accentLight, COLORS.accent]}
-            start={{ x: 0.5, y: 0 }}
-            end={{ x: 0.5, y: 1 }}
-            style={StyleSheet.absoluteFill}
-          />
-          <Text style={sx.ctaBtnText}>Start Face Scan</Text>
-          <ChevronRight size={ms(16)} color="#0B1A00" strokeWidth={2.6} />
+          <Text style={sx.ctaBtnText}>START FACE SCAN</Text>
+          <ChevronRight size={ms(16)} color="#FFFFFF" strokeWidth={2.6} />
         </Pressable>
       </Animated.View>
     </View>
@@ -801,20 +812,27 @@ function ErrorState({ message, onRetry }: { message: string; onRetry: () => void
 
 export default function AnalysisScreen() {
   const insets = useSafeAreaInsets();
+  const { width: SW } = useWindowDimensions();
 
   const { scores, imageUri }               = useScores();
   const { data, loading, error, fetch, cachedScanId } = useAdvancedAnalysis();
   const { checkAndPromptConsent, ConsentModal }        = useAdvancedAnalysisConsent();
 
   const hasScores = !!scores && !!imageUri;
+  // Carousel viewport — screen width minus the scroll's horizontal padding
+  // (sw(16) on each side, see sx.scrollContent).
+  const viewportWidth = SW - sw(16) * 2;
 
   // Bump on every focus so AnalysisContent remounts and re-animates.
   // Data is cached in Zustand so there's no loading flash — just fresh entrance.
   const [focusKey, setFocusKey] = useState(0);
 
-  // Blueprint modal — shown once per scan (keyed to cachedScanId)
+  // Blueprint modal — shown once per scan (keyed to cachedScanId).
+  // Marks the scan id only AFTER the user dismisses, so the modal becomes
+  // the first thing they see in the advanced flow and the carousel stays
+  // hidden underneath until then.
   const [blueprintVisible, setBlueprintVisible] = useState(false);
-  const shownForScanIdRef = useRef<string | null>(null);
+  const dismissedForScanIdRef = useRef<string | null>(null);
 
   // Fetch on every focus — consent gate runs once per install (Apple 5.1.1/5.1.2)
   useFocusEffect(
@@ -828,28 +846,29 @@ export default function AnalysisScreen() {
     }, [hasScores, data, loading, checkAndPromptConsent, fetch])
   );
 
-  // Surface blueprint modal the first time data arrives for each scan
+  // Pending = data is ready for a scan the user hasn't dismissed the
+  // blueprint for yet. Drives both the modal trigger and the content gate
+  // so the carousel never flashes behind the modal on first entry.
+  const needsFirstSurface =
+    !!data && !!cachedScanId && dismissedForScanIdRef.current !== cachedScanId;
+
   useEffect(() => {
-    if (data && cachedScanId && shownForScanIdRef.current !== cachedScanId) {
-      shownForScanIdRef.current = cachedScanId;
-      setBlueprintVisible(true);
-    }
-  }, [data, cachedScanId]);
+    if (needsFirstSurface && !blueprintVisible) setBlueprintVisible(true);
+  }, [needsFirstSurface, blueprintVisible]);
+
+  const handleBlueprintDismiss = useCallback(() => {
+    if (cachedScanId) dismissedForScanIdRef.current = cachedScanId;
+    setBlueprintVisible(false);
+  }, [cachedScanId]);
 
   const showLoading  = loading && !data;
   const showError    = !!error && !data;
   const showEmpty    = !hasScores;
-  const showContent  = !!data;
+  // Hide the carousel until the blueprint is dismissed for this scan.
+  const showContent  = !!data && !needsFirstSurface;
 
   return (
     <View style={[sx.screen, { backgroundColor: C.bg }]}>
-      {/* Background gradient */}
-      <LinearGradient
-        colors={[COLORS.bgTop, COLORS.bgBottom]}
-        style={StyleSheet.absoluteFill}
-        pointerEvents="none"
-      />
-
       {/* Safe-area container */}
       <View style={[sx.safeArea, { paddingTop: insets.top }]}>
 
@@ -887,20 +906,21 @@ export default function AnalysisScreen() {
             </View>
           )}
 
-          {showContent && <AnalysisContent key={focusKey} data={data!} />}
+          {showContent && <AnalysisContent key={focusKey} data={data!} viewportWidth={viewportWidth} imageUri={imageUri} />}
         </ScrollView>
       </View>
 
       {/* Consent modal — shown once before first fetch */}
       <ConsentModal />
 
-      {/* Blueprint modal — auto-surfaces once per scan when data is ready */}
-      {showContent && (
+      {/* Blueprint modal — auto-surfaces once per scan as the first screen
+          of the advanced-analysis flow, before the carousel is revealed. */}
+      {!!data && (
         <BlueprintModal
-          data={data!}
+          data={data}
           imageUri={imageUri ?? null}
           visible={blueprintVisible}
-          onDismiss={() => setBlueprintVisible(false)}
+          onDismiss={handleBlueprintDismiss}
         />
       )}
     </View>
@@ -929,14 +949,14 @@ const sx = StyleSheet.create({
   },
   headerTitle: {
     fontSize: ms(22, 0.3),
-    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
+    fontFamily: FONT,
     color: C.textPrimary,
     letterSpacing: -0.4,
     textAlign: "center",
   },
   headerSub: {
     fontSize: ms(12.5, 0.3),
-    fontFamily: Platform.select({ ios: "Poppins-Regular", android: "Poppins-Regular", default: "Poppins-Regular" }),
+    fontFamily: FONT,
     color: C.textMuted,
     marginTop: sh(3),
     textAlign: "center",
@@ -955,7 +975,7 @@ const sx = StyleSheet.create({
   },
   liveLabel: {
     fontSize: ms(10, 0.3),
-    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
+    fontFamily: FONT,
     color: C.textMuted,
     letterSpacing: 1.4,
   },
@@ -966,6 +986,33 @@ const sx = StyleSheet.create({
     paddingHorizontal: sw(16),
     paddingTop: sh(2),
     gap: sh(12),
+  },
+
+  // ── Framed user avatar — mirrors score-screen vocabulary ──
+  avatarSection: {
+    alignItems: "center",
+    marginTop: sh(8),
+    marginBottom: sh(4),
+  },
+  avatarRing: {
+    width: ms(128),
+    height: ms(128),
+    borderRadius: ms(64),
+    padding: ms(4),
+    backgroundColor: COLORS.lightCard,
+    borderWidth: 1,
+    borderColor: COLORS.lightBorder,
+    alignItems: "center",
+    justifyContent: "center",
+    ...SOFT_SHADOW,
+  },
+  avatarImg: {
+    width: "100%",
+    height: "100%",
+    borderRadius: ms(60),
+  },
+  avatarPlaceholder: {
+    backgroundColor: COLORS.iconTileLavender,
   },
 
   // ── Reference-style header (inside AnalysisContent) ──
@@ -980,17 +1027,16 @@ const sx = StyleSheet.create({
     alignItems: "center",
     gap: sw(12),
   },
-  // Score pill — 3D press feel matching the card language
+  // Streak pill — black on white, matches the same chip used app-wide
   refPillDepth: {
     borderRadius: 999,
-    backgroundColor: "#0A0A0A",
-    paddingBottom: 3,
+    backgroundColor: "transparent",
   },
   refPill: {
     flexDirection: "row",
     alignItems: "center",
     gap: sw(6),
-    backgroundColor: "#1A1A1A",
+    backgroundColor: COLORS.ctaBlack,
     borderRadius: 999,
     paddingHorizontal: sw(14),
     paddingVertical: sh(7),
@@ -1001,8 +1047,8 @@ const sx = StyleSheet.create({
   },
   refPillScore: {
     fontSize: ms(14, 0.3),
-    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
-    color: C.textPrimary,
+    fontFamily: FONT,
+    color: "#FFFFFF",
     letterSpacing: -0.2,
   },
   // "• ANALYSIS RESULTS" label
@@ -1019,14 +1065,14 @@ const sx = StyleSheet.create({
   },
   refLabelText: {
     fontSize: ms(10.5, 0.3),
-    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
+    fontFamily: FONT,
     color: C.textMuted,
     letterSpacing: 1.8,
   },
   // Description paragraph
   refDesc: {
     fontSize: ms(14, 0.3),
-    fontFamily: Platform.select({ ios: "Poppins-Regular", android: "Poppins-Regular", default: "Poppins-Regular" }),
+    fontFamily: FONT,
     color: C.textBody,
     lineHeight: ms(21),
   },
@@ -1048,29 +1094,29 @@ const sx = StyleSheet.create({
   barTrack: {
     flex: 1,
     height: sh(8),
-    backgroundColor: "#1A1A1A",
+    backgroundColor: COLORS.lightSurfaceAlt,
     borderRadius: 999,
     overflow: "hidden",
   },
   barFill: {
     height: "100%",
-    backgroundColor: C.fineIcon,
+    backgroundColor: COLORS.ctaBlack,
     borderRadius: 999,
   },
   overviewCount: {
     fontSize: ms(13, 0.3),
-    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
+    fontFamily: FONT,
     color: C.textMuted,
   },
 
-  // ── Section zone slab (Option C: Surface Stratification) ──
+  // ── Section zone — light card with soft shadow ──
   sectionZone: {
     borderRadius: ms(20),
-    borderWidth: 1,
     paddingTop: sh(14),
     paddingBottom: sh(16),
     paddingHorizontal: sw(12),
     overflow: "hidden",
+    ...SOFT_SHADOW,
   },
   // Zone header: title left, large accent count right
   zoneHeader: {
@@ -1092,52 +1138,48 @@ const sx = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: ms(17, 0.3),
-    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
+    fontFamily: FONT,
     color: C.textPrimary,
     letterSpacing: -0.1,
   },
   // Large accent number replacing the small "5 items" label
   sectionCountLarge: {
     fontSize: ms(26, 0.3),
-    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
+    fontFamily: FONT,
     letterSpacing: -0.3,
   },
   cardList: { gap: sh(8) },
 
-  // ── Metric card ──
+  // ── Metric card — flat row inside the zone, no extra shadow ──
   card: {
     backgroundColor: C.card,
     borderRadius: CARD_RADIUS,
-    borderBottomWidth: 6,
-    borderBottomColor: C.cardDepth,
     paddingHorizontal: sw(12),
-    paddingTop: sh(9),
-    paddingBottom: sh(7),
-    overflow: "hidden",
-  },
-  // What's Working card — lime-tinted, floats above zone bg
-  cardWorking: {
-    backgroundColor: C.workingCardBg,
-    borderRadius: CARD_RADIUS,
-    borderBottomWidth: 6,
-    borderBottomColor: C.workingZoneBg,
-    paddingHorizontal: sw(12),
-    paddingTop: sh(9),
-    paddingBottom: sh(7),
-    overflow: "hidden",
-  },
-  // Needs Work card — heavier border, more vertical padding, red-tinted
-  cardNeedsWork: {
-    backgroundColor: C.needsCardBg,
-    borderRadius: CARD_RADIUS,
-    borderWidth: 1,
-    borderColor: C.needsCardBrd,
-    borderBottomWidth: 4,
-    borderBottomColor: C.needsCardDep,
-    paddingHorizontal: sw(12),
-    paddingTop: sh(12),
+    paddingTop: sh(10),
     paddingBottom: sh(10),
     overflow: "hidden",
+    borderWidth: 1,
+    borderColor: COLORS.lightHairline,
+  },
+  cardWorking: {
+    backgroundColor: C.card,
+    borderRadius: CARD_RADIUS,
+    paddingHorizontal: sw(12),
+    paddingTop: sh(10),
+    paddingBottom: sh(10),
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: COLORS.lightHairline,
+  },
+  cardNeedsWork: {
+    backgroundColor: C.card,
+    borderRadius: CARD_RADIUS,
+    paddingHorizontal: sw(12),
+    paddingTop: sh(12),
+    paddingBottom: sh(12),
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: C.alarmBorder,
   },
   cardHeader: {
     flexDirection: "row",
@@ -1145,16 +1187,16 @@ const sx = StyleSheet.create({
     gap: sw(12),
   },
 
-  // Icon box
+  // Icon box — lavender tile
   iconBox: {
     width: ICON_BOX_SIZE,
     height: ICON_BOX_SIZE,
     borderRadius: ICON_RADIUS,
     backgroundColor: C.iconBox,
-    borderBottomWidth: 4,
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
+    overflow: "hidden",
   },
 
   // Label + chip
@@ -1174,7 +1216,7 @@ const sx = StyleSheet.create({
   },
   metricLabel: {
     fontSize: ms(13, 0.3),
-    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
+    fontFamily: FONT,
     color: C.textPrimary,
     lineHeight: ms(16),
   },
@@ -1188,7 +1230,7 @@ const sx = StyleSheet.create({
   },
   categoryChipText: {
     fontSize: ms(9.5, 0.3),
-    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
+    fontFamily: FONT,
     color: C.textMuted,
     letterSpacing: 0.8,
   },
@@ -1202,7 +1244,7 @@ const sx = StyleSheet.create({
   },
   pillDepth: {
     borderRadius: PILL_RADIUS,
-    paddingBottom: 4,
+    backgroundColor: "transparent",
   },
   pillFace: {
     borderRadius: PILL_RADIUS,
@@ -1215,7 +1257,7 @@ const sx = StyleSheet.create({
   },
   pillText: {
     fontSize: ms(10.5, 0.3),
-    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
+    fontFamily: FONT,
     lineHeight: ms(13),
     textAlign: "center" as const,
   },
@@ -1228,14 +1270,12 @@ const sx = StyleSheet.create({
   expandedCard: {
     backgroundColor: C.expandedBg,
     borderRadius: ms(12),
-    borderBottomWidth: 2,
-    borderBottomColor: C.expandDepth,
     paddingHorizontal: sw(12),
     paddingVertical: sh(9),
   },
   expandedText: {
     fontSize: ms(13, 0.3),
-    fontFamily: Platform.select({ ios: "Poppins-Regular", android: "Poppins-Regular", default: "Poppins-Regular" }),
+    fontFamily: FONT,
     color: C.textBody,
     lineHeight: ms(20),
   },
@@ -1245,7 +1285,7 @@ const sx = StyleSheet.create({
     paddingBottom: sh(2),
   },
   expandedCardDark: {
-    backgroundColor: "#150303",
+    backgroundColor: COLORS.declineRedSoft,
     borderRadius: ms(10),
     borderLeftWidth: 2,
     borderLeftColor: C.alarmIcon,
@@ -1254,13 +1294,13 @@ const sx = StyleSheet.create({
   },
   expandedTextDark: {
     fontSize: ms(13, 0.3),
-    fontFamily: Platform.select({ ios: "Poppins-Regular", android: "Poppins-Regular", default: "Poppins-Regular" }),
-    color: "#C49090",
+    fontFamily: FONT,
+    color: C.alarmText,
     lineHeight: ms(20),
   },
   cursor: {
     color: C.fineIcon,
-    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
+    fontFamily: FONT,
   },
 
   // Commentary shimmer (while card present but text not loaded)
@@ -1275,10 +1315,9 @@ const sx = StyleSheet.create({
   shimmerCard: {
     backgroundColor: C.card,
     borderRadius: CARD_RADIUS,
-    borderBottomWidth: 6,
-    borderBottomColor: C.cardDepth,
     paddingHorizontal: sw(12),
     paddingVertical: sh(10),
+    ...SOFT_SHADOW,
   },
   shimmerRow: { flexDirection: "row", alignItems: "center", gap: sw(12) },
   shimmerIconBox: {
@@ -1292,45 +1331,38 @@ const sx = StyleSheet.create({
     width: sw(72),
     height: sh(30),
     borderRadius: PILL_RADIUS,
-    backgroundColor: "#2A2A2A",
+    backgroundColor: COLORS.lightSurfaceAlt,
     overflow: "hidden",
     justifyContent: "center",
     paddingHorizontal: sw(10),
   },
   shimmerLine: {
     height: sh(10),
-    borderRadius: 6,
-    backgroundColor: "#2A2A2A",
+    borderRadius: ms(6),
+    backgroundColor: COLORS.lightSurfaceAlt,
   },
 
-  // ── Footer CTA ──
+  // ── Footer CTA — black pill ──
   footerCta: {
     marginTop: sh(10),
     marginBottom: sh(4),
   },
-  ctaDepth: {
-    borderRadius: RADII.pill,
-    backgroundColor: COLORS.accentDepth,
-    paddingBottom: sh(5),
-    shadowColor: COLORS.accent,
-    shadowOpacity: 0.3,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 10,
-  },
   ctaBtn: {
-    height: sh(54),
-    borderRadius: RADII.pill,
-    overflow: "hidden",
+    minHeight: sh(56),
+    borderRadius: 999,
+    backgroundColor: COLORS.ctaBlack,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: sw(6),
+    paddingVertical: sh(16),
+    paddingHorizontal: sw(20),
   },
   ctaBtnText: {
-    fontSize: ms(16, 0.3),
-    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
-    color: "#0B1A00",
+    fontSize: ms(15, 0.3),
+    fontFamily: FONT,
+    color: "#FFFFFF",
+    letterSpacing: 0.4,
   },
 
   // ── Empty state ──
@@ -1354,18 +1386,17 @@ const sx = StyleSheet.create({
     width: ms(84),
     height: ms(84),
     borderRadius: ms(42),
-    backgroundColor: COLORS.accentGlow,
-    opacity: 0.9,
+    backgroundColor: COLORS.iconTileLavender,
+    opacity: 1,
   },
   emptyIconCore: {
     width: ms(64),
     height: ms(64),
     borderRadius: ms(20),
-    backgroundColor: "#121C05",
-    borderWidth: 1,
-    borderColor: COLORS.accentBorder,
+    backgroundColor: COLORS.lightCard,
     alignItems: "center",
     justifyContent: "center",
+    ...SOFT_SHADOW,
   },
   emptyLabelRow: {
     flexDirection: "row",
@@ -1381,13 +1412,13 @@ const sx = StyleSheet.create({
   },
   emptyLabelText: {
     fontSize: ms(10.5, 0.3),
-    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
+    fontFamily: FONT,
     color: C.textMuted,
     letterSpacing: 1.8,
   },
   emptyTitle: {
     fontSize: ms(24, 0.3),
-    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
+    fontFamily: FONT,
     color: C.textPrimary,
     textAlign: "center",
     letterSpacing: -0.4,
@@ -1395,7 +1426,7 @@ const sx = StyleSheet.create({
   },
   emptySub: {
     fontSize: ms(13.5, 0.3),
-    fontFamily: Platform.select({ ios: "Poppins-Regular", android: "Poppins-Regular", default: "Poppins-Regular" }),
+    fontFamily: FONT,
     color: C.textBody,
     textAlign: "center",
     lineHeight: ms(21),
@@ -1417,15 +1448,13 @@ const sx = StyleSheet.create({
     width: ms(28),
     height: ms(28),
     borderRadius: ms(8),
-    backgroundColor: "#121C05",
-    borderWidth: 1,
-    borderColor: COLORS.accentBorder,
+    backgroundColor: COLORS.iconTileLavender,
     alignItems: "center",
     justifyContent: "center",
   },
   benefitText: {
     fontSize: ms(13, 0.3),
-    fontFamily: Platform.select({ ios: "Poppins-Medium", android: "Poppins-Medium", default: "Poppins-Medium" }),
+    fontFamily: FONT,
     color: C.textBody,
     flex: 1,
   },
@@ -1444,13 +1473,13 @@ const sx = StyleSheet.create({
   },
   errorTitle: {
     fontSize: ms(20, 0.3),
-    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
+    fontFamily: FONT,
     color: C.textPrimary,
     textAlign: "center",
   },
   errorSub: {
     fontSize: ms(13.5, 0.3),
-    fontFamily: Platform.select({ ios: "Poppins-Regular", android: "Poppins-Regular", default: "Poppins-Regular" }),
+    fontFamily: FONT,
     color: C.textMuted,
     textAlign: "center",
     lineHeight: ms(20),
@@ -1459,14 +1488,14 @@ const sx = StyleSheet.create({
     marginTop: sh(4),
     paddingHorizontal: sw(28),
     paddingVertical: sh(11),
-    borderRadius: RADII.pill,
-    borderWidth: 1.5,
-    borderColor: COLORS.outline,
+    borderRadius: 999,
+    backgroundColor: COLORS.lightSurfaceAlt,
   },
   retryText: {
     fontSize: ms(14, 0.3),
-    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
+    fontFamily: FONT,
     color: C.textPrimary,
+    letterSpacing: 0.4,
   },
 
   // ── Ideal range ──
@@ -1477,12 +1506,12 @@ const sx = StyleSheet.create({
     marginTop: sh(10),
     paddingTop: sh(8),
     borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.06)",
+    borderTopColor: COLORS.lightHairline,
     paddingHorizontal: sw(2),
   },
   idealToggleLabel: {
     fontSize: ms(10, 0.3),
-    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
+    fontFamily: FONT,
     letterSpacing: 1.1,
   },
   idealRangeRow: {
@@ -1507,14 +1536,14 @@ const sx = StyleSheet.create({
   },
   idealRangeLabel: {
     fontSize: ms(9.5, 0.3),
-    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
-    color: "rgba(255,255,255,0.35)",
+    fontFamily: FONT,
+    color: COLORS.lightSub,
     letterSpacing: 0.8,
   },
   idealRangeText: {
     fontSize: ms(12, 0.3),
-    fontFamily: Platform.select({ ios: "Poppins-Regular", android: "Poppins-Regular", default: "Poppins-Regular" }),
-    color: "rgba(255,255,255,0.6)",
+    fontFamily: FONT,
+    color: COLORS.lightMuted,
     lineHeight: ms(18),
   },
 });

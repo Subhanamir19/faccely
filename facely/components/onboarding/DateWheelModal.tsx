@@ -95,11 +95,11 @@ export default function DateWheelModal({
         <View style={[styles.sheet, { paddingBottom: insets.bottom + SP[4] }]}>
           <View style={styles.header}>
             <Pressable onPress={onCancel} hitSlop={12}>
-              <T variant="body" color="sub">Cancel</T>
+              <T variant="body" color="lightSub">Cancel</T>
             </Pressable>
-            <T variant="bodySemiBold" color="text">Select Birthday</T>
+            <T variant="bodySemiBold" color="lightText">Select Birthday</T>
             <Pressable onPress={handleDone} hitSlop={12}>
-              <T variant="bodySemiBold" color="text">Done</T>
+              <T variant="bodySemiBold" style={styles.doneText}>Done</T>
             </Pressable>
           </View>
 
@@ -193,8 +193,8 @@ function Wheel({
           >
             <T
               variant="body"
-              color={i === selectedIndex ? "text" : "sub"}
-              style={{ opacity: i === selectedIndex ? 1 : 0.5 }}
+              color={i === selectedIndex ? "lightText" : "lightSub"}
+              style={{ opacity: i === selectedIndex ? 1 : 0.55 }}
             >
               {val}
             </T>
@@ -208,11 +208,11 @@ function Wheel({
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: COLORS.modalBackdrop,
+    backgroundColor: "rgba(0,0,0,0.35)",
     justifyContent: "flex-end",
   },
   sheet: {
-    backgroundColor: "#161616",
+    backgroundColor: COLORS.lightBg,
     borderTopLeftRadius: RADII.card,
     borderTopRightRadius: RADII.card,
     paddingHorizontal: SP[5],
@@ -220,7 +220,7 @@ const styles = StyleSheet.create({
     ...Platform.select({
       ios: {
         shadowColor: "#000",
-        shadowOpacity: 0.4,
+        shadowOpacity: 0.18,
         shadowRadius: 24,
         shadowOffset: { width: 0, height: -8 },
       },
@@ -232,8 +232,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingBottom: SP[3],
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.divider,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: COLORS.lightHairline,
+  },
+  doneText: {
+    color: "#3F7A2A",
   },
   wheels: {
     flexDirection: "row",
@@ -247,7 +250,7 @@ const styles = StyleSheet.create({
     right: 0,
     top: CENTER_OFFSET * ITEM_HEIGHT,
     height: ITEM_HEIGHT,
-    backgroundColor: COLORS.whiteGlass,
+    backgroundColor: COLORS.lightSurface,
     borderRadius: RADII.md,
   },
   item: {

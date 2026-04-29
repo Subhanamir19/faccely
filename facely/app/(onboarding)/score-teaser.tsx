@@ -1,35 +1,35 @@
 // app/(onboarding)/score-teaser.tsx
 // Post-purchase score reveal. Shows CinematicLoader while analyzePair runs,
-// then reveals real scores. CTA takes user to their daily routine.
+// then reveals real scores in the same swipeable carousel layout as
+// (tabs)/score.tsx so the teaser and the in-app screen are visually identical.
+// CTA enters the advanced-analysis flow; "Skip" enters the app directly.
 
 import React, { useEffect, useCallback, useMemo } from "react";
 import {
   View,
-  ScrollView,
+  Image,
   Pressable,
+  ActivityIndicator,
   StyleSheet,
-  ImageBackground,
-  Platform,
-  Text,
   useWindowDimensions,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { LinearGradient } from "expo-linear-gradient";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { router } from "expo-router";
 
 import CinematicLoader from "@/components/ui/CinematicLoader";
-import ScoringGrid, { type ScoringMetric } from "@/components/scores/ScoringGrid";
-import T from "@/components/ui/T";
+import ScoringCarousel, { type ScoringMetric } from "@/components/scores/ScoringCarousel";
+import Text from "@/components/ui/T";
 import { COLORS, SP } from "@/lib/tokens";
+import { ms, sh, sw } from "@/lib/responsive";
 import { useScores } from "../../store/scores";
 import { hapticSuccess, hapticLight } from "@/lib/haptics";
 import { useAdvancedAnalysisConsent } from "@/hooks/useAdvancedAnalysisConsent";
 
-// ---------------------------------------------------------------------------
-// Metric definitions — identical to (tabs)/score.tsx
-// ---------------------------------------------------------------------------
-const METRIC_DEFINITIONS = [
+const FONT = "ProximaNova-Bold";
+
+// ─── Metric definitions — identical to (tabs)/score.tsx ──────────────────────
+const METRIC_DEFS = [
   { apiKey: "jawline",           label: "Jawline",                defaultScore: 0 },
   { apiKey: "facial_symmetry",   label: "Facial Symmetry",        defaultScore: 0 },
   { apiKey: "cheekbones",        label: "Cheekbones",             defaultScore: 0 },
@@ -40,7 +40,7 @@ const METRIC_DEFINITIONS = [
 ] as const;
 
 function buildMetrics(apiScores: Record<string, number> | null | undefined): ScoringMetric[] {
-  return METRIC_DEFINITIONS.map(({ apiKey, label, defaultScore }) => {
+  return METRIC_DEFS.map(({ apiKey, label, defaultScore }) => {
     const raw = Number(apiScores?.[apiKey]);
     const score = Number.isFinite(raw) ? Math.max(0, Math.min(100, raw)) : defaultScore;
     return { label, score };
@@ -49,21 +49,65 @@ function buildMetrics(apiScores: Record<string, number> | null | undefined): Sco
 
 function computeOverall(metrics: ScoringMetric[]): number {
   if (!metrics.length) return 0;
-  return Math.round(metrics.reduce((acc, m) => acc + m.score, 0) / metrics.length);
+  return Math.round(metrics.reduce((sum, m) => sum + m.score, 0) / metrics.length);
 }
 
-const DEPTH = 5;
-const FONT = Platform.select({
-  ios: "Poppins-SemiBold",
-  android: "Poppins-SemiBold",
-  default: "Poppins-SemiBold",
-}) as string;
+// ─── Local pill button — mirrors LightPillButton in (tabs)/score.tsx ─────────
+function LightPillButton({
+  label,
+  onPress,
+  variant = "secondary",
+  disabled,
+  loading,
+  fill = false,
+}: {
+  label: string;
+  onPress: () => void;
+  variant?: "primary" | "secondary";
+  disabled?: boolean;
+  loading?: boolean;
+  fill?: boolean;
+}) {
+  const isPrimary = variant === "primary";
+  const bg = disabled
+    ? COLORS.lightSurfaceAlt
+    : isPrimary
+      ? COLORS.ctaBlack
+      : COLORS.lightSurfaceAlt;
+  const fg = disabled
+    ? COLORS.lightSub
+    : isPrimary
+      ? "#FFFFFF"
+      : COLORS.lightText;
+  return (
+    <Pressable
+      onPress={disabled ? undefined : onPress}
+      disabled={disabled}
+      style={({ pressed }) => ({
+        ...(fill ? { flex: 1 } : {}),
+        minHeight: sh(54),
+        borderRadius: 999,
+        backgroundColor: bg,
+        alignItems: "center",
+        justifyContent: "center",
+        flexDirection: "row",
+        gap: sw(8),
+        paddingVertical: sh(14),
+        paddingHorizontal: SP[5],
+        opacity: pressed && !disabled ? 0.85 : 1,
+      })}
+    >
+      {loading && <ActivityIndicator color={fg} />}
+      <Text style={{ color: fg, fontFamily: FONT, fontSize: ms(13), letterSpacing: 0.4 }}>
+        {label.toUpperCase()}
+      </Text>
+    </Pressable>
+  );
+}
 
-// ---------------------------------------------------------------------------
-// Screen
-// ---------------------------------------------------------------------------
+// ─── Screen ──────────────────────────────────────────────────────────────────
 export default function ScoreTeaserScreen() {
-  const insets  = useSafeAreaInsets();
+  const insets = useSafeAreaInsets();
   const { width: SW } = useWindowDimensions();
   const { imageUri, scores, loading } = useScores();
   const { checkAndPromptConsent, ConsentModal } = useAdvancedAnalysisConsent();
@@ -76,8 +120,7 @@ export default function ScoreTeaserScreen() {
     }
   }, [loading, scores]);
 
-  // Safety net: if backend hangs and never responds, send user into the app
-  // after 20s so they're never stuck on the loader indefinitely.
+  // Safety net: if backend hangs, send user into the app after 20s.
   useEffect(() => {
     if (!loading) return;
     const timeout = setTimeout(() => {
@@ -86,17 +129,18 @@ export default function ScoreTeaserScreen() {
     return () => clearTimeout(timeout);
   }, [loading]);
 
-  const footerH = insets.bottom + 88;
-  const HORIZONTAL_PAD = SP[4];
-  const cardWidth = SW - HORIZONTAL_PAD * 2;
-
-  const metrics = useMemo<ScoringMetric[]>(
-    () => buildMetrics(scores as any),
-    [scores]
-  );
+  const metrics = useMemo<ScoringMetric[]>(() => buildMetrics(scores as any), [scores]);
   const totalScore = useMemo(() => computeOverall(metrics), [metrics]);
 
-  const handleCTA = useCallback(async () => {
+  const HORIZONTAL_PAD = SP[5];
+  const viewportWidth = SW - HORIZONTAL_PAD * 2;
+
+  const handleSkip = useCallback(() => {
+    hapticLight();
+    router.replace("/(tabs)/program");
+  }, []);
+
+  const handleAdvanced = useCallback(async () => {
     hapticSuccess();
     const agreed = await checkAndPromptConsent();
     if (!agreed) return;
@@ -110,142 +154,119 @@ export default function ScoreTeaserScreen() {
     <View style={styles.screen}>
       <ConsentModal />
 
-      <ImageBackground
-        source={require("../../assets/bg/score-bg.jpg")}
-        style={StyleSheet.absoluteFill}
-        resizeMode="cover"
+      <View
+        style={[
+          styles.content,
+          {
+            paddingTop:    insets.top    + SP[5],
+            paddingBottom: insets.bottom + SP[5],
+          },
+        ]}
       >
-        <View style={styles.scrim} />
-      </ImageBackground>
-
-      <View style={[styles.inner, { paddingTop: insets.top + SP[4] }]}>
-
+        {/* Header — top */}
         <Animated.View entering={FadeInDown.duration(400).delay(100)} style={styles.header}>
-          <T variant="h2" color="text">Your Results</T>
-          <T variant="caption" color="sub" style={styles.subtitle}>
-            Based on your facial scan
-          </T>
+          <Text style={styles.title}>Your Scores</Text>
+          <Text style={styles.subtitle}>Facial analysis breakdown — all 8 metrics</Text>
         </Animated.View>
 
-        <Animated.View
-          entering={FadeInDown.duration(500).delay(200)}
-          style={styles.scrollWrap}
-        >
-          <ScrollView
-            style={styles.scroll}
-            contentContainerStyle={[
-              styles.scrollContent,
-              { paddingBottom: footerH },
-            ]}
-            showsVerticalScrollIndicator={false}
-            alwaysBounceVertical={false}
-          >
-            <ScoringGrid
+        {/* Centered stack: avatar + carousel */}
+        <View style={styles.centerStack}>
+          <Animated.View entering={FadeInDown.duration(420).delay(160)}>
+            <View style={styles.avatarRing}>
+              {imageUri ? (
+                <Image source={{ uri: imageUri }} style={styles.avatarImg} resizeMode="cover" />
+              ) : (
+                <View style={[styles.avatarImg, styles.avatarPlaceholder]} />
+              )}
+            </View>
+          </Animated.View>
+
+          <Animated.View entering={FadeInDown.duration(500).delay(220)} style={{ width: "100%" }}>
+            <ScoringCarousel
               metrics={metrics}
               totalScore={totalScore}
               dashboardMetrics={[]}
               overallDelta={null}
-              imageUri={imageUri}
-              active
-              cardWidth={cardWidth}
+              viewportWidth={viewportWidth}
             />
-          </ScrollView>
+          </Animated.View>
+        </View>
+
+        {/* Action buttons — docked at bottom */}
+        <Animated.View entering={FadeInDown.duration(400).delay(320)} style={styles.buttonRow}>
+          <LightPillButton label="Skip" onPress={handleSkip} />
+          <LightPillButton
+            label="Advanced Analysis"
+            variant="primary"
+            onPress={handleAdvanced}
+            fill
+          />
         </Animated.View>
       </View>
-
-      {/* Sticky CTA */}
-      <Animated.View
-        entering={FadeInDown.duration(400).delay(500)}
-        style={[styles.footer, { paddingBottom: insets.bottom + SP[3] }]}
-        pointerEvents="box-none"
-      >
-        <LinearGradient
-          colors={["transparent", "rgba(0,0,0,0.82)"]}
-          style={styles.footerFade}
-          pointerEvents="none"
-        />
-        <View style={styles.btnDepth}>
-          <Pressable
-            onPress={handleCTA}
-            onPressIn={() => hapticLight()}
-            style={({ pressed }) => [
-              styles.btnFace,
-              { transform: [{ translateY: pressed ? DEPTH - 1 : 0 }] },
-            ]}
-          >
-            <Text style={styles.btnText}>Advanced Analysis</Text>
-          </Pressable>
-        </View>
-      </Animated.View>
-
     </View>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Styles
-// ---------------------------------------------------------------------------
+// ─── Styles — mirror (tabs)/score.tsx ────────────────────────────────────────
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: COLORS.bgTop,
+    backgroundColor: COLORS.lightBg,
   },
-  scrim: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.35)",
-  },
-  inner: {
+  content: {
     flex: 1,
-    paddingHorizontal: SP[4],
+    paddingHorizontal: SP[5],
   },
   header: {
-    marginBottom: SP[4],
+    gap: sh(4),
+  },
+  title: {
+    fontFamily: FONT,
+    fontSize: ms(28),
+    color: COLORS.lightText,
+    lineHeight: ms(32),
+    letterSpacing: -0.5,
   },
   subtitle: {
-    marginTop: SP[1],
+    fontFamily: FONT,
+    fontSize: ms(13),
+    color: COLORS.lightSub,
+    marginTop: sh(2),
   },
-  scrollWrap: {
+
+  centerStack: {
     flex: 1,
-  },
-  scroll: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingTop: SP[2],
-  },
-  footer: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    paddingHorizontal: SP[4],
-    paddingTop: 32,
-  },
-  footerFade: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 56,
-  },
-  btnDepth: {
-    alignSelf: "center",
-    width: "88%",
-    borderRadius: 26,
-    backgroundColor: "#6B9A1E",
-    paddingBottom: DEPTH,
-  },
-  btnFace: {
-    borderRadius: 26,
-    paddingVertical: 16,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: COLORS.accent,
+    gap: SP[5],
   },
-  btnText: {
-    fontFamily: FONT,
-    fontSize: 16,
-    color: "#0B0B0B",
-    letterSpacing: -0.1,
+  avatarRing: {
+    width:  ms(128),
+    height: ms(128),
+    borderRadius: ms(64),
+    padding: ms(4),
+    backgroundColor: COLORS.lightCard,
+    borderWidth: 1,
+    borderColor: COLORS.lightBorder,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000000",
+    shadowOpacity: 0.10,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 5,
+  },
+  avatarImg: {
+    width:  "100%",
+    height: "100%",
+    borderRadius: ms(60),
+  },
+  avatarPlaceholder: {
+    backgroundColor: COLORS.iconTileLavender,
+  },
+
+  buttonRow: {
+    flexDirection: "row",
+    gap: SP[3],
   },
 });

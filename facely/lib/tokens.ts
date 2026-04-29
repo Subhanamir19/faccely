@@ -62,6 +62,26 @@ export const COLORS = {
   verdictAverage: "#F5C842",
   verdictPoor: "#F08C5A",
 
+  // Light surfaces (routine preview / list)
+  lightBg:           "#FFFFFF",
+  lightCard:         "#FAFBFC",   // dim-white card surface, barely off pure white
+  lightSurface:      "#F2F3F5",
+  lightSurfaceAlt:   "#EFEFEF",
+  lightChipBg:       "#FFFFFF",
+  lightBorder:       "#E6E6E8",
+  lightHairline:     "rgba(0,0,0,0.08)",
+  lightDivider:      "rgba(0,0,0,0.06)",
+  lightText:         "#0B0B0B",
+  lightSub:          "#8A8A8E",
+  lightMuted:        "#6E6E73",
+  iconTileLavender:  "#EFEAF7",
+  ctaBlack:          "#000000",
+  ctaBlackPressed:   "#1A1A1A",
+
+  // Direction semantics — used wherever a delta needs colour.
+  declineRed:        "#E5484D",   // warm red, not alarm
+  declineRedSoft:    "#FCE4E5",   // pale tint for chip backgrounds on light bg
+
   // Sigma chat palette
   sigmaBg: "#000000",
   sigmaLime: "#B4F34D",
@@ -162,6 +182,48 @@ export const TYPE = {
     fontSize: 40,
     lineHeight: 46,
     fontFamily: "Poppins-SemiBold",
+  },
+  // Proxima Nova (display) — used by the light routine-preview surface
+  proximaScreenTitle: {
+    fontSize: 28,
+    lineHeight: 32,
+    fontFamily: "ProximaNova-Bold",
+    letterSpacing: -0.5,
+  },
+  proximaSection: {
+    fontSize: 22,
+    lineHeight: 26,
+    fontFamily: "ProximaNova-Bold",
+    letterSpacing: -0.4,
+  },
+  proximaStatNum: {
+    fontSize: 24,
+    lineHeight: 28,
+    fontFamily: "ProximaNova-Bold",
+    letterSpacing: -0.4,
+  },
+  proximaExerciseTitle: {
+    fontSize: 16,
+    lineHeight: 20,
+    fontFamily: "ProximaNova-Bold",
+    letterSpacing: 0.2,
+  },
+  proximaPill: {
+    fontSize: 14,
+    lineHeight: 18,
+    fontFamily: "ProximaNova-Bold",
+    letterSpacing: 0.1,
+  },
+  proximaCta: {
+    fontSize: 17,
+    lineHeight: 20,
+    fontFamily: "ProximaNova-Bold",
+    letterSpacing: 0.6,
+  },
+  proximaStepper: {
+    fontSize: 17,
+    lineHeight: 20,
+    fontFamily: "ProximaNova-Bold",
   },
 } as const;
 

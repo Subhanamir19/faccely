@@ -4,6 +4,7 @@
 
 import React, { useEffect, useMemo } from "react";
 import {
+  Pressable,
   SafeAreaView,
   StyleSheet,
   Text,
@@ -26,13 +27,23 @@ import Animated, {
   Easing,
 } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
-import { LinearGradient } from "expo-linear-gradient";
 import Svg, { Circle } from "react-native-svg";
 import { COLORS, RADII, SP } from "@/lib/tokens";
 import { useTasksStore } from "@/store/tasks";
 import { useProfile } from "@/store/profile";
 import { getExerciseDetail } from "@/lib/exerciseDetails";
-import LimeButton from "@/components/ui/LimeButton";
+
+const FONT_BOLD = "ProximaNova-Bold";
+const SAGE = "#3F7A2A";        // celebratory accent — matches analysis "fine" verdict color
+const SAGE_SOFT = "#E2F1D8";   // sage chip bg, used in AnalysisCarousel section chip
+
+const SOFT_SHADOW = {
+  shadowColor: "#000000",
+  shadowOpacity: 0.08,
+  shadowRadius: 20,
+  shadowOffset: { width: 0, height: 8 },
+  elevation: 4,
+} as const;
 
 // ---------------------------------------------------------------------------
 // Confetti particle
@@ -105,13 +116,13 @@ function ConfettiParticle({ index, color, startX }: ParticleProps) {
 // ---------------------------------------------------------------------------
 
 const CONFETTI_COLORS = [
-  COLORS.accent,
-  "#FFFFFF",
+  SAGE,
   "#FB923C",
   "#A78BFA",
   "#38BDF8",
   "#F472B6",
   "#86EFAC",
+  "#FACC15",
 ];
 
 function ConfettiBurst({ screenWidth }: { screenWidth: number }) {
@@ -175,7 +186,7 @@ function StreakRing({ streak }: { streak: number }) {
           cx={RING_SIZE / 2}
           cy={RING_SIZE / 2}
           r={radius}
-          stroke="rgba(255,255,255,0.08)"
+          stroke={COLORS.lightHairline}
           strokeWidth={STROKE}
           fill="none"
         />
@@ -184,7 +195,7 @@ function StreakRing({ streak }: { streak: number }) {
           cx={RING_SIZE / 2}
           cy={RING_SIZE / 2}
           r={radius}
-          stroke={COLORS.accent}
+          stroke={SAGE}
           strokeWidth={STROKE}
           fill="none"
           strokeDasharray={circumference}
@@ -280,29 +291,17 @@ export default function CompleteScreen() {
   return (
     <SafeAreaView style={styles.safe}>
 
-      {/* Background gradient with lime tint at top */}
-      <LinearGradient
-        colors={["rgba(180,243,77,0.06)", "#000000", "#0B0B0B"]}
-        locations={[0, 0.35, 1]}
-        style={StyleSheet.absoluteFill}
-      />
-
       {/* Confetti on mount */}
       <ConfettiBurst screenWidth={screenWidth} />
 
       <View style={[styles.inner, { paddingBottom: Math.max(insets.bottom, SP[5]) }]}>
 
-        {/* ── Check icon (supporting accent, not hero) ── */}
+        {/* ── Check icon — sage chip, supporting accent ── */}
         <Animated.View
           entering={FadeIn.duration(280).delay(100)}
           style={styles.checkCircle}
         >
-          <LinearGradient
-            colors={[COLORS.accentLight, COLORS.accent]}
-            style={styles.checkGradient}
-          >
-            <Text style={styles.checkGlyph}>✓</Text>
-          </LinearGradient>
+          <Text style={styles.checkGlyph}>✓</Text>
         </Animated.View>
 
         {/* ── Headline ── */}
@@ -358,12 +357,20 @@ export default function CompleteScreen() {
 
         <View style={styles.spacer} />
 
-        {/* ── Done CTA ── */}
+        {/* ── Done CTA — black pill, matches new system ── */}
         <Animated.View
           entering={FadeInUp.duration(380).delay(640).springify()}
           style={styles.btnWrap}
         >
-          <LimeButton label="Done" onPress={handleDone} />
+          <Pressable
+            onPress={handleDone}
+            style={({ pressed }) => [
+              styles.cta,
+              pressed && { backgroundColor: COLORS.ctaBlackPressed },
+            ]}
+          >
+            <Text style={styles.ctaText}>DONE</Text>
+          </Pressable>
         </Animated.View>
 
       </View>
@@ -378,7 +385,7 @@ export default function CompleteScreen() {
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: "#000000",
+    backgroundColor: COLORS.lightBg,
   },
   inner: {
     flex: 1,
@@ -387,36 +394,29 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
 
-  // Check circle — demoted to supporting icon, not hero element
+  // Check circle — sage chip, supporting accent
   checkCircle: {
     width: 52,
     height: 52,
     borderRadius: 26,
     marginBottom: SP[3],
-    shadowColor: COLORS.accent,
-    shadowOpacity: 0.3,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 8,
-  },
-  checkGradient: {
-    flex: 1,
-    borderRadius: 26,
+    backgroundColor: SAGE_SOFT,
     alignItems: "center",
     justifyContent: "center",
   },
   checkGlyph: {
-    fontSize: 22,
-    color: "#0A0A0A",
+    fontSize: 24,
+    color: SAGE,
     fontFamily: "Poppins-SemiBold",
     lineHeight: 28,
+    includeFontPadding: false,
   },
 
   // Headlines
   headline: {
     fontSize: 28,
-    fontFamily: "Poppins-SemiBold",
-    color: COLORS.text,
+    fontFamily: FONT_BOLD,
+    color: COLORS.lightText,
     textAlign: "center",
     letterSpacing: -0.6,
     marginBottom: SP[2],
@@ -424,7 +424,7 @@ const styles = StyleSheet.create({
   subline: {
     fontSize: 14,
     fontFamily: "Poppins-Regular",
-    color: COLORS.sub,
+    color: COLORS.lightSub,
     textAlign: "center",
     lineHeight: 22,
     marginBottom: SP[5],
@@ -448,8 +448,8 @@ const styles = StyleSheet.create({
   },
   ringStreak: {
     fontSize: 28,
-    fontFamily: "Poppins-SemiBold",
-    color: COLORS.text,
+    fontFamily: FONT_BOLD,
+    color: COLORS.lightText,
     lineHeight: 32,
     includeFontPadding: false,
   },
@@ -458,7 +458,7 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
 
-  // Stats — equal flex width so both cards are balanced
+  // Stats — white cards, soft shadow
   statsRow: {
     flexDirection: "row",
     gap: SP[3],
@@ -467,40 +467,38 @@ const styles = StyleSheet.create({
   },
   statPill: {
     flex: 1,
-    backgroundColor: "rgba(22,22,22,0.90)",
+    backgroundColor: COLORS.lightCard,
     borderRadius: RADII.lg,
-    borderWidth: 1,
-    borderColor: COLORS.cardBorder,
     paddingVertical: SP[3],
     paddingHorizontal: SP[3],
     alignItems: "center",
+    ...SOFT_SHADOW,
   },
   statValue: {
     fontSize: 20,
-    fontFamily: "Poppins-SemiBold",
-    color: COLORS.text,
+    fontFamily: FONT_BOLD,
+    color: COLORS.lightText,
     letterSpacing: -0.5,
   },
   statLabel: {
     fontSize: 11,
-    fontFamily: "Poppins-Regular",
-    color: COLORS.muted,
+    fontFamily: FONT_BOLD,
+    color: COLORS.lightSub,
     marginTop: 3,
     letterSpacing: 1,
     textTransform: "uppercase",
   },
 
-  // Tomorrow card — matches stat card pattern; thin lime top accent instead of full border
+  // Tomorrow card — white card with sage top accent
   tomorrowCard: {
     width: "100%",
-    backgroundColor: "rgba(22,22,22,0.90)",
+    backgroundColor: COLORS.lightCard,
     borderRadius: RADII.lg,
-    borderWidth: 1,
-    borderColor: COLORS.cardBorder,
     paddingVertical: SP[4],
     paddingHorizontal: SP[5],
     alignItems: "center",
     overflow: "hidden",
+    ...SOFT_SHADOW,
   },
   tomorrowAccent: {
     position: "absolute",
@@ -508,19 +506,19 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: 3,
-    backgroundColor: COLORS.accent,
+    backgroundColor: SAGE,
   },
   tomorrowLabel: {
     fontSize: 10,
-    fontFamily: "Poppins-SemiBold",
-    color: COLORS.accent,
+    fontFamily: FONT_BOLD,
+    color: SAGE,
     letterSpacing: 2,
     marginBottom: SP[1],
   },
   tomorrowText: {
     fontSize: 14,
     fontFamily: "Poppins-Regular",
-    color: COLORS.sub,
+    color: COLORS.lightSub,
     textAlign: "center",
   },
 
@@ -531,5 +529,18 @@ const styles = StyleSheet.create({
   btnWrap: {
     width: "100%",
     marginBottom: SP[2],
+  },
+  cta: {
+    backgroundColor: COLORS.ctaBlack,
+    borderRadius: 999,
+    paddingVertical: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  ctaText: {
+    fontFamily: FONT_BOLD,
+    fontSize: 14,
+    color: "#FFFFFF",
+    letterSpacing: 1.2,
   },
 });

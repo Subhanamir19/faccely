@@ -1,35 +1,45 @@
 // app/(onboarding)/transformation.tsx
+// Pre-paywall transformation pitch: before/after slider, social proof, and a
+// per-metric improvement breakdown. Light system; sage accents replace lime;
+// the dark photos do the visual heavy-lifting against a calm white shell.
+
 import React, { useRef, useState } from "react";
 import {
   View,
-  Text,
   Image,
   StyleSheet,
   StatusBar,
   SafeAreaView,
   ScrollView,
+  Pressable,
   PanResponder,
-  Dimensions,
+  useWindowDimensions,
 } from "react-native";
 import { router } from "expo-router";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import LimeButton from "@/components/ui/LimeButton";
-import { COLORS, RADII, SP, TYPE } from "@/lib/tokens";
 
-/* ─── layout constants ───────────────────────────────────────── */
-const { width: W } = Dimensions.get("window");
-const H_PAD    = SP[6];
-const CARD_W   = W - H_PAD * 2;
-const IMG_H    = Math.round(CARD_W * 1.0);  // square — matches reference
-const HANDLE_R = 20;
-const ACCENT   = COLORS.accent;
-const BG       = COLORS.bgBottom;
+import T from "@/components/ui/T";
+import { COLORS, RADII, SP } from "@/lib/tokens";
+import { ms, sh, sw } from "@/lib/responsive";
+
+const FONT_BOLD = "ProximaNova-Bold";
+const LIME = "#B4F34D";        // bright fill — progress bar
+const SAGE = "#3F7A2A";        // dark readable — icon strokes & text on white/lime-soft
+const SAGE_SOFT = "#ECFCCB";   // pale lime — metric icon chip bg, AFTER badge label tone
+
+const SOFT_SHADOW = {
+  shadowColor: "#000000",
+  shadowOpacity: 0.08,
+  shadowRadius: ms(20),
+  shadowOffset: { width: 0, height: ms(8) },
+  elevation: 4,
+} as const;
 
 const BEFORE_IMG = require("@/assets/before.jpeg");
 const AFTER_IMG  = require("@/assets/after.jpeg");
 
-const METRICS = [
+const METRICS: ReadonlyArray<{ icon: string; label: string; a: number; b: number }> = [
   { icon: "face-man-outline", label: "Jawline",     a: 44, b: 80 },
   { icon: "swap-horizontal",  label: "Symmetry",    a: 56, b: 88 },
   { icon: "ruler",            label: "Proportions", a: 49, b: 84 },
@@ -38,24 +48,7 @@ const METRICS = [
   { icon: "heart-outline",    label: "Lips",        a: 53, b: 85 },
 ];
 
-function MetricCard(props: { icon: string; label: string; a: number; b: number }) {
-  const iconName: any = props.icon;
-  return (
-    <View style={styles.metricCard}>
-      <View style={styles.metricIconWrap}>
-        <MaterialCommunityIcons name={iconName} size={20} color={COLORS.accent} />
-      </View>
-      <Text style={styles.metricLabel}>{props.label}</Text>
-      <View style={styles.metricScoreRow}>
-        <Text style={styles.metricA}>{props.a}</Text>
-        <Text style={styles.metricArrow}>  {">"}  </Text>
-        <Text style={styles.metricB}>{props.b}</Text>
-      </View>
-    </View>
-  );
-}
-
-/* ─── score badge ────────────────────────────────────────────── */
+/* ─── score badge — sits over the photo ──────────────────────────── */
 function ScoreBadge({ side, score }: { side: "before" | "after"; score: number }) {
   const isAfter = side === "after";
   return (
@@ -63,27 +56,53 @@ function ScoreBadge({ side, score }: { side: "before" | "after"; score: number }
       <LinearGradient
         colors={
           isAfter
-            ? ["rgba(180,243,77,0.20)", "rgba(0,0,0,0.60)"]
+            ? ["rgba(180,243,77,0.32)", "rgba(0,0,0,0.55)"]
             : ["rgba(0,0,0,0.72)", "rgba(0,0,0,0.50)"]
         }
         style={StyleSheet.absoluteFill}
         borderRadius={10}
       />
-      <Text style={[styles.badgeLabel, isAfter && { color: ACCENT }]}>
+      <T style={[styles.badgeLabel, isAfter && { color: SAGE_SOFT }]}>
         {side.toUpperCase()}
-      </Text>
+      </T>
       <View style={styles.badgeScoreRow}>
-        <Text style={[styles.badgeNum, isAfter && { color: ACCENT }]}>{score}</Text>
-        <Text style={[styles.badgeDenom, isAfter && { color: ACCENT }]}>/100</Text>
+        <T style={[styles.badgeNum, isAfter && { color: "#FFFFFF" }]}>{score}</T>
+        <T style={[styles.badgeDenom, isAfter && { color: "rgba(255,255,255,0.7)" }]}>/100</T>
       </View>
     </View>
   );
 }
 
-/* ─── screen ─────────────────────────────────────────────────── */
+/* ─── per-metric card ─────────────────────────────────────────────── */
+function MetricCard({ icon, label, a, b, width }: {
+  icon: string; label: string; a: number; b: number; width: number;
+}) {
+  const iconName: any = icon;
+  return (
+    <View style={[styles.metricCard, { width }]}>
+      <View style={styles.metricIconWrap}>
+        <MaterialCommunityIcons name={iconName} size={ms(20)} color={SAGE} />
+      </View>
+      <T style={styles.metricLabel}>{label}</T>
+      <View style={styles.metricScoreRow}>
+        <T style={styles.metricA}>{a}</T>
+        <T style={styles.metricArrow}>{"  →  "}</T>
+        <T style={styles.metricB}>{b}</T>
+      </View>
+    </View>
+  );
+}
+
+/* ─── screen ─────────────────────────────────────────────────────── */
 export default function TransformationScreen() {
-  const initX         = CARD_W / 2;
-  const sliderXRef    = useRef(initX);
+  const { width: W } = useWindowDimensions();
+  const H_PAD   = SP[5];
+  const CARD_W  = W - H_PAD * 2;
+  const IMG_H   = Math.round(CARD_W * 1.0);
+  const HANDLE_R = ms(20);
+
+  const initX = CARD_W / 2;
+  const sliderXRef = useRef(initX);
   const gestureStartX = useRef(initX);
   const [sliderX, setSliderX] = useState(initX);
 
@@ -99,87 +118,115 @@ export default function TransformationScreen() {
         sliderXRef.current = next;
         setSliderX(next);
       },
-    })
+    }),
   ).current;
+
+  const metricCardWidth = (CARD_W - sw(12)) / 2;
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={BG} />
-      <SafeAreaView style={styles.safeArea}>
+      <StatusBar barStyle="dark-content" />
+      <SafeAreaView style={[styles.safeArea, { paddingHorizontal: H_PAD }]}>
 
-        {/* Progress bar */}
+        {/* Progress */}
         <View style={styles.progressTrack}>
           <View style={[styles.progressFill, { width: "96%" }]} />
         </View>
 
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.title}>Your Face Can Change Too</Text>
-          <Text style={styles.subtitle}>
-            See what's possible with consistent effort and a personalized routine.
-          </Text>
+          <T style={styles.title}>Your face can change too</T>
+          <T style={styles.subtitle}>
+            See what's possible with consistent effort and a personalised routine.
+          </T>
         </View>
 
-        <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-
-
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
           {/* Before / After Slider */}
-          <View style={styles.sliderContainer} {...pan.panHandlers}>
-            <Image source={AFTER_IMG} style={styles.fullImg} resizeMode="cover" />
-            <View style={[styles.beforeClip, { width: sliderX }]}>
+          <View
+            style={[styles.sliderContainer, { width: CARD_W, height: IMG_H }]}
+            {...pan.panHandlers}
+          >
+            <Image source={AFTER_IMG} style={{ width: CARD_W, height: IMG_H }} resizeMode="cover" />
+            <View style={[styles.beforeClip, { width: sliderX, height: IMG_H }]}>
               <Image
                 source={BEFORE_IMG}
-                style={[styles.fullImg, { width: CARD_W }]}
+                style={{ width: CARD_W, height: IMG_H }}
                 resizeMode="cover"
               />
             </View>
+
             <ScoreBadge side="before" score={47} />
             <ScoreBadge side="after"  score={83} />
-            <View style={[styles.divider, { left: sliderX - 1 }]} />
-            <View style={[styles.handle, { left: sliderX - HANDLE_R, top: IMG_H / 2 - HANDLE_R }]}>
-              <MaterialCommunityIcons name="chevron-left"  size={13} color={BG} />
-              <MaterialCommunityIcons name="chevron-right" size={13} color={BG} />
+
+            <View style={[styles.divider, { left: sliderX - 1, height: IMG_H }]} />
+            <View
+              style={[
+                styles.handle,
+                {
+                  width: HANDLE_R * 2,
+                  height: HANDLE_R * 2,
+                  borderRadius: HANDLE_R,
+                  left: sliderX - HANDLE_R,
+                  top: IMG_H / 2 - HANDLE_R,
+                },
+              ]}
+            >
+              <MaterialCommunityIcons name="chevron-left"  size={ms(13)} color={COLORS.lightText} />
+              <MaterialCommunityIcons name="chevron-right" size={ms(13)} color={COLORS.lightText} />
             </View>
           </View>
 
-          {/* Testimonial — glued right below the slider */}
-          <View style={styles.testimonialCard}>
-            <LinearGradient
-              colors={["rgba(255,255,255,0.05)", "rgba(255,255,255,0.01)"]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={[StyleSheet.absoluteFill, { borderRadius: RADII.lg }]}
-            />
-            <Text style={styles.quote}>
+          {/* Testimonial */}
+          <View style={[styles.testimonialCard, { width: CARD_W }]}>
+            <T style={styles.quote}>
               "Didn't expect to see a difference this fast. Week after week my score kept climbing — it pushed me to stay consistent. The routine they built me actually delivered."
-            </Text>
+            </T>
             <View style={styles.dividerLine} />
             <View style={styles.testimonialFooter}>
-              <Text style={styles.testimonialName}>Ibrahim, 23</Text>
+              <T style={styles.testimonialName}>Ibrahim, 23</T>
               <View style={styles.stars}>
                 {[...Array(5)].map((_, i) => (
-                  <MaterialCommunityIcons key={i} name="star" size={13} color="#F59E0B" />
+                  <MaterialCommunityIcons key={i} name="star" size={ms(13)} color="#F59E0B" />
                 ))}
               </View>
             </View>
           </View>
 
+          {/* Metrics */}
           <View style={styles.metricsSection}>
-            <Text style={styles.metricsTitle}>How Ibrahim's Face Improved</Text>
-            <Text style={styles.metricsSub}>Score changes across key areas</Text>
+            <T style={styles.metricsTitle}>How Ibrahim's face improved</T>
+            <T style={styles.metricsSub}>Score changes across key areas</T>
             <View style={styles.metricsGrid}>
-              {METRICS.map(function(m) { return <MetricCard key={m.label} icon={m.icon} label={m.label} a={m.a} b={m.b} />; })}
+              {METRICS.map((m) => (
+                <MetricCard
+                  key={m.label}
+                  icon={m.icon}
+                  label={m.label}
+                  a={m.a}
+                  b={m.b}
+                  width={metricCardWidth}
+                />
+              ))}
             </View>
           </View>
-
         </ScrollView>
 
-        {/* Button — pinned to very bottom */}
+        {/* CTA */}
         <View style={styles.footer}>
-          <LimeButton
-            label="Begin My Ascension"
+          <Pressable
             onPress={() => router.push("/(onboarding)/paywall")}
-          />
+            style={({ pressed }) => [
+              styles.cta,
+              pressed && { backgroundColor: COLORS.ctaBlackPressed },
+            ]}
+          >
+            <T style={styles.ctaText}>BUILD MY PLAN</T>
+          </Pressable>
         </View>
 
       </SafeAreaView>
@@ -187,61 +234,63 @@ export default function TransformationScreen() {
   );
 }
 
-/* ─── styles ─────────────────────────────────────────────────── */
+/* ─── styles ─────────────────────────────────────────────────────── */
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: BG },
-  safeArea:  { flex: 1, paddingHorizontal: H_PAD },
+  container: { flex: 1, backgroundColor: COLORS.lightBg },
+  safeArea:  { flex: 1 },
 
-  // progress — matches reference: very thin, minimal margin
+  // Progress — slim, sage fill
   progressTrack: {
-    height: 4,
+    height: sh(5),
     width: "100%",
-    borderRadius: RADII.circle,
-    backgroundColor: COLORS.track,
+    borderRadius: 999,
+    backgroundColor: COLORS.lightHairline,
     overflow: "hidden",
     marginTop: SP[2],
     marginBottom: SP[4],
   },
   progressFill: {
     height: "100%",
-    backgroundColor: ACCENT,
-    borderRadius: RADII.circle,
+    backgroundColor: LIME,
+    borderRadius: 999,
   },
 
-  // header
-  header: { marginBottom: SP[3] + 2 },
+  // Header
+  header: { marginBottom: SP[3] },
   title: {
-    ...TYPE.h2,
-    color: COLORS.text,
+    fontFamily: FONT_BOLD,
+    fontSize: ms(28),
+    lineHeight: ms(34),
+    color: COLORS.lightText,
     letterSpacing: -0.5,
     marginBottom: SP[2],
   },
   subtitle: {
-    ...TYPE.bodySemiBold,
-    color: COLORS.sub,
+    fontFamily: "Poppins-Regular",
+    fontSize: ms(14),
+    lineHeight: ms(20),
+    color: COLORS.lightSub,
   },
 
+  scroll: { flex: 1 },
+  scrollContent: { paddingBottom: SP[2] },
+
+  // Slider — dark photos sit inside a soft-shadow rounded container
   sliderContainer: {
-    width: CARD_W,
-    height: IMG_H,
-    borderRadius: RADII.xl,
+    borderRadius: RADII.lg,
     overflow: "hidden",
     backgroundColor: "#111",
     alignSelf: "center",
-  },
-  fullImg: {
-    width: CARD_W,
-    height: IMG_H,
+    ...SOFT_SHADOW,
   },
   beforeClip: {
     position: "absolute",
     left: 0,
     top: 0,
-    height: IMG_H,
     overflow: "hidden",
   },
 
-  // badges
+  // Score badges
   badge: {
     position: "absolute",
     top: SP[3],
@@ -253,74 +302,72 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   badgeLeft:  { left: SP[2] + 2 },
-  badgeRight: { right: SP[2] + 2, borderColor: "rgba(180,243,77,0.22)" },
+  badgeRight: { right: SP[2] + 2, borderColor: "rgba(180,243,77,0.40)" },
   badgeLabel: {
-    color: "rgba(255,255,255,0.70)",
-    fontFamily: "Poppins-SemiBold",
-    fontSize: 9,
-    lineHeight: 13,
+    color: "rgba(255,255,255,0.78)",
+    fontFamily: FONT_BOLD,
+    fontSize: ms(9),
+    lineHeight: ms(13),
     letterSpacing: 0.9,
   },
   badgeScoreRow: { flexDirection: "row", alignItems: "flex-end" },
   badgeNum: {
-    ...TYPE.h4,
-    color: COLORS.text,
-    lineHeight: 24,
+    fontFamily: FONT_BOLD,
+    fontSize: ms(20),
+    lineHeight: ms(24),
+    color: "#FFFFFF",
   },
   badgeDenom: {
-    ...TYPE.smallSemiBold,
+    fontFamily: FONT_BOLD,
+    fontSize: ms(10),
+    lineHeight: ms(16),
     color: "rgba(255,255,255,0.55)",
-    fontSize: 11,
-    lineHeight: 18,
     marginLeft: 1,
     marginBottom: 1,
   },
 
-  // divider + handle
+  // Slider divider + handle
   divider: {
     position: "absolute",
     top: 0,
     width: 2,
-    height: IMG_H,
-    backgroundColor: "rgba(255,255,255,0.88)",
+    backgroundColor: "rgba(255,255,255,0.92)",
   },
   handle: {
     position: "absolute",
-    width: HANDLE_R * 2,
-    height: HANDLE_R * 2,
-    borderRadius: HANDLE_R,
     backgroundColor: "#FFFFFF",
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",
     shadowColor: "#000",
-    shadowOpacity: 0.28,
+    shadowOpacity: 0.30,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
     elevation: 6,
   },
 
-  // ── testimonial ───────────────────────────────────────────────
+  // Testimonial — white card, soft shadow
   testimonialCard: {
-    width: CARD_W,
-    marginTop: SP[3] + 2,
+    marginTop: SP[4],
+    alignSelf: "center",
     borderRadius: RADII.lg,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.07)",
+    backgroundColor: COLORS.lightCard,
     paddingHorizontal: SP[5],
     paddingTop: SP[4],
     paddingBottom: SP[4],
     overflow: "hidden",
-    backgroundColor: "rgba(255,255,255,0.03)",
+    ...SOFT_SHADOW,
   },
   quote: {
-    ...TYPE.bodySemiBold,
-    color: COLORS.textHigh,
+    fontFamily: "Poppins-Regular",
+    fontSize: ms(14),
+    lineHeight: ms(21),
+    color: COLORS.lightText,
     marginBottom: SP[3],
   },
   dividerLine: {
-    height: 1,
-    backgroundColor: "rgba(255,255,255,0.07)",
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: COLORS.lightHairline,
     marginBottom: SP[3],
   },
   testimonialFooter: {
@@ -329,68 +376,90 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   testimonialName: {
-    ...TYPE.captionSemiBold,
-    color: COLORS.text,
+    fontFamily: FONT_BOLD,
+    fontSize: ms(13),
+    color: COLORS.lightText,
+    letterSpacing: -0.1,
   },
   stars: { flexDirection: "row", gap: 2 },
 
-  scroll: { flex: 1 },
-  scrollContent: { paddingBottom: SP[2] },
-
+  // Metrics section
   metricsSection: { marginTop: SP[5] },
   metricsTitle: {
-    ...TYPE.h4,
-    color: COLORS.text,
+    fontFamily: FONT_BOLD,
+    fontSize: ms(18),
+    color: COLORS.lightText,
     letterSpacing: -0.3,
-    marginBottom: SP[1],
+    marginBottom: 2,
   },
   metricsSub: {
-    ...TYPE.captionSemiBold,
-    color: COLORS.sub,
-    marginBottom: SP[3] + 2,
+    fontFamily: "Poppins-Regular",
+    fontSize: ms(13),
+    color: COLORS.lightSub,
+    marginBottom: SP[3],
   },
   metricsGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: SP[2] + 2,
+    gap: sw(12),
   },
   metricCard: {
-    width: (CARD_W - 10) / 2,
-    backgroundColor: "rgba(255,255,255,0.04)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.07)",
-    borderRadius: RADII.md,
+    backgroundColor: COLORS.lightCard,
+    borderRadius: RADII.lg,
     paddingHorizontal: SP[3] + 2,
     paddingVertical: SP[3] + 2,
+    ...SOFT_SHADOW,
   },
   metricIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: RADII.sm,
-    backgroundColor: "rgba(180,243,77,0.10)",
-    borderWidth: 1,
-    borderColor: "rgba(180,243,77,0.18)",
+    width: ms(36),
+    height: ms(36),
+    borderRadius: ms(10),
+    backgroundColor: SAGE_SOFT,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: SP[2] + 2,
   },
   metricLabel: {
-    ...TYPE.captionSemiBold,
-    color: COLORS.sub,
+    fontFamily: FONT_BOLD,
+    fontSize: ms(12),
+    color: COLORS.lightSub,
+    letterSpacing: 0.4,
     marginBottom: SP[1],
   },
   metricScoreRow: { flexDirection: "row", alignItems: "center" },
   metricA: {
-    ...TYPE.bodySemiBold,
-    color: "rgba(255,255,255,0.40)",
-    lineHeight: 20,
+    fontFamily: FONT_BOLD,
+    fontSize: ms(15),
+    lineHeight: ms(20),
+    color: COLORS.lightMuted,
   },
-  metricArrow: { color: "rgba(255,255,255,0.25)", fontSize: 13 },
+  metricArrow: {
+    fontFamily: FONT_BOLD,
+    color: COLORS.lightSub,
+    fontSize: ms(13),
+  },
   metricB: {
-    ...TYPE.button,
-    color: COLORS.accent,
+    fontFamily: FONT_BOLD,
+    fontSize: ms(18),
+    lineHeight: ms(22),
+    color: SAGE,
+    letterSpacing: -0.2,
   },
 
-  // footer
-  footer: { paddingTop: SP[3], paddingBottom: SP[4] },
+  // Footer
+  footer: { paddingTop: SP[3], paddingBottom: SP[2] },
+  cta: {
+    minHeight: sh(54),
+    borderRadius: 999,
+    backgroundColor: COLORS.ctaBlack,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: sh(14),
+  },
+  ctaText: {
+    fontFamily: FONT_BOLD,
+    fontSize: ms(14),
+    color: "#FFFFFF",
+    letterSpacing: 1.0,
+  },
 });

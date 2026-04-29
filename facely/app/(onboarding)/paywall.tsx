@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Dimensions,
+  KeyboardAvoidingView,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -528,9 +529,14 @@ const PaywallScreen: React.FC = () => {
         style={StyleSheet.absoluteFill}
       />
       <Animated.View style={[styles.flex, containerStyle]}>
+        <KeyboardAvoidingView
+          style={styles.flex}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+        >
         <ScrollView
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
         >
           <View style={styles.inner}>
             {/* HEADER */}
@@ -678,6 +684,7 @@ const PaywallScreen: React.FC = () => {
             </View>
           </View>
         </ScrollView>
+        </KeyboardAvoidingView>
       </Animated.View>
     </SafeAreaView>
   );

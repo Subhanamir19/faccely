@@ -2,7 +2,7 @@
   "expo": {
     "name": "Sigma Max",
     "slug": "sigmamax-app",
-    "version": "1.8.0",
+    "version": "1.9.0",
     "orientation": "portrait",
     "icon": "./assets/sigmamax-real-updatred-logo.jpeg",
     "userInterfaceStyle": "light",
@@ -13,11 +13,11 @@
     },
     "ios": {
       "supportsTablet": false,
-      "buildNumber": "16",
+      "buildNumber": "17",
       "bundleIdentifier": "com.sigmamax.app",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "NSCameraUsageDesci just ription": "SigmaMax needs camera access to analyze your facial features and provide personalized recommendations.",
+        "NSCameraUsageDescription": "SigmaMax needs camera access to analyze your facial features and provide personalized recommendations.",
         "NSPhotoLibraryUsageDescription": "SigmaMax needs photo library access to analyze photos of your face."
       }
     },

@@ -7,10 +7,10 @@ import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import * as Haptics from "expo-haptics";
 import { Scan, CircleCheckBig, UserRound, TrendingUp } from "lucide-react-native";
 
-const ACTIVE_ICON   = "#FFFFFF";
-const INACTIVE_ICON = "rgba(255,255,255,0.38)";
-const BAR_BG        = "#161616";
-const ACTIVE_BG     = "#2C2C2C";
+const ACTIVE_ICON   = "#0B0B0B";              // dark icon on white pill
+const INACTIVE_ICON = "rgba(11,11,11,0.45)";  // muted dark
+const BAR_BG        = "#FFFFFF";              // white pill
+const ACTIVE_BG     = "#F2F3F5";              // light gray active chip
 
 // ---------------------------------------------------------------------------
 // Custom floating tab bar
@@ -35,7 +35,7 @@ function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   );
 
   return (
-    <View style={{ height: reservedHeight, backgroundColor: "#0E0B08" }}>
+    <View style={{ height: reservedHeight, backgroundColor: "#FFFFFF" }}>
       {/* Absolutely positioned pill floats on top of the reserved space */}
       <View style={[styles.wrapper, { bottom: safeBottom + PILL_GAP_BOTTOM }]}>
         <View style={styles.pill}>
@@ -93,10 +93,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     gap: 4,
     shadowColor: "#000000",
-    shadowOpacity: 0.22,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
+    shadowOpacity: 0.10,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 8,
   },
   tab: {
     flex: 1,
@@ -121,8 +121,9 @@ export default function TabsLayout() {
       tabBar={(props) => <FloatingTabBar {...props} />}
       screenOptions={{
         headerShown: false,
-        tabBarStyle: { backgroundColor: "#0E0B08", borderTopWidth: 0, elevation: 0 },
-        sceneContainerStyle: { backgroundColor: "#0E0B08" },
+        tabBarStyle: { backgroundColor: "#FFFFFF", borderTopWidth: 0, elevation: 0 },
+        // @ts-expect-error sceneContainerStyle exists at runtime; types lag.
+        sceneContainerStyle: { backgroundColor: "#FFFFFF" },
       }}
     >
       {/* Tab 1: scan */}
@@ -167,7 +168,7 @@ export default function TabsLayout() {
       {/* hidden */}
       <Tabs.Screen name="sigma" options={{ href: null }} />
 
-      {/* Dev — hidden */}
+      {/* Dev — route kept for direct navigation, hidden from tab bar */}
       <Tabs.Screen name="dev" options={{ href: null }} />
 
       {/* Keep routes, hide from bar */}

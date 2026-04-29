@@ -4,7 +4,8 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
-import { buildDailyRoutine, buildDailyProtocols, type RoutineTaskPick, type ProtocolSelectionInput } from "@/lib/taskBuilder";
+import { buildDailyRoutine, buildDailyProtocols, makeRoutineTaskFromId, type RoutineTaskPick, type ProtocolSelectionInput } from "@/lib/taskBuilder";
+import { EXERCISE_CATALOG, type TargetArea } from "@/lib/taskSelection";
 import type { ProtocolType } from "@/lib/protocolCatalog";
 import { summarizeFocusAreas } from "@/lib/taskSelection";
 import { logger } from '@/lib/logger';
@@ -40,6 +41,11 @@ export type DayRecord = {
   streakEarned: boolean;  // sticky — true once countCompleted >= STREAK_THRESHOLD (2)
   completedOnce: boolean; // sticky version of allComplete — prevents modal showing twice
   focusSummary: string;   // e.g. "jawline & cheekbones"
+  /**
+   * Areas the user explicitly chose via the "Select" sheet. Drives the chip
+   * row on the routine preview; null means "derive from tasks union".
+   */
+  selectedAreas: TargetArea[] | null;
 };
 
 type TasksState = {
@@ -59,6 +65,20 @@ type TasksState = {
   completeTask: (exerciseId: string) => void;
   uncompleteTask: (exerciseId: string) => void;
   skipTask: (exerciseId: string) => void;
+  /** Append a catalog exercise to today's list (no-op if already present). */
+  addTaskToday: (exerciseId: string) => void;
+  /** Remove a task from today's list (no-op if not present). */
+  removeTaskToday: (exerciseId: string) => void;
+  /**
+   * Replace today's tasks with this exact set of catalog ids — preserving
+   * status for ids that survive. Order follows the input array.
+   */
+  setTodayTasksByIds: (exerciseIds: string[]) => void;
+  /**
+   * Replace today's tasks with all catalog exercises whose targets intersect
+   * the given areas. Selecting "all" returns full-face entries only.
+   */
+  setTodayTasksByAreas: (areas: TargetArea[]) => void;
   completeProtocol: (id: string, done: boolean) => void;
   rebuildProtocols: () => void;
   setMood: (mood: string) => void;
@@ -346,6 +366,7 @@ export const useTasksStore = create<TasksState>()(
             streakEarned: true,  // opening the app earns today's streak day
             completedOnce: false,
             focusSummary,
+            selectedAreas: null,
           },
           history,
           currentStreak,
@@ -461,6 +482,136 @@ export const useTasksStore = create<TasksState>()(
         if (uid) scheduleSyncTaskHistory(uid);
       },
 
+      addTaskToday: (exerciseId: string) => {
+        const state = get();
+        if (!state.today) return;
+        if (state.today.tasks.some((t) => t.exerciseId === exerciseId)) return;
+        const pick = makeRoutineTaskFromId(exerciseId);
+        if (!pick) return;
+        const tasks: DailyTask[] = [...state.today.tasks, { ...pick, status: "pending" }];
+        const allComplete =
+          tasks.every((t) => t.status !== "pending") &&
+          state.today.protocols.every((p) => p.status === "done");
+        set({ today: { ...state.today, tasks, allComplete } });
+        const uid = getUid();
+        if (uid) scheduleSyncTaskHistory(uid);
+      },
+
+      removeTaskToday: (exerciseId: string) => {
+        const state = get();
+        if (!state.today) return;
+        if (!state.today.tasks.some((t) => t.exerciseId === exerciseId)) return;
+        const tasks = state.today.tasks.filter((t) => t.exerciseId !== exerciseId);
+        const allComplete =
+          tasks.length > 0 &&
+          tasks.every((t) => t.status !== "pending") &&
+          state.today.protocols.every((p) => p.status === "done");
+        set({ today: { ...state.today, tasks, allComplete } });
+        const uid = getUid();
+        if (uid) scheduleSyncTaskHistory(uid);
+      },
+
+      setTodayTasksByIds: (exerciseIds: string[]) => {
+        const state = get();
+        if (!state.today) return;
+        const prevById = new Map(state.today.tasks.map((t) => [t.exerciseId, t]));
+        const tasks: DailyTask[] = [];
+        for (const id of exerciseIds) {
+          const existing = prevById.get(id);
+          if (existing) {
+            tasks.push(existing);
+            continue;
+          }
+          const pick = makeRoutineTaskFromId(id);
+          if (pick) tasks.push({ ...pick, status: "pending" });
+        }
+        const allComplete =
+          tasks.length > 0 &&
+          tasks.every((t) => t.status !== "pending") &&
+          state.today.protocols.every((p) => p.status === "done");
+        // Edit-sheet path: user is hand-curating, so clear the area pin so
+        // chips fall back to the derived union.
+        set({ today: { ...state.today, tasks, allComplete, selectedAreas: null } });
+        const uid = getUid();
+        if (uid) scheduleSyncTaskHistory(uid);
+      },
+
+      setTodayTasksByAreas: (areas: TargetArea[]) => {
+        const state = get();
+        if (!state.today || areas.length === 0) return;
+
+        // Round-robin pick: top-weighted exercise per selected area first,
+        // then second-top per area, etc. Cap scales with selection breadth —
+        // 5 for 1-2 areas, 9 for 3+ — so a wider focus surfaces more variety
+        // without exploding to the full catalog.
+        const DAILY_CAP = areas.length >= 3 ? 9 : 5;
+        const wanted = new Set(areas);
+        const buckets: string[][] = areas.map((area) =>
+          EXERCISE_CATALOG
+            .filter((e) => e.targets.includes(area))
+            .sort((a, b) => b.weight - a.weight)
+            .map((e) => e.id),
+        );
+
+        const seen = new Set<string>();
+        const ordered: string[] = [];
+        let layer = 0;
+        while (ordered.length < DAILY_CAP) {
+          let added = 0;
+          for (const bucket of buckets) {
+            if (ordered.length >= DAILY_CAP) break;
+            const id = bucket[layer];
+            if (id && !seen.has(id)) {
+              seen.add(id);
+              ordered.push(id);
+              added++;
+            }
+          }
+          if (added === 0) break; // every bucket exhausted
+          layer++;
+        }
+
+        // Fallback: if buckets were too thin, top up by weight from the
+        // intersecting catalog.
+        if (ordered.length < DAILY_CAP) {
+          const remaining = EXERCISE_CATALOG
+            .filter((e) => !seen.has(e.id) && e.targets.some((t) => wanted.has(t)))
+            .sort((a, b) => b.weight - a.weight);
+          for (const e of remaining) {
+            if (ordered.length >= DAILY_CAP) break;
+            ordered.push(e.id);
+            seen.add(e.id);
+          }
+        }
+
+        // Apply via the id-based path, then pin the user-selected areas so the
+        // chip row reflects intent (not the union of exercise tags).
+        const prevById = new Map(state.today.tasks.map((t) => [t.exerciseId, t]));
+        const tasks: DailyTask[] = [];
+        for (const id of ordered) {
+          const existing = prevById.get(id);
+          if (existing) tasks.push(existing);
+          else {
+            const pick = makeRoutineTaskFromId(id);
+            if (pick) tasks.push({ ...pick, status: "pending" });
+          }
+        }
+        const allComplete =
+          tasks.length > 0 &&
+          tasks.every((t) => t.status !== "pending") &&
+          state.today.protocols.every((p) => p.status === "done");
+        set({
+          today: {
+            ...state.today,
+            tasks,
+            allComplete,
+            selectedAreas: areas,
+          },
+        });
+        const uid = getUid();
+        if (uid) scheduleSyncTaskHistory(uid);
+      },
+
       completeProtocol: (id: string, done: boolean) => {
         const state = get();
         if (!state.today) return;
@@ -549,7 +700,7 @@ export const useTasksStore = create<TasksState>()(
     }),
     {
       name: "sigma_tasks_v1",
-      version: 8,
+      version: 9,
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({
         today: state.today,
@@ -616,6 +767,18 @@ export const useTasksStore = create<TasksState>()(
         // Wipe today so existing users get a properly personalised protocol set on next open.
         if (version <= 6 && persisted) {
           persisted.today = null;
+        }
+        // v8 → v9: added selectedAreas to DayRecord. Backfill to null so chips
+        // fall back to the derived union until the user picks via the sheet.
+        if (version <= 8 && persisted) {
+          if (persisted.today && persisted.today.selectedAreas === undefined) {
+            persisted.today.selectedAreas = null;
+          }
+          if (Array.isArray(persisted.history)) {
+            for (const record of persisted.history) {
+              if (record.selectedAreas === undefined) record.selectedAreas = null;
+            }
+          }
         }
         // v7 → v8: added streakEarned (separate from allComplete).
         // Backfill from completedOnce (which was the old "hit threshold" flag).

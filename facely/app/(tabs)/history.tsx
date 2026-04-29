@@ -1,5 +1,5 @@
 // app/(tabs)/history.tsx
-// History list screen — redesigned per UX audit.
+// History list — light system, matches the new visual language.
 
 import React, { useCallback, useEffect, useState } from "react";
 import {
@@ -8,27 +8,31 @@ import {
   StyleSheet,
   RefreshControl,
   Pressable,
-  Image,
-  Platform,
   ActivityIndicator,
 } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
-import { BlurView } from "expo-blur";
+import { Image as ExpoImage } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, { FadeInDown, FadeIn } from "react-native-reanimated";
 import { fetchScanHistory, type ScanHistoryItem } from "@/lib/api/history";
 import Text from "@/components/ui/T";
-import ScreenHeader from "@/components/layout/ScreenHeader";
-import { COLORS, SP, RADII, TYPE } from "@/lib/tokens";
+import { COLORS, SP, RADII } from "@/lib/tokens";
+import { ms, sh, sw } from "@/lib/responsive";
 
 const goToScan = () => router.push("/(tabs)/take-picture");
 
-const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+const FONT = "ProximaNova-Bold";
+const SAGE = "#3F7A2A";
+const SAGE_SOFT = "#E2F1D8";
 
-// 3D depth button constants
-const DEPTH = 4;
+const SOFT_SHADOW = {
+  shadowColor: "#000000",
+  shadowOpacity: 0.08,
+  shadowRadius: 20,
+  shadowOffset: { width: 0, height: 8 },
+  elevation: 4,
+} as const;
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -51,10 +55,10 @@ function formatDate(value: string): { date: string; time: string } {
 }
 
 function getScoreColor(score: number): string {
-  if (score <= 39) return COLORS.error;
-  if (score <= 59) return COLORS.errorLight;
-  if (score <= 79) return COLORS.warning;
-  return COLORS.success;
+  if (score <= 39) return COLORS.declineRed;
+  if (score <= 59) return "#D97706";
+  if (score <= 79) return "#B5891A";
+  return SAGE;
 }
 
 function getScoreBand(score: number): string {
@@ -64,55 +68,37 @@ function getScoreBand(score: number): string {
   return "Needs Work";
 }
 
-// ---------------------------------------------------------------------------
-// Compare Discovery Banner — shown when ≥3 scans and not yet dismissed
-// ---------------------------------------------------------------------------
+// ── Compare discovery banner ───────────────────────────────────────────────
+
 function CompareDiscoveryBanner({ onCompare }: { onCompare: () => void }) {
   return (
     <Animated.View entering={FadeInDown.duration(400)} style={bannerStyles.wrapper}>
-      <BlurView
-        intensity={Platform.OS === "android" ? 20 : 35}
-        tint="dark"
-        style={bannerStyles.blur}
-      >
-        <View style={bannerStyles.overlay} />
-        <View style={bannerStyles.inner}>
-          <View style={bannerStyles.iconWrap}>
-            <Ionicons name="git-compare-outline" size={20} color={COLORS.accent} />
-          </View>
-          <View style={bannerStyles.textBlock}>
-            <Text style={bannerStyles.title}>Compare scans side by side</Text>
-            <Text style={bannerStyles.sub}>Track your progress over time</Text>
-          </View>
-          <Pressable
-            onPress={onCompare}
-            style={({ pressed }) => [bannerStyles.cta, pressed && { opacity: 0.75 }]}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <Text style={bannerStyles.ctaText}>Try it</Text>
-          </Pressable>
+      <View style={bannerStyles.inner}>
+        <View style={bannerStyles.iconWrap}>
+          <Ionicons name="git-compare-outline" size={20} color={SAGE} />
         </View>
-      </BlurView>
+        <View style={bannerStyles.textBlock}>
+          <Text style={bannerStyles.title}>Compare scans side by side</Text>
+          <Text style={bannerStyles.sub}>Track your progress over time</Text>
+        </View>
+        <Pressable
+          onPress={onCompare}
+          style={({ pressed }) => [bannerStyles.cta, pressed && { opacity: 0.85 }]}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Text style={bannerStyles.ctaText}>Try it</Text>
+        </Pressable>
+      </View>
     </Animated.View>
   );
 }
 
 const bannerStyles = StyleSheet.create({
   wrapper: {
-    borderRadius: RADII.xl,
-    overflow: "hidden",
-    marginBottom: SP[1],
-    ...(Platform.OS === "ios"
-      ? { shadowColor: COLORS.accent, shadowOpacity: 0.12, shadowRadius: 16, shadowOffset: { width: 0, height: 6 } }
-      : { elevation: 4 }),
-  },
-  blur: { borderRadius: RADII.xl, overflow: "hidden" },
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(180,243,77,0.04)",
-    borderWidth: 1,
-    borderColor: COLORS.accentBorder,
-    borderRadius: RADII.xl,
+    borderRadius: RADII.lg,
+    backgroundColor: COLORS.lightCard,
+    marginBottom: SP[2],
+    ...SOFT_SHADOW,
   },
   inner: {
     flexDirection: "row",
@@ -125,29 +111,40 @@ const bannerStyles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: COLORS.accentGlow,
-    borderWidth: 1,
-    borderColor: COLORS.accentBorder,
+    backgroundColor: SAGE_SOFT,
     alignItems: "center",
     justifyContent: "center",
   },
   textBlock: { flex: 1, gap: 2 },
-  title: { ...TYPE.captionSemiBold, color: COLORS.text },
-  sub: { ...TYPE.small, color: COLORS.sub },
+  title: {
+    fontFamily: FONT,
+    fontSize: ms(13),
+    color: COLORS.lightText,
+    letterSpacing: -0.1,
+  },
+  sub: {
+    fontFamily: "Poppins-Regular",
+    fontSize: ms(11),
+    color: COLORS.lightSub,
+  },
   cta: {
     paddingHorizontal: SP[3],
     paddingVertical: SP[2],
-    borderRadius: RADII.md,
-    borderWidth: 1,
-    borderColor: COLORS.accentBorder,
-    backgroundColor: COLORS.accentGlow,
+    borderRadius: 999,
+    backgroundColor: COLORS.ctaBlack,
   },
-  ctaText: { ...TYPE.smallSemiBold, color: COLORS.accent },
+  ctaText: {
+    fontFamily: FONT,
+    fontSize: ms(11),
+    color: "#FFFFFF",
+    letterSpacing: 0.4,
+  },
 });
 
-// ---------------------------------------------------------------------------
-// HistoryCard
-// ---------------------------------------------------------------------------
+// ── History card ───────────────────────────────────────────────────────────
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
 type HistoryCardProps = {
   item: ScanHistoryItem;
   index: number;
@@ -172,13 +169,10 @@ function HistoryCard({
 
   const hasScore = typeof item.overallScore === "number";
   const score = item.overallScore ?? 0;
-  const scoreColor = hasScore ? getScoreColor(score) : COLORS.sub;
+  const scoreColor = hasScore ? getScoreColor(score) : COLORS.lightSub;
   const band = hasScore ? getScoreBand(score) : null;
 
-  // Delta vs previous scan (positive = improved)
-  const hasDelta =
-    hasScore &&
-    typeof prevScore === "number";
+  const hasDelta = hasScore && typeof prevScore === "number";
   const delta = hasDelta ? score - prevScore! : 0;
 
   const handlePress = () => {
@@ -192,133 +186,116 @@ function HistoryCard({
   return (
     <AnimatedPressable
       entering={FadeInDown.delay(index * 70).duration(380)}
-      style={[styles.cardWrapper, isSelected && styles.cardWrapperSelected]}
+      style={[styles.card, isSelected && styles.cardSelected]}
       onPress={handlePress}
     >
-      <BlurView
-        intensity={Platform.OS === "android" ? 20 : 40}
-        tint="dark"
-        style={styles.cardBlur}
-      >
-        <View style={[styles.cardOverlay, isSelected && styles.cardOverlaySelected]} />
-        <View style={styles.cardTopLine} />
-
-        <View style={styles.cardInner}>
-          {/* ── Main info row ─────────────────────────────── */}
-          <View style={styles.mainRow}>
-            {/* Thumbnail */}
-            <View style={styles.thumbWrapper}>
-              {item.frontImageUrl ? (
-                <Image
-                  source={{ uri: item.frontImageUrl }}
-                  style={styles.thumb}
-                  resizeMode="cover"
-                />
-              ) : (
-                <View style={styles.thumbPlaceholder}>
-                  <Ionicons name="person-outline" size={22} color={COLORS.accent} />
-                </View>
-              )}
-              {/* Live indicator dot */}
-              <View style={styles.liveDot} />
-            </View>
-
-            {/* Date / badges */}
-            <View style={styles.metaBlock}>
-              <Text style={styles.dateText}>{date}</Text>
-              <Text style={styles.timeText}>{time}</Text>
-              {item.hasSideImage && (
-                <View style={styles.sideBadge}>
-                  <Ionicons name="scan-outline" size={10} color={COLORS.accent} />
-                  <Text style={styles.sideBadgeText}>Side</Text>
-                </View>
-              )}
-            </View>
-
-            {/* Score / badge area */}
-            {compareMode ? (
-              <View style={[styles.selectCircle, isSelected && styles.selectCircleActive]}>
-                {isSelected && (
-                  <Ionicons name="checkmark" size={14} color={COLORS.bgTop} />
-                )}
-              </View>
+      <View style={styles.cardInner}>
+        {/* Main row */}
+        <View style={styles.mainRow}>
+          {/* Thumb */}
+          <View style={styles.thumbWrapper}>
+            {item.frontImageUrl ? (
+              <ExpoImage
+                source={{ uri: item.frontImageUrl }}
+                style={styles.thumb}
+                contentFit="cover"
+                cachePolicy="memory-disk"
+                transition={250}
+              />
             ) : (
-              <View style={styles.scoreBlock}>
-                {hasScore ? (
-                  <>
-                    <Text style={[styles.scoreNum, { color: scoreColor }]}>
-                      {Math.round(score)}
-                    </Text>
-                    <Text style={[styles.scoreBand, { color: scoreColor }]}>{band}</Text>
-                    {hasDelta && (
-                      <View style={styles.deltaRow}>
-                        <Ionicons
-                          name={delta >= 0 ? "arrow-up" : "arrow-down"}
-                          size={10}
-                          color={delta >= 0 ? COLORS.success : COLORS.error}
-                        />
-                        <Text
-                          style={[
-                            styles.deltaText,
-                            { color: delta >= 0 ? COLORS.success : COLORS.error },
-                          ]}
-                        >
-                          {delta >= 0 ? "+" : ""}
-                          {Math.round(delta)}
-                        </Text>
-                      </View>
-                    )}
-                  </>
-                ) : (
-                  <View style={styles.scanBadge}>
-                    <Text style={styles.scanBadgeText}>#{scanNumber}</Text>
-                  </View>
-                )}
+              <View style={styles.thumbPlaceholder}>
+                <Ionicons name="person-outline" size={22} color={SAGE} />
+              </View>
+            )}
+            <View style={styles.liveDot} />
+          </View>
+
+          {/* Meta */}
+          <View style={styles.metaBlock}>
+            <Text style={styles.dateText}>{date}</Text>
+            <Text style={styles.timeText}>{time}</Text>
+            {item.hasSideImage && (
+              <View style={styles.sideBadge}>
+                <Ionicons name="scan-outline" size={10} color={SAGE} />
+                <Text style={styles.sideBadgeText}>Side</Text>
               </View>
             )}
           </View>
 
-          {/* ── Compare hint ──────────────────────────────── */}
-          {compareMode && (
-            <Text style={styles.compareTap}>
-              {isSelected ? "Selected for comparison" : "Tap to select"}
-            </Text>
-          )}
-
-          {/* ── Single CTA ────────────────────────────────── */}
-          {!compareMode && (
-            <View style={styles.primaryDepth}>
-              <Pressable
-                style={({ pressed }) => [
-                  styles.primaryFace,
-                  { transform: [{ translateY: pressed ? DEPTH - 1 : 0 }] },
-                ]}
-                onPress={handleViewResults}
-              >
-                <Text style={styles.primaryBtnText}>View Results</Text>
-                <Ionicons name="arrow-forward" size={14} color="#0B0B0B" />
-              </Pressable>
+          {/* Score / select circle / scan badge */}
+          {compareMode ? (
+            <View style={[styles.selectCircle, isSelected && styles.selectCircleActive]}>
+              {isSelected && <Ionicons name="checkmark" size={14} color="#FFFFFF" />}
+            </View>
+          ) : (
+            <View style={styles.scoreBlock}>
+              {hasScore ? (
+                <>
+                  <Text style={[styles.scoreNum, { color: scoreColor }]}>
+                    {Math.round(score)}
+                  </Text>
+                  <Text style={[styles.scoreBand, { color: scoreColor }]}>{band}</Text>
+                  {hasDelta && (
+                    <View style={styles.deltaRow}>
+                      <Ionicons
+                        name={delta >= 0 ? "arrow-up" : "arrow-down"}
+                        size={10}
+                        color={delta >= 0 ? SAGE : COLORS.declineRed}
+                      />
+                      <Text
+                        style={[
+                          styles.deltaText,
+                          { color: delta >= 0 ? SAGE : COLORS.declineRed },
+                        ]}
+                      >
+                        {delta >= 0 ? "+" : ""}
+                        {Math.round(delta)}
+                      </Text>
+                    </View>
+                  )}
+                </>
+              ) : (
+                <View style={styles.scanBadge}>
+                  <Text style={styles.scanBadgeText}>#{scanNumber}</Text>
+                </View>
+              )}
             </View>
           )}
         </View>
-      </BlurView>
+
+        {compareMode && (
+          <Text style={styles.compareTap}>
+            {isSelected ? "Selected for comparison" : "Tap to select"}
+          </Text>
+        )}
+
+        {!compareMode && (
+          <Pressable
+            style={({ pressed }) => [
+              styles.primaryBtn,
+              pressed && { backgroundColor: COLORS.ctaBlackPressed },
+            ]}
+            onPress={handleViewResults}
+          >
+            <Text style={styles.primaryBtnText}>VIEW RESULTS</Text>
+            <Ionicons name="arrow-forward" size={14} color="#FFFFFF" />
+          </Pressable>
+        )}
+      </View>
     </AnimatedPressable>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Empty state (inline — no emoji)
-// ---------------------------------------------------------------------------
+// ── Empty state ────────────────────────────────────────────────────────────
+
 function EmptyState() {
   return (
     <Animated.View entering={FadeIn.delay(200)} style={emptyStyles.container}>
       <View style={emptyStyles.iconWrap}>
-        <Ionicons name="stats-chart-outline" size={36} color={COLORS.accent} />
+        <Ionicons name="stats-chart-outline" size={36} color={SAGE} />
       </View>
-      <Text variant="h4" color="text" style={emptyStyles.title}>
-        No scans yet
-      </Text>
-      <Text variant="caption" color="sub" style={emptyStyles.sub}>
+      <Text style={emptyStyles.title}>No scans yet</Text>
+      <Text style={emptyStyles.sub}>
         Run your first scan to see your history here
       </Text>
     </Animated.View>
@@ -337,20 +314,106 @@ const emptyStyles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: COLORS.accentGlow,
-    borderWidth: 1,
-    borderColor: COLORS.accentBorder,
+    backgroundColor: SAGE_SOFT,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: SP[2],
   },
-  title: { textAlign: "center" },
-  sub: { textAlign: "center", lineHeight: 20 },
+  title: {
+    fontFamily: FONT,
+    fontSize: ms(18),
+    color: COLORS.lightText,
+    textAlign: "center",
+  },
+  sub: {
+    fontFamily: "Poppins-Regular",
+    fontSize: ms(13),
+    color: COLORS.lightSub,
+    textAlign: "center",
+    lineHeight: 20,
+  },
 });
 
-// ---------------------------------------------------------------------------
-// Screen
-// ---------------------------------------------------------------------------
+// ── Light header — inline so the dark ScreenHeader doesn't bleed through ──
+
+function LightHeader({
+  subtitle,
+  rightAction,
+}: {
+  subtitle: string;
+  rightAction?: React.ReactNode;
+}) {
+  return (
+    <View style={headerStyles.wrap}>
+      <Pressable
+        onPress={goToScan}
+        hitSlop={12}
+        style={({ pressed }) => [
+          headerStyles.back,
+          pressed && { opacity: 0.65 },
+        ]}
+      >
+        <Ionicons name="chevron-back" size={20} color={COLORS.lightText} />
+        <Text style={headerStyles.backText}>Back</Text>
+      </Pressable>
+
+      <View style={headerStyles.titleRow}>
+        <View style={{ flex: 1 }}>
+          <Text style={headerStyles.title}>History</Text>
+          <Text style={headerStyles.subtitle}>{subtitle}</Text>
+        </View>
+        {rightAction && <View style={headerStyles.rightAction}>{rightAction}</View>}
+      </View>
+    </View>
+  );
+}
+
+const headerStyles = StyleSheet.create({
+  wrap: {
+    paddingHorizontal: SP[4],
+    paddingTop: SP[3],
+    paddingBottom: SP[3],
+    gap: SP[2],
+  },
+  back: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    gap: 2,
+    paddingVertical: SP[1],
+    paddingRight: SP[2],
+  },
+  backText: {
+    fontFamily: FONT,
+    fontSize: ms(14),
+    color: COLORS.lightText,
+    letterSpacing: 0.1,
+  },
+  titleRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    justifyContent: "space-between",
+  },
+  title: {
+    fontFamily: FONT,
+    fontSize: ms(28),
+    color: COLORS.lightText,
+    letterSpacing: -0.5,
+    lineHeight: ms(32),
+  },
+  subtitle: {
+    fontFamily: FONT,
+    fontSize: ms(13),
+    color: COLORS.lightSub,
+    marginTop: sh(2),
+  },
+  rightAction: {
+    marginLeft: SP[3],
+  },
+});
+
+// ── Screen ─────────────────────────────────────────────────────────────────
+
 export default function HistoryScreen() {
   const insets = useSafeAreaInsets();
   const [scans, setScans] = useState<ScanHistoryItem[]>([]);
@@ -410,7 +473,6 @@ export default function HistoryScreen() {
 
   const renderItem = useCallback(
     ({ item, index }: { item: ScanHistoryItem; index: number }) => {
-      // Previous scan score (the scan that came before this one, i.e. index+1 since newest first)
       const prev = scans[index + 1];
       const prevScore =
         typeof prev?.overallScore === "number" ? prev.overallScore : undefined;
@@ -445,16 +507,14 @@ export default function HistoryScreen() {
   );
 
   const showDiscoverBanner =
-    !compareMode &&
-    !compareBannerDismissed &&
-    scans.length >= 3;
+    !compareMode && !compareBannerDismissed && scans.length >= 3;
 
   const renderContent = () => {
     if (loading) {
       return (
         <View style={styles.centeredState}>
-          <ActivityIndicator color={COLORS.accent} size="large" />
-          <Text variant="captionMedium" color="sub" style={{ marginTop: SP[3] }}>
+          <ActivityIndicator color={COLORS.lightText} size="large" />
+          <Text style={{ fontFamily: FONT, color: COLORS.lightSub, marginTop: SP[3] }}>
             Loading history...
           </Text>
         </View>
@@ -464,17 +524,22 @@ export default function HistoryScreen() {
     if (error) {
       return (
         <View style={styles.centeredState}>
-          <Ionicons name="alert-circle-outline" size={40} color={COLORS.error} />
-          <Text variant="captionMedium" style={{ color: COLORS.error, textAlign: "center", marginTop: SP[2] }}>
+          <Ionicons name="alert-circle-outline" size={40} color={COLORS.declineRed} />
+          <Text
+            style={{
+              fontFamily: FONT,
+              color: COLORS.declineRed,
+              textAlign: "center",
+              marginTop: SP[2],
+            }}
+          >
             {error}
           </Text>
           <Pressable
-            style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.8 }]}
+            style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.85 }]}
             onPress={load}
           >
-            <Text variant="captionSemiBold" style={{ color: COLORS.bgTop }}>
-              Retry
-            </Text>
+            <Text style={styles.retryBtnText}>RETRY</Text>
           </Pressable>
         </View>
       );
@@ -498,8 +563,8 @@ export default function HistoryScreen() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor={COLORS.accent}
-            colors={[COLORS.accent]}
+            tintColor={COLORS.lightText}
+            colors={[COLORS.lightText]}
           />
         }
         contentContainerStyle={[
@@ -521,25 +586,9 @@ export default function HistoryScreen() {
 
   return (
     <View style={styles.screen}>
-      <LinearGradient
-        colors={[COLORS.bgTop, COLORS.bgBottom]}
-        style={StyleSheet.absoluteFill}
-        start={{ x: 0.5, y: 0 }}
-        end={{ x: 0.5, y: 1 }}
-      />
-      <LinearGradient
-        colors={[COLORS.accentGlow, "transparent"]}
-        style={styles.topGlow}
-        start={{ x: 0.5, y: 0 }}
-        end={{ x: 0.5, y: 1 }}
-      />
-
       <View style={[styles.container, { paddingTop: insets.top }]}>
-        <ScreenHeader
-          title="History"
+        <LightHeader
           subtitle={subtitle}
-          showBack
-          onBack={goToScan}
           rightAction={scans.length > 1 ? compareToggleBtn : undefined}
         />
         {renderContent()}
@@ -548,38 +597,28 @@ export default function HistoryScreen() {
       {/* Floating compare CTA */}
       {compareMode && selectedIds.length === 2 && (
         <View style={[styles.floatingCta, { bottom: insets.bottom + SP[4] }]}>
-          <View style={styles.ctaDepth}>
-            <Pressable
-              style={({ pressed }) => [
-                styles.ctaFace,
-                { transform: [{ translateY: pressed ? DEPTH - 1 : 0 }] },
-              ]}
-              onPress={handleCompare}
-            >
-              <Ionicons name="git-compare-outline" size={18} color="#0B0B0B" />
-              <Text style={styles.ctaText}>Compare 2 Scans</Text>
-            </Pressable>
-          </View>
+          <Pressable
+            style={({ pressed }) => [
+              styles.ctaFace,
+              pressed && { backgroundColor: COLORS.ctaBlackPressed },
+            ]}
+            onPress={handleCompare}
+          >
+            <Ionicons name="git-compare-outline" size={18} color="#FFFFFF" />
+            <Text style={styles.ctaText}>COMPARE 2 SCANS</Text>
+          </Pressable>
         </View>
       )}
     </View>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Styles
-// ---------------------------------------------------------------------------
+// ── Styles ─────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: COLORS.bgTop,
-  },
-  topGlow: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 220,
+    backgroundColor: COLORS.lightBg,
   },
   container: {
     flex: 1,
@@ -597,76 +636,54 @@ const styles = StyleSheet.create({
     gap: SP[3],
   },
   retryBtn: {
-    backgroundColor: COLORS.accent,
+    backgroundColor: COLORS.ctaBlack,
     paddingHorizontal: SP[6],
     paddingVertical: SP[3],
-    borderRadius: RADII.md,
+    borderRadius: 999,
     marginTop: SP[2],
   },
+  retryBtnText: {
+    fontFamily: FONT,
+    fontSize: ms(13),
+    color: "#FFFFFF",
+    letterSpacing: 0.4,
+  },
 
-  // Header button
+  // Header right action
   headerBtn: {
     paddingVertical: SP[1],
     paddingHorizontal: SP[2],
   },
   headerBtnText: {
-    ...TYPE.captionSemiBold,
-    color: COLORS.sub,
+    fontFamily: FONT,
+    fontSize: ms(13),
+    color: COLORS.lightSub,
+    letterSpacing: 0.4,
   },
   headerBtnTextActive: {
-    color: COLORS.accent,
+    color: SAGE,
   },
 
-  // ── Card ────────────────────────────────────────────────────────────────
-  cardWrapper: {
-    borderRadius: RADII.xl,
-    overflow: "hidden",
-    ...(Platform.OS === "ios"
-      ? { shadowColor: "#000", shadowOpacity: 0.28, shadowRadius: 22, shadowOffset: { width: 0, height: 12 } }
-      : { elevation: 8 }),
+  // ── Card ──────────────────────────────────────────────────────────────────
+  card: {
+    borderRadius: RADII.lg,
+    backgroundColor: COLORS.lightCard,
+    ...SOFT_SHADOW,
   },
-  cardWrapperSelected: {
-    ...(Platform.OS === "ios"
-      ? { shadowColor: COLORS.accent, shadowOpacity: 0.18, shadowRadius: 18 }
-      : {}),
-  },
-  cardBlur: {
-    borderRadius: RADII.xl,
-    overflow: "hidden",
-  },
-  cardOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: COLORS.card,
-    borderWidth: 1,
-    borderColor: COLORS.cardBorder,
-    borderRadius: RADII.xl,
-  },
-  cardOverlaySelected: {
-    borderColor: COLORS.accentBorder,
-    backgroundColor: "rgba(180,243,77,0.05)",
-  },
-  cardTopLine: {
-    position: "absolute",
-    top: 0,
-    left: 24,
-    right: 24,
-    height: 1,
-    backgroundColor: COLORS.accentBorder,
-    borderRadius: 1,
+  cardSelected: {
+    backgroundColor: SAGE_SOFT,
   },
   cardInner: {
     padding: SP[4],
     gap: SP[3],
   },
-
-  // ── Main info row ────────────────────────────────────────────────────────
   mainRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: SP[3],
   },
 
-  // Thumbnail
+  // Thumb
   thumbWrapper: {
     position: "relative",
   },
@@ -674,16 +691,14 @@ const styles = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: 26,
-    borderWidth: 2,
-    borderColor: COLORS.accentBorder,
+    borderWidth: 1.5,
+    borderColor: COLORS.lightBorder,
   },
   thumbPlaceholder: {
     width: 52,
     height: 52,
     borderRadius: 26,
-    backgroundColor: COLORS.accentGlow,
-    borderWidth: 2,
-    borderColor: COLORS.accentBorder,
+    backgroundColor: SAGE_SOFT,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -694,23 +709,26 @@ const styles = StyleSheet.create({
     width: 12,
     height: 12,
     borderRadius: 6,
-    backgroundColor: COLORS.accent,
+    backgroundColor: SAGE,
     borderWidth: 2,
-    borderColor: COLORS.bgTop,
+    borderColor: COLORS.lightCard,
   },
 
-  // Meta (date/time/badges)
+  // Meta
   metaBlock: {
     flex: 1,
     gap: 2,
   },
   dateText: {
-    ...TYPE.captionSemiBold,
-    color: COLORS.text,
+    fontFamily: FONT,
+    fontSize: ms(13),
+    color: COLORS.lightText,
+    letterSpacing: -0.1,
   },
   timeText: {
-    ...TYPE.small,
-    color: COLORS.sub,
+    fontFamily: "Poppins-Regular",
+    fontSize: ms(11),
+    color: COLORS.lightSub,
   },
   sideBadge: {
     flexDirection: "row",
@@ -718,20 +736,19 @@ const styles = StyleSheet.create({
     gap: 3,
     marginTop: 4,
     alignSelf: "flex-start",
-    backgroundColor: COLORS.accentGlow,
+    backgroundColor: SAGE_SOFT,
     paddingHorizontal: SP[2],
     paddingVertical: 2,
-    borderRadius: RADII.circle,
-    borderWidth: 1,
-    borderColor: COLORS.accentBorder,
+    borderRadius: 999,
   },
   sideBadgeText: {
-    ...TYPE.smallSemiBold,
-    color: COLORS.accent,
+    fontFamily: FONT,
     fontSize: 10,
+    color: SAGE,
+    letterSpacing: 0.4,
   },
 
-  // Score block (right side)
+  // Score block
   scoreBlock: {
     alignItems: "flex-end",
     gap: 2,
@@ -740,10 +757,10 @@ const styles = StyleSheet.create({
   scoreNum: {
     fontSize: 28,
     lineHeight: 32,
-    fontFamily: "Poppins-SemiBold",
+    fontFamily: FONT,
   },
   scoreBand: {
-    ...TYPE.smallSemiBold,
+    fontFamily: FONT,
     fontSize: 10,
     letterSpacing: 0.3,
   },
@@ -754,27 +771,27 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   deltaText: {
-    ...TYPE.smallSemiBold,
+    fontFamily: FONT,
     fontSize: 11,
   },
   scanBadge: {
     paddingHorizontal: SP[3],
     paddingVertical: SP[1],
-    borderRadius: RADII.circle,
-    backgroundColor: COLORS.whiteGlass,
-    borderWidth: 1,
-    borderColor: COLORS.cardBorder,
+    borderRadius: 999,
+    backgroundColor: COLORS.lightSurfaceAlt,
   },
   scanBadgeText: {
-    ...TYPE.smallSemiBold,
-    color: COLORS.muted,
+    fontFamily: FONT,
+    fontSize: 11,
+    color: COLORS.lightSub,
     letterSpacing: 0.3,
   },
 
   // Compare
   compareTap: {
-    ...TYPE.caption,
-    color: COLORS.sub,
+    fontFamily: "Poppins-Regular",
+    fontSize: ms(12),
+    color: COLORS.lightSub,
     textAlign: "center",
   },
   selectCircle: {
@@ -782,33 +799,30 @@ const styles = StyleSheet.create({
     height: 28,
     borderRadius: 14,
     borderWidth: 2,
-    borderColor: COLORS.cardBorder,
+    borderColor: COLORS.lightBorder,
     alignItems: "center",
     justifyContent: "center",
   },
   selectCircleActive: {
-    borderColor: COLORS.accent,
-    backgroundColor: COLORS.accent,
+    borderColor: SAGE,
+    backgroundColor: SAGE,
   },
 
-  // Single primary CTA
-  primaryDepth: {
-    borderRadius: RADII.md,
-    backgroundColor: COLORS.accentDepth,
-    paddingBottom: DEPTH,
-  },
-  primaryFace: {
-    borderRadius: RADII.md,
+  // Single primary CTA on each card
+  primaryBtn: {
+    borderRadius: 999,
     paddingVertical: SP[3],
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: SP[2],
-    backgroundColor: COLORS.accent,
+    backgroundColor: COLORS.ctaBlack,
   },
   primaryBtnText: {
-    ...TYPE.captionSemiBold,
-    color: "#0B0B0B",
+    fontFamily: FONT,
+    fontSize: ms(13),
+    color: "#FFFFFF",
+    letterSpacing: 0.6,
   },
 
   // Floating compare CTA
@@ -817,25 +831,24 @@ const styles = StyleSheet.create({
     left: SP[4],
     right: SP[4],
   },
-  ctaDepth: {
-    borderRadius: RADII.pill,
-    backgroundColor: COLORS.accentDepth,
-    paddingBottom: DEPTH,
-  },
   ctaFace: {
-    borderRadius: RADII.pill,
+    borderRadius: 999,
     paddingVertical: SP[4],
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: SP[2],
-    backgroundColor: COLORS.accent,
-    ...(Platform.OS === "ios"
-      ? { shadowColor: COLORS.accent, shadowOpacity: 0.35, shadowRadius: 20, shadowOffset: { width: 0, height: 6 } }
-      : { elevation: 12 }),
+    backgroundColor: COLORS.ctaBlack,
+    shadowColor: "#000000",
+    shadowOpacity: 0.18,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 8,
   },
   ctaText: {
-    ...TYPE.bodySemiBold,
-    color: "#0B0B0B",
+    fontFamily: FONT,
+    fontSize: ms(15),
+    color: "#FFFFFF",
+    letterSpacing: 0.6,
   },
 });
