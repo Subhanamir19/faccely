@@ -703,6 +703,30 @@ export default function DevScreen() {
               Alert.alert("Done", "All exercises reset to pending.");
             }}
           />
+          <DevButton
+            label="🔄  Full Reset Today (UI flip test)"
+            accent
+            onPress={() => {
+              const state = useTasksStore.getState();
+              const today = state.today;
+              if (!today) {
+                Alert.alert("No tasks", "Today's tasks are not loaded yet.");
+                return;
+              }
+              useTasksStore.setState({
+                today: {
+                  ...today,
+                  tasks: today.tasks.map((t) => ({ ...t, status: "pending" as const })),
+                  protocols: today.protocols.map((p) => ({ ...p, status: "pending" as const })),
+                  allComplete: false,
+                  completedOnce: false,
+                  mood: null,
+                },
+                completionModalShownDate: null,
+              });
+              router.push("/(tabs)/program" as any);
+            }}
+          />
         </GlassCard>
 
         {/* ── Scan Limit Bypass ──────────────────────────────────────── */}

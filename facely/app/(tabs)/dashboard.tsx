@@ -64,6 +64,7 @@ import type {
 import type { AdvancedAnalysis } from "@/lib/api/advancedAnalysis";
 import { pickTopFive } from "@/lib/submetrics";
 import { TopFiveCard } from "@/components/dashboard/TopFiveCard";
+import { PotentialFaceCard } from "@/components/dashboard/PotentialFaceCard";
 
 const AnimatedTextInput = Animated.createAnimatedComponent(TextInput);
 
@@ -2002,6 +2003,7 @@ export default function DashboardScreen() {
   const displayName = useProfile((s) => s.displayName);
   const scanLoading = useScores((s) => s.loading);
   const scanError   = useScores((s) => s.error);
+  const scanImageUri = useScores((s) => s.imageUri);
 
   // UUID pattern — Supabase leaks the auth UUID into name/email fields on some flows.
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -2074,6 +2076,16 @@ export default function DashboardScreen() {
   const latestAdvanced   = data?.latest_advanced ?? (advancedData as LatestAdvanced | null) ?? null;
   const previousAdvanced = data?.previous_advanced ?? null;
 
+  // Days since the user's most recent scan. `history` is newest-first
+  // (see `/insights` server route). Null when no scans exist yet.
+  const daysSinceLastScan: number | null = (() => {
+    const latestCreated = history[0]?.created_at;
+    if (!latestCreated) return null;
+    const t = Date.parse(latestCreated);
+    if (Number.isNaN(t)) return null;
+    return Math.floor((Date.now() - t) / (24 * 60 * 60 * 1000));
+  })();
+
   // Overall delta — use AI content when available, fall back to raw scan math
   const overallDelta = content?.overall_delta
     ?? (overall ? Math.round((overall.current - overall.baseline) * 10) / 10 : 0);
@@ -2097,6 +2109,15 @@ export default function DashboardScreen() {
 
     return (
       <>
+        {/* ── Section 1.5: Potential Face — top-anchored "% closer" card ── */}
+        {/* Renders nothing when no row exists yet; handles its own state machine. */}
+        <PotentialFaceCard
+          currentImageUri={scanImageUri ?? null}
+          latestAdvanced={latestAdvanced}
+          daysSinceLastScan={daysSinceLastScan}
+          onScanAgain={() => router.push("/(tabs)/take-picture")}
+        />
+
         {/* ── Section 2: Hero Score Card ── */}
         <Animated.View entering={FadeInDown.delay(100).duration(450)}>
           <HeroCard

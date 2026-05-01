@@ -42,20 +42,34 @@ type ImageJob = {
   targetFormat?: "jpeg" | "png" | "webp";
 };
 
+export type PotentialFaceJob = {
+  requestId?: string;
+  /** UUID of the potential_faces row this job populates. Drives idempotency. */
+  potentialFaceId: string;
+  /** UUID of the source scan whose frontal image is the reference photo. */
+  baselineScanId: string;
+  /** Owner of the row (Supabase user id). */
+  userId: string;
+  /** 1, 2, … — informational; the row already encodes the canonical stage. */
+  stage: number;
+};
+
 /* ---------------------------- Lazy queue handles --------------------------- */
 
 let qAnalyze: Queue<AnalyzeJob> | null = null;
 let qExplain: Queue<ExplainJob> | null = null;
 let qRoutine: Queue<RoutineJob> | null = null;
 let qImage: Queue<ImageJob> | null = null;
+let qPotentialFace: Queue<PotentialFaceJob> | null = null;
 
 let evAnalyze: QueueEvents | null = null;
 let evExplain: QueueEvents | null = null;
 let evRoutine: QueueEvents | null = null;
 let evImage: QueueEvents | null = null;
+let evPotentialFace: QueueEvents | null = null;
 
 async function ensureQueues() {
-  if (qAnalyze && qExplain && qRoutine && qImage) return;
+  if (qAnalyze && qExplain && qRoutine && qImage && qPotentialFace) return;
   const r = await getRedis();
   if (!r) throw new Error("Redis is required for queues. Set REDIS_URL.");
 
@@ -69,12 +83,14 @@ async function ensureQueues() {
   qExplain = new Queue<ExplainJob>(QUEUES.explain, base);
   qRoutine = new Queue<RoutineJob>(QUEUES.routine, base);
   qImage   = new Queue<ImageJob>(QUEUES.image, base);
+  qPotentialFace = new Queue<PotentialFaceJob>(QUEUES.potentialFace, base);
 
   // Lightweight events; we’ll wire listeners in Phase 4 for metrics
   evAnalyze = new QueueEvents(QUEUES.analyze, { connection: r, autorun: true });
   evExplain = new QueueEvents(QUEUES.explain, { connection: r, autorun: true });
   evRoutine = new QueueEvents(QUEUES.routine, { connection: r, autorun: true });
   evImage   = new QueueEvents(QUEUES.image,   { connection: r, autorun: true });
+  evPotentialFace = new QueueEvents(QUEUES.potentialFace, { connection: r, autorun: true });
 }
 
 /* ---------------------------- Default job options -------------------------- */
@@ -115,6 +131,27 @@ export async function enqueueImage(payload: ImageJob, opts?: JobsOptions) {
   return qImage!.add("image", payload, { jobId: id, ...opts });
 }
 
+/**
+ * Enqueue a Potential Face generation job. The BullMQ jobId is set to the
+ * `potentialFaceId` so re-enqueuing the same row is naturally deduplicated by
+ * BullMQ (it ignores adds with an existing jobId while one is queued/active).
+ *
+ * If the previous job for the same id has already completed, BullMQ will
+ * happily accept a new job with the same id once it has been removed (per the
+ * removeOnComplete TTL). Retries-after-failure should pass `forceRequeue: true`
+ * to bypass dedupe, in which case we append a suffix.
+ */
+export async function enqueuePotentialFace(
+  payload: PotentialFaceJob,
+  opts?: JobsOptions & { forceRequeue?: boolean }
+) {
+  await ensureQueues();
+  const baseId = payload.potentialFaceId;
+  const jobId = opts?.forceRequeue ? `${baseId}:${Date.now()}` : baseId;
+  const { forceRequeue: _omit, ...jobOpts } = opts ?? {};
+  return qPotentialFace!.add("potential_face", payload, { jobId, ...jobOpts });
+}
+
 /* ------------------------------- Health probe ------------------------------ */
 
 export async function queuesHealthy(): Promise<boolean> {
@@ -126,6 +163,7 @@ export async function queuesHealthy(): Promise<boolean> {
       qExplain!.getJobCounts(),
       qRoutine!.getJobCounts(),
       qImage!.getJobCounts(),
+      qPotentialFace!.getJobCounts(),
     ]);
     return true;
   } catch (e) {
@@ -144,7 +182,7 @@ export type JobStatus = "waiting" | "delayed" | "active" | "completed" | "failed
 
 export type JobSnapshot = {
   id: string;
-  queue: "analyze" | "explain" | "routine" | "image" | "unknown";
+  queue: "analyze" | "explain" | "routine" | "image" | "potential_face" | "unknown";
   status: JobStatus;
   progress?: number;
   result?: any;
@@ -162,11 +200,12 @@ export async function getJobSnapshot(jobId: string): Promise<JobSnapshot | null>
   await ensureQueues();
 
   // Try each queue until we find the job
-  const candidates: Array<["analyze" | "explain" | "routine" | "image", Queue<any>]> = [
-    ["analyze", qAnalyze!],
-    ["explain", qExplain!],
-    ["routine", qRoutine!],
-    ["image",   qImage!],
+  const candidates: Array<["analyze" | "explain" | "routine" | "image" | "potential_face", Queue<any>]> = [
+    ["analyze",        qAnalyze!],
+    ["explain",        qExplain!],
+    ["routine",        qRoutine!],
+    ["image",          qImage!],
+    ["potential_face", qPotentialFace!],
   ];
 
   for (const [key, q] of candidates) {

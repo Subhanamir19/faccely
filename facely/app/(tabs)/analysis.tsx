@@ -38,6 +38,7 @@ import { ms, sw, sh } from "@/lib/responsive";
 import { useScores } from "@/store/scores";
 import { useAdvancedAnalysis } from "@/store/advancedAnalysis";
 import { useTasksStore } from "@/store/tasks";
+import { usePotentialFace } from "@/store/potentialFace";
 import { useAdvancedAnalysisConsent } from "@/hooks/useAdvancedAnalysisConsent";
 import { BlueprintModal } from "@/components/analysis/BlueprintModal";
 import type { AdvancedAnalysis } from "@/lib/api/advancedAnalysis";
@@ -710,7 +711,15 @@ export function AnalysisContent({
         style={sx.footerCta}
       >
         <Pressable
-          onPress={() => router.push("/(tabs)/program")}
+          onPress={() => {
+            // First-time onboarding flow: route through the Potential Face
+            // reveal once, then the user lands in the program.  After the
+            // reveal has been dismissed once, this CTA goes straight to the
+            // program tab on every subsequent visit.
+            const seen = usePotentialFace.getState().revealSeen;
+            if (seen) router.push("/(tabs)/program");
+            else router.push("/(onboarding)/potential-face-reveal");
+          }}
           style={({ pressed }) => [sx.ctaBtn, pressed && { opacity: 0.9 }]}
         >
           <Text style={sx.ctaBtnText}>START YOUR ROUTINE</Text>

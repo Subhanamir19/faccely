@@ -92,7 +92,7 @@ function LightPillButton({
 
 export default function HistoryScoreCard() {
   const insets = useSafeAreaInsets();
-  const { width: SW } = useWindowDimensions();
+  const { width: SW, height: SH } = useWindowDimensions();
   const params = useLocalSearchParams<{ scanId?: string }>();
   const scanId = params?.scanId;
 
@@ -132,6 +132,13 @@ export default function HistoryScoreCard() {
 
   const HORIZONTAL_PAD = SP[5];
   const viewportWidth = SW - HORIZONTAL_PAD * 2;
+
+  // Avatar must shrink on shorter screens so it can't crash into the header
+  // when the centerStack contents exceed the available vertical space.
+  const avatarSize = Math.round(
+    Math.min(ms(128), Math.max(72, SH * 0.14))
+  );
+  const avatarPad = Math.max(2, Math.round(avatarSize * 0.03));
 
   const handleBack = () => router.back();
   const handleAdvanced = () => {
@@ -188,17 +195,33 @@ export default function HistoryScoreCard() {
         {/* Centered stack: avatar + carousel */}
         <View style={styles.centerStack}>
           <Animated.View entering={FadeInDown.duration(420).delay(160)}>
-            <View style={styles.avatarRing}>
+            <View
+              style={[
+                styles.avatarRing,
+                {
+                  width: avatarSize,
+                  height: avatarSize,
+                  borderRadius: avatarSize / 2,
+                  padding: avatarPad,
+                },
+              ]}
+            >
               {imageUri ? (
                 <ExpoImage
                   source={{ uri: imageUri }}
-                  style={styles.avatarImg}
+                  style={[styles.avatarImg, { borderRadius: avatarSize / 2 }]}
                   contentFit="cover"
                   cachePolicy="memory-disk"
                   transition={250}
                 />
               ) : (
-                <View style={[styles.avatarImg, styles.avatarPlaceholder]} />
+                <View
+                  style={[
+                    styles.avatarImg,
+                    styles.avatarPlaceholder,
+                    { borderRadius: avatarSize / 2 },
+                  ]}
+                />
               )}
             </View>
           </Animated.View>
@@ -264,13 +287,10 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    gap: SP[5],
+    gap: sh(16),
+    marginTop: sh(8),
   },
   avatarRing: {
-    width:  ms(128),
-    height: ms(128),
-    borderRadius: ms(64),
-    padding: ms(4),
     backgroundColor: COLORS.lightCard,
     borderWidth: 1,
     borderColor: COLORS.lightBorder,
@@ -285,7 +305,6 @@ const styles = StyleSheet.create({
   avatarImg: {
     width:  "100%",
     height: "100%",
-    borderRadius: ms(60),
   },
   avatarPlaceholder: {
     backgroundColor: COLORS.iconTileLavender,

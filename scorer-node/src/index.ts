@@ -59,6 +59,8 @@ import protocolsRouter, { setProtocolsOpenAIClient } from "./routes/protocols.js
 import { programsRouter } from "./routes/programs.js";
 import { insightsRouter } from "./routes/insights.js";
 import { generateInsightsForUser, setInsightsOpenAIClient } from "./insights/generateInsights.js";
+import { potentialFaceRouter } from "./routes/potentialFace.js";
+import { ensureStage1Generation } from "./services/potentialFaceGeneration.js";
 import { createScan } from "./supabase/scans.js";
 import { uploadScanImage } from "./supabase/storage.js";
 import { createAnalysis, saveAdvancedResult } from "./supabase/analyses.js";
@@ -608,6 +610,7 @@ app.use("/routine", requestTimeout(30_000), verifyAuth, idempotency(), routineRo
 app.use("/protocols", requestTimeout(30_000), verifyAuth, idempotency(), protocolsRouter);
 app.use("/programs", requestTimeout(30_000), verifyAuth, programsRouter);
 app.use("/insights", requestTimeout(30_000), verifyAuth, insightsRouter);
+app.use("/potential-face", requestTimeout(30_000), verifyAuth, potentialFaceRouter);
 app.use("/routine/async", verifyAuth, routineAsyncRouter);
 
 app.use("/sigma", requestTimeout(30_000), verifyAuth, sigmaRouter);
@@ -1177,9 +1180,27 @@ app.post("/analyze/advanced-explain", async (req, res) => {
     const scanId = req.body?.scanId;
     console.log("[advanced-explain] scanId from request body:", scanId ?? "MISSING");
     if (typeof scanId === "string" && scanId.trim()) {
+      const trimmedScanId = scanId.trim();
       try {
-        await saveAdvancedResult(scanId.trim(), result as unknown as Record<string, unknown>);
+        await saveAdvancedResult(trimmedScanId, result as unknown as Record<string, unknown>);
         console.log("[advanced-explain] DB write complete — now sending response");
+
+        // Fire-and-forget: ensure a Stage-1 Potential Face is being generated
+        // for this user. Idempotent on (user_id, stage=1) — safe to call on
+        // every advanced-explain. Must run AFTER saveAdvancedResult so the
+        // worker reads the row we just wrote.
+        ensureStage1Generation({ userId, baselineScanId: trimmedScanId })
+          .then((r) => {
+            if (r.enqueued) {
+              console.log("[advanced-explain] potential-face enqueued", r);
+            }
+          })
+          .catch((err) =>
+            console.error(
+              "[advanced-explain] potential-face trigger failed:",
+              err instanceof Error ? err.message : err
+            )
+          );
       } catch (err) {
         // Non-fatal: log and continue — client still gets its result
         console.error("[advanced-explain] failed to save advanced_result:", err);

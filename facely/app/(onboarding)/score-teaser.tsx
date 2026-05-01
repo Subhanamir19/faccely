@@ -23,7 +23,7 @@ import Text from "@/components/ui/T";
 import { COLORS, SP } from "@/lib/tokens";
 import { ms, sh, sw } from "@/lib/responsive";
 import { useScores } from "../../store/scores";
-import { hapticSuccess, hapticLight } from "@/lib/haptics";
+import { hapticSuccess } from "@/lib/haptics";
 import { useAdvancedAnalysisConsent } from "@/hooks/useAdvancedAnalysisConsent";
 
 const FONT = "ProximaNova-Bold";
@@ -114,6 +114,8 @@ export default function ScoreTeaserScreen() {
 
   // Fallback: if analysis finished but scores didn't arrive (network/server
   // error), skip the teaser and enter the app so the user isn't stuck.
+  // Intentional: this bypasses the Potential Face reveal — without scores
+  // there is no advanced analysis, so there would be nothing to reveal.
   useEffect(() => {
     if (!loading && !scores) {
       router.replace("/(tabs)/program");
@@ -121,6 +123,7 @@ export default function ScoreTeaserScreen() {
   }, [loading, scores]);
 
   // Safety net: if backend hangs, send user into the app after 20s.
+  // Same reasoning as above — bypassing the reveal is correct here.
   useEffect(() => {
     if (!loading) return;
     const timeout = setTimeout(() => {
@@ -134,11 +137,6 @@ export default function ScoreTeaserScreen() {
 
   const HORIZONTAL_PAD = SP[5];
   const viewportWidth = SW - HORIZONTAL_PAD * 2;
-
-  const handleSkip = useCallback(() => {
-    hapticLight();
-    router.replace("/(tabs)/program");
-  }, []);
 
   const handleAdvanced = useCallback(async () => {
     hapticSuccess();
@@ -192,9 +190,8 @@ export default function ScoreTeaserScreen() {
           </Animated.View>
         </View>
 
-        {/* Action buttons — docked at bottom */}
+        {/* Action button — docked at bottom; Advanced Analysis is the only path forward */}
         <Animated.View entering={FadeInDown.duration(400).delay(320)} style={styles.buttonRow}>
-          <LightPillButton label="Skip" onPress={handleSkip} />
           <LightPillButton
             label="Advanced Analysis"
             variant="primary"

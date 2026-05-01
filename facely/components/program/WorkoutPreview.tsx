@@ -28,6 +28,8 @@ import {
   TrendingUp,
   User as UserIcon,
   ChevronRight,
+  CircleCheck,
+  RotateCcw,
 } from "lucide-react-native";
 import SpeechBubble from "./SpeechBubble";
 
@@ -44,6 +46,7 @@ import type { DailyTask } from "@/store/tasks";
 import { useTasksStore } from "@/store/tasks";
 import { useProfile } from "@/store/profile";
 import { useExerciseSettings } from "@/store/exerciseSettings";
+import { getExerciseIcon } from "@/lib/exerciseIcons";
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
 const HERO_H = Math.round(SCREEN_H * 0.44);
@@ -100,11 +103,32 @@ export default function WorkoutPreview({
   const totalSecs   = tasks.reduce((sum, t) => sum + getDuration(t.exerciseId), 0);
   const totalMins   = Math.max(1, Math.round(totalSecs / 60));
 
-  const isDone      = !!today?.completedOnce || !!today?.allComplete;
-  const subtitle    = buildSubtitle(cardTarget, intensity, totalMins, isDone, boostPct);
+  // Closeout when every exercise is non-pending (completed or skipped).
+  // Protocols are a side concept — they don't gate the session. Using
+  // `allComplete` (which AND's protocols) would leave START visible after
+  // the user has actually finished all exercises, sending them into a
+  // session screen that has 0 pending tasks and bounces back here.
+  const allTasksDone = tasks.length > 0 && tasks.every((t) => t.status !== "pending");
+  const isDone       = allTasksDone;
+  const subtitle    = isDone
+    ? "You moved the needle today. Rest is part of the program."
+    : buildSubtitle(cardTarget, intensity, totalMins, false, boostPct);
 
-  const impactText  = IMPACT_BUBBLE_TEXT[cardTarget] ?? IMPACT_BUBBLE_TEXT.all;
-  const timeText    = `${totalMins} min\nsession`;
+  const completedCount = tasks.filter((t) => t.status === "completed").length;
+  const protocols      = today?.protocols ?? [];
+  const protocolsDone  = protocols.filter((p) => p.status === "done").length;
+
+  const impactText  = isDone
+    ? "today's lift\nlocked in"
+    : (IMPACT_BUBBLE_TEXT[cardTarget] ?? IMPACT_BUBBLE_TEXT.all);
+  const timeText    = isDone
+    ? "rest now\ngrow tomorrow"
+    : `${totalMins} min\nsession`;
+
+  const goToGuide = (exerciseId: string) => {
+    Haptics.selectionAsync();
+    router.push(`/program/guide/${exerciseId}`);
+  };
 
   const handleStart = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -174,32 +198,33 @@ export default function WorkoutPreview({
           </Text>
         </Animated.View>
 
-        <Animated.View
-          entering={FadeInDown.delay(160).duration(420)}
-          style={styles.startSlot}
-        >
-          <View style={styles.startDepthWrap}>
-            <Pressable
-              onPress={handleStart}
-              android_ripple={null}
-              style={({ pressed }) => [styles.startPillFace, pressed && { opacity: 0.85 }]}
-            >
-              <View style={styles.startPillGradient}>
-                {isDone ? (
-                  <>
-                    <Text style={styles.startPillText}>REVIEW</Text>
-                    <ChevronRight size={ms(15)} color="#FFFFFF" strokeWidth={2.5} />
-                  </>
-                ) : (
-                  <>
-                    <Play size={ms(13)} color="#FFFFFF" fill="#FFFFFF" strokeWidth={2} />
-                    <Text style={styles.startPillText}>START</Text>
-                  </>
-                )}
-              </View>
-            </Pressable>
-          </View>
-        </Animated.View>
+        {isDone ? (
+          <Animated.View
+            entering={FadeInDown.delay(160).duration(420)}
+            style={styles.doneBadge}
+          >
+            <CircleCheck size={ms(16)} color={COLORS.lightText} strokeWidth={2.2} />
+            <Text style={styles.doneBadgeText}>DONE</Text>
+          </Animated.View>
+        ) : (
+          <Animated.View
+            entering={FadeInDown.delay(160).duration(420)}
+            style={styles.startSlot}
+          >
+            <View style={styles.startDepthWrap}>
+              <Pressable
+                onPress={handleStart}
+                android_ripple={null}
+                style={({ pressed }) => [styles.startPillFace, pressed && { opacity: 0.85 }]}
+              >
+                <View style={styles.startPillGradient}>
+                  <Play size={ms(13)} color="#FFFFFF" fill="#FFFFFF" strokeWidth={2} />
+                  <Text style={styles.startPillText}>START</Text>
+                </View>
+              </Pressable>
+            </View>
+          </Animated.View>
+        )}
       </View>
 
       {/* ── Hero face ────────────────────────────────────────────── */}
@@ -240,54 +265,138 @@ export default function WorkoutPreview({
         style={styles.statsCard}
       >
         <View style={styles.statsHeader}>
-          <Text style={styles.statsTitle}>Active Stats</Text>
-          <View style={styles.miniCtaDepthWrap}>
-            <Pressable
-              onPress={handleStart}
-              android_ripple={null}
-              hitSlop={6}
-              style={({ pressed }) => [styles.miniCtaFace, pressed && { opacity: 0.85 }]}
-            >
-              <View style={styles.miniCtaGradient}>
-                <Play size={ms(13)} color="#FFFFFF" fill="#FFFFFF" strokeWidth={2} />
-              </View>
-            </Pressable>
-          </View>
+          <Text style={styles.statsTitle}>
+            {isDone ? "Today's recap" : "Active Stats"}
+          </Text>
         </View>
 
         <View style={styles.tileRow}>
-          {/* Focus */}
-          <View style={styles.tile}>
-            <View style={styles.tileTopRow}>
-              <View style={styles.tileIconChip}>
-                <Target size={ms(14)} color={COLORS.lightText} strokeWidth={2.2} />
+          {isDone ? (
+            <>
+              {/* Exercises */}
+              <View style={styles.tile}>
+                <View style={styles.tileTopRow}>
+                  <View style={styles.tileIconChip}>
+                    <CircleCheck size={ms(14)} color={COLORS.lightText} strokeWidth={2.2} />
+                  </View>
+                  <Text style={styles.tileLabel}>EXERCISES</Text>
+                </View>
+                <View style={styles.tileValueRow}>
+                  <Text style={styles.tileValueNum}>{completedCount}</Text>
+                  <Text style={styles.tileValueUnit}>of {tasks.length}</Text>
+                </View>
               </View>
-              <Text style={styles.tileLabel}>FOCUS</Text>
-            </View>
-            <View style={styles.tileValueRow}>
-              <Text style={styles.tileValueText} numberOfLines={1}>
-                {focusLabel}
-              </Text>
-            </View>
-          </View>
 
-          <View style={styles.tileDivider} />
+              <View style={styles.tileDivider} />
 
-          {/* Impact */}
-          <View style={styles.tile}>
-            <View style={styles.tileTopRow}>
-              <View style={styles.tileIconChip}>
-                <Zap size={ms(14)} color={COLORS.lightText} strokeWidth={2.2} />
+              {/* Streak */}
+              <View style={styles.tile}>
+                <View style={styles.tileTopRow}>
+                  <View style={styles.tileIconChip}>
+                    <Flame size={ms(14)} color={COLORS.lightText} strokeWidth={2.2} />
+                  </View>
+                  <Text style={styles.tileLabel}>STREAK</Text>
+                </View>
+                <View style={styles.tileValueRow}>
+                  <Text style={styles.tileValueNum}>{currentStreak}</Text>
+                  <Text style={styles.tileValueUnit}>
+                    day{currentStreak === 1 ? "" : "s"}
+                  </Text>
+                </View>
               </View>
-              <Text style={styles.tileLabel}>IMPACT</Text>
-            </View>
-            <View style={styles.tileValueRow}>
-              <Text style={styles.tileValueNum}>+{boostPct}%</Text>
-              <Text style={styles.tileValueUnit}>today</Text>
-            </View>
-          </View>
+            </>
+          ) : (
+            <>
+              {/* Focus */}
+              <View style={styles.tile}>
+                <View style={styles.tileTopRow}>
+                  <View style={styles.tileIconChip}>
+                    <Target size={ms(14)} color={COLORS.lightText} strokeWidth={2.2} />
+                  </View>
+                  <Text style={styles.tileLabel}>FOCUS</Text>
+                </View>
+                <View style={styles.tileValueRow}>
+                  <Text style={styles.tileValueText} numberOfLines={1}>
+                    {focusLabel}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.tileDivider} />
+
+              {/* Impact */}
+              <View style={styles.tile}>
+                <View style={styles.tileTopRow}>
+                  <View style={styles.tileIconChip}>
+                    <Zap size={ms(14)} color={COLORS.lightText} strokeWidth={2.2} />
+                  </View>
+                  <Text style={styles.tileLabel}>IMPACT</Text>
+                </View>
+                <View style={styles.tileValueRow}>
+                  <Text style={styles.tileValueNum}>+{boostPct}%</Text>
+                  <Text style={styles.tileValueUnit}>today</Text>
+                </View>
+              </View>
+            </>
+          )}
         </View>
       </Animated.View>
+
+      {/* ── Re-watch list (done state only) ──────────────────────── */}
+      {isDone && tasks.length > 0 && (
+        <Animated.View
+          entering={FadeInUp.delay(420).duration(460)}
+          style={styles.rewatchSection}
+        >
+          <View style={styles.rewatchHeader}>
+            <Text style={styles.rewatchTitle}>Re-watch any exercise</Text>
+            <Text style={styles.rewatchCaption}>
+              Refresh the technique. No re-credit needed.
+            </Text>
+          </View>
+
+          {tasks.map((task) => (
+            <Pressable
+              key={task.exerciseId}
+              onPress={() => goToGuide(task.exerciseId)}
+              style={({ pressed }) => [
+                styles.rewatchRow,
+                pressed && { opacity: 0.7 },
+              ]}
+            >
+              <View style={styles.rewatchIconWrap}>
+                <Image
+                  source={getExerciseIcon(task.exerciseId)}
+                  style={styles.rewatchIcon}
+                />
+              </View>
+              <View style={styles.rewatchTextWrap}>
+                <Text style={styles.rewatchName} numberOfLines={1}>
+                  {task.name}
+                </Text>
+                <Text style={styles.rewatchSub} numberOfLines={1}>
+                  Tap to view technique
+                </Text>
+              </View>
+              <RotateCcw
+                size={ms(16)}
+                color={COLORS.lightSub}
+                strokeWidth={2}
+              />
+            </Pressable>
+          ))}
+        </Animated.View>
+      )}
+
+      {/* ── Footer (done state only) ─────────────────────────────── */}
+      {isDone && (
+        <Animated.Text
+          entering={FadeIn.delay(560).duration(400)}
+          style={styles.doneFooter}
+        >
+          Tomorrow's routine unlocks at midnight.
+        </Animated.Text>
+      )}
      </ScrollView>
     </SafeAreaView>
   );
@@ -560,5 +669,98 @@ const styles = StyleSheet.create({
     color: COLORS.lightSub,
     fontFamily: "ProximaNova-Bold",
     fontSize: ms(11),
+  },
+
+  // Done badge ─────────────────────────────────────────────────
+  doneBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: sw(6),
+    paddingHorizontal: sw(14),
+    paddingVertical: sh(10),
+    borderRadius: ms(999),
+    backgroundColor: COLORS.lightSurfaceAlt,
+  },
+  doneBadgeText: {
+    color: COLORS.lightText,
+    fontFamily: "ProximaNova-Bold",
+    fontSize: ms(12),
+    letterSpacing: 0.6,
+  },
+
+  // Re-watch list ──────────────────────────────────────────────
+  rewatchSection: {
+    marginHorizontal: SP[5],
+    marginBottom: SP[3],
+  },
+  rewatchHeader: {
+    marginBottom: SP[3],
+  },
+  rewatchTitle: {
+    color: COLORS.lightText,
+    fontFamily: "ProximaNova-Bold",
+    fontSize: ms(16),
+    letterSpacing: -0.2,
+    marginBottom: sh(2),
+  },
+  rewatchCaption: {
+    color: COLORS.lightSub,
+    fontFamily: "ProximaNova-Bold",
+    fontSize: ms(12),
+    letterSpacing: 0.1,
+  },
+  rewatchRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: sw(12),
+    paddingVertical: sh(10),
+    paddingHorizontal: sw(12),
+    borderRadius: RADII.md,
+    backgroundColor: COLORS.lightCard,
+    marginBottom: sh(8),
+    ...SOFT_SHADOW,
+  },
+  rewatchIconWrap: {
+    width: ms(40),
+    height: ms(40),
+    borderRadius: ms(10),
+    backgroundColor: COLORS.iconTileLavender,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  rewatchIcon: {
+    width: ms(28),
+    height: ms(28),
+    resizeMode: "contain",
+  },
+  rewatchTextWrap: {
+    flex: 1,
+    minWidth: 0,
+  },
+  rewatchName: {
+    color: COLORS.lightText,
+    fontFamily: "ProximaNova-Bold",
+    fontSize: ms(14),
+    letterSpacing: -0.1,
+    marginBottom: sh(2),
+  },
+  rewatchSub: {
+    color: COLORS.lightSub,
+    fontFamily: "ProximaNova-Bold",
+    fontSize: ms(11),
+    letterSpacing: 0.1,
+  },
+
+  // Footer ─────────────────────────────────────────────────────
+  doneFooter: {
+    color: COLORS.lightSub,
+    fontFamily: "ProximaNova-Bold",
+    fontSize: ms(12),
+    textAlign: "center",
+    paddingHorizontal: SP[5],
+    paddingTop: SP[2],
+    paddingBottom: SP[4],
+    letterSpacing: 0.1,
   },
 });

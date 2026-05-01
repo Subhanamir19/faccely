@@ -296,8 +296,10 @@ const styles = StyleSheet.create({
     ...SOFT_SHADOW,
   },
   image: {
-    width:  ms(180),
-    height: ms(180),
+    // Height-biased scale so the image shrinks meaningfully on shorter
+    // screens where vertical space is the constraint, not horizontal.
+    width:  ms(180, 0.85),
+    height: ms(180, 0.85),
     marginBottom: SP[3],
   },
   label: {

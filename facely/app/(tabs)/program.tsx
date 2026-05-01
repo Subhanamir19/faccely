@@ -36,7 +36,6 @@ import { LinearGradient } from "expo-linear-gradient";
 import { COLORS, RADII, SP } from "@/lib/tokens";
 import { sw, sh, ms } from "@/lib/responsive";
 import MoodCheckModal from "@/components/ui/MoodCheckModal";
-import LimeButton from "@/components/ui/LimeButton";
 import ComebackModal from "@/components/ui/ComebackModal";
 import StreakCelebrationModal from "@/components/ui/StreakCelebrationModal";
 import HalfwayHypeModal from "@/components/ui/HalfwayHypeModal";
@@ -1146,146 +1145,6 @@ function MarkDoneModal({
 }
 
 // ---------------------------------------------------------------------------
-// AllDoneOverlay — shown every visit when today's tasks are all complete
-// ---------------------------------------------------------------------------
-
-function AllDoneOverlay({
-  streak,
-  onGotIt,
-  onViewTasks,
-}: {
-  streak: number;
-  onGotIt: () => void;
-  onViewTasks: () => void;
-}) {
-  return (
-    <Animated.View entering={FadeIn.duration(300)} style={overlayStyles.root}>
-      {/* Dark blurred backdrop */}
-      <LinearGradient
-        colors={["rgba(0,0,0,0.97)", "rgba(11,11,11,0.97)"]}
-        style={StyleSheet.absoluteFill}
-      />
-
-      <View style={overlayStyles.inner}>
-        {/* Icon */}
-        <View style={overlayStyles.iconWrap}>
-          <Text style={overlayStyles.iconEmoji}>🏆</Text>
-        </View>
-
-        {/* Headline */}
-        <Text style={overlayStyles.headline}>You're done for today.</Text>
-
-        {/* Sub-copy */}
-        <Text style={overlayStyles.body}>
-          Every rep counts. Every day compounds.{"\n"}
-          Come back tomorrow to keep your{" "}
-          <Text style={overlayStyles.streakHighlight}>
-            {streak}-day streak
-          </Text>{" "}
-          alive.
-        </Text>
-
-        {/* Streak pill */}
-        <View style={overlayStyles.streakPill}>
-          <Text style={overlayStyles.streakPillText}>🔥 {streak} day{streak !== 1 ? "s" : ""} strong</Text>
-        </View>
-
-        {/* Buttons */}
-        <View style={overlayStyles.btnRow}>
-          <LimeButton label="Got it" onPress={onGotIt} />
-
-          {/* Secondary: View tasks anyway */}
-          <Pressable
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              onViewTasks();
-            }}
-            style={({ pressed }) => [overlayStyles.btnSecondary, pressed && { opacity: 0.7 }]}
-          >
-            <Text style={overlayStyles.btnSecondaryText}>View tasks anyway</Text>
-          </Pressable>
-        </View>
-      </View>
-    </Animated.View>
-  );
-}
-
-const overlayStyles = StyleSheet.create({
-  root: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: 100,
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: sw(SP[6]),
-  },
-  inner: {
-    width: "100%",
-    alignItems: "center",
-    gap: sh(SP[4]),
-  },
-  iconWrap: {
-    width: sw(80),
-    height: sw(80),
-    borderRadius: sw(40),
-    backgroundColor: COLORS.accentGlow,
-    borderWidth: 1,
-    borderColor: COLORS.accentBorder,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: sh(SP[2]),
-  },
-  iconEmoji: {
-    fontSize: ms(38),
-  },
-  headline: {
-    fontSize: ms(28),
-    fontFamily: "Poppins-SemiBold",
-    color: COLORS.text,
-    textAlign: "center",
-    letterSpacing: -0.5,
-  },
-  body: {
-    fontSize: ms(15),
-    fontFamily: "Poppins-Regular",
-    color: COLORS.sub,
-    textAlign: "center",
-    lineHeight: ms(24),
-  },
-  streakHighlight: {
-    color: COLORS.accent,
-    fontFamily: "Poppins-SemiBold",
-  },
-  streakPill: {
-    paddingHorizontal: sw(SP[5]),
-    paddingVertical: sh(SP[2]),
-    borderRadius: sw(RADII.pill),
-    backgroundColor: "rgba(251,146,60,0.12)",
-    borderWidth: 1,
-    borderColor: "rgba(251,146,60,0.30)",
-  },
-  streakPillText: {
-    fontSize: ms(13),
-    fontFamily: "Poppins-SemiBold",
-    color: "#FB923C",
-  },
-  btnRow: {
-    width: "100%",
-    gap: sh(SP[3]),
-    marginTop: sh(SP[2]),
-  },
-  btnSecondary: {
-    paddingVertical: sh(SP[3]),
-    alignItems: "center",
-  },
-  btnSecondaryText: {
-    fontSize: ms(14),
-    fontFamily: "Poppins-Regular",
-    color: COLORS.sub,
-    textDecorationLine: "underline",
-  },
-});
-
-// ---------------------------------------------------------------------------
 // Start Session button — self-contained with breathing glow
 // ---------------------------------------------------------------------------
 
@@ -1348,8 +1207,6 @@ export default function TasksScreen() {
   const [showMoodCheck, setShowMoodCheck]         = useState(false);
   const [markDoneTask, setMarkDoneTask]           = useState<DailyTask | null>(null);
   const [confirmProtocol, setConfirmProtocol]     = useState<ProtocolTask | null>(null);
-  const [showAllDoneOverlay, setShowAllDoneOverlay] = useState(false);
-
   // Tab presents a preview screen first; "Start"/"Review" on preview reveals the list.
   // Reset to preview every time the tab gains focus so returning users always see it.
   const [phase, setPhase] = useState<"preview" | "list">("preview");
@@ -1381,15 +1238,12 @@ export default function TasksScreen() {
     setActiveLifeModal(null);
   }, []);
 
-  // On screen focus: show AllDoneOverlay if tasks are all done, and also detect
-  // when exercises were completed in the session screen (show MoodCheckModal).
+  // On screen focus: detect when exercises were completed in the session screen
+  // (show MoodCheckModal). The "all done" closeout is handled by WorkoutPreview's
+  // done variant — no overlay needed.
   useFocusEffect(
     useCallback(() => {
       const state = useTasksStore.getState();
-
-      if (state.today?.allComplete) {
-        setShowAllDoneOverlay(true);
-      }
 
       // If completedOnce became true while we were in the session screen and we
       // haven't shown the completion modal for today yet, show MoodCheck now.
@@ -1631,15 +1485,6 @@ export default function TasksScreen() {
         }}
         onDismiss={() => setConfirmProtocol(null)}
       />
-
-      {/* All-done overlay — shown every visit when today is fully complete */}
-      {showAllDoneOverlay && (
-        <AllDoneOverlay
-          streak={currentStreak}
-          onGotIt={() => setShowAllDoneOverlay(false)}
-          onViewTasks={() => setShowAllDoneOverlay(false)}
-        />
-      )}
 
       {/* ── Life moment modals ── */}
       <ComebackModal
