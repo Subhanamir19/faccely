@@ -3,12 +3,18 @@
 // Stage-1 Potential Face reveal — the emotional climax of onboarding.
 // Slotted between /(tabs)/analysis and /(tabs)/program.
 //
+// Visual language: matches the light-theme treatment used by the dashboard
+// and the redesigned advanced-analysis tab — soft white surfaces, sage-green
+// "what changed" chips, lime accent on the right-hand "potential" card,
+// black pill CTA at the bottom. The reveal is meant to feel like a calm,
+// confident handoff, not a dark-mode hype moment.
+//
 // State machine (driven by potentialFace.data.status + isPolling):
 //   pending     → "polishing" loader, polls /current every 2s for up to 30s
-//   ready       → reveal: Current ↔ Potential side-by-side, improvements list
+//   ready       → reveal layout
 //                  Primary CTA → /(tabs)/program (sets revealSeen = true)
 //                  Secondary "doesn't look like me" → swap to alternate (one-shot)
-//   failed      → fallback: "we'll have it ready" + Continue
+//   failed      → fallback: friendly message + Continue
 //   unlocked    → user has graduated; bounce straight to program
 //   poll timeout (still pending) → fallback message + Continue
 
@@ -22,6 +28,7 @@ import {
   useWindowDimensions,
   Alert,
 } from "react-native";
+import { ChevronRight } from "lucide-react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, { FadeIn, FadeInDown, FadeInUp } from "react-native-reanimated";
@@ -39,6 +46,23 @@ import { useScores } from "@/store/scores";
 import { labelForMetric } from "@/lib/potentialFaceLabels";
 
 const FONT = "ProximaNova-Bold";
+
+// Sage palette mirrored from the analysis tab's "WORKING" treatment so the
+// chip language is identical to what the user just saw.
+const CHIP = {
+  bg: "#E2F1D8",
+  border: "#C7E2B4",
+  text: "#1F3D1F",
+};
+
+// Soft drop shadow recipe used across the dashboard / score / analysis cards.
+const SOFT_SHADOW = {
+  shadowColor: "#000000",
+  shadowOpacity: 0.06,
+  shadowRadius: 16,
+  shadowOffset: { width: 0, height: 6 },
+  elevation: 3,
+} as const;
 
 /* -------------------------------------------------------------------------- */
 /*   Screen                                                                   */
@@ -73,18 +97,15 @@ export default function PotentialFaceRevealScreen() {
       const fresh = await load();
       if (cancelled) return;
 
-      // Already-graduated user reaching this screen — bounce.
       if (fresh?.status === "unlocked") {
         navigatedRef.current = true;
         router.replace("/(tabs)/program");
         return;
       }
 
-      // Pending → poll until ready/failed or timeout (30s default).
       if (fresh?.status === "pending" || !fresh) {
         const settled = await pollUntilReady(30_000);
         if (cancelled) return;
-        // Still pending after timeout → show fallback path.
         if (!settled || settled.status === "pending") {
           setPollTimedOut(true);
         }
@@ -94,7 +115,6 @@ export default function PotentialFaceRevealScreen() {
       cancelled = true;
       stopPolling();
     };
-    // We deliberately depend on nothing — this is the on-mount bootstrap.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -109,10 +129,9 @@ export default function PotentialFaceRevealScreen() {
   //                       routes future visits straight to the program.
   //
   //   bypassToProgram   — fires from the fallback screen ("we'll have it
-  //                       ready soon") and the unlocked-bounce path. The
-  //                       user hasn't actually *seen* a face here, so we
-  //                       leave revealSeen alone — they'll get another
-  //                       chance next time the row is ready.
+  //                       ready soon"). The user hasn't actually *seen* a
+  //                       face here, so we leave revealSeen alone — they'll
+  //                       get another chance next time the row is ready.
   const acknowledgeReveal = useCallback(() => {
     if (navigatedRef.current) return;
     navigatedRef.current = true;
@@ -148,7 +167,6 @@ export default function PotentialFaceRevealScreen() {
   /*   Render branches                                                        */
   /* ------------------------------------------------------------------------ */
 
-  // Treat polling timeout, hard failure, and "no data after load" as the same fallback.
   const isFailed = data?.status === "failed";
   const isReady = data?.status === "ready";
   const showFallback = isFailed || (pollTimedOut && !isReady);
@@ -169,7 +187,6 @@ export default function PotentialFaceRevealScreen() {
   }
 
   if (!isReady) {
-    // Pending or loading — cinematic-style spinner.
     return (
       <PolishingView
         insetsTop={insets.top}
@@ -180,7 +197,6 @@ export default function PotentialFaceRevealScreen() {
     );
   }
 
-  // Ready — the actual reveal.
   return (
     <RevealView
       insetsTop={insets.top}
@@ -212,8 +228,8 @@ function PolishingView({
 }) {
   return (
     <View style={[styles.screen, { paddingTop: insetsTop, paddingBottom: insetsBottom }]}>
-      <View style={styles.polishingCenter}>
-        <ActivityIndicator color={COLORS.accent} size="large" />
+      <View style={styles.centerColumn}>
+        <ActivityIndicator color={COLORS.lightText} size="large" />
         <Animated.View entering={FadeIn.duration(400).delay(120)}>
           <T style={styles.polishingTitle}>Polishing your potential face</T>
         </Animated.View>
@@ -241,14 +257,24 @@ function FallbackView({
   onContinue: () => void;
 }) {
   return (
-    <View style={[styles.screen, { paddingTop: insetsTop + SP[5], paddingBottom: insetsBottom + SP[5] }]}>
+    <View
+      style={[
+        styles.screen,
+        {
+          paddingTop: insetsTop + SP[5],
+          paddingBottom: insetsBottom + SP[5],
+          paddingHorizontal: SP[5],
+        },
+      ]}
+    >
       <View style={styles.fallbackCenter}>
-        <Animated.View entering={FadeInDown.duration(420)}>
+        <Animated.View entering={FadeInDown.duration(420)} style={styles.fallbackInner}>
+          <T style={styles.eyebrow}>STAGE 1</T>
           <T style={styles.fallbackTitle}>We'll have it ready soon</T>
           <T style={styles.fallbackBody}>{message}</T>
         </Animated.View>
       </View>
-      <Animated.View entering={FadeInDown.duration(420).delay(120)} style={styles.footer}>
+      <Animated.View entering={FadeInDown.duration(420).delay(120)}>
         <PrimaryPill label="Continue to your program" onPress={onContinue} />
       </Animated.View>
     </View>
@@ -277,7 +303,7 @@ function RevealView({
   const horizontalPad = SP[5];
   const gap = sw(10);
   const cardWidth = (screenWidth - horizontalPad * 2 - gap) / 2;
-  const cardHeight = Math.round(cardWidth * 1.45);
+  const cardHeight = Math.round(cardWidth * 1.32);
 
   const improvements = useMemo(
     () => potentialFace.targetedMetrics.map(labelForMetric),
@@ -295,12 +321,12 @@ function RevealView({
         styles.screen,
         {
           paddingTop: insetsTop + SP[4],
-          paddingBottom: insetsBottom + SP[5],
+          paddingBottom: insetsBottom + SP[4],
           paddingHorizontal: horizontalPad,
         },
       ]}
     >
-      {/* Header */}
+      {/* ── Header ── */}
       <Animated.View entering={FadeInDown.duration(420)} style={styles.header}>
         <T style={styles.eyebrow}>STAGE 1</T>
         <T style={styles.title}>This is who you could become</T>
@@ -309,9 +335,9 @@ function RevealView({
         </T>
       </Animated.View>
 
-      {/* Two-up image comparison */}
+      {/* ── Two-up image comparison ── */}
       <View style={[styles.compareRow, { gap }]}>
-        <Animated.View entering={FadeIn.duration(500).delay(150)} style={styles.compareCol}>
+        <Animated.View entering={FadeIn.duration(500).delay(160)} style={styles.compareCol}>
           <View style={[styles.imageCard, { width: cardWidth, height: cardHeight }]}>
             {currentImageUri ? (
               <Image
@@ -327,7 +353,13 @@ function RevealView({
         </Animated.View>
 
         <Animated.View entering={FadeIn.duration(500).delay(320)} style={styles.compareCol}>
-          <View style={[styles.imageCard, styles.imageCardAccent, { width: cardWidth, height: cardHeight }]}>
+          <View
+            style={[
+              styles.imageCard,
+              styles.imageCardAccent,
+              { width: cardWidth, height: cardHeight },
+            ]}
+          >
             {potentialFace.primaryImageUrl ? (
               <Image
                 source={{ uri: potentialFace.primaryImageUrl }}
@@ -342,14 +374,17 @@ function RevealView({
         </Animated.View>
       </View>
 
-      {/* Improvements chip list */}
-      <Animated.View entering={FadeInUp.duration(420).delay(480)} style={styles.improvementsBlock}>
-        <T style={styles.improvementsTitle}>What changed</T>
+      {/* ── What changed ── */}
+      <Animated.View
+        entering={FadeInUp.duration(420).delay(480)}
+        style={styles.improvementsBlock}
+      >
+        <T style={styles.improvementsLabel}>WHAT CHANGED</T>
         <View style={styles.chipRow}>
           {improvements.map((label, idx) => (
             <Animated.View
               key={`${label}-${idx}`}
-              entering={FadeInUp.duration(360).delay(540 + idx * 80)}
+              entering={FadeInUp.duration(360).delay(560 + idx * 70)}
               style={styles.chip}
             >
               <T style={styles.chipText}>{label}</T>
@@ -358,21 +393,23 @@ function RevealView({
         </View>
       </Animated.View>
 
-      {/* Footer CTAs */}
-      <Animated.View entering={FadeInDown.duration(420).delay(700)} style={styles.footer}>
-        <PrimaryPill label="Build my program" onPress={onPrimary} />
+      {/* ── Footer CTAs ── */}
+      <View style={styles.footer}>
+        <Animated.View entering={FadeInDown.duration(420).delay(820)}>
+          <PrimaryPill label="Build my program" onPress={onPrimary} withChevron />
+        </Animated.View>
         {canSwap ? (
           <Pressable
             onPress={onAlternate}
             disabled={swapping}
             style={({ pressed }) => [
               styles.secondary,
-              pressed && !swapping && { opacity: 0.7 },
+              pressed && !swapping && { opacity: 0.6 },
             ]}
             hitSlop={8}
           >
             {swapping ? (
-              <ActivityIndicator color={COLORS.muted} />
+              <ActivityIndicator color={COLORS.lightSub} />
             ) : (
               <T style={styles.secondaryText}>This doesn't look like me</T>
             )}
@@ -380,7 +417,7 @@ function RevealView({
         ) : (
           <View style={styles.secondaryPlaceholder} />
         )}
-      </Animated.View>
+      </View>
     </View>
   );
 }
@@ -389,13 +426,24 @@ function RevealView({
 /*   Bits                                                                     */
 /* -------------------------------------------------------------------------- */
 
-function PrimaryPill({ label, onPress }: { label: string; onPress: () => void }) {
+function PrimaryPill({
+  label,
+  onPress,
+  withChevron = false,
+}: {
+  label: string;
+  onPress: () => void;
+  withChevron?: boolean;
+}) {
   return (
     <Pressable
       onPress={onPress}
       style={({ pressed }) => [styles.primaryPill, pressed && { opacity: 0.92 }]}
     >
       <T style={styles.primaryPillText}>{label.toUpperCase()}</T>
+      {withChevron && (
+        <ChevronRight size={ms(16)} color="#FFFFFF" strokeWidth={2.5} />
+      )}
     </Pressable>
   );
 }
@@ -407,7 +455,7 @@ function PrimaryPill({ label, onPress }: { label: string; onPress: () => void })
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: COLORS.bgTop,
+    backgroundColor: COLORS.lightBg,
   },
 
   /* Header */
@@ -418,20 +466,20 @@ const styles = StyleSheet.create({
   eyebrow: {
     fontFamily: FONT,
     fontSize: ms(11),
-    color: COLORS.accent,
-    letterSpacing: 2,
+    color: COLORS.accentDepth,
+    letterSpacing: 1.6,
   },
   title: {
     fontFamily: FONT,
     fontSize: ms(26),
-    color: COLORS.text,
+    color: COLORS.lightText,
     lineHeight: ms(30),
     letterSpacing: -0.4,
   },
   subtitle: {
     fontFamily: FONT,
     fontSize: ms(13),
-    color: COLORS.sub,
+    color: COLORS.lightSub,
     lineHeight: ms(18),
     marginTop: sh(4),
   },
@@ -444,47 +492,47 @@ const styles = StyleSheet.create({
   },
   compareCol: {
     alignItems: "center",
-    gap: sh(8),
+    gap: sh(10),
   },
   imageCard: {
     borderRadius: RADII.lg,
     overflow: "hidden",
-    backgroundColor: COLORS.card,
+    backgroundColor: COLORS.lightCard,
     borderWidth: 1,
-    borderColor: COLORS.cardBorder,
+    borderColor: COLORS.lightBorder,
+    ...SOFT_SHADOW,
   },
   imageCardAccent: {
-    borderColor: COLORS.accentBorder,
+    borderColor: COLORS.accent,
     shadowColor: COLORS.accent,
-    shadowOpacity: 0.25,
+    shadowOpacity: 0.22,
     shadowRadius: 18,
-    shadowOffset: { width: 0, height: 6 },
+    shadowOffset: { width: 0, height: 8 },
     elevation: 6,
   },
   imagePlaceholder: {
-    backgroundColor: COLORS.whiteGlass,
+    backgroundColor: COLORS.lightSurfaceAlt,
   },
   imageLabel: {
     fontFamily: FONT,
     fontSize: ms(12),
-    color: COLORS.sub,
-    letterSpacing: 1,
+    color: COLORS.lightSub,
+    letterSpacing: 0.6,
   },
   imageLabelAccent: {
-    color: COLORS.accent,
+    color: COLORS.accentDepth,
   },
 
-  /* Improvements */
+  /* What changed */
   improvementsBlock: {
     marginTop: SP[5],
-    gap: sh(10),
+    gap: sh(12),
   },
-  improvementsTitle: {
+  improvementsLabel: {
     fontFamily: FONT,
-    fontSize: ms(13),
-    color: COLORS.muted,
-    letterSpacing: 1.2,
-    textTransform: "uppercase",
+    fontSize: ms(11),
+    color: COLORS.lightMuted,
+    letterSpacing: 1.4,
   },
   chipRow: {
     flexDirection: "row",
@@ -496,33 +544,37 @@ const styles = StyleSheet.create({
     paddingVertical: sh(8),
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: COLORS.accentBorder,
-    backgroundColor: COLORS.accentGlow,
+    borderColor: CHIP.border,
+    backgroundColor: CHIP.bg,
   },
   chipText: {
     fontFamily: FONT,
     fontSize: ms(12),
-    color: COLORS.text,
+    color: CHIP.text,
+    letterSpacing: 0.2,
   },
 
   /* Footer */
   footer: {
     marginTop: "auto",
-    gap: sh(12),
+    gap: sh(14),
   },
   primaryPill: {
-    minHeight: sh(54),
+    minHeight: sh(56),
     borderRadius: 999,
-    backgroundColor: COLORS.accent,
+    backgroundColor: COLORS.ctaBlack,
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: SP[5],
+    gap: sw(6),
+    paddingVertical: sh(16),
+    paddingHorizontal: sw(20),
   },
   primaryPillText: {
     fontFamily: FONT,
-    fontSize: ms(14),
-    color: "#0B0B0B",
-    letterSpacing: 0.6,
+    fontSize: ms(15, 0.3),
+    color: "#FFFFFF",
+    letterSpacing: 0.4,
   },
   secondary: {
     alignSelf: "center",
@@ -535,15 +587,15 @@ const styles = StyleSheet.create({
   secondaryText: {
     fontFamily: FONT,
     fontSize: ms(12),
-    color: COLORS.muted,
-    letterSpacing: 0.4,
+    color: COLORS.lightSub,
+    letterSpacing: 0.3,
   },
   secondaryPlaceholder: {
     height: sh(34),
   },
 
   /* Polishing state */
-  polishingCenter: {
+  centerColumn: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
@@ -553,37 +605,43 @@ const styles = StyleSheet.create({
   polishingTitle: {
     fontFamily: FONT,
     fontSize: ms(20),
-    color: COLORS.text,
+    color: COLORS.lightText,
     textAlign: "center",
   },
   polishingSubtitle: {
     fontFamily: FONT,
     fontSize: ms(13),
-    color: COLORS.sub,
+    color: COLORS.lightSub,
     textAlign: "center",
-    maxWidth: ms(260),
+    maxWidth: ms(280),
+    lineHeight: ms(18),
   },
 
   /* Fallback state */
   fallbackCenter: {
     flex: 1,
-    alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: SP[5],
+    alignItems: "center",
+  },
+  fallbackInner: {
+    alignItems: "center",
     gap: sh(8),
+    maxWidth: ms(300),
   },
   fallbackTitle: {
     fontFamily: FONT,
-    fontSize: ms(22),
-    color: COLORS.text,
+    fontSize: ms(24),
+    color: COLORS.lightText,
     textAlign: "center",
+    lineHeight: ms(28),
+    letterSpacing: -0.3,
   },
   fallbackBody: {
     fontFamily: FONT,
     fontSize: ms(13),
-    color: COLORS.sub,
+    color: COLORS.lightSub,
     textAlign: "center",
     lineHeight: ms(18),
-    maxWidth: ms(280),
+    marginTop: sh(4),
   },
 });
