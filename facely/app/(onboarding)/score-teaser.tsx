@@ -122,13 +122,17 @@ export default function ScoreTeaserScreen() {
     }
   }, [loading, scores]);
 
-  // Safety net: if backend hangs, send user into the app after 20s.
-  // Same reasoning as above — bypassing the reveal is correct here.
+  // Safety net: if backend truly hangs, send user into the app rather than
+  // leave them stuck on the loader.
+  // Why 90s: /analyze/pair has a 30s server timeout (45s in dev) and can
+  // retry on network errors, so a legitimate slow path can run ~60–80s.
+  // Anything past 90s is genuinely stuck.
+  // Same reasoning as the !scores fallback — bypassing the reveal is correct.
   useEffect(() => {
     if (!loading) return;
     const timeout = setTimeout(() => {
       router.replace("/(tabs)/program");
-    }, 20_000);
+    }, 90_000);
     return () => clearTimeout(timeout);
   }, [loading]);
 

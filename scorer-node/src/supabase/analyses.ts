@@ -55,17 +55,59 @@ export async function getAnalysisForScan(
   return (data as AnalysisRecord | null) ?? null;
 }
 
+/**
+ * Persist the `advanced_result` JSON for a scan.  Most callers reach this
+ * after `/analyze/explain` has already created an `analyses` row, in which
+ * case we just UPDATE in place.  But the post-paywall onboarding flow goes
+ * straight from `/analyze/pair` to `/analyze/advanced-explain` without any
+ * basic-explain step, so the row may not exist yet — Postgres UPDATE is a
+ * silent no-op on zero rows, which is how the Potential Face worker was
+ * picking up jobs only to find `advanced_result` empty.
+ *
+ * Fix: try UPDATE first; if it matched no rows, INSERT a fresh `analyses`
+ * row with the advanced_result and a placeholder `explanations` (the column
+ * is NOT NULL).  Basic explain — if it ever runs later — will overwrite the
+ * placeholder via its own createAnalysis call.
+ */
 export async function saveAdvancedResult(
   scanId: string,
   advancedResult: Record<string, unknown>
 ): Promise<void> {
-  const { error } = await supabase
+  const { data: updated, error: updateError } = await supabase
     .from("analyses")
     .update({ advanced_result: advancedResult })
-    .eq("scan_id", scanId);
+    .eq("scan_id", scanId)
+    .select("id");
 
-  if (error) {
-    throw new Error(`Failed to save advanced result for scan ${scanId}: ${error.message}`);
+  if (updateError) {
+    throw new Error(
+      `Failed to update advanced result for scan ${scanId}: ${updateError.message}`
+    );
+  }
+
+  if (updated && updated.length > 0) {
+    return;
+  }
+
+  // No existing analyses row — create one carrying just the advanced_result.
+  // `explanations` defaults to an empty object so the NOT NULL constraint is
+  // satisfied; downstream consumers already tolerate missing/empty basic
+  // explanations (they're optional in the dashboard rendering paths).
+  console.log(
+    `[saveAdvancedResult] no analyses row for scan ${scanId} — inserting fresh row with empty explanations placeholder.`
+  );
+  const { error: insertError } = await supabase
+    .from("analyses")
+    .insert({
+      scan_id: scanId,
+      explanations: {},
+      advanced_result: advancedResult,
+    });
+
+  if (insertError) {
+    throw new Error(
+      `Failed to insert advanced result for scan ${scanId}: ${insertError.message}`
+    );
   }
 }
 
