@@ -640,6 +640,13 @@ export function AnalysisContent({
   const currentStreak = useTasksStore((s) => s.currentStreak);
   const metrics   = useMemo(() => flattenData(data), [data]);
 
+  // Reactive subscription so the CTA label updates the moment a Potential
+  // Face row flips to `ready` (e.g. while the user is reading metrics).
+  // True only when the user has already acknowledged a real, ready reveal.
+  const ackedRealReveal = usePotentialFace(
+    (s) => s.revealSeen && s.data?.status === "ready"
+  );
+
   // Single carousel ordered by section: working → okay → needs_work.
   // Section identity is conveyed via a chip on each card; chip color shifts
   // as the user swipes between sections.
@@ -713,24 +720,17 @@ export function AnalysisContent({
         <Pressable
           onPress={() => {
             // First-time onboarding flow: route through the Potential Face
-            // reveal once, then the user lands in the program.  After the
+            // reveal once, then the user lands in the program. After the
             // reveal has been *successfully* dismissed once, this CTA goes
             // straight to the program tab on every subsequent visit.
-            //
-            // We require BOTH revealSeen=true AND a `ready` row to bypass.
-            // This auto-recovers from edge cases where revealSeen got set by
-            // an earlier code path that didn't actually show a successful
-            // reveal — without this guard, those users would never see the
-            // reveal even after a fresh generation finally succeeds.
-            const state = usePotentialFace.getState();
-            const ackedRealReveal =
-              state.revealSeen && state.data?.status === "ready";
             if (ackedRealReveal) router.push("/(tabs)/program");
             else router.push("/(onboarding)/potential-face-reveal");
           }}
           style={({ pressed }) => [sx.ctaBtn, pressed && { opacity: 0.9 }]}
         >
-          <Text style={sx.ctaBtnText}>START YOUR ROUTINE</Text>
+          <Text style={sx.ctaBtnText}>
+            {ackedRealReveal ? "START YOUR ROUTINE" : "REVEAL MY POTENTIAL"}
+          </Text>
           <ChevronRight size={ms(16)} color="#FFFFFF" strokeWidth={2.5} />
         </Pressable>
       </Animated.View>
