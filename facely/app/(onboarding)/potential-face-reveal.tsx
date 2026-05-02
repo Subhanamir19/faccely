@@ -102,13 +102,31 @@ export default function PotentialFaceRevealScreen() {
   /*   Handlers                                                               */
   /* ------------------------------------------------------------------------ */
 
-  const goToProgram = useCallback(() => {
+  // Two distinct exits from this screen:
+  //
+  //   acknowledgeReveal — fires from the *successful* reveal's primary CTA.
+  //                       Marks the reveal as seen so the analysis-tab CTA
+  //                       routes future visits straight to the program.
+  //
+  //   bypassToProgram   — fires from the fallback screen ("we'll have it
+  //                       ready soon") and the unlocked-bounce path. The
+  //                       user hasn't actually *seen* a face here, so we
+  //                       leave revealSeen alone — they'll get another
+  //                       chance next time the row is ready.
+  const acknowledgeReveal = useCallback(() => {
     if (navigatedRef.current) return;
     navigatedRef.current = true;
     markRevealSeen();
     hapticSuccess();
     router.replace("/(tabs)/program");
   }, [markRevealSeen]);
+
+  const bypassToProgram = useCallback(() => {
+    if (navigatedRef.current) return;
+    navigatedRef.current = true;
+    hapticSuccess();
+    router.replace("/(tabs)/program");
+  }, []);
 
   const onPressAlternate = useCallback(async () => {
     if (swapping) return;
@@ -145,7 +163,7 @@ export default function PotentialFaceRevealScreen() {
             ? "We hit a snag generating your potential face. We'll have it ready on your dashboard shortly."
             : "Your potential face is taking a little longer than expected. We'll have it ready on your dashboard shortly."
         }
-        onContinue={goToProgram}
+        onContinue={bypassToProgram}
       />
     );
   }
@@ -170,7 +188,7 @@ export default function PotentialFaceRevealScreen() {
       screenWidth={SW}
       potentialFace={data}
       currentImageUri={currentImageUri}
-      onPrimary={goToProgram}
+      onPrimary={acknowledgeReveal}
       onAlternate={onPressAlternate}
       swapping={swapping}
     />

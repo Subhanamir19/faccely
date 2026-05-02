@@ -714,10 +714,18 @@ export function AnalysisContent({
           onPress={() => {
             // First-time onboarding flow: route through the Potential Face
             // reveal once, then the user lands in the program.  After the
-            // reveal has been dismissed once, this CTA goes straight to the
-            // program tab on every subsequent visit.
-            const seen = usePotentialFace.getState().revealSeen;
-            if (seen) router.push("/(tabs)/program");
+            // reveal has been *successfully* dismissed once, this CTA goes
+            // straight to the program tab on every subsequent visit.
+            //
+            // We require BOTH revealSeen=true AND a `ready` row to bypass.
+            // This auto-recovers from edge cases where revealSeen got set by
+            // an earlier code path that didn't actually show a successful
+            // reveal — without this guard, those users would never see the
+            // reveal even after a fresh generation finally succeeds.
+            const state = usePotentialFace.getState();
+            const ackedRealReveal =
+              state.revealSeen && state.data?.status === "ready";
+            if (ackedRealReveal) router.push("/(tabs)/program");
             else router.push("/(onboarding)/potential-face-reveal");
           }}
           style={({ pressed }) => [sx.ctaBtn, pressed && { opacity: 0.9 }]}
