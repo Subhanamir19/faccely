@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { getLatestInsightForUser } from "../supabase/insights.js";
 import { getAllScansForUser } from "../supabase/scans.js";
-import { getAnalysisForScan } from "../supabase/analyses.js";
+import { getAnalysisForScanBatch } from "../supabase/analyses.js";
 import {
   generateInsightsForUser,
   getInsightsOpenAIClient,
@@ -48,13 +48,23 @@ insightsRouter.get("/", async (_req, res) => {
     const latest = scans[scans.length - 1] ?? null;
     const previous = scans.length >= 2 ? scans[scans.length - 2] : null;
 
-    const [latestAnalysis, previousAnalysis] = await Promise.all([
-      latest ? getAnalysisForScan(latest.id) : Promise.resolve(null),
-      previous ? getAnalysisForScan(previous.id) : Promise.resolve(null),
-    ]);
-
-    const latestAdvanced = (latestAnalysis?.advanced_result as Record<string, unknown> | null) ?? null;
-    const previousAdvanced = (previousAnalysis?.advanced_result as Record<string, unknown> | null) ?? null;
+    // Walk scans newest → oldest and pick the two most-recent scans whose
+    // analysis has advanced_result populated. This lets Top 5 surface data
+    // even when the user's most recent scan hasn't been run through
+    // /analyze/advanced-explain yet, as long as any older scan has.
+    const analysisByScan = await getAnalysisForScanBatch(scans.map((s) => s.id));
+    let latestAdvanced: Record<string, unknown> | null = null;
+    let previousAdvanced: Record<string, unknown> | null = null;
+    for (let i = scans.length - 1; i >= 0; i--) {
+      const adv = analysisByScan.get(scans[i].id)?.advanced_result as Record<string, unknown> | null | undefined;
+      if (!adv) continue;
+      if (latestAdvanced === null) {
+        latestAdvanced = adv;
+      } else {
+        previousAdvanced = adv;
+        break;
+      }
+    }
 
     const scanCount = scans.length;
 

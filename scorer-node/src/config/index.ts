@@ -204,6 +204,7 @@ export const QUEUES = {
   analyze: "analyze_v1",
   explain: "explain_v1",
   routine: "routine_v1",
+  potentialFace: "potential_face_v1",
   dlq: "dlq_v1",
 } as const;
 

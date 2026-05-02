@@ -29,6 +29,19 @@ export async function uploadScanImage(params: UploadScanImageParams): Promise<st
   return key;
 }
 
+/**
+ * Download a previously-uploaded scan image as a Buffer. Throws when the path
+ * is missing from the bucket so callers can surface a clear error upstream.
+ */
+export async function downloadScanImage(path: string): Promise<Buffer> {
+  const { data, error } = await supabase.storage.from(SCAN_BUCKET).download(path);
+  if (error || !data) {
+    throw new Error(`downloadScanImage failed for ${path}: ${error?.message ?? "no_data"}`);
+  }
+  const arrayBuf = await data.arrayBuffer();
+  return Buffer.from(arrayBuf);
+}
+
 export async function signScanImage(
   path: string,
   expiresInSeconds = 3600
