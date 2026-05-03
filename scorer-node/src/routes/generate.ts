@@ -22,7 +22,7 @@ const PROMPT_MODES = new Set<PotentialFacePromptMode>(["conservative", "balanced
 function parsePromptMode(value: unknown): PotentialFacePromptMode {
   return typeof value === "string" && PROMPT_MODES.has(value as PotentialFacePromptMode)
     ? value as PotentialFacePromptMode
-    : "conservative";
+    : "aggressive";
 }
 
 function openAIErrorDetails(err: any): {

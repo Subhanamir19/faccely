@@ -507,7 +507,7 @@ function ProgressDashboardMockupsModal({
 // ---------------------------------------------------------------------------
 const SCAN_BYPASS_KEY = "dev_bypass_scan_limit";
 type PotentialPromptMode = "conservative" | "balanced" | "aggressive";
-const POTENTIAL_PROMPT_MODES: PotentialPromptMode[] = ["conservative", "balanced", "aggressive"];
+const POTENTIAL_PROMPT_MODES: PotentialPromptMode[] = ["aggressive", "balanced", "conservative"];
 
 export default function DevScreen() {
   const [consentValue, setConsentValue] = useState<string | null | "…">("…");
@@ -517,7 +517,7 @@ export default function DevScreen() {
   const [potentialResultUri, setPotentialResultUri] = useState<string | null>(null);
   const [potentialGenerating, setPotentialGenerating] = useState(false);
   const [potentialMeta, setPotentialMeta] = useState<string | null>(null);
-  const [potentialPromptMode, setPotentialPromptMode] = useState<PotentialPromptMode>("conservative");
+  const [potentialPromptMode, setPotentialPromptMode] = useState<PotentialPromptMode>("aggressive");
   const [dayCompleteVisible, setDayCompleteVisible] = useState(false);
   const [insightPreviewVisible, setInsightPreviewVisible] = useState(false);
   const [insightPreviewKey, setInsightPreviewKey] = useState(0); // bump to replay
