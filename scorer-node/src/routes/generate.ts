@@ -12,6 +12,23 @@ import { buildPotentialFacePrompt, PROMPT_VERSION } from "../services/potentialF
 
 const router = express.Router();
 
+function openAIErrorDetails(err: any): {
+  status: number | null;
+  code: string | null;
+  type: string | null;
+  message: string;
+} {
+  const status: number | null =
+    typeof err?.status === "number" ? err.status :
+    typeof err?.response?.status === "number" ? err.response.status : null;
+  return {
+    status,
+    code: typeof err?.code === "string" ? err.code : null,
+    type: typeof err?.type === "string" ? err.type : null,
+    message: err?.message ?? "Generation failed",
+  };
+}
+
 /* -------------------------------------------------------------------------- */
 /*   OpenAI client injection                                                  */
 /* -------------------------------------------------------------------------- */
@@ -201,15 +218,26 @@ router.post("/potential-face-dev", upload.single("image"), async (req, res) => {
       promptVersion: PROMPT_VERSION,
     });
   } catch (err: any) {
-    const upstreamStatus: number | null =
-      typeof err?.status === "number" ? err.status :
-      typeof err?.response?.status === "number" ? err.response.status : null;
-    const message: string = err?.message ?? "Generation failed";
+    const { status: upstreamStatus, code, type, message } = openAIErrorDetails(err);
 
-    console.error("[/generate/potential-face-dev] error:", message, "upstream:", upstreamStatus);
+    console.error("[/generate/potential-face-dev] error:", {
+      message,
+      upstreamStatus,
+      code,
+      type,
+    });
 
     if (upstreamStatus === 401 || upstreamStatus === 403) {
-      return res.status(502).json({ error: "provider_auth_failed", message: "OpenAI auth failed." });
+      return res.status(502).json({
+        error: "provider_auth_failed",
+        message:
+          upstreamStatus === 401
+            ? "OpenAI rejected the deployed API key. Check Railway OPENAI_API_KEY."
+            : "OpenAI denied this image generation request. Check Railway OPENAI_API_KEY project access, billing, and GPT Image 2 access.",
+        providerStatus: upstreamStatus,
+        providerCode: code,
+        providerType: type,
+      });
     }
     if (upstreamStatus === 429) {
       return res.status(503).json({ error: "provider_rate_limited", message: "OpenAI rate limited. Try again later." });

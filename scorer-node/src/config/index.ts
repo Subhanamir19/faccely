@@ -4,9 +4,10 @@ import { z } from "zod";
 
 /**
  * Single source of truth for runtime configuration.
- * Uses dotenv with override:true to ensure .env takes precedence over system env vars.
+ * Loads local .env for development without overriding platform-provided env vars.
+ * Railway/production variables must win over any bundled or mounted .env file.
  */
-dotenv.config({ override: true });
+dotenv.config({ override: false });
 
 // Helper to normalize empty strings to undefined
 const emptyToUndefined = (v?: string) => (v && v.trim() ? v.trim() : undefined);
