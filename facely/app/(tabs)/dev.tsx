@@ -726,7 +726,11 @@ export default function DevScreen() {
       setPotentialResultUri(`data:image/png;base64,${payload.b64}`);
       setPotentialMeta(`${payload.model ?? "gpt-image-2"} · prompt ${payload.promptVersion ?? "unknown"}`);
     } catch (err: any) {
-      Alert.alert("Potential face dev gen failed", err?.message ?? String(err));
+      const message = err?.message ?? String(err);
+      Alert.alert(
+        "Potential face dev gen failed",
+        `${message}\n\nEndpoint:\n${API_BASE}/generate/potential-face-dev\n\nIf this says Network request failed, the app cannot reach the deployed Railway backend from the simulator/network.`
+      );
     } finally {
       setPotentialGenerating(false);
     }
