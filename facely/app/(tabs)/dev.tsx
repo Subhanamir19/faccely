@@ -184,11 +184,32 @@ function MiniFace({ label, accent }: { label: string; accent?: boolean }) {
       });
 
       const payload = await res.json().catch(() => null) as
-        | { b64?: string; model?: string; promptVersion?: string; message?: string; error?: string }
+        | {
+            b64?: string;
+            model?: string;
+            promptVersion?: string;
+            message?: string;
+            error?: string;
+            providerStatus?: number;
+            providerCode?: string | null;
+            providerType?: string | null;
+            providerMessage?: string;
+          }
         | null;
 
       if (!res.ok || !payload?.b64) {
-        throw new Error(payload?.message ?? payload?.error ?? `Generation failed (${res.status})`);
+        const providerDetails = [
+          payload?.providerStatus ? `Provider status: ${payload.providerStatus}` : null,
+          payload?.providerCode ? `Provider code: ${payload.providerCode}` : null,
+          payload?.providerType ? `Provider type: ${payload.providerType}` : null,
+          payload?.providerMessage ? `Provider message: ${payload.providerMessage}` : null,
+        ].filter(Boolean).join("\n");
+        throw new Error(
+          [
+            payload?.message ?? payload?.error ?? `Generation failed (${res.status})`,
+            providerDetails || null,
+          ].filter(Boolean).join("\n\n")
+        );
       }
 
       setPotentialResultUri(`data:image/png;base64,${payload.b64}`);
@@ -716,11 +737,32 @@ export default function DevScreen() {
       });
 
       const payload = await res.json().catch(() => null) as
-        | { b64?: string; model?: string; promptVersion?: string; message?: string; error?: string }
+        | {
+            b64?: string;
+            model?: string;
+            promptVersion?: string;
+            message?: string;
+            error?: string;
+            providerStatus?: number;
+            providerCode?: string | null;
+            providerType?: string | null;
+            providerMessage?: string;
+          }
         | null;
 
       if (!res.ok || !payload?.b64) {
-        throw new Error(payload?.message ?? payload?.error ?? `Generation failed (${res.status})`);
+        const providerDetails = [
+          payload?.providerStatus ? `Provider status: ${payload.providerStatus}` : null,
+          payload?.providerCode ? `Provider code: ${payload.providerCode}` : null,
+          payload?.providerType ? `Provider type: ${payload.providerType}` : null,
+          payload?.providerMessage ? `Provider message: ${payload.providerMessage}` : null,
+        ].filter(Boolean).join("\n");
+        throw new Error(
+          [
+            payload?.message ?? payload?.error ?? `Generation failed (${res.status})`,
+            providerDetails || null,
+          ].filter(Boolean).join("\n\n")
+        );
       }
 
       setPotentialResultUri(`data:image/png;base64,${payload.b64}`);

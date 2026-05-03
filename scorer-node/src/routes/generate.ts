@@ -204,6 +204,7 @@ router.post("/potential-face-dev", upload.single("image"), async (req, res) => {
       n: 1,
       size: "1024x1536",
       quality: "medium",
+      moderation: "low",
     } as any);
 
     const b64 = response.data?.[0]?.b64_json;
@@ -237,6 +238,7 @@ router.post("/potential-face-dev", upload.single("image"), async (req, res) => {
         providerStatus: upstreamStatus,
         providerCode: code,
         providerType: type,
+        providerMessage: message,
       });
     }
     if (upstreamStatus === 429) {

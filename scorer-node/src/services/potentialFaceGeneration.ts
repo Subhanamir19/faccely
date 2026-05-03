@@ -387,15 +387,15 @@ export function buildPotentialFacePrompt(opts?: { improvements?: string }): stri
   const targetedInstruction = opts?.improvements
     ? `Use these measured weak spots as the priority map: ${opts.improvements}. `
     : (
-      `First internally analyze the face like an expert aesthetician and QOVES-style reviewer: identify the visual weak spots that most reduce facial harmony, attractiveness, and perceived health. ` +
+      `First internally analyze the face like an expert aesthetician: identify the visual areas where grooming, skin clarity, facial freshness, and proportional balance can be improved realistically. ` +
       `Prioritize only the refinements with the highest realistic upside for this specific face. `
     );
 
   return (
     `Create a photorealistic potential-face edit of the same person in the input photo. ` +
-    `Think like a QOVES-style facial aesthetics analyst: improve perceived facial harmony, proportional balance, definition, dimorphism where appropriate, grooming, skin quality, and healthy facial freshness without changing identity. ` +
+    `Think like a facial aesthetics analyst: improve perceived facial harmony, proportional balance, definition, grooming, skin quality, and healthy facial freshness without changing identity. ` +
     targetedInstruction +
-    `High-impact improvement areas, only where beneficial: cleaner jawline definition, better chin-neck separation, reduced facial puffiness, healthier skin clarity and tone evenness, more visible cheekbone or midface contour, subtle under-eye fatigue reduction, better eyebrow or facial-hair grooming if present, and subtle perceived symmetry balancing through local edits only. ` +
+    `High-impact improvement areas, only where beneficial: cleaner jawline definition, better chin-neck separation, reduced facial puffiness, healthier skin clarity and tone evenness, more visible cheekbone or midface contour, subtle under-eye fatigue reduction, better eyebrow or facial-hair grooming if present, and subtle visual balance through local edits only. ` +
     `Hairstyle and grooming may be subtly improved if it helps the face look more proportional to its visual weight: improve volume, direction, texture, neatness, and face-framing while preserving hair color, hairline, hair type, density, and natural texture. Add controlled vertical lift if useful, reduce side bulk if it makes the face look wider or heavier, and clean up temple or forehead framing if it improves harmony. Do not give a completely different haircut, change hair color, create unrealistic density, hide weak spots with hair, or make hairstyle the main transformation. ` +
     `The transformation should feel like the person after excellent consistency, sleep, skincare, better leanness, improved grooming, and subtle natural maturation; not surgery, not a celebrity morph, not a beauty filter, and not a different person. ` +
     `Strict identity lock: preserve exact eye color, eye shape, eye spacing, nose identity, mouth shape, face shape, ethnicity, skin tone, hair color, hairline, age range, gender presentation, expression, head angle, camera perspective, clothing, background, lighting direction, and color temperature. ` +
