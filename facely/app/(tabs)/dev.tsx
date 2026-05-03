@@ -147,81 +147,6 @@ function DashCard({
 }
 
 function MiniFace({ label, accent }: { label: string; accent?: boolean }) {
-/*
-  const handlePickPotentialSource = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: false,
-      quality: 1,
-    });
-
-    if (result.canceled) return;
-    const uri = result.assets?.[0]?.uri ?? null;
-    if (!uri) return;
-    setPotentialSourceUri(uri);
-    setPotentialResultUri(null);
-    setPotentialMeta(null);
-  };
-
-  const handleGeneratePotentialDev = async () => {
-    if (!potentialSourceUri || potentialGenerating) return;
-    setPotentialGenerating(true);
-    setPotentialMeta(null);
-
-    try {
-      const form = new FormData();
-      form.append("image", {
-        uri: potentialSourceUri,
-        name: "potential-face-source.jpg",
-        type: "image/jpeg",
-      } as any);
-
-      const headers = await buildAuthHeadersAsync({ includeLegacy: true });
-      const res = await fetch(`${API_BASE}/generate/potential-face-dev`, {
-        method: "POST",
-        headers: { Accept: "application/json", ...headers },
-        body: form,
-      });
-
-      const payload = await res.json().catch(() => null) as
-        | {
-            b64?: string;
-            model?: string;
-            promptVersion?: string;
-            message?: string;
-            error?: string;
-            providerStatus?: number;
-            providerCode?: string | null;
-            providerType?: string | null;
-            providerMessage?: string;
-          }
-        | null;
-
-      if (!res.ok || !payload?.b64) {
-        const providerDetails = [
-          payload?.providerStatus ? `Provider status: ${payload.providerStatus}` : null,
-          payload?.providerCode ? `Provider code: ${payload.providerCode}` : null,
-          payload?.providerType ? `Provider type: ${payload.providerType}` : null,
-          payload?.providerMessage ? `Provider message: ${payload.providerMessage}` : null,
-        ].filter(Boolean).join("\n");
-        throw new Error(
-          [
-            payload?.message ?? payload?.error ?? `Generation failed (${res.status})`,
-            providerDetails || null,
-          ].filter(Boolean).join("\n\n")
-        );
-      }
-
-      setPotentialResultUri(`data:image/png;base64,${payload.b64}`);
-      setPotentialMeta(`${payload.model ?? "gpt-image-2"} · prompt ${payload.promptVersion ?? "unknown"}`);
-    } catch (err: any) {
-      Alert.alert("Potential face dev gen failed", err?.message ?? String(err));
-    } finally {
-      setPotentialGenerating(false);
-    }
-  };
-
-*/
   return (
     <View style={mockStyles.faceCol}>
       <View style={[mockStyles.faceBox, accent && mockStyles.faceBoxAccent]}>
@@ -581,6 +506,8 @@ function ProgressDashboardMockupsModal({
 // Screen
 // ---------------------------------------------------------------------------
 const SCAN_BYPASS_KEY = "dev_bypass_scan_limit";
+type PotentialPromptMode = "conservative" | "balanced" | "aggressive";
+const POTENTIAL_PROMPT_MODES: PotentialPromptMode[] = ["conservative", "balanced", "aggressive"];
 
 export default function DevScreen() {
   const [consentValue, setConsentValue] = useState<string | null | "…">("…");
@@ -590,6 +517,7 @@ export default function DevScreen() {
   const [potentialResultUri, setPotentialResultUri] = useState<string | null>(null);
   const [potentialGenerating, setPotentialGenerating] = useState(false);
   const [potentialMeta, setPotentialMeta] = useState<string | null>(null);
+  const [potentialPromptMode, setPotentialPromptMode] = useState<PotentialPromptMode>("conservative");
   const [dayCompleteVisible, setDayCompleteVisible] = useState(false);
   const [insightPreviewVisible, setInsightPreviewVisible] = useState(false);
   const [insightPreviewKey, setInsightPreviewKey] = useState(0); // bump to replay
@@ -728,6 +656,7 @@ export default function DevScreen() {
         name: "potential-face-source.jpg",
         type: "image/jpeg",
       } as any);
+      form.append("promptMode", potentialPromptMode);
 
       const headers = await buildAuthHeadersAsync({ includeLegacy: true });
       const res = await fetch(`${API_BASE}/generate/potential-face-dev`, {
@@ -741,6 +670,7 @@ export default function DevScreen() {
             b64?: string;
             model?: string;
             promptVersion?: string;
+            promptMode?: PotentialPromptMode;
             message?: string;
             error?: string;
             providerStatus?: number;
@@ -766,7 +696,9 @@ export default function DevScreen() {
       }
 
       setPotentialResultUri(`data:image/png;base64,${payload.b64}`);
-      setPotentialMeta(`${payload.model ?? "gpt-image-2"} · prompt ${payload.promptVersion ?? "unknown"}`);
+      setPotentialMeta(
+        `${payload.model ?? "gpt-image-1"} · ${payload.promptMode ?? potentialPromptMode} · prompt ${payload.promptVersion ?? "unknown"}`
+      );
     } catch (err: any) {
       const message = err?.message ?? String(err);
       Alert.alert(
@@ -803,7 +735,7 @@ export default function DevScreen() {
         <GlassCard style={styles.card}>
           <SectionHeader
             title="Potential Face Image Lab"
-            subtitle="Pick any face photo and generate a direct GPT Image 2 potential-face preview"
+            subtitle="Pick any face photo and compare conservative, balanced, and aggressive potential-face prompts"
           />
 
           <View style={styles.potentialLabGrid}>
@@ -835,6 +767,21 @@ export default function DevScreen() {
           {potentialMeta ? (
             <T style={styles.sectionSubtitle} variant="small" color="sub">{potentialMeta}</T>
           ) : null}
+
+          <View style={styles.row}>
+            {POTENTIAL_PROMPT_MODES.map((mode) => (
+              <DevButton
+                key={mode}
+                label={mode.charAt(0).toUpperCase() + mode.slice(1)}
+                accent={potentialPromptMode === mode}
+                onPress={() => {
+                  setPotentialPromptMode(mode);
+                  setPotentialResultUri(null);
+                  setPotentialMeta(null);
+                }}
+              />
+            ))}
+          </View>
 
           <View style={styles.row}>
             <DevButton label="Choose Image" accent onPress={handlePickPotentialSource} />

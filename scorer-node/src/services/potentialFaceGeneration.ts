@@ -41,6 +41,7 @@ const MODEL = PROVIDERS.openai.imageModel;
 const SIZE: "1024x1024" | "1024x1536" | "1536x1024" | "auto" = "1024x1536";
 const QUALITY: "low" | "medium" | "high" | "auto" = "medium";
 const CANDIDATE_COUNT = 2;
+export type PotentialFacePromptMode = "conservative" | "balanced" | "aggressive";
 
 /** How many sub-metrics from the advanced_result we target per stage. */
 const TARGET_METRIC_COUNT = 5;
@@ -384,7 +385,11 @@ export function buildPromptV1(targeted: TargetedMetric[]): string {
   return buildPotentialFacePrompt({ improvements });
 }
 
-export function buildPotentialFacePrompt(opts?: { improvements?: string }): string {
+export function buildPotentialFacePrompt(opts?: {
+  improvements?: string;
+  mode?: PotentialFacePromptMode;
+}): string {
+  const mode = opts?.mode ?? "conservative";
   const targetedInstruction = opts?.improvements
     ? `Use these measured weak spots as the priority map: ${opts.improvements}. `
     : (
@@ -392,17 +397,46 @@ export function buildPotentialFacePrompt(opts?: { improvements?: string }): stri
       `Prioritize only the refinements with the highest realistic upside for this specific face. `
     );
 
-  return (
+  const identityLock =
+    `This is an image edit, not a new portrait. Preserve the source photo's crop, framing, head angle, camera perspective, expression, clothing, background, lighting direction, color temperature, ethnicity, age range, gender presentation, skin tone, hair color, hairline, face outline, skull width, forehead height, eye color, eye shape, eye spacing, nose identity, mouth shape, and natural asymmetries. ` +
+    `Do not replace the person, do not create an ID photo, do not change the pose, do not change the background, do not change the hairline, and do not make the face smoother than a real photograph. `;
+
+  const realismLock =
+    `Skin must remain real human skin with pores, stubble if present, fine lines, texture, and small natural imperfections. Avoid plastic smoothing, waxy shine, beauty-filter blur, CGI skin, over-sharpening, and studio retouching. `;
+
+  const hairstyle =
+    `Hairstyle and grooming may be refined only as a local styling improvement: clean flyaways, improve neatness, add subtle natural texture or controlled volume if already plausible, and reduce obvious side bulk if it improves face framing. Preserve hair color, hair type, density, hairline, and haircut identity. `;
+
+  const common =
     `Create a photorealistic potential-face edit of the same person in the input photo. ` +
-    `Think like a facial aesthetics analyst: improve perceived facial harmony, proportional balance, definition, grooming, skin quality, and healthy facial freshness without changing identity. ` +
+    identityLock +
     targetedInstruction +
-    `High-impact improvement areas, only where beneficial: cleaner jawline definition, better chin-neck separation, reduced facial puffiness, healthier skin clarity and tone evenness, more visible cheekbone or midface contour, subtle under-eye fatigue reduction, better eyebrow or facial-hair grooming if present, and subtle visual balance through local edits only. ` +
-    `Hairstyle and grooming may be subtly improved if it helps the face look more proportional to its visual weight: improve volume, direction, texture, neatness, and face-framing while preserving hair color, hairline, hair type, density, and natural texture. Add controlled vertical lift if useful, reduce side bulk if it makes the face look wider or heavier, and clean up temple or forehead framing if it improves harmony. Do not give a completely different haircut, change hair color, create unrealistic density, hide weak spots with hair, or make hairstyle the main transformation. ` +
-    `The transformation should feel like the person after excellent consistency, sleep, skincare, better leanness, improved grooming, and subtle natural maturation; not surgery, not a celebrity morph, not a beauty filter, and not a different person. ` +
-    `Strict identity lock: preserve exact eye color, eye shape, eye spacing, nose identity, mouth shape, face shape, ethnicity, skin tone, hair color, hairline, age range, gender presentation, expression, head angle, camera perspective, clothing, background, lighting direction, and color temperature. ` +
-    `Do not invent new features, create anatomy the input face does not support, or globally beautify the image. ` +
-    `Skin must remain real human skin with pores and natural micro-texture; reduce blemishes and redness only enough to look healthier, without plastic smoothing, waxy shine, beauty-filter blur, or airbrushing. ` +
-    `The final image should read as: this same person at their best after a realistic transformation, not an AI-enhanced stranger.`
+    hairstyle +
+    realismLock;
+
+  if (mode === "aggressive") {
+    return (
+      common +
+      `Apply a visible but still believable glow-up: stronger skin clarity, cleaner facial-hair or eyebrow grooming, reduced under-eye fatigue, more defined jawline shadow, better chin-neck separation, leaner cheek appearance, clearer cheekbone contour, and improved facial freshness. ` +
+      `Changes must still be local and anatomically plausible. If a change would require new bone structure, a different nose, different eyes, a different mouth, or a different face shape, skip that change. ` +
+      `The result may look noticeably improved, but it must remain unmistakably the exact same person and the exact same photo moment.`
+    );
+  }
+
+  if (mode === "balanced") {
+    return (
+      common +
+      `Apply moderate realistic improvements: healthier skin tone, less redness, reduced blemishes, slightly reduced under-eye tiredness, cleaner facial-hair or eyebrow grooming, subtly better jawline contrast, subtle cheek/midface definition, and a fresher rested look. ` +
+      `Do not remodel anatomy. Do not make the face narrower, wider, younger, more symmetrical, or more conventionally attractive by changing core features. ` +
+      `The result should feel like the same candid photo after excellent sleep, grooming, skincare, hydration, and mild leanness.`
+    );
+  }
+
+  return (
+    common +
+    `Apply only conservative local edits: reduce obvious blemishes and redness, even the skin tone slightly, soften under-eye fatigue slightly, tidy facial hair and eyebrows if present, and add very subtle contrast around the jawline and cheek area without changing facial structure. ` +
+    `Keep transformation intensity low, around 10 to 15 percent. The viewer should first think this is the same original photo, then notice the person looks healthier, cleaner, and slightly more refined. ` +
+    `If unsure whether an edit changes identity, do not make that edit.`
   );
 }
 

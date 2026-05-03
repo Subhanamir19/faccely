@@ -9,10 +9,21 @@ import path from "path";
 import * as fs from "fs";
 import OpenAI, { toFile } from "openai";
 import { PROVIDERS } from "../config/index.js";
-import { buildPotentialFacePrompt, PROMPT_VERSION } from "../services/potentialFaceGeneration.js";
+import {
+  buildPotentialFacePrompt,
+  PROMPT_VERSION,
+  type PotentialFacePromptMode,
+} from "../services/potentialFaceGeneration.js";
 
 const router = express.Router();
 const IMAGE_MODEL = PROVIDERS.openai.imageModel;
+const PROMPT_MODES = new Set<PotentialFacePromptMode>(["conservative", "balanced", "aggressive"]);
+
+function parsePromptMode(value: unknown): PotentialFacePromptMode {
+  return typeof value === "string" && PROMPT_MODES.has(value as PotentialFacePromptMode)
+    ? value as PotentialFacePromptMode
+    : "conservative";
+}
 
 function openAIErrorDetails(err: any): {
   status: number | null;
@@ -192,11 +203,13 @@ router.post("/potential-face-dev", upload.single("image"), async (req, res) => {
       return res.status(400).json({ error: "empty_image" });
     }
 
-    const prompt = buildPotentialFacePrompt();
+    const promptMode = parsePromptMode((req.body as Record<string, unknown>)?.promptMode);
+    const prompt = buildPotentialFacePrompt({ mode: promptMode });
 
     console.log("[/generate/potential-face-dev] calling image model", {
       userId,
       model: IMAGE_MODEL,
+      promptMode,
       promptVersion: PROMPT_VERSION,
     });
 
@@ -219,6 +232,7 @@ router.post("/potential-face-dev", upload.single("image"), async (req, res) => {
     return res.json({
       b64,
       model: IMAGE_MODEL,
+      promptMode,
       promptVersion: PROMPT_VERSION,
     });
   } catch (err: any) {
