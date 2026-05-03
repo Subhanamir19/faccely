@@ -8,9 +8,11 @@ import os from "os";
 import path from "path";
 import * as fs from "fs";
 import OpenAI, { toFile } from "openai";
+import { PROVIDERS } from "../config/index.js";
 import { buildPotentialFacePrompt, PROMPT_VERSION } from "../services/potentialFaceGeneration.js";
 
 const router = express.Router();
+const IMAGE_MODEL = PROVIDERS.openai.imageModel;
 
 function openAIErrorDetails(err: any): {
   status: number | null;
@@ -115,10 +117,10 @@ router.post("/ten-by-ten", upload.single("image"), async (req, res) => {
     const { gender, ethnicity, age } = req.body as Record<string, string>;
     const prompt = buildPrompt({ gender, ethnicity, age });
 
-    console.log("[/generate/ten-by-ten] calling gpt-image-2, userId:", userId);
+    console.log("[/generate/ten-by-ten] calling image model, userId:", userId, "model:", IMAGE_MODEL);
 
     const response = await _openai.images.edit({
-      model: "gpt-image-2",
+      model: IMAGE_MODEL,
       image: await toFile(buffer, "face.jpg", { type: "image/jpeg" }),
       prompt,
       n: 1,
@@ -192,13 +194,14 @@ router.post("/potential-face-dev", upload.single("image"), async (req, res) => {
 
     const prompt = buildPotentialFacePrompt();
 
-    console.log("[/generate/potential-face-dev] calling gpt-image-2", {
+    console.log("[/generate/potential-face-dev] calling image model", {
       userId,
+      model: IMAGE_MODEL,
       promptVersion: PROMPT_VERSION,
     });
 
     const response = await _openai.images.edit({
-      model: "gpt-image-2",
+      model: IMAGE_MODEL,
       image: await toFile(buffer, "potential-face-source.jpg", { type: "image/jpeg" }),
       prompt,
       n: 1,
@@ -215,7 +218,7 @@ router.post("/potential-face-dev", upload.single("image"), async (req, res) => {
 
     return res.json({
       b64,
-      model: "gpt-image-2",
+      model: IMAGE_MODEL,
       promptVersion: PROMPT_VERSION,
     });
   } catch (err: any) {
@@ -234,7 +237,7 @@ router.post("/potential-face-dev", upload.single("image"), async (req, res) => {
         message:
           upstreamStatus === 401
             ? "OpenAI rejected the deployed API key. Check Railway OPENAI_API_KEY."
-            : "OpenAI denied this image generation request. Check Railway OPENAI_API_KEY project access, billing, and GPT Image 2 access.",
+            : `OpenAI denied this image generation request. Check Railway OPENAI_API_KEY project access, billing, and ${IMAGE_MODEL} access.`,
         providerStatus: upstreamStatus,
         providerCode: code,
         providerType: type,

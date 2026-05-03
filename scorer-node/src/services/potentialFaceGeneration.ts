@@ -4,7 +4,7 @@
 //   1. loads the row + its baseline scan + the scan's advanced_result
 //   2. picks the 5 weakest sub-metrics (excluding non-visual structural keys)
 //   3. downloads the baseline frontal image from the `face-scans` bucket
-//   4. calls gpt-image-2 (image edit) for two candidates in a single round-trip
+//   4. calls the configured GPT Image model for two candidates in a single round-trip
 //   5. uploads both candidates to the `potential-faces` bucket
 //   6. transitions the row to `ready` and writes an audit-log entry
 //
@@ -14,6 +14,7 @@
 
 import OpenAI, { toFile } from "openai";
 
+import { PROVIDERS } from "../config/index.js";
 import { getScanById } from "../supabase/scans.js";
 import { getAnalysisForScan } from "../supabase/analyses.js";
 import { downloadScanImage } from "../supabase/storage.js";
@@ -36,7 +37,7 @@ import { enqueuePotentialFace } from "../queue/jobs.js";
 /* -------------------------------------------------------------------------- */
 
 export const PROMPT_VERSION = "v2";
-const MODEL = "gpt-image-2";
+const MODEL = PROVIDERS.openai.imageModel;
 const SIZE: "1024x1024" | "1024x1536" | "1536x1024" | "auto" = "1024x1536";
 const QUALITY: "low" | "medium" | "high" | "auto" = "medium";
 const CANDIDATE_COUNT = 2;
@@ -410,7 +411,7 @@ export function buildPotentialFacePrompt(opts?: { improvements?: string }): stri
 /* -------------------------------------------------------------------------- */
 
 /**
- * Best-effort cost estimate from gpt-image-2's `usage` block. Returns null if
+ * Best-effort cost estimate from GPT Image usage blocks. Returns null if
  * the response shape isn't what we expect — Phase 8 will add proper telemetry.
  *
  * Pricing (as of Jan 2026): output image tokens ~$40/1M, image input ~$10/1M,
