@@ -4,7 +4,7 @@
 //   1. loads the row + its baseline scan + the scan's advanced_result
 //   2. picks the 5 weakest sub-metrics (excluding non-visual structural keys)
 //   3. downloads the baseline frontal image from the `face-scans` bucket
-//   4. calls gpt-image-1 (image edit) for two candidates in a single round-trip
+//   4. calls gpt-image-2 (image edit) for two candidates in a single round-trip
 //   5. uploads both candidates to the `potential-faces` bucket
 //   6. transitions the row to `ready` and writes an audit-log entry
 //
@@ -35,8 +35,8 @@ import { enqueuePotentialFace } from "../queue/jobs.js";
 /*   Tunables                                                                 */
 /* -------------------------------------------------------------------------- */
 
-export const PROMPT_VERSION = "v1";
-const MODEL = "gpt-image-1";
+export const PROMPT_VERSION = "v2";
+const MODEL = "gpt-image-2";
 const SIZE: "1024x1024" | "1024x1536" | "1536x1024" | "auto" = "1024x1536";
 const QUALITY: "low" | "medium" | "high" | "auto" = "medium";
 const CANDIDATE_COUNT = 2;
@@ -143,7 +143,7 @@ export async function generatePotentialFace(
         n: CANDIDATE_COUNT,
         size: SIZE,
         quality: QUALITY,
-      } as any // gpt-image-1: response_format is not a parameter; b64_json is always returned
+      } as any // GPT image edits return b64_json for this endpoint shape
     );
 
     const candidates = response.data ?? [];
@@ -351,7 +351,7 @@ export function pickTargetedMetrics(
 /*   Prompt v1 (placeholder — Phase 7 owns the real one)                      */
 /* -------------------------------------------------------------------------- */
 
-export function buildPromptV1(targeted: TargetedMetric[]): string {
+function buildPromptLegacyV1(targeted: TargetedMetric[]): string {
   const improvements = targeted
     .map((m) => {
       const key = `${m.group}.${m.sub_metric}`;
@@ -371,12 +371,46 @@ export function buildPromptV1(targeted: TargetedMetric[]): string {
   );
 }
 
+export function buildPromptV1(targeted: TargetedMetric[]): string {
+  const improvements = targeted
+    .map((m) => {
+      const key = `${m.group}.${m.sub_metric}`;
+      return SUB_METRIC_VISUAL_HINT[key] ?? `${m.group} ${m.sub_metric.replace(/_score$/, "")}`;
+    })
+    .map((line, i) => `(${i + 1}) ${line}`)
+    .join(", ");
+
+  return buildPotentialFacePrompt({ improvements });
+}
+
+export function buildPotentialFacePrompt(opts?: { improvements?: string }): string {
+  const targetedInstruction = opts?.improvements
+    ? `Use these measured weak spots as the priority map: ${opts.improvements}. `
+    : (
+      `First internally analyze the face like an expert aesthetician and QOVES-style reviewer: identify the visual weak spots that most reduce facial harmony, attractiveness, and perceived health. ` +
+      `Prioritize only the refinements with the highest realistic upside for this specific face. `
+    );
+
+  return (
+    `Create a photorealistic potential-face edit of the same person in the input photo. ` +
+    `Think like a QOVES-style facial aesthetics analyst: improve perceived facial harmony, proportional balance, definition, dimorphism where appropriate, grooming, skin quality, and healthy facial freshness without changing identity. ` +
+    targetedInstruction +
+    `High-impact improvement areas, only where beneficial: cleaner jawline definition, better chin-neck separation, reduced facial puffiness, healthier skin clarity and tone evenness, more visible cheekbone or midface contour, subtle under-eye fatigue reduction, better eyebrow or facial-hair grooming if present, and subtle perceived symmetry balancing through local edits only. ` +
+    `Hairstyle and grooming may be subtly improved if it helps the face look more proportional to its visual weight: improve volume, direction, texture, neatness, and face-framing while preserving hair color, hairline, hair type, density, and natural texture. Add controlled vertical lift if useful, reduce side bulk if it makes the face look wider or heavier, and clean up temple or forehead framing if it improves harmony. Do not give a completely different haircut, change hair color, create unrealistic density, hide weak spots with hair, or make hairstyle the main transformation. ` +
+    `The transformation should feel like the person after excellent consistency, sleep, skincare, better leanness, improved grooming, and subtle natural maturation; not surgery, not a celebrity morph, not a beauty filter, and not a different person. ` +
+    `Strict identity lock: preserve exact eye color, eye shape, eye spacing, nose identity, mouth shape, face shape, ethnicity, skin tone, hair color, hairline, age range, gender presentation, expression, head angle, camera perspective, clothing, background, lighting direction, and color temperature. ` +
+    `Do not invent new features, create anatomy the input face does not support, or globally beautify the image. ` +
+    `Skin must remain real human skin with pores and natural micro-texture; reduce blemishes and redness only enough to look healthier, without plastic smoothing, waxy shine, beauty-filter blur, or airbrushing. ` +
+    `The final image should read as: this same person at their best after a realistic transformation, not an AI-enhanced stranger.`
+  );
+}
+
 /* -------------------------------------------------------------------------- */
 /*   Cost estimation                                                          */
 /* -------------------------------------------------------------------------- */
 
 /**
- * Best-effort cost estimate from gpt-image-1's `usage` block. Returns null if
+ * Best-effort cost estimate from gpt-image-2's `usage` block. Returns null if
  * the response shape isn't what we expect — Phase 8 will add proper telemetry.
  *
  * Pricing (as of Jan 2026): output image tokens ~$40/1M, image input ~$10/1M,

@@ -1,6 +1,6 @@
 // supabase/functions/generate-ten-by-ten/index.ts
 // Edge function: receives a face photo (base64) + user metadata,
-// calls OpenAI gpt-image-1 images.edit, returns the generated image URL.
+// calls OpenAI gpt-image-2 images.edit, returns the generated image URL.
 //
 // Deploy:  supabase functions deploy generate-ten-by-ten
 // Secret:  supabase secrets set OPENAI_API_KEY=sk-...
@@ -75,7 +75,7 @@ serve(async (req: Request) => {
 
     // Build multipart form for OpenAI images.edit
     const formData = new FormData();
-    formData.append("model", "gpt-image-1");
+    formData.append("model", "gpt-image-2");
     formData.append("image", imageBlob, "face.jpg");
     formData.append("prompt", buildPrompt(metadata));
     formData.append("n", "1");

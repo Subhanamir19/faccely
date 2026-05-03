@@ -149,7 +149,7 @@ export async function buildWorker(): Promise<WorkerBundle> {
   /*   Potential Face worker                                                  */
   /* ------------------------------------------------------------------------ */
   //
-  // gpt-image-1 image-edit calls take 15–40s, so we give this worker a
+  // gpt-image-2 image-edit calls take 15–40s, so we give this worker a
   // dedicated wall-clock cap and modest concurrency. Default attempts come
   // from the queue's defaultJobOptions (3 with exponential backoff). The
   // processor is responsible for marking the row `failed` only on the *final*

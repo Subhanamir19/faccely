@@ -17,7 +17,7 @@ SigmaMax scans a user's face (frontal + optional right-profile JPEG) and runs a 
 4. **Insights** — cross-scan progress narrative, polled — [scorer-node/src/insights/generateInsights.ts](scorer-node/src/insights/generateInsights.ts) (`gpt-4o-mini`).
 5. **Recommendations / Protocols / Routine** — three separate prompt sites that turn scores into improvement advice; all constrained to a hand-curated "Sauce" library — [scorer-node/src/recommender.ts](scorer-node/src/recommender.ts), [scorer-node/src/routes/protocols.ts](scorer-node/src/routes/protocols.ts), [scorer-node/src/utils/generateRoutine.ts](scorer-node/src/utils/generateRoutine.ts).
 6. **Sigma chat** — looksmaxxing-bro coach persona, optional context injection of latest scores + routine day — [scorer-node/src/services/sigmaPrompt.ts](scorer-node/src/services/sigmaPrompt.ts) + [scorer-node/src/services/sigmaOpenAI.ts](scorer-node/src/services/sigmaOpenAI.ts).
-7. **Image generation (existing potential-face)** — `images.edit` against `gpt-image-1`, identity metadata (gender/ethnicity/age) interpolated into a fixed jawline+eyes+maxilla+skin prompt — [scorer-node/src/routes/generate.ts](scorer-node/src/routes/generate.ts).
+7. **Image generation (existing potential-face)** — `images.edit` against `gpt-image-2`, identity metadata (gender/ethnicity/age) interpolated into a fixed jawline+eyes+maxilla+skin prompt — [scorer-node/src/routes/generate.ts](scorer-node/src/routes/generate.ts).
 
 Identity (age, gender, ethnicity, goals, focus, time-dedication, experience) is captured during onboarding into [facely/store/onboarding.ts](facely/store/onboarding.ts), persisted server-side via `users` table ([scorer-node/src/supabase/users.ts](scorer-node/src/supabase/users.ts)), and explicitly **redacted from scoring/explain prompts** but **explicitly injected** into ten-by-ten and recommendations prompts.
 
@@ -695,10 +695,10 @@ Return JSON only matching the schema.
 ### Existing image generation (the v1 of the "potential face" feature)
 - **Active path:** POST `/generate/ten-by-ten` ([scorer-node/src/routes/generate.ts](scorer-node/src/routes/generate.ts)).
   - Multer disk-storage, 15 MB limit, accepts `image/jpeg|png|webp|application/octet-stream`.
-  - Calls `openai.images.edit({ model: "gpt-image-1", image: toFile(buffer, "face.jpg"), prompt, n:1, size:"1024x1024" })`.
+  - Calls `openai.images.edit({ model: "gpt-image-2", image: toFile(buffer, "face.jpg"), prompt, n:1, size:"1024x1024" })`.
   - Returns `{ b64 }` (base64 image).
   - **No image normalization** before send (unlike scoring path) — raw upload bytes are forwarded.
-  - **No mask** is provided, so gpt-image-1 free-edits the whole image.
+  - **No mask** is provided, so gpt-image-2 free-edits the whole image.
 - **Stale duplicate:** Supabase edge function [supabase/functions/generate-ten-by-ten/index.ts](supabase/functions/generate-ten-by-ten/index.ts) — accepts `imageBase64` JSON instead of multipart, calls the same OpenAI endpoint, slightly older prompt (no "preserve original lighting / background / no plastic sheen" guards). The mobile client points at `${API_BASE}/generate/ten-by-ten`, **not** the edge function. The edge function appears to be dead code.
 
 ### Image gen prompt (active, [routes/generate.ts:48-64](scorer-node/src/routes/generate.ts#L48-L64))
@@ -825,11 +825,11 @@ Pattern: prompts have been actively churned in April. `7ac61df ai prompt improve
 5. **Should it be conditioned on the user's protocols / routine?** The feature pitch (per task description) is "what they could look like *after* executing their improvement protocols". Currently the prompt has no notion of protocols — it just describes the looksmaxxing destination, not the user's chosen path.
 6. **Identity: `goals` and `improveFocus` from onboarding are unused.** Should the new prompt incorporate them ("focus on jawline + hunter eyes" if those are the user's goals)?
 7. **Identity: `ethnicity` interpolation safety.** The ethnicity values are user-selected free-form-ish strings (`"Mixed / Other"`, `"Prefer not to say"`); the prompt currently emits `, Mixed / Other ethnicity` or `, Prefer not to say ethnicity` literally. Is that handled, or should we whitelist/normalize?
-8. **Mask vs free-edit.** `images.edit` is called without a mask, so gpt-image-1 may alter background, framing, hair. The prompt fights this with "preserve background / lighting / hair" — would a face mask + bg-preservation strategy be more reliable?
+8. **Mask vs free-edit.** `images.edit` is called without a mask, so gpt-image-2 may alter background, framing, hair. The prompt fights this with "preserve background / lighting / hair" — would a face mask + bg-preservation strategy be more reliable?
 9. **Side-profile usage.** Scoring + advanced explain take a side image, but ten-by-ten only takes one image. Is a multi-view potential-face within scope?
 10. **Reference scan image.** The client uses `useScores.imageUri` (in-memory only) or a fresh ImagePicker pick — it does **not** retrieve the persisted `front_image_path` from the user's scan history. Should the new pipeline anchor off the user's most recent (or best?) scan automatically?
 11. **Schema source of truth.** Supabase migrations are not in the repo. The schema in §3 is inferred from Supabase client calls. Before adding new tables, confirm canonical schema with whoever owns the Supabase project.
-12. **`gpt-image-1` model parameter knobs.** No `quality`, `style`, or `background` parameters are passed today. Should the new pipeline set these explicitly (e.g. `quality: "high"`, `background: "auto"`)?
+12. **`gpt-image-2` model parameter knobs.** No `quality`, `style`, or `background` parameters are passed today. Should the new pipeline set these explicitly (e.g. `quality: "high"`, `background: "auto"`)?
 13. **Consent flow.** [facely/hooks/useTenByTenConsent.tsx](facely/hooks/useTenByTenConsent.tsx) gates ten-by-ten with a one-time consent modal. Is the new pipeline subject to the same consent, a fresh one, or none?
-14. **Output size.** Always `1024x1024`. Source photo is `aspect: [3,4]` from ImagePicker. The square output crops; the 3:4 viewer letterboxes. If the new pipeline keeps a portrait aspect, we'd need a different gpt-image-1 size or post-crop.
+14. **Output size.** Always `1024x1024`. Source photo is `aspect: [3,4]` from ImagePicker. The square output crops; the 3:4 viewer letterboxes. If the new pipeline keeps a portrait aspect, we'd need a different gpt-image-2 size or post-crop.
 15. **Insights `gpt-4o-mini` lacks `response_format: json_object`** — is that intentional (because the prompt asks for JSON anyway) or a bug we should fix in the same change?

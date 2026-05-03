@@ -43,7 +43,7 @@ import Svg, {
   Text as SvgText,
 } from "react-native-svg";
 import { useRouter, useFocusEffect } from "expo-router";
-import { TrendingUp, TrendingDown, Flame } from "lucide-react-native";
+import { TrendingUp, TrendingDown, ChevronRight, ArrowLeft, Sparkles, RefreshCw, Bell } from "lucide-react-native";
 import Text from "@/components/ui/T";
 import InsightPulseCard from "@/components/ui/InsightPulseCard";
 import { COLORS, SP, RADII, TYPE, SHADOWS } from "@/lib/tokens";
@@ -54,6 +54,7 @@ import { useAdvancedAnalysis } from "@/store/advancedAnalysis";
 import { useTasksStore } from "@/store/tasks";
 import { useAuthStore } from "@/store/auth";
 import { useProfile } from "@/store/profile";
+import { usePotentialFace, computeProgressPercent } from "@/store/potentialFace";
 import type {
   DashboardMetric,
   DashboardHistoryItem,
@@ -64,7 +65,6 @@ import type {
 import type { AdvancedAnalysis } from "@/lib/api/advancedAnalysis";
 import { pickTopFive } from "@/lib/submetrics";
 import { TopFiveCard } from "@/components/dashboard/TopFiveCard";
-import { PotentialFaceCard } from "@/components/dashboard/PotentialFaceCard";
 
 const AnimatedTextInput = Animated.createAnimatedComponent(TextInput);
 
@@ -85,6 +85,17 @@ const LIME = {
   bg:      COLORS.lightSurfaceAlt,
   track:   COLORS.lightHairline,
 };
+
+const TRACKING_HEADER = {
+  bg: COLORS.lightBg,
+  accent: COLORS.accentDepth,
+  accentSoft: "rgba(72,145,32,0.12)",
+  text: COLORS.lightText,
+  muted: COLORS.lightSub,
+  faint: COLORS.lightMuted,
+  border: COLORS.lightBorder,
+  control: COLORS.lightSurfaceAlt,
+} as const;
 
 const DIR_COLOR: Record<string, string> = {
   up:   COLORS.lightText,
@@ -322,6 +333,14 @@ const METRIC_IMAGES: Record<string, any> = {
   nose_harmony:      require("@/assets/analysis-image-new/nose-vector.png"),
   sexual_dimorphism: require("@/assets/analysis-image-new/fullface-vector.png"),
 };
+
+const TRACKING_MASCOT_IMAGES = {
+  improved: require("@/assets/images-for-initial-tracking-screen/progress.png"),
+  same: require("@/assets/images-for-initial-tracking-screen/no-progress.png"),
+  declined: require("@/assets/images-for-initial-tracking-screen/no-progress.png"),
+} as const;
+
+const TRACKING_NEXT_SCREEN_SIGN = require("@/assets/images-for-initial-tracking-screen/sign-for-next-screen.png");
 
 const METRIC_PLACEHOLDER_EMOJI: Record<string, string> = {
   facial_symmetry:   "⚖️",
@@ -1273,10 +1292,14 @@ function IdentityStrip({
   userName,
   joinedDaysAgo,
   currentStreak,
+  avatarUri,
+  onBack,
 }: {
   userName: string | null;
   joinedDaysAgo: number;
   currentStreak: number;
+  avatarUri: string | null;
+  onBack: () => void;
 }) {
   const history     = useTasksStore((s) => s.history);
   const todayRecord = useTasksStore((s) => s.today);
@@ -1284,10 +1307,46 @@ function IdentityStrip({
 
   // Day count derives from joinedDaysAgo (clamped at 1 — Day 1 minimum).
   const dayN = Math.max(1, joinedDaysAgo + 1);
+  const displayName = userName ?? "Champion";
 
   return (
     <Animated.View entering={FadeInDown.delay(0).duration(360)} style={styles.identityWrap}>
       <View style={styles.identityHeader}>
+        <View style={styles.identityProfile}>
+          <View style={styles.identityAvatar}>
+            {avatarUri ? (
+              <Image source={{ uri: avatarUri }} style={styles.identityAvatarImage} resizeMode="cover" />
+            ) : (
+              <Text style={styles.identityAvatarText}>{displayName.charAt(0).toUpperCase()}</Text>
+            )}
+          </View>
+          <View style={styles.identityNameBlock}>
+            <Text style={styles.identityName} numberOfLines={1}>{displayName}</Text>
+            <Text style={styles.identityCaption} numberOfLines={1}>
+              {`Day ${dayN} of your transformation`}
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.identityActions}>
+          <Pressable
+            onPress={onBack}
+            style={({ pressed }) => [styles.identityOverviewPill, pressed && styles.overviewPressed]}
+          >
+            <ArrowLeft size={14} color="#FFFFFF" strokeWidth={2.5} />
+            <Text style={styles.identityOverviewText}>Overview</Text>
+          </Pressable>
+          <View style={styles.identityBell}>
+            <Bell size={18} color={TRACKING_HEADER.text} strokeWidth={2.5} />
+            {currentStreak > 0 && (
+              <View style={styles.identityBellDot}>
+                <Text style={styles.identityBellDotText}>{Math.min(currentStreak, 9)}</Text>
+              </View>
+            )}
+          </View>
+        </View>
+      </View>
+      {/*
         <View style={{ flex: 1 }}>
           <Text style={styles.identityCaption}>
             {`Day ${dayN}${userName ? ` · ${userName}'s transformation` : " of your transformation"}`}
@@ -1299,11 +1358,18 @@ function IdentityStrip({
             <Text style={styles.identityStreakNum}>{currentStreak}</Text>
           </View>
         )}
-      </View>
+      */}
 
       <View style={styles.ribbonRow}>
         {cells.map((c, i) => (
-          <View key={i} style={styles.ribbonCell}>
+          <View
+            key={i}
+            style={[
+              styles.ribbonCell,
+              c.done && styles.ribbonCellDone,
+              c.isToday && styles.ribbonCellToday,
+            ]}
+          >
             <View
               style={[
                 styles.ribbonDot,
@@ -1312,8 +1378,11 @@ function IdentityStrip({
                 c.isToday && !c.done && styles.ribbonDotTodayPending,
               ]}
             />
-            <Text style={[styles.ribbonDay, c.isToday && styles.ribbonDayToday]}>
+            <Text style={[styles.ribbonDay, (c.done || c.isToday) && styles.ribbonDayToday]}>
               {c.day}
+            </Text>
+            <Text style={[styles.ribbonDate, (c.done || c.isToday) && styles.ribbonDateActive]}>
+              {new Date(`${c.date}T00:00:00`).getDate()}
             </Text>
           </View>
         ))}
@@ -1325,6 +1394,445 @@ function IdentityStrip({
 /* -------------------------------------------------------------------------- */
 /*  HeroCard — side-by-side: ring left, score info right                      */
 /* -------------------------------------------------------------------------- */
+
+const POTENTIAL_FACE_POLL_MS = 5_000;
+
+function HeroImagePreview({
+  uri,
+  label,
+  visible,
+  onClose,
+}: {
+  uri: string | null;
+  label: string;
+  visible: boolean;
+  onClose: () => void;
+}) {
+  if (!uri) return null;
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      statusBarTranslucent
+      onRequestClose={onClose}
+    >
+      <Pressable style={styles.heroPreviewBackdrop} onPress={onClose}>
+        <Animated.View entering={FadeIn.duration(180)} style={styles.heroPreviewShade} />
+        <Animated.View entering={FadeInDown.duration(260)} style={styles.heroPreviewCard}>
+          <Image source={{ uri }} style={styles.heroPreviewImage} resizeMode="cover" />
+          <Text style={styles.heroPreviewLabel}>{label}</Text>
+        </Animated.View>
+      </Pressable>
+    </Modal>
+  );
+}
+
+function UnifiedProgressHero({
+  overall,
+  overallDelta,
+  scanCount,
+  currentImageUri,
+  latestAdvanced,
+}: {
+  overall: DashboardOverall;
+  overallDelta: number;
+  scanCount: number;
+  currentImageUri: string | null;
+  latestAdvanced: LatestAdvanced | null;
+}) {
+  const [preview, setPreview] = useState<null | { uri: string; label: string }>(null);
+  const scoreVal = useSharedValue(0);
+  const potentialScoreVal = useSharedValue(0);
+  const deltaVal = useSharedValue(0);
+  const potentialFace = usePotentialFace((s) => s.data);
+  const loadPotentialFace = usePotentialFace((s) => s.load);
+
+  const next = nextTier(overall.current);
+  const potentialScore = next?.threshold ?? Math.ceil(overall.current);
+
+  useEffect(() => {
+    scoreVal.value = 0;
+    potentialScoreVal.value = 0;
+    deltaVal.value = 0;
+    const cfg = { duration: 1400, easing: Easing.out(Easing.cubic) };
+    scoreVal.value = withTiming(overall.current, cfg);
+    potentialScoreVal.value = withDelay(100, withTiming(potentialScore, cfg));
+    deltaVal.value = withDelay(100, withTiming(Math.abs(overallDelta), cfg));
+  }, [overall.current, overallDelta, potentialScore]);
+
+  useEffect(() => {
+    void loadPotentialFace();
+  }, [loadPotentialFace]);
+
+  useEffect(() => {
+    if (potentialFace?.status !== "pending") return;
+    const id = setInterval(() => void loadPotentialFace(), POTENTIAL_FACE_POLL_MS);
+    return () => clearInterval(id);
+  }, [potentialFace?.status, loadPotentialFace]);
+
+  const scoreProps = useAnimatedProps(() => ({
+    text: String(Math.round(scoreVal.value)),
+    defaultValue: "",
+  } as any));
+  const potentialScoreProps = useAnimatedProps(() => ({
+    text: String(Math.round(potentialScoreVal.value)),
+    defaultValue: "",
+  } as any));
+  const deltaProps = useAnimatedProps(() => ({
+    text: `${overallDelta >= 0 ? "+" : "−"}${deltaVal.value.toFixed(1)}`,
+    defaultValue: "",
+  } as any));
+
+  const isPB = scanCount >= 2 && overall.current >= overall.best;
+  const potentialReady = potentialFace?.status === "ready";
+  const potentialPending = potentialFace?.status === "pending";
+  const potentialFailed = potentialFace?.status === "failed";
+  const progress = computeProgressPercent(potentialFace, latestAdvanced);
+  const progressPct = progress === null ? null : Math.max(0, Math.min(100, Math.round(progress * 100)));
+  const potentialLabel =
+    potentialReady ? "Potential" :
+    potentialPending ? "Generating" :
+    potentialFailed ? "Retry soon" :
+    "Potential";
+  const potentialUri = potentialReady ? potentialFace?.primaryImageUrl ?? null : null;
+
+  const openPreview = (uri: string | null, label: string) => {
+    if (!uri) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setPreview({ uri, label });
+  };
+
+  return (
+    <>
+    <Animated.View entering={FadeInDown.delay(0).duration(450)} style={styles.unifiedOuter}>
+      <View style={styles.heroSplitCard}>
+        <View style={styles.heroSplitMeta}>
+          <Text style={styles.heroMetaText}>OVERALL RATING</Text>
+          {isPB && <Text style={styles.heroMetaPB}>★ PERSONAL BEST</Text>}
+        </View>
+
+        <View style={styles.heroSplitBody}>
+          <View style={styles.heroFaceScoreCol}>
+            <Text style={styles.heroFaceTopLabel}>Current</Text>
+            <Pressable
+              disabled={!currentImageUri}
+              onPress={() => openPreview(currentImageUri, "Current face")}
+              style={({ pressed }) => [
+                styles.heroCurrentImage,
+                pressed && currentImageUri && { opacity: 0.9, transform: [{ scale: 0.96 }] },
+              ]}
+            >
+              {currentImageUri ? (
+                <Image
+                  source={{ uri: currentImageUri }}
+                  style={StyleSheet.absoluteFillObject}
+                  resizeMode="cover"
+                />
+              ) : (
+                <View style={styles.heroPotentialPlaceholder} />
+              )}
+            </Pressable>
+            <AnimatedTextInput
+              animatedProps={scoreProps}
+              editable={false}
+              style={[styles.heroFaceScore, { padding: 0 }]}
+            />
+          </View>
+
+          <View style={styles.heroPotentialCol}>
+            <Text style={styles.heroPotentialLabel}>{potentialLabel}</Text>
+            <Pressable
+              disabled={!potentialUri}
+              onPress={() => openPreview(potentialUri, "Potential face")}
+              style={({ pressed }) => [
+                styles.heroPotentialImage,
+                potentialReady && styles.heroPotentialImageReady,
+                pressed && potentialUri && { opacity: 0.9, transform: [{ scale: 0.96 }] },
+              ]}
+            >
+              {potentialUri ? (
+                <Image
+                  source={{ uri: potentialUri }}
+                  style={StyleSheet.absoluteFillObject}
+                  resizeMode="cover"
+                />
+              ) : (
+                <View style={styles.heroPotentialPlaceholder}>
+                  <Text style={styles.heroPotentialPlaceholderText}>
+                    {potentialPending ? "..." : potentialFailed ? "!" : ""}
+                  </Text>
+                </View>
+              )}
+            </Pressable>
+            <AnimatedTextInput
+              animatedProps={potentialScoreProps}
+              editable={false}
+              style={[styles.heroPotentialScore, { padding: 0 }]}
+            />
+          </View>
+        </View>
+
+        <View style={styles.heroPotentialProgress}>
+          <View style={styles.heroPotentialProgressHeader}>
+            <Text style={styles.heroPotentialProgressLabel}>
+              {progressPct === null ? "POTENTIAL PROGRESS" : `${progressPct}% CLOSER TO POTENTIAL`}
+            </Text>
+            {progressPct !== null && (
+              <Text style={styles.heroPotentialProgressPct}>{progressPct}%</Text>
+            )}
+          </View>
+          <View style={styles.heroPotentialTrack}>
+            <View style={[styles.heroPotentialFill, { width: `${progressPct ?? 0}%` as any }]} />
+          </View>
+          <Text style={styles.heroPotentialProgressHint}>
+            {progressPct === null
+              ? potentialPending
+                ? "Generating your potential face"
+                : potentialFailed
+                  ? "Potential face will retry shortly"
+                  : "Run advanced analysis to measure movement toward it"
+              : "Based on the target metrics behind your potential face"}
+          </Text>
+        </View>
+      </View>
+    </Animated.View>
+    <HeroImagePreview
+      uri={preview?.uri ?? null}
+      label={preview?.label ?? ""}
+      visible={preview !== null}
+      onClose={() => setPreview(null)}
+    />
+    </>
+  );
+}
+
+function ProgressOverview({
+  overall,
+  currentImageUri,
+  latestAdvanced,
+  verdict,
+  latestScanId,
+  onSeeProgress,
+}: {
+  overall: DashboardOverall;
+  currentImageUri: string | null;
+  latestAdvanced: LatestAdvanced | null;
+  verdict: "improved" | "same" | "declined";
+  latestScanId: string | null;
+  onSeeProgress: () => void;
+}) {
+  const [preview, setPreview] = useState<null | { uri: string; label: string }>(null);
+  const scoreVal = useSharedValue(0);
+  const potentialScoreVal = useSharedValue(0);
+  const progressVal = useSharedValue(0);
+  const potentialFace = usePotentialFace((s) => s.data);
+  const potentialLoading = usePotentialFace((s) => s.loading);
+  const loadPotentialFace = usePotentialFace((s) => s.load);
+  const retryPotentialFace = usePotentialFace((s) => s.retryGeneration);
+
+  const next = nextTier(overall.current);
+  const potentialScore = next?.threshold ?? Math.ceil(overall.current);
+  const potentialReady = potentialFace?.status === "ready";
+  const potentialPending = potentialFace?.status === "pending" || potentialLoading;
+  const potentialFailed = potentialFace?.status === "failed";
+  const potentialUri = potentialReady ? potentialFace?.primaryImageUrl ?? null : null;
+  const progress = computeProgressPercent(potentialFace, latestAdvanced);
+  const progressPct = progress === null ? 0 : Math.max(0, Math.min(100, Math.round(progress * 100)));
+
+  useEffect(() => {
+    void loadPotentialFace();
+  }, [loadPotentialFace]);
+
+  useEffect(() => {
+    if (potentialFace?.status !== "pending") return;
+    const id = setInterval(() => void loadPotentialFace(), POTENTIAL_FACE_POLL_MS);
+    return () => clearInterval(id);
+  }, [potentialFace?.status, loadPotentialFace]);
+
+  useEffect(() => {
+    const cfg = { duration: 1250, easing: Easing.out(Easing.cubic) };
+    scoreVal.value = 0;
+    potentialScoreVal.value = 0;
+    progressVal.value = 0;
+    scoreVal.value = withTiming(overall.current, cfg);
+    potentialScoreVal.value = withDelay(120, withTiming(potentialScore, cfg));
+    progressVal.value = withDelay(220, withTiming(progressPct, cfg));
+  }, [overall.current, potentialScore, progressPct]);
+
+  const scoreProps = useAnimatedProps(() => ({
+    text: String(Math.round(scoreVal.value)),
+    defaultValue: "",
+  } as any));
+  const potentialScoreProps = useAnimatedProps(() => ({
+    text: String(Math.round(potentialScoreVal.value)),
+    defaultValue: "",
+  } as any));
+  const progressProps = useAnimatedProps(() => ({
+    text: `${Math.round(progressVal.value)}%`,
+    defaultValue: "",
+  } as any));
+  const progressFillStyle = useAnimatedStyle(() => ({
+    width: `${Math.max(0, Math.min(100, progressVal.value))}%` as any,
+  }));
+
+  const message =
+    verdict === "improved"
+      ? "Keep going. You're getting closer to your potential."
+      : verdict === "declined"
+        ? "A dip is useful signal. Re-center your routine and compare again."
+        : "You're holding steady. Consistency is what moves this forward.";
+
+  const missingPotentialCopy = potentialPending
+    ? "Generating your potential face..."
+    : potentialFailed
+      ? "Potential face needs a retry"
+      : "Generate potential";
+  const mascotImage = TRACKING_MASCOT_IMAGES[verdict];
+
+  const handleGeneratePotential = async () => {
+    if (!latestScanId || potentialPending) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    try {
+      await retryPotentialFace(latestScanId);
+    } catch {
+      // Store owns the surfaced error; keep this interaction non-blocking.
+    }
+  };
+
+  const openPreview = (uri: string | null, label: string) => {
+    if (!uri) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setPreview({ uri, label });
+  };
+
+  return (
+    <>
+      <Animated.View entering={FadeInDown.duration(420)} style={styles.overviewWrap}>
+        <View style={styles.overviewHeader}>
+          <Text style={styles.overviewTitle}>Overall rating</Text>
+          <Text style={styles.overviewSubtitle}>
+            See how your current face compares to your potential.
+          </Text>
+        </View>
+
+        <View style={styles.overviewCard}>
+          <View style={styles.overviewCompareRow}>
+            <View style={styles.overviewFaceCol}>
+              <Text style={styles.overviewFaceLabel}>Current</Text>
+              <Pressable
+                disabled={!currentImageUri}
+                onPress={() => openPreview(currentImageUri, "Current face")}
+                style={({ pressed }) => [
+                  styles.overviewFaceRing,
+                  styles.overviewCurrentRing,
+                  pressed && currentImageUri && styles.overviewPressed,
+                ]}
+              >
+                {currentImageUri ? (
+                  <Image source={{ uri: currentImageUri }} style={styles.overviewFaceImage} resizeMode="cover" />
+                ) : (
+                  <View style={styles.overviewFacePlaceholder} />
+                )}
+              </Pressable>
+              <AnimatedTextInput
+                animatedProps={scoreProps}
+                editable={false}
+                style={[styles.overviewScore, styles.overviewCurrentScore, { padding: 0 }]}
+              />
+            </View>
+
+            <View style={styles.overviewDivider} />
+
+            <View style={styles.overviewFaceCol}>
+              <Text style={[styles.overviewFaceLabel, styles.overviewPotentialLabel]}>Potential</Text>
+              <Pressable
+                disabled={!potentialUri}
+                onPress={() => openPreview(potentialUri, "Potential face")}
+                style={({ pressed }) => [
+                  styles.overviewFaceRing,
+                  styles.overviewPotentialRing,
+                  pressed && potentialUri && styles.overviewPressed,
+                ]}
+              >
+                {potentialUri ? (
+                  <Image source={{ uri: potentialUri }} style={styles.overviewFaceImage} resizeMode="cover" />
+                ) : (
+                  <View style={styles.overviewPotentialFallback}>
+                    {potentialPending ? (
+                      <RefreshCw size={22} color={COLORS.accentDepth} strokeWidth={2.4} />
+                    ) : (
+                      <Sparkles size={24} color={COLORS.accentDepth} strokeWidth={2.4} />
+                    )}
+                    <Text style={styles.overviewFallbackText}>{missingPotentialCopy}</Text>
+                  </View>
+                )}
+              </Pressable>
+              <AnimatedTextInput
+                animatedProps={potentialScoreProps}
+                editable={false}
+                style={[styles.overviewScore, styles.overviewPotentialScore, { padding: 0 }]}
+              />
+              {!potentialUri && !potentialPending && (
+                <Pressable onPress={handleGeneratePotential} style={styles.overviewRetryBtn}>
+                  <Text style={styles.overviewRetryText}>Generate</Text>
+                </Pressable>
+              )}
+            </View>
+          </View>
+
+          <View style={styles.overviewMascotCallout}>
+            <View style={styles.overviewMascotSlot}>
+              <Image source={mascotImage} style={styles.overviewMascotImage} resizeMode="contain" />
+            </View>
+            <Text style={styles.overviewMascotText}>{message}</Text>
+          </View>
+
+          <View style={styles.overviewProgressCard}>
+            <View style={styles.overviewProgressHeader}>
+              <Text style={styles.overviewProgressTitle}>
+                {progress === null ? "Potential progress" : `${progressPct}% closer to potential`}
+              </Text>
+              <AnimatedTextInput
+                animatedProps={progressProps}
+                editable={false}
+                style={[styles.overviewProgressPct, { padding: 0 }]}
+              />
+            </View>
+            <View style={styles.overviewProgressTrack}>
+              <Animated.View style={[styles.overviewProgressFill, progressFillStyle]} />
+            </View>
+            <Text style={styles.overviewProgressHint}>
+              {progress === null
+                ? "Based on the target metrics behind your potential face once analysis is ready."
+                : "Based on the target metrics behind your potential face."}
+            </Text>
+          </View>
+        </View>
+
+        <Pressable onPress={onSeeProgress} style={({ pressed }) => [styles.overviewTrackCard, pressed && styles.overviewPressed]}>
+          <View style={styles.overviewTrackIcon}>
+            <Image source={TRACKING_NEXT_SCREEN_SIGN} style={styles.overviewTrackImage} resizeMode="contain" />
+          </View>
+          <View style={styles.overviewTrackCopy}>
+            <Text style={styles.overviewTrackTitle}>Track your progress</Text>
+            <Text style={styles.overviewTrackSub}>Keep improving and unlock your best version.</Text>
+          </View>
+          <ChevronRight size={26} color={COLORS.lightSub} strokeWidth={2.4} />
+        </Pressable>
+
+        <LimeButton3D label="See Your Progress" onPress={onSeeProgress} />
+      </Animated.View>
+      <HeroImagePreview
+        uri={preview?.uri ?? null}
+        label={preview?.label ?? ""}
+        visible={preview !== null}
+        onClose={() => setPreview(null)}
+      />
+    </>
+  );
+}
 
 function HeroCard({
   overall,
@@ -2001,9 +2509,11 @@ export default function DashboardScreen() {
   const advancedData = useAdvancedAnalysis((s) => s.data);
   const authUser = useAuthStore((s) => s.user);
   const displayName = useProfile((s) => s.displayName);
+  const avatarUri = useProfile((s) => s.avatarUri);
   const scanLoading = useScores((s) => s.loading);
   const scanError   = useScores((s) => s.error);
   const scanImageUri = useScores((s) => s.imageUri);
+  const [progressView, setProgressView] = useState<"overview" | "details">("overview");
 
   // UUID pattern — Supabase leaks the auth UUID into name/email fields on some flows.
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -2075,6 +2585,7 @@ export default function DashboardScreen() {
   const joinedDaysAgo = data?.joined_days_ago ?? 0;
   const latestAdvanced   = data?.latest_advanced ?? (advancedData as LatestAdvanced | null) ?? null;
   const previousAdvanced = data?.previous_advanced ?? null;
+  const latestScanId = history[0]?.id ?? null;
 
   // Days since the user's most recent scan. `history` is newest-first
   // (see `/insights` server route). Null when no scans exist yet.
@@ -2093,7 +2604,7 @@ export default function DashboardScreen() {
     ?? (overallDelta > 1.5 ? "improved" : overallDelta < -1.5 ? "declined" : "same");
 
   // Render body
-  const renderBody = () => {
+  const renderDetailBody = () => {
     if (loading && !data) return <LoadingState />;
     if (error && !data) return <ErrorState message={error} />;
     // After 1 scan we render the full dashboard with a "Baseline" treatment
@@ -2111,24 +2622,37 @@ export default function DashboardScreen() {
       <>
         {/* ── Section 1.5: Potential Face — top-anchored "% closer" card ── */}
         {/* Renders nothing when no row exists yet; handles its own state machine. */}
-        <PotentialFaceCard
-          currentImageUri={scanImageUri ?? null}
-          latestAdvanced={latestAdvanced}
-          daysSinceLastScan={daysSinceLastScan}
-          onScanAgain={() => router.push("/(tabs)/take-picture")}
+        <View style={styles.detailBackRow}>
+          <Pressable
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setProgressView("overview");
+            }}
+            style={({ pressed }) => [styles.detailBackButton, pressed && styles.overviewPressed]}
+          >
+            <ArrowLeft size={20} color={COLORS.lightText} strokeWidth={2.5} />
+            <Text style={styles.detailBackText}>Overview</Text>
+          </Pressable>
+        </View>
+
+        <IdentityStrip
+          userName={userName}
+          joinedDaysAgo={data?.joined_days_ago ?? 0}
+          currentStreak={currentStreak}
+          avatarUri={avatarUri}
+          onBack={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            setProgressView("overview");
+          }}
         />
 
-        {/* ── Section 2: Hero Score Card ── */}
-        <Animated.View entering={FadeInDown.delay(100).duration(450)}>
-          <HeroCard
-            overall={overall!}
-            overallDelta={overallDelta}
-            verdict={verdict}
-            scanCount={scanCount}
-            joinedDaysAgo={joinedDaysAgo}
-            userName={userName}
-          />
-        </Animated.View>
+        <UnifiedProgressHero
+          overall={overall!}
+          overallDelta={overallDelta}
+          scanCount={scanCount}
+          currentImageUri={scanImageUri ?? null}
+          latestAdvanced={latestAdvanced}
+        />
 
         {/* ── Section 3: Your journey ── */}
         {graphPoints.length >= 2 && (
@@ -2201,6 +2725,36 @@ export default function DashboardScreen() {
     );
   };
 
+  const renderBody = () => {
+    if (loading && !data) return <LoadingState />;
+    if (error && !data) return <ErrorState message={error} />;
+    if (scanCount < 1) return (
+      <EmptyState
+        router={router}
+        scanLoading={scanLoading}
+        scanFailed={!scanLoading && !!scanError}
+      />
+    );
+
+    if (progressView === "overview") {
+      return (
+        <ProgressOverview
+          overall={overall!}
+          currentImageUri={scanImageUri ?? null}
+          latestAdvanced={latestAdvanced}
+          verdict={verdict}
+          latestScanId={latestScanId}
+          onSeeProgress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            setProgressView("details");
+          }}
+        />
+      );
+    }
+
+    return renderDetailBody();
+  };
+
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
@@ -2228,13 +2782,6 @@ export default function DashboardScreen() {
           />
         }
       >
-        {/* ── Identity strip: caption + week ribbon ── */}
-        <IdentityStrip
-          userName={userName}
-          joinedDaysAgo={data?.joined_days_ago ?? 0}
-          currentStreak={currentStreak}
-        />
-
         {renderBody()}
       </ScrollView>
 
@@ -2302,20 +2849,890 @@ const styles = StyleSheet.create({
     zIndex: 50,
   },
 
-  /* Identity strip */
-  identityWrap: {
-    marginBottom: SP[2],
+  /* Unified top card — score + potential */
+  overviewWrap: {
+    gap: SP[5],
   },
-  identityHeader: {
+  overviewHeader: {
+    alignItems: "center",
+    paddingTop: SP[5],
+    paddingHorizontal: SP[5],
+    marginBottom: SP[1],
+  },
+  overviewTitle: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 30,
+    lineHeight: 34,
+    color: COLORS.lightText,
+    letterSpacing: -0.7,
+    textAlign: "center",
+  },
+  overviewSubtitle: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 19,
+    lineHeight: 27,
+    color: COLORS.lightSub,
+    textAlign: "center",
+    marginTop: SP[4],
+    maxWidth: 310,
+  },
+  overviewCard: {
+    borderRadius: RADII.card,
+    backgroundColor: COLORS.lightCard,
+    paddingHorizontal: SP[5],
+    paddingTop: SP[7],
+    paddingBottom: SP[5],
+    gap: SP[5],
+    ...SOFT_SHADOW,
+  },
+  overviewCompareRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    minHeight: 236,
+  },
+  overviewFaceCol: {
+    flex: 1,
+    alignItems: "center",
+  },
+  overviewFaceLabel: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 19,
+    color: COLORS.lightSub,
+    marginBottom: SP[4],
+  },
+  overviewPotentialLabel: {
+    color: COLORS.accentDepth,
+  },
+  overviewFaceRing: {
+    width: 118,
+    height: 118,
+    borderRadius: 59,
+    overflow: "hidden",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.iconTileLavender,
+  },
+  overviewCurrentRing: {
+    borderWidth: 7,
+    borderColor: COLORS.lightBorder,
+  },
+  overviewPotentialRing: {
+    borderWidth: 7,
+    borderColor: COLORS.accent,
+  },
+  overviewFaceImage: {
+    width: "100%",
+    height: "100%",
+  },
+  overviewFacePlaceholder: {
+    flex: 1,
+    width: "100%",
+    backgroundColor: COLORS.iconTileLavender,
+  },
+  overviewPotentialFallback: {
+    flex: 1,
+    width: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: SP[2],
+    paddingHorizontal: SP[3],
+    backgroundColor: "#F4FAEA",
+  },
+  overviewFallbackText: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 11,
+    color: COLORS.accentDepth,
+    textAlign: "center",
+  },
+  overviewScore: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 52,
+    lineHeight: 58,
+    minWidth: 90,
+    textAlign: "center",
+    letterSpacing: -2,
+    marginTop: SP[5],
+  },
+  overviewCurrentScore: {
+    color: COLORS.lightText,
+  },
+  overviewPotentialScore: {
+    color: COLORS.accentDepth,
+  },
+  overviewDivider: {
+    width: 1,
+    height: 138,
+    backgroundColor: COLORS.lightHairline,
+    marginTop: 54,
+    marginHorizontal: SP[2],
+  },
+  overviewRetryBtn: {
+    minHeight: 34,
+    borderRadius: RADII.circle,
+    paddingHorizontal: SP[4],
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#EFF8DF",
+    marginTop: -SP[1],
+  },
+  overviewRetryText: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 11,
+    color: COLORS.accentDepth,
+    letterSpacing: 0.3,
+    textTransform: "uppercase",
+  },
+  overviewMascotCallout: {
+    minHeight: 104,
+    borderRadius: RADII.xl,
+    backgroundColor: "#F0F8E8",
     flexDirection: "row",
     alignItems: "center",
+    paddingHorizontal: SP[5],
+    gap: SP[4],
+  },
+  overviewMascotSlot: {
+    width: 70,
+    height: 70,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  overviewMascotImage: {
+    width: 82,
+    height: 82,
+  },
+  overviewMascotText: {
+    flex: 1,
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 18,
+    lineHeight: 24,
+    color: "#27581D",
+  },
+  overviewProgressCard: {
+    borderRadius: RADII.xl,
+    backgroundColor: COLORS.lightSurfaceAlt,
+    padding: SP[5],
+    gap: SP[3],
+  },
+  overviewProgressHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: SP[3],
+  },
+  overviewProgressTitle: {
+    flex: 1,
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 18,
+    color: COLORS.lightText,
+    letterSpacing: -0.1,
+  },
+  overviewProgressPct: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 20,
+    color: COLORS.accentDepth,
+    minWidth: 54,
+    textAlign: "right",
+  },
+  overviewProgressTrack: {
+    height: 10,
+    borderRadius: 5,
+    overflow: "hidden",
+    backgroundColor: COLORS.lightBorder,
+  },
+  overviewProgressFill: {
+    height: "100%",
+    borderRadius: 5,
+    backgroundColor: COLORS.accentDepth,
+  },
+  overviewProgressHint: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 13,
+    lineHeight: 18,
+    color: COLORS.lightSub,
+  },
+  overviewTrackCard: {
+    minHeight: 118,
+    borderRadius: RADII.card,
+    backgroundColor: COLORS.lightCard,
+    flexDirection: "row",
+    alignItems: "center",
+    padding: SP[5],
+    gap: SP[4],
+    ...SOFT_SHADOW,
+  },
+  overviewTrackIcon: {
+    width: 66,
+    height: 66,
+    borderRadius: 33,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: COLORS.accentDepth,
+    backgroundColor: "#F4FAEA",
+  },
+  overviewTrackImage: {
+    width: 58,
+    height: 58,
+  },
+  overviewTrackCopy: {
+    flex: 1,
+    gap: 3,
+  },
+  overviewTrackTitle: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 21,
+    color: COLORS.lightText,
+    letterSpacing: -0.2,
+  },
+  overviewTrackSub: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 16,
+    lineHeight: 22,
+    color: COLORS.lightSub,
+  },
+  overviewPressed: {
+    opacity: 0.88,
+    transform: [{ scale: 0.98 }],
+  },
+  detailBackRow: {
+    display: "none",
+    alignItems: "flex-start",
+    marginBottom: -SP[1],
+  },
+  detailBackButton: {
+    minHeight: 44,
+    borderRadius: RADII.circle,
+    paddingHorizontal: SP[4],
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SP[2],
+    backgroundColor: COLORS.lightSurfaceAlt,
+  },
+  detailBackText: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 14,
+    color: COLORS.lightText,
+    letterSpacing: 0.1,
+  },
+  unifiedOuter: {
+    marginBottom: SP[1],
+  },
+  heroSplitCard: {
+    borderRadius: RADII.card,
+    backgroundColor: "#000000",
+    paddingHorizontal: SP[5],
+    paddingTop: SP[5],
+    paddingBottom: SP[5],
+    minHeight: 398,
+    ...SOFT_SHADOW,
+  },
+  heroSplitMeta: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: SP[5],
+  },
+  heroSplitBody: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: SP[4],
+    minHeight: 226,
+  },
+  heroFaceScoreCol: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "flex-start",
+    gap: SP[2],
+  },
+  heroFaceTopLabel: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 11,
+    color: "rgba(255,255,255,0.56)",
+    letterSpacing: 0.4,
+    minHeight: 14,
+  },
+  heroCurrentImage: {
+    width: 126,
+    height: 126,
+    borderRadius: 63,
+    overflow: "hidden",
+    backgroundColor: "rgba(255,255,255,0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
+  },
+  heroFaceScore: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 50,
+    lineHeight: 54,
+    color: "#FFFFFF",
+    letterSpacing: -1.5,
+    minWidth: 86,
+    textAlign: "center",
+  },
+  heroPotentialCol: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "flex-start",
+    gap: SP[2],
+  },
+  heroPotentialImage: {
+    width: 126,
+    height: 126,
+    borderRadius: 63,
+    overflow: "hidden",
+    backgroundColor: "rgba(255,255,255,0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
+  },
+  heroPotentialImageReady: {
+    borderColor: COLORS.accent,
+  },
+  heroPotentialPlaceholder: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.06)",
+  },
+  heroPotentialPlaceholderText: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 18,
+    color: "rgba(255,255,255,0.45)",
+  },
+  heroPotentialLabel: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 11,
+    color: COLORS.accent,
+    letterSpacing: 0.4,
+    minHeight: 14,
+  },
+  heroPotentialScore: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 50,
+    lineHeight: 54,
+    color: COLORS.accent,
+    letterSpacing: -1.5,
+    minWidth: 86,
+    textAlign: "center",
+  },
+  heroPotentialProgress: {
+    marginTop: SP[5],
+    gap: SP[2],
+  },
+  heroPotentialProgressHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  heroPotentialProgressLabel: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 10,
+    color: "rgba(255,255,255,0.48)",
+    letterSpacing: 0.8,
+  },
+  heroPotentialProgressPct: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 11,
+    color: COLORS.accent,
+    letterSpacing: 0.4,
+  },
+  heroPotentialTrack: {
+    height: 7,
+    borderRadius: 4,
+    overflow: "hidden",
+    backgroundColor: "rgba(255,255,255,0.10)",
+  },
+  heroPotentialFill: {
+    height: "100%",
+    borderRadius: 4,
+    backgroundColor: COLORS.accent,
+  },
+  heroPotentialProgressHint: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 10,
+    color: "rgba(255,255,255,0.38)",
+    letterSpacing: 0.2,
+  },
+  heroPreviewBackdrop: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: SP[6],
+  },
+  heroPreviewShade: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.78)",
+  },
+  heroPreviewCard: {
+    width: "100%",
+    maxWidth: 360,
+    borderRadius: RADII.card,
+    backgroundColor: COLORS.lightCard,
+    padding: SP[3],
+    alignItems: "center",
+    ...SOFT_SHADOW,
+  },
+  heroPreviewImage: {
+    width: "100%",
+    aspectRatio: 1,
+    borderRadius: RADII.xl,
+    backgroundColor: COLORS.iconTileLavender,
+  },
+  heroPreviewLabel: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 13,
+    color: COLORS.lightText,
+    letterSpacing: 0.3,
+    marginTop: SP[3],
+    marginBottom: SP[1],
+  },
+  unifiedIdentityRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     marginBottom: SP[3],
   },
-  identityCaption: {
+  unifiedIdentityText: {
+    flex: 1,
     fontFamily: "ProximaNova-Bold",
     fontSize: 13,
     color: COLORS.lightSub,
     letterSpacing: 0.1,
+  },
+  unifiedStreakPill: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.lightBg,
+  },
+  unifiedStreakText: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 12,
+    color: COLORS.lightText,
+  },
+  unifiedRibbonRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: SP[5],
+  },
+  unifiedRibbonCell: {
+    alignItems: "center",
+    flex: 1,
+    gap: 7,
+  },
+  unifiedRibbonDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: COLORS.lightBorder,
+  },
+  unifiedRibbonDotDone: {
+    backgroundColor: COLORS.ctaBlack,
+  },
+  unifiedRibbonDotToday: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  unifiedRibbonDotPending: {
+    backgroundColor: COLORS.lightCard,
+    borderWidth: 2,
+    borderColor: COLORS.ctaBlack,
+  },
+  unifiedRibbonDay: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 10,
+    color: COLORS.lightSub,
+    letterSpacing: 0.4,
+  },
+  unifiedRibbonDayToday: {
+    color: COLORS.lightText,
+  },
+  unifiedCard: {
+    borderRadius: RADII.lg,
+    backgroundColor: COLORS.lightCard,
+    gap: SP[6],
+  },
+  unifiedSummaryRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: SP[4],
+  },
+  unifiedScoreBlock: {
+    flex: 1,
+    minWidth: 0,
+  },
+  unifiedEyebrow: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 12,
+    color: COLORS.lightSub,
+    letterSpacing: 0.3,
+    marginBottom: SP[2],
+  },
+  unifiedScoreLine: {
+    flexDirection: "row",
+    alignItems: "baseline",
+  },
+  unifiedScore: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 76,
+    lineHeight: 78,
+    color: COLORS.lightText,
+    letterSpacing: -3,
+  },
+  unifiedScoreDenom: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 22,
+    color: COLORS.lightMuted,
+    letterSpacing: -0.4,
+    marginLeft: 4,
+  },
+  unifiedRankPill: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SP[2],
+    borderRadius: RADII.circle,
+    backgroundColor: "#EFF8DF",
+    paddingVertical: SP[2],
+    paddingLeft: SP[2],
+    paddingRight: SP[4],
+    marginTop: SP[2],
+  },
+  unifiedRankIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#E4F6C8",
+  },
+  unifiedRankLabel: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 14,
+    color: COLORS.accentDepth,
+  },
+  unifiedRankSub: {
+    fontFamily: "Poppins-Regular",
+    fontSize: 11,
+    color: COLORS.lightMuted,
+    marginTop: 1,
+  },
+  unifiedMilestonePanel: {
+    flex: 1,
+    minHeight: 126,
+    borderRadius: RADII.lg,
+    borderWidth: 1,
+    borderColor: COLORS.lightBorder,
+    backgroundColor: COLORS.lightCard,
+    flexDirection: "row",
+    alignItems: "stretch",
+    paddingHorizontal: SP[4],
+    paddingVertical: SP[4],
+    ...SOFT_SHADOW,
+  },
+  unifiedMilestoneCol: {
+    flex: 1,
+    justifyContent: "center",
+  },
+  unifiedMilestoneDivider: {
+    width: 1,
+    backgroundColor: COLORS.lightHairline,
+    marginHorizontal: SP[4],
+  },
+  unifiedMilestoneLabel: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 10,
+    color: COLORS.lightSub,
+    letterSpacing: 0.5,
+    marginBottom: SP[2],
+  },
+  unifiedMilestoneValue: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 30,
+    lineHeight: 34,
+    color: "#079A3A",
+    letterSpacing: -0.8,
+  },
+  unifiedMilestoneScoreLine: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    gap: 5,
+  },
+  unifiedMilestoneScore: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 34,
+    lineHeight: 36,
+    color: COLORS.lightText,
+    letterSpacing: -0.8,
+  },
+  unifiedMilestoneTier: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 12,
+    color: "#079A3A",
+  },
+  unifiedMilestoneSub: {
+    fontFamily: "Poppins-Regular",
+    fontSize: 11,
+    color: COLORS.lightMuted,
+    marginTop: SP[2],
+  },
+  unifiedTransformHeader: {
+    gap: 2,
+  },
+  unifiedTransformTitle: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 18,
+    color: COLORS.lightText,
+    letterSpacing: -0.2,
+  },
+  unifiedTransformSub: {
+    fontFamily: "Poppins-Regular",
+    fontSize: 13,
+    color: COLORS.lightMuted,
+  },
+  unifiedCompareRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SP[3],
+  },
+  unifiedFaceCell: {
+    flex: 1,
+    alignItems: "center",
+  },
+  unifiedFaceBox: {
+    width: "100%",
+    height: 188,
+    borderRadius: RADII.lg,
+    overflow: "hidden",
+    backgroundColor: COLORS.iconTileLavender,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  unifiedFaceBoxActive: {
+    borderWidth: 2,
+    borderColor: COLORS.accent,
+  },
+  unifiedFacePlaceholder: {
+    flex: 1,
+    width: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.iconTileLavender,
+  },
+  unifiedPlaceholderHead: {
+    width: 54,
+    height: 66,
+    borderRadius: 28,
+    backgroundColor: "#D8CDD9",
+  },
+  unifiedPlaceholderNeck: {
+    width: 36,
+    height: 28,
+    borderRadius: 14,
+    marginTop: -4,
+    backgroundColor: "#D8CDD9",
+  },
+  unifiedPendingDot: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: COLORS.lightBorder,
+  },
+  unifiedFaceLabel: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 14,
+    color: COLORS.lightText,
+    marginTop: SP[3],
+  },
+  unifiedFaceLabelActive: {
+    color: COLORS.lightText,
+  },
+  unifiedFaceSubtitle: {
+    fontFamily: "Poppins-Regular",
+    fontSize: 11,
+    color: COLORS.lightSub,
+    marginTop: 2,
+    textAlign: "center",
+  },
+  unifiedImageBadge: {
+    position: "absolute",
+    top: SP[3],
+    left: SP[3],
+    zIndex: 2,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SP[2],
+    borderRadius: RADII.circle,
+    backgroundColor: "rgba(255,255,255,0.86)",
+    paddingHorizontal: SP[3],
+    paddingVertical: 5,
+  },
+  unifiedImageBadgeText: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 9,
+    color: COLORS.lightText,
+    letterSpacing: 0.3,
+  },
+  unifiedImageBadgeScore: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 14,
+    color: COLORS.lightText,
+    letterSpacing: -0.2,
+  },
+  unifiedArrow: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 30,
+    color: COLORS.lightSub,
+    marginBottom: SP[10],
+  },
+  unifiedProgressTrack: {
+    height: 7,
+    borderRadius: 4,
+    overflow: "hidden",
+    backgroundColor: COLORS.lightSurfaceAlt,
+  },
+  unifiedProgressFill: {
+    height: "100%",
+    borderRadius: 4,
+    backgroundColor: COLORS.ctaBlack,
+  },
+  unifiedProgressCaption: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 12,
+    color: COLORS.lightSub,
+    textAlign: "right",
+    marginTop: -SP[2],
+  },
+  unifiedScanAgain: {
+    minHeight: 46,
+    borderRadius: RADII.circle,
+    backgroundColor: COLORS.ctaBlack,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: SP[4],
+  },
+  unifiedScanAgainText: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 13,
+    color: "#FFFFFF",
+    letterSpacing: 0.4,
+  },
+
+  /* Identity strip */
+  identityWrap: {
+    backgroundColor: TRACKING_HEADER.bg,
+    paddingTop: SP[2],
+    paddingBottom: SP[2],
+    marginBottom: SP[1],
+  },
+  identityHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: SP[4],
+    marginBottom: SP[5],
+  },
+  identityLegacyHeader: {
+    display: "none",
+  },
+  identityProfile: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SP[3],
+    minWidth: 0,
+  },
+  identityAvatar: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    overflow: "hidden",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.lightSurfaceAlt,
+    borderWidth: 1,
+    borderColor: TRACKING_HEADER.border,
+  },
+  identityAvatarImage: {
+    width: "100%",
+    height: "100%",
+  },
+  identityAvatarText: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 17,
+    color: COLORS.lightText,
+  },
+  identityNameBlock: {
+    flex: 1,
+    minWidth: 0,
+  },
+  identityName: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 18,
+    color: TRACKING_HEADER.text,
+    letterSpacing: -0.1,
+  },
+  identityCaption: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 11,
+    color: TRACKING_HEADER.muted,
+    letterSpacing: 0.1,
+    marginTop: 2,
+  },
+  identityActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SP[2],
+  },
+  identityOverviewPill: {
+    minHeight: 38,
+    borderRadius: RADII.circle,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: SP[4],
+    backgroundColor: TRACKING_HEADER.accent,
+  },
+  identityOverviewText: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 12,
+    color: "#FFFFFF",
+    letterSpacing: 0.1,
+  },
+  identityBell: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.lightCard,
+    borderWidth: 1,
+    borderColor: TRACKING_HEADER.border,
+  },
+  identityBellDot: {
+    position: "absolute",
+    top: -3,
+    right: -3,
+    minWidth: 15,
+    height: 15,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: TRACKING_HEADER.accent,
+    borderWidth: 1,
+    borderColor: COLORS.lightBg,
+  },
+  identityBellDotText: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 8,
+    color: TRACKING_HEADER.text,
   },
   identityStreak: {
     flexDirection: "row",
@@ -2334,19 +3751,28 @@ const styles = StyleSheet.create({
   },
   ribbonRow: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     justifyContent: "space-between",
+    gap: SP[2],
   },
   ribbonCell: {
     alignItems: "center",
+    justifyContent: "center",
     flex: 1,
-    gap: 6,
+    minHeight: 58,
+    borderRadius: 22,
+    gap: 5,
+  },
+  ribbonCellDone: {
+    backgroundColor: TRACKING_HEADER.accentSoft,
+  },
+  ribbonCellToday: {
+    borderWidth: 1.5,
+    borderColor: TRACKING_HEADER.accent,
+    backgroundColor: TRACKING_HEADER.accentSoft,
   },
   ribbonDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: COLORS.lightBorder,
+    display: "none",
   },
   ribbonDotDone: {
     backgroundColor: COLORS.ctaBlack,
@@ -2363,12 +3789,21 @@ const styles = StyleSheet.create({
   },
   ribbonDay: {
     fontFamily: "ProximaNova-Bold",
-    fontSize: 10,
-    color: COLORS.lightSub,
+    fontSize: 11,
+    color: TRACKING_HEADER.muted,
     letterSpacing: 0.4,
   },
   ribbonDayToday: {
-    color: COLORS.lightText,
+    color: TRACKING_HEADER.accent,
+  },
+  ribbonDate: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 14,
+    color: TRACKING_HEADER.faint,
+    letterSpacing: 0.2,
+  },
+  ribbonDateActive: {
+    color: TRACKING_HEADER.accent,
   },
 
   /* Legacy header / streak — kept for safety, no longer rendered */
