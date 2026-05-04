@@ -41,7 +41,7 @@ const EnvSchema = z.object({
   OPENAI_SCORES_MODEL: z.string().min(1).default("gpt-4o"),
   OPENAI_SCORES_MODEL_FALLBACK: z.string().optional().transform(emptyToUndefined),
   OPENAI_MODEL_SIGMA: z.string().optional().transform(emptyToUndefined),
-  OPENAI_IMAGE_MODEL: z.string().min(1).default("gpt-image-1"),
+  OPENAI_IMAGE_MODEL: z.string().min(1).default("gpt-image-2"),
 
   // ML Scoring API - uses local ML model instead of OpenAI for scoring
   ML_SCORING_API_URL: z.string().optional().transform(normalizeUrl),

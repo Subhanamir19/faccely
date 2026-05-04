@@ -697,7 +697,7 @@ export default function DevScreen() {
 
       setPotentialResultUri(`data:image/png;base64,${payload.b64}`);
       setPotentialMeta(
-        `${payload.model ?? "gpt-image-1"} · ${payload.promptMode ?? potentialPromptMode} · prompt ${payload.promptVersion ?? "unknown"}`
+        `${payload.model ?? "gpt-image-2"} · ${payload.promptMode ?? potentialPromptMode} · prompt ${payload.promptVersion ?? "unknown"}`
       );
     } catch (err: any) {
       const message = err?.message ?? String(err);
