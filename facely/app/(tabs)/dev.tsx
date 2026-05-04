@@ -530,6 +530,7 @@ export default function DevScreen() {
   const [potentialGenerating, setPotentialGenerating] = useState(false);
   const [potentialMeta, setPotentialMeta] = useState<string | null>(null);
   const [potentialPromptMode, setPotentialPromptMode] = useState<PotentialPromptMode>("aggressive");
+  const [potentialPreview, setPotentialPreview] = useState<{ uri: string; label: string } | null>(null);
   const [dayCompleteVisible, setDayCompleteVisible] = useState(false);
   const [insightPreviewVisible, setInsightPreviewVisible] = useState(false);
   const [insightPreviewKey, setInsightPreviewKey] = useState(0); // bump to replay
@@ -752,7 +753,12 @@ export default function DevScreen() {
             <View style={styles.potentialLabPane}>
               <T style={styles.subLabel}>SOURCE</T>
               {potentialSourceUri ? (
-                <RNImage source={{ uri: potentialSourceUri }} style={styles.potentialLabImage} resizeMode="cover" />
+                <Pressable
+                  onPress={() => setPotentialPreview({ uri: potentialSourceUri, label: "Source" })}
+                  style={styles.potentialLabImagePressable}
+                >
+                  <RNImage source={{ uri: potentialSourceUri }} style={styles.potentialLabImage} resizeMode="cover" />
+                </Pressable>
               ) : (
                 <View style={styles.potentialLabPlaceholder}>
                   <T style={styles.potentialLabPlaceholderText}>No image selected</T>
@@ -763,7 +769,12 @@ export default function DevScreen() {
             <View style={styles.potentialLabPane}>
               <T style={styles.subLabel}>POTENTIAL</T>
               {potentialResultUri ? (
-                <RNImage source={{ uri: potentialResultUri }} style={styles.potentialLabImage} resizeMode="cover" />
+                <Pressable
+                  onPress={() => setPotentialPreview({ uri: potentialResultUri, label: "Potential" })}
+                  style={styles.potentialLabImagePressable}
+                >
+                  <RNImage source={{ uri: potentialResultUri }} style={styles.potentialLabImage} resizeMode="cover" />
+                </Pressable>
               ) : (
                 <View style={styles.potentialLabPlaceholder}>
                   <T style={styles.potentialLabPlaceholderText}>
@@ -1344,6 +1355,42 @@ export default function DevScreen() {
         visible={progressMockupsVisible}
         onClose={() => setProgressMockupsVisible(false)}
       />
+
+      <Modal
+        visible={!!potentialPreview}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setPotentialPreview(null)}
+      >
+        <Pressable
+          style={styles.potentialPreviewBackdrop}
+          onPress={() => setPotentialPreview(null)}
+        >
+          <SafeAreaView style={styles.potentialPreviewSafe}>
+            <View style={styles.potentialPreviewHeader}>
+              <T style={styles.potentialPreviewTitle}>
+                {potentialPreview?.label ?? "Image"} Preview
+              </T>
+              <Pressable
+                onPress={() => setPotentialPreview(null)}
+                hitSlop={12}
+                style={[styles.previewBtn, styles.previewBtnClose]}
+              >
+                <T style={styles.previewBtnText}>Close</T>
+              </Pressable>
+            </View>
+            {potentialPreview ? (
+              <Pressable style={styles.potentialPreviewImageWrap}>
+                <RNImage
+                  source={{ uri: potentialPreview.uri }}
+                  style={styles.potentialPreviewImage}
+                  resizeMode="contain"
+                />
+              </Pressable>
+            ) : null}
+          </SafeAreaView>
+        </Pressable>
+      </Modal>
 
       {/* Program Hero full-screen preview */}
       <Modal
@@ -2070,6 +2117,10 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: SP[2],
   },
+  potentialLabImagePressable: {
+    borderRadius: RADII.lg,
+    overflow: "hidden",
+  },
   potentialLabImage: {
     width: "100%",
     aspectRatio: 0.76,
@@ -2091,6 +2142,39 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: COLORS.sub,
     textAlign: "center",
+  },
+  potentialPreviewBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.92)",
+  },
+  potentialPreviewSafe: {
+    flex: 1,
+    paddingHorizontal: SP[4],
+    paddingBottom: SP[5],
+  },
+  potentialPreviewHeader: {
+    paddingVertical: SP[3],
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  potentialPreviewTitle: {
+    fontSize: 16,
+    color: COLORS.text,
+  },
+  potentialPreviewImageWrap: {
+    flex: 1,
+    borderRadius: RADII.xl,
+    overflow: "hidden",
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: COLORS.cardBorder,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  potentialPreviewImage: {
+    width: "100%",
+    height: "100%",
   },
 
   // Screen grid
