@@ -39,6 +39,10 @@ export async function buildWorker(): Promise<WorkerBundle> {
     // hard cap so the SDK itself doesn't hang forever
     timeout: ROUTINE.llmTimeoutMs,
   });
+  const imageOpenAI = new OpenAI({
+    apiKey: PROVIDERS.openai.apiKey,
+    timeout: PROVIDERS.openai.imageGenerationTimeoutMs,
+  });
   setRoutineOpenAIClient(openai);
 
   // NEW: dead-letter queue handle (compact payloads; auto-clean on complete)
@@ -156,7 +160,10 @@ export async function buildWorker(): Promise<WorkerBundle> {
   // attempt — earlier attempts throw so BullMQ retries with the row still
   // `pending`.
 
-  const POTENTIAL_FACE_TIMEOUT_MS = Math.max(WORKER_TIMEOUT_MS, 90_000);
+  const POTENTIAL_FACE_TIMEOUT_MS = Math.max(
+    WORKER_TIMEOUT_MS,
+    PROVIDERS.openai.imageGenerationTimeoutMs + 15_000
+  );
   const POTENTIAL_FACE_CONCURRENCY = Math.max(1, Math.min(WORKER_CONCURRENCY, 4));
 
   const potentialFaceProc: Processor<PotentialFaceJob> = async (job) => {
@@ -180,7 +187,7 @@ export async function buildWorker(): Promise<WorkerBundle> {
     try {
       const result = await withWorkerTimeout(
         () =>
-          generatePotentialFace(openai, {
+          generatePotentialFace(imageOpenAI, {
             potentialFaceId: job.data.potentialFaceId,
             isFinalAttempt,
           }),
