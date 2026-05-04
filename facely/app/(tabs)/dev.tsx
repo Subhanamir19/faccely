@@ -507,6 +507,18 @@ function ProgressDashboardMockupsModal({
 // ---------------------------------------------------------------------------
 const SCAN_BYPASS_KEY = "dev_bypass_scan_limit";
 type PotentialPromptMode = "conservative" | "balanced" | "aggressive";
+type PotentialDevPayload = {
+  b64?: string;
+  model?: string;
+  promptVersion?: string;
+  promptMode?: PotentialPromptMode;
+  message?: string;
+  error?: string;
+  providerStatus?: number;
+  providerCode?: string | null;
+  providerType?: string | null;
+  providerMessage?: string;
+};
 const POTENTIAL_PROMPT_MODES: PotentialPromptMode[] = ["aggressive", "balanced", "conservative"];
 
 export default function DevScreen() {
@@ -665,27 +677,25 @@ export default function DevScreen() {
         body: form,
       });
 
-      const payload = await res.json().catch(() => null) as
-        | {
-            b64?: string;
-            model?: string;
-            promptVersion?: string;
-            promptMode?: PotentialPromptMode;
-            message?: string;
-            error?: string;
-            providerStatus?: number;
-            providerCode?: string | null;
-            providerType?: string | null;
-            providerMessage?: string;
-          }
-        | null;
+      const responseText = await res.text().catch(() => "");
+      let payload: PotentialDevPayload | null = null;
+      if (responseText) {
+        try {
+          payload = JSON.parse(responseText) as PotentialDevPayload;
+        } catch {
+          payload = null;
+        }
+      }
 
       if (!res.ok || !payload?.b64) {
         const providerDetails = [
+          `HTTP status: ${res.status}`,
+          res.headers?.get?.("content-type") ? `Content-Type: ${res.headers.get("content-type")}` : null,
           payload?.providerStatus ? `Provider status: ${payload.providerStatus}` : null,
           payload?.providerCode ? `Provider code: ${payload.providerCode}` : null,
           payload?.providerType ? `Provider type: ${payload.providerType}` : null,
           payload?.providerMessage ? `Provider message: ${payload.providerMessage}` : null,
+          !payload && responseText ? `Raw response: ${responseText.slice(0, 500)}` : null,
         ].filter(Boolean).join("\n");
         throw new Error(
           [

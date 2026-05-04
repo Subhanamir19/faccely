@@ -259,7 +259,14 @@ router.post("/potential-face-dev", upload.single("image"), async (req, res) => {
       });
     }
     if (upstreamStatus === 429) {
-      return res.status(503).json({ error: "provider_rate_limited", message: "OpenAI rate limited. Try again later." });
+      return res.status(503).json({
+        error: "provider_rate_limited",
+        message: "OpenAI rate limited this image generation request. Try again after the provider window resets.",
+        providerStatus: upstreamStatus,
+        providerCode: code,
+        providerType: type,
+        providerMessage: message,
+      });
     }
     if (upstreamStatus === 400) {
       return res.status(422).json({ error: "invalid_image", message: "Image rejected. Try a clearer frontal photo." });
