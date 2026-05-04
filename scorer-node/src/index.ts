@@ -87,10 +87,14 @@ const openai = new OpenAI({
   apiKey: PROVIDERS.openai.apiKey,
   timeout: ROUTINE.llmTimeoutMs,
 });
+const imageOpenAI = new OpenAI({
+  apiKey: PROVIDERS.openai.apiKey,
+  timeout: PROVIDERS.openai.imageGenerationTimeoutMs,
+});
 
 setRoutineOpenAIClient(openai);
 setProtocolsOpenAIClient(openai);
-setGenerateOpenAIClient(openai);
+setGenerateOpenAIClient(imageOpenAI);
 setInsightsOpenAIClient(openai);
 
 
@@ -614,7 +618,7 @@ app.use("/potential-face", requestTimeout(30_000), verifyAuth, potentialFaceRout
 app.use("/routine/async", verifyAuth, routineAsyncRouter);
 
 app.use("/sigma", requestTimeout(30_000), verifyAuth, sigmaRouter);
-app.use("/generate", requestTimeout(120_000), verifyAuth, generateRouter);
+app.use("/generate", requestTimeout(PROVIDERS.openai.imageGenerationTimeoutMs + 15_000), verifyAuth, generateRouter);
 app.use("/jobs", verifyAuth, jobsRouter);                    // ← add this line
 app.use("/promo", verifyAuth, promoRouter);
 app.use("/recovery-codes", recoveryCodesRouter);

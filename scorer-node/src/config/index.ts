@@ -54,6 +54,7 @@ const EnvSchema = z.object({
 
   // Runtime knobs
   ROUTINE_LLM_TIMEOUT_MS: z.coerce.number().int().positive().default(25_000),
+  IMAGE_GENERATION_TIMEOUT_MS: z.coerce.number().int().positive().default(180_000),
   ROUTINE_STRICT_SAUCE: z.string().optional(),
   WORKER_TIMEOUT_MS: z.coerce.number().int().positive().default(60_000),
   WORKER_CONCURRENCY: z.coerce.number().int().positive().default(3),
@@ -148,6 +149,7 @@ export const PROVIDERS = {
     scoresFallbackModel: env.OPENAI_SCORES_MODEL_FALLBACK ?? null,
     sigmaModel: env.OPENAI_MODEL_SIGMA ?? env.OPENAI_SCORES_MODEL,
     imageModel: env.OPENAI_IMAGE_MODEL,
+    imageGenerationTimeoutMs: env.IMAGE_GENERATION_TIMEOUT_MS,
     sigmaTemperature: env.SIGMA_TEMPERATURE,
     sigmaMaxTokens: env.SIGMA_MAX_TOKENS,
     sigmaMaxResponseBytes: env.SIGMA_MAX_RESPONSE_BYTES,
