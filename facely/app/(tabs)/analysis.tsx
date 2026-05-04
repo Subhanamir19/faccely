@@ -640,11 +640,13 @@ export function AnalysisContent({
   const currentStreak = useTasksStore((s) => s.currentStreak);
   const metrics   = useMemo(() => flattenData(data), [data]);
 
-  // Reactive subscription so the CTA label updates the moment a Potential
-  // Face row flips to `ready` (e.g. while the user is reading metrics).
-  // True only when the user has already acknowledged a real, ready reveal.
-  const ackedRealReveal = usePotentialFace(
-    (s) => s.revealSeen && s.data?.status === "ready"
+  // True only after the user acknowledges this exact potential-face row.
+  // This prevents stale persisted state from skipping the first reveal.
+  const ackedCurrentReveal = usePotentialFace(
+    (s) =>
+      s.data?.status === "ready" &&
+      s.revealSeenPotentialFaceId !== null &&
+      s.revealSeenPotentialFaceId === s.data.id
   );
 
   // Single carousel ordered by section: working → okay → needs_work.
@@ -723,13 +725,13 @@ export function AnalysisContent({
             // reveal once, then the user lands in the program. After the
             // reveal has been *successfully* dismissed once, this CTA goes
             // straight to the program tab on every subsequent visit.
-            if (ackedRealReveal) router.push("/(tabs)/program");
+            if (ackedCurrentReveal) router.push("/(tabs)/program");
             else router.push("/(onboarding)/potential-face-reveal");
           }}
           style={({ pressed }) => [sx.ctaBtn, pressed && { opacity: 0.9 }]}
         >
           <Text style={sx.ctaBtnText}>
-            {ackedRealReveal ? "START YOUR ROUTINE" : "REVEAL MY POTENTIAL"}
+            {ackedCurrentReveal ? "START YOUR ROUTINE" : "SEE YOUR POTENTIAL FACE"}
           </Text>
           <ChevronRight size={ms(16)} color="#FFFFFF" strokeWidth={2.5} />
         </Pressable>

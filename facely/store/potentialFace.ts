@@ -56,11 +56,12 @@ type State = {
   /** Latest unlock evaluation snapshot — used by the dashboard to render diagnostics. */
   unlockEvaluation: UnlockEvaluation | null;
   /**
-   * Set to true the first time the user sees the Stage-1 reveal screen and
-   * dismisses via the primary CTA. After that, the analysis-tab CTA routes
-   * straight to the program instead of replaying the reveal.
+   * Set after the user sees the current Stage-1 reveal screen and dismisses
+   * via the primary CTA. Tied to a row id so stale persisted state cannot skip
+   * a newly generated/unseen potential face.
    */
   revealSeen: boolean;
+  revealSeenPotentialFaceId: string | null;
 };
 
 type Actions = {
@@ -90,7 +91,7 @@ type Actions = {
    * render the % closer breakdown.
    */
   checkUnlock: () => Promise<{ unlocked: boolean; evaluation: UnlockEvaluation }>;
-  /** Mark the Stage-1 reveal as seen (called from the reveal screen's primary CTA). */
+  /** Mark the current Stage-1 reveal as seen (called from the reveal screen's primary CTA). */
   markRevealSeen: () => void;
   /** Wipe — call from sign-out. */
   clear: () => void;
@@ -110,6 +111,7 @@ export const usePotentialFace = create<State & Actions>()(
       isPolling: false,
       unlockEvaluation: null,
       revealSeen: false,
+      revealSeenPotentialFaceId: null,
 
       // ---------------------------------------------------------------------
       // load
@@ -238,7 +240,8 @@ export const usePotentialFace = create<State & Actions>()(
       // markRevealSeen
       // ---------------------------------------------------------------------
       markRevealSeen: () => {
-        if (!get().revealSeen) set({ revealSeen: true });
+        const currentId = get().data?.id ?? null;
+        set({ revealSeen: true, revealSeenPotentialFaceId: currentId });
       },
 
       // ---------------------------------------------------------------------
@@ -258,6 +261,7 @@ export const usePotentialFace = create<State & Actions>()(
           isPolling: false,
           unlockEvaluation: null,
           revealSeen: false,
+          revealSeenPotentialFaceId: null,
         });
       },
     }),
@@ -270,6 +274,7 @@ export const usePotentialFace = create<State & Actions>()(
         data: state.data,
         lastFetchedAt: state.lastFetchedAt,
         revealSeen: state.revealSeen,
+        revealSeenPotentialFaceId: state.revealSeenPotentialFaceId,
       }),
     }
   )
