@@ -135,7 +135,7 @@ export async function generatePotentialFace(
       throw makeFailure("baseline_image_empty", "Baseline frontal image is empty.");
     }
 
-    const prompt = buildPromptV1(targeted);
+    const prompt = buildPromptV1();
 
     const response = await openai.images.edit(
       {
@@ -373,16 +373,8 @@ function buildPromptLegacyV1(targeted: TargetedMetric[]): string {
   );
 }
 
-export function buildPromptV1(targeted: TargetedMetric[]): string {
-  const improvements = targeted
-    .map((m) => {
-      const key = `${m.group}.${m.sub_metric}`;
-      return SUB_METRIC_VISUAL_HINT[key] ?? `${m.group} ${m.sub_metric.replace(/_score$/, "")}`;
-    })
-    .map((line, i) => `(${i + 1}) ${line}`)
-    .join(", ");
-
-  return buildPotentialFacePrompt({ improvements });
+export function buildPromptV1(): string {
+  return buildPotentialFacePrompt();
 }
 
 export function buildPotentialFacePrompt(opts?: {
@@ -390,13 +382,9 @@ export function buildPotentialFacePrompt(opts?: {
   mode?: PotentialFacePromptMode;
 }): string {
   const mode = opts?.mode ?? "aggressive";
-  const targetedInstruction = opts?.improvements
-    ? `Use these measured weak spots as the priority map: ${opts.improvements}. `
-    : "";
 
   const common =
     `Create the image with these changes: ` +
-    targetedInstruction +
     `Make the cheekbones height appropriate and have the ideal projection. ` +
     `Get rid of asymmetry. ` +
     `Reduce the face fat to ideal value. ` +
