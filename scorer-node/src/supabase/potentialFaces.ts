@@ -72,8 +72,24 @@ export interface GenerationLogInput {
   candidateCount: number;
   latencyMs: number;
   costCents?: number | null;
+  size?: string | null;
+  quality?: string | null;
+  requestedCandidateCount?: number | null;
+  sourceImageBytes?: number | null;
+  sourceImageWidth?: number | null;
+  sourceImageHeight?: number | null;
+  providerRequestId?: string | null;
+  providerUsage?: Record<string, unknown> | null;
+  generationPhase?: string | null;
   success: boolean;
   error?: string | null;
+}
+
+export interface WeeklyGenerationQuota {
+  used: number;
+  limit: number;
+  remaining: number;
+  weekStart: string;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -217,6 +233,41 @@ export async function resetForRetry(id: string): Promise<PotentialFaceRecord> {
   return data as PotentialFaceRecord;
 }
 
+/**
+ * Reset a terminal row for an explicit user-requested paid regeneration.
+ * Used when the user rejects a ready image. Clears stored images so the row
+ * returns to a normal pending generation state.
+ */
+export async function resetForRegeneration(id: string): Promise<PotentialFaceRecord> {
+  const existing = await getPotentialFaceById(id);
+  if (!existing) {
+    throw new Error("resetForRegeneration: row not found");
+  }
+  if (existing.status !== "ready" && existing.status !== "failed") {
+    throw new Error(`resetForRegeneration: invalid status ${existing.status}`);
+  }
+
+  const { data, error } = await supabase
+    .from("potential_faces")
+    .update({
+      status: "pending",
+      primary_image_path: null,
+      alternate_image_path: null,
+      regenerated_count: existing.regenerated_count + 1,
+      generated_at: null,
+      error_reason: null,
+    })
+    .eq("id", id)
+    .in("status", ["ready", "failed"])
+    .select("*")
+    .single();
+
+  if (error) {
+    throw new Error(`resetForRegeneration failed: ${error.message}`);
+  }
+  return data as PotentialFaceRecord;
+}
+
 export async function markReady(input: MarkReadyInput): Promise<PotentialFaceRecord> {
   const { data, error } = await supabase
     .from("potential_faces")
@@ -345,7 +396,7 @@ export async function markUnlocked(id: string): Promise<PotentialFaceRecord> {
 export async function recordGenerationAttempt(
   input: GenerationLogInput
 ): Promise<void> {
-  const { error } = await supabase.from("potential_face_generations").insert({
+  const legacyPayload = {
     user_id: input.userId,
     potential_face_id: input.potentialFaceId,
     prompt_version: input.promptVersion,
@@ -355,10 +406,84 @@ export async function recordGenerationAttempt(
     cost_cents: input.costCents ?? null,
     success: input.success,
     error: input.error ? input.error.slice(0, 500) : null,
-  });
+  };
+
+  const payload = {
+    ...legacyPayload,
+    size: input.size ?? null,
+    quality: input.quality ?? null,
+    requested_candidate_count: input.requestedCandidateCount ?? null,
+    source_image_bytes: input.sourceImageBytes ?? null,
+    source_image_width: input.sourceImageWidth ?? null,
+    source_image_height: input.sourceImageHeight ?? null,
+    provider_request_id: input.providerRequestId ?? null,
+    provider_usage: input.providerUsage ?? null,
+    generation_phase: input.generationPhase ?? null,
+  };
+
+  const { error } = await supabase.from("potential_face_generations").insert(payload);
 
   if (error) {
     // Audit-log failure must not block the main path — log and continue.
+    if (/column .* does not exist|schema cache|Could not find/i.test(error.message)) {
+      const fallback = await supabase.from("potential_face_generations").insert(legacyPayload);
+      if (!fallback.error) {
+        console.warn(
+          "[potentialFaces] telemetry columns missing; wrote legacy generation audit row"
+        );
+        return;
+      }
+    }
     console.warn("[potentialFaces] recordGenerationAttempt failed:", error.message);
   }
+}
+
+/* -------------------------------------------------------------------------- */
+/*   Weekly quota                                                             */
+/* -------------------------------------------------------------------------- */
+
+const WEEKLY_GENERATION_LIMIT = 2;
+
+function startOfUtcWeek(now = new Date()): Date {
+  const d = new Date(now);
+  d.setUTCHours(0, 0, 0, 0);
+  const day = d.getUTCDay(); // Sun=0, Mon=1
+  const diff = day === 0 ? 6 : day - 1;
+  d.setUTCDate(d.getUTCDate() - diff);
+  return d;
+}
+
+/**
+ * Counts successful user-visible generation uses in the current UTC calendar
+ * week. This includes the initial image generation and "use alternate" swaps,
+ * because both consume one of the user's two weekly opportunities.
+ */
+export async function getWeeklyGenerationQuota(
+  userId: string,
+  limit = WEEKLY_GENERATION_LIMIT
+): Promise<WeeklyGenerationQuota> {
+  const weekStart = startOfUtcWeek();
+  const { count, error } = await supabase
+    .from("potential_face_generations")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .eq("success", true)
+    .gte("created_at", weekStart.toISOString());
+
+  if (error) {
+    throw new Error(`getWeeklyGenerationQuota failed: ${error.message}`);
+  }
+
+  const used = count ?? 0;
+  return {
+    used,
+    limit,
+    remaining: Math.max(0, limit - used),
+    weekStart: weekStart.toISOString(),
+  };
+}
+
+export async function hasWeeklyGenerationCapacity(userId: string): Promise<boolean> {
+  const quota = await getWeeklyGenerationQuota(userId);
+  return quota.remaining > 0;
 }

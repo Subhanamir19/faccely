@@ -1,27 +1,27 @@
 // scorer-node/src/services/potentialFaceGeneration.ts
 //
 // Phase 2 generation pipeline. Given a `potential_faces` row id, this service:
-//   1. loads the row + its baseline scan + the scan's advanced_result
-//   2. picks the 5 weakest sub-metrics (excluding non-visual structural keys)
-//   3. downloads the baseline frontal image from the `face-scans` bucket
-//   4. calls the configured GPT Image model for two candidates in a single round-trip
-//   5. uploads both candidates to the `potential-faces` bucket
-//   6. transitions the row to `ready` and writes an audit-log entry
+//   1. loads the row + its baseline scan
+//   2. downloads the baseline frontal image from the `face-scans` bucket
+//   3. calls the configured GPT Image model for one candidate
+//   4. uploads the candidate to the `potential-faces` bucket
+//   5. transitions the row to `ready` and writes an audit-log entry
 //
 // The PROMPT used here is the deliberate v1 placeholder — it is realistic
 // enough to evaluate the pipeline end-to-end, but Phase 7 will iterate on it
 // against real outputs. Do not over-engineer it now.
 
 import OpenAI, { toFile } from "openai";
+import sharp from "sharp";
 
 import { PROVIDERS } from "../config/index.js";
 import { getScanById } from "../supabase/scans.js";
-import { getAnalysisForScan } from "../supabase/analyses.js";
 import { downloadScanImage } from "../supabase/storage.js";
 import {
   createPendingPotentialFace,
   getPotentialFaceById,
   getPotentialFaceForUserStage,
+  hasWeeklyGenerationCapacity,
   markFailed,
   markReady,
   recordGenerationAttempt,
@@ -32,6 +32,36 @@ import {
 import { uploadPotentialFaceImage } from "../supabase/potentialFaceStorage.js";
 import { enqueuePotentialFace } from "../queue/jobs.js";
 
+type PotentialFaceGenerationDeps = {
+  getPotentialFaceById: typeof getPotentialFaceById;
+  getScanById: typeof getScanById;
+  hasWeeklyGenerationCapacity: typeof hasWeeklyGenerationCapacity;
+  downloadScanImage: typeof downloadScanImage;
+  uploadPotentialFaceImage: typeof uploadPotentialFaceImage;
+  markReady: typeof markReady;
+  markFailed: typeof markFailed;
+  recordGenerationAttempt: typeof recordGenerationAttempt;
+};
+
+const defaultDeps: PotentialFaceGenerationDeps = {
+  getPotentialFaceById,
+  getScanById,
+  hasWeeklyGenerationCapacity,
+  downloadScanImage,
+  uploadPotentialFaceImage,
+  markReady,
+  markFailed,
+  recordGenerationAttempt,
+};
+
+let deps: PotentialFaceGenerationDeps = defaultDeps;
+
+export function setPotentialFaceGenerationDepsForTest(
+  overrides: Partial<PotentialFaceGenerationDeps> | null
+) {
+  deps = overrides ? { ...defaultDeps, ...overrides } : defaultDeps;
+}
+
 /* -------------------------------------------------------------------------- */
 /*   Tunables                                                                 */
 /* -------------------------------------------------------------------------- */
@@ -40,7 +70,7 @@ export const PROMPT_VERSION = "v4";
 const MODEL = PROVIDERS.openai.imageModel;
 const SIZE: "1024x1024" | "1024x1536" | "1536x1024" | "auto" = "1024x1536";
 const QUALITY: "low" | "medium" | "high" | "auto" = "medium";
-const CANDIDATE_COUNT = 2;
+const CANDIDATE_COUNT = 1;
 export type PotentialFacePromptMode = "conservative" | "balanced" | "aggressive";
 
 /** How many sub-metrics from the advanced_result we target per stage. */
@@ -98,7 +128,7 @@ export async function generatePotentialFace(
   const t0 = Date.now();
   const { potentialFaceId, isFinalAttempt } = params;
 
-  const row = await getPotentialFaceById(potentialFaceId);
+  const row = await deps.getPotentialFaceById(potentialFaceId);
   if (!row) {
     // Row was deleted between enqueue and worker pickup — nothing to do.
     console.warn("[potential-face:gen] row missing", potentialFaceId);
@@ -110,34 +140,38 @@ export async function generatePotentialFace(
     return row;
   }
 
+  let generationPhase = "pre_openai";
+  let sourceImageBytes: number | null = null;
+  let sourceImageWidth: number | null = null;
+  let sourceImageHeight: number | null = null;
+  let response: unknown = null;
+  let providerRequestId: string | null = null;
+  let providerUsage: Record<string, unknown> | null = null;
+  let responseCandidateCount = 0;
+
   try {
-    const scan = await getScanById(row.user_id, row.baseline_scan_id);
+    const scan = await deps.getScanById(row.user_id, row.baseline_scan_id);
     if (!scan) {
       throw makeFailure("baseline_scan_missing", "Baseline scan not found.");
     }
 
-    const analysis = await getAnalysisForScan(scan.id);
-    const advanced = (analysis?.advanced_result ?? null) as Record<string, unknown> | null;
-    if (!advanced || Object.keys(advanced).length === 0) {
-      throw makeFailure(
-        "missing_advanced_analysis",
-        "Advanced analysis not yet available for baseline scan."
-      );
+    const hasCapacity = await deps.hasWeeklyGenerationCapacity(row.user_id);
+    if (!hasCapacity) {
+      throw makeFailure("weekly_quota_exceeded", "Weekly potential face generation limit reached.");
     }
 
-    const targeted = pickTargetedMetrics(advanced);
-    if (targeted.length === 0) {
-      throw makeFailure("no_targeted_metrics", "Could not pick any targetable sub-metrics.");
-    }
-
-    const baselineBuffer = await downloadScanImage(scan.front_image_path);
+    const baselineBuffer = await deps.downloadScanImage(scan.front_image_path);
     if (!baselineBuffer.length) {
       throw makeFailure("baseline_image_empty", "Baseline frontal image is empty.");
     }
+    const sourceMeta = await readImageTelemetry(baselineBuffer);
+    sourceImageBytes = baselineBuffer.length;
+    sourceImageWidth = sourceMeta.width;
+    sourceImageHeight = sourceMeta.height;
 
     const prompt = buildPromptV1();
 
-    const response = await openai.images.edit(
+    response = await openai.images.edit(
       {
         model: MODEL,
         image: await toFile(baselineBuffer, "baseline.jpg", { type: "image/jpeg" }),
@@ -147,17 +181,22 @@ export async function generatePotentialFace(
         quality: QUALITY,
       } as any // GPT image edits return b64_json for this endpoint shape
     );
+    generationPhase = "openai_response_received";
+    providerRequestId = getProviderRequestId(response);
+    providerUsage = getProviderUsage(response);
 
-    const candidates = response.data ?? [];
+    const candidates = (response as { data?: Array<{ b64_json?: string }> }).data ?? [];
+    responseCandidateCount = candidates.length;
     const primaryB64 = candidates[0]?.b64_json;
     if (!primaryB64) {
       throw makeFailure("no_image_returned", "OpenAI returned no image data.");
     }
 
     // Upload primary first; alternate is best-effort (we still ship if it fails)
+    generationPhase = "uploading_primary";
     const generationId = `${Date.now()}-${row.stage}`;
     const primaryBuffer = Buffer.from(primaryB64, "base64");
-    const primaryPath = await uploadPotentialFaceImage({
+    const primaryPath = await deps.uploadPotentialFaceImage({
       userId: row.user_id,
       stage: row.stage,
       variant: "primary",
@@ -171,7 +210,7 @@ export async function generatePotentialFace(
     if (alternateB64) {
       try {
         const alternateBuffer = Buffer.from(alternateB64, "base64");
-        alternatePath = await uploadPotentialFaceImage({
+        alternatePath = await deps.uploadPotentialFaceImage({
           userId: row.user_id,
           stage: row.stage,
           variant: "alternate",
@@ -189,15 +228,17 @@ export async function generatePotentialFace(
       }
     }
 
-    const ready = await markReady({
+    generationPhase = "marking_ready";
+    const ready = await deps.markReady({
       id: row.id,
       primaryImagePath: primaryPath,
       alternateImagePath: alternatePath,
-      targetedMetrics: targeted,
+      targetedMetrics: [],
       promptVersion: PROMPT_VERSION,
     });
 
-    await recordGenerationAttempt({
+    generationPhase = "recording_success_audit";
+    await deps.recordGenerationAttempt({
       userId: row.user_id,
       potentialFaceId: row.id,
       promptVersion: PROMPT_VERSION,
@@ -205,6 +246,15 @@ export async function generatePotentialFace(
       candidateCount: candidates.length,
       latencyMs: Date.now() - t0,
       costCents: estimateCostCents(response),
+      size: SIZE,
+      quality: QUALITY,
+      requestedCandidateCount: CANDIDATE_COUNT,
+      sourceImageBytes,
+      sourceImageWidth,
+      sourceImageHeight,
+      providerRequestId,
+      providerUsage,
+      generationPhase: "ready",
       success: true,
     });
 
@@ -221,26 +271,49 @@ export async function generatePotentialFace(
   } catch (err) {
     const reason = (err as { code?: string })?.code ?? "generation_failed";
     const message = err instanceof Error ? err.message : String(err);
+    const paidCallCompleted = generationPhase !== "pre_openai";
 
-    await recordGenerationAttempt({
+    await deps.recordGenerationAttempt({
       userId: row.user_id,
       potentialFaceId: row.id,
       promptVersion: PROMPT_VERSION,
       model: MODEL,
-      candidateCount: 0,
+      candidateCount: responseCandidateCount,
       latencyMs: Date.now() - t0,
+      costCents: response ? estimateCostCents(response) : null,
       success: false,
+      size: SIZE,
+      quality: QUALITY,
+      requestedCandidateCount: CANDIDATE_COUNT,
+      sourceImageBytes,
+      sourceImageWidth,
+      sourceImageHeight,
+      providerRequestId,
+      providerUsage,
+      generationPhase,
       error: `${reason}: ${message}`,
     }).catch(() => undefined);
 
-    if (isFinalAttempt) {
+    if (paidCallCompleted || isFinalAttempt) {
       // No more retries — persist the failure state so the client can react.
-      await markFailed({
+      const failed = await deps.markFailed({
         id: row.id,
         errorReason: `${reason}: ${message}`,
-      }).catch((markErr) =>
-        console.error("[potential-face:gen] markFailed itself failed:", markErr)
-      );
+      }).catch((markErr) => {
+        console.error("[potential-face:gen] markFailed itself failed:", markErr);
+        return null;
+      });
+
+      if (paidCallCompleted) {
+        console.error("[potential-face:gen] paid call completed but finalization failed", {
+          potentialFaceId: row.id,
+          userId: row.user_id,
+          generationPhase,
+          providerRequestId,
+          reason,
+        });
+        return failed ?? row;
+      }
     }
 
     throw err;
@@ -276,6 +349,15 @@ export async function ensureStage1Generation(params: {
       enqueued: false,
       potentialFaceId: existing.id,
       reason: `existing_${existing.status}`,
+    };
+  }
+
+  const hasCapacity = await hasWeeklyGenerationCapacity(params.userId);
+  if (!hasCapacity) {
+    return {
+      enqueued: false,
+      potentialFaceId: existing?.id ?? null,
+      reason: "weekly_quota_exceeded",
     };
   }
 
@@ -428,8 +510,8 @@ export function buildPotentialFacePrompt(opts?: {
  * Best-effort cost estimate from GPT Image usage blocks. Returns null if
  * the response shape isn't what we expect — Phase 8 will add proper telemetry.
  *
- * Pricing (as of Jan 2026): output image tokens ~$40/1M, image input ~$10/1M,
- * text input ~$5/1M. We round to the nearest cent.
+ * Pricing (as of May 2026 for gpt-image-2 standard): output image tokens
+ * ~$30/1M, image input ~$8/1M, text input ~$5/1M. We round to the nearest cent.
  */
 function estimateCostCents(response: unknown): number | null {
   const usage = (response as { usage?: Record<string, unknown> })?.usage;
@@ -444,10 +526,36 @@ function estimateCostCents(response: unknown): number | null {
   if (outputTokens === null) return null;
 
   const dollars =
-    (outputTokens / 1_000_000) * 40 +
-    (imageInputTokens / 1_000_000) * 10 +
+    (outputTokens / 1_000_000) * 30 +
+    (imageInputTokens / 1_000_000) * 8 +
     (textInputTokens / 1_000_000) * 5;
   return Math.round(dollars * 100);
+}
+
+async function readImageTelemetry(
+  buffer: Buffer
+): Promise<{ width: number | null; height: number | null }> {
+  try {
+    const meta = await sharp(buffer, { failOn: "none" }).metadata();
+    return {
+      width: typeof meta.width === "number" ? meta.width : null,
+      height: typeof meta.height === "number" ? meta.height : null,
+    };
+  } catch {
+    return { width: null, height: null };
+  }
+}
+
+function getProviderRequestId(response: unknown): string | null {
+  const value = (response as { _request_id?: unknown; request_id?: unknown })?._request_id ??
+    (response as { request_id?: unknown })?.request_id;
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function getProviderUsage(response: unknown): Record<string, unknown> | null {
+  const usage = (response as { usage?: unknown })?.usage;
+  if (!usage || typeof usage !== "object" || Array.isArray(usage)) return null;
+  return usage as Record<string, unknown>;
 }
 
 function numericField(obj: Record<string, unknown>, key: string): number | null {

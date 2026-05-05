@@ -208,6 +208,15 @@ CREATE TABLE IF NOT EXISTS public.potential_face_generations (
   candidate_count     integer     NOT NULL DEFAULT 1,
   latency_ms          integer     NOT NULL,
   cost_cents          integer     NULL,
+  size                text        NULL,
+  quality             text        NULL,
+  requested_candidate_count integer NULL,
+  source_image_bytes  integer     NULL,
+  source_image_width  integer     NULL,
+  source_image_height integer     NULL,
+  provider_request_id text        NULL,
+  provider_usage      jsonb       NULL,
+  generation_phase    text        NULL,
   success             boolean     NOT NULL,
   error               text        NULL,
   created_at          timestamptz NOT NULL DEFAULT now()
@@ -218,3 +227,14 @@ CREATE INDEX IF NOT EXISTS idx_potential_face_generations_user_created
 
 CREATE INDEX IF NOT EXISTS idx_potential_face_generations_face
   ON public.potential_face_generations (potential_face_id);
+
+ALTER TABLE public.potential_face_generations
+  ADD COLUMN IF NOT EXISTS size text NULL,
+  ADD COLUMN IF NOT EXISTS quality text NULL,
+  ADD COLUMN IF NOT EXISTS requested_candidate_count integer NULL,
+  ADD COLUMN IF NOT EXISTS source_image_bytes integer NULL,
+  ADD COLUMN IF NOT EXISTS source_image_width integer NULL,
+  ADD COLUMN IF NOT EXISTS source_image_height integer NULL,
+  ADD COLUMN IF NOT EXISTS provider_request_id text NULL,
+  ADD COLUMN IF NOT EXISTS provider_usage jsonb NULL,
+  ADD COLUMN IF NOT EXISTS generation_phase text NULL;
