@@ -28,7 +28,6 @@ import { router } from "expo-router";
 import { Check, Gift } from "lucide-react-native";
 import { useOnboarding } from "@/store/onboarding";
 import { useAuthStore } from "@/store/auth";
-import { useScores } from "@/store/scores";
 import { useSubscriptionStore } from "@/store/subscription";
 import { syncUserProfile } from "@/lib/api/user";
 import {
@@ -196,7 +195,6 @@ const PlanCard: React.FC<{
 const PaywallScreen: React.FC = () => {
   const navigation = useNavigation();
   const [selected, setSelected] = useState<PlanKey>("yearly");
-  const analyzePair = useScores((s) => s.analyzePair);
   const [showPromoInput, setShowPromoInput] = useState(false);
   const [promoCode, setPromoCode] = useState("");
   const [showRecoveryInput, setShowRecoveryInput] = useState(false);
@@ -429,21 +427,15 @@ const PaywallScreen: React.FC = () => {
       const hasEntitlement = await checkSubscriptionStatus();
       setRevenueCatEntitlement(hasEntitlement);
 
-      // Fire real face analysis non-blocking using the stored onboarding photos.
-      // score-teaser shows CinematicLoader until scores arrive, then reveals them.
-      // If no photos exist (dev/test flow), score-teaser's fallback handles it.
+      // Kick the post-purchase hero workflow. It scores the saved onboarding
+      // scan, enqueues the durable potential-face generation, then reveals it.
       const frontal = useOnboarding.getState().scanFrontalUri;
       const side = useOnboarding.getState().scanSideUri;
-      const clearScanPhotos = useOnboarding.getState().clearScanPhotos;
       if (frontal && side) {
-        analyzePair(
-          { uri: frontal, name: "front.jpg", mime: "image/jpeg" },
-          { uri: side,    name: "side.jpg",  mime: "image/jpeg" }
-        )
-          .then(() => clearScanPhotos())
-          .catch(() => clearScanPhotos());
+        router.replace({ pathname: "/loading", params: { mode: "onboardingPotentialFace" } });
+      } else {
+        router.replace("/(tabs)/program");
       }
-      router.replace("/(onboarding)/score-teaser");
     } catch (error: any) {
       logger.error("[Paywall] Purchase error:", error);
       if (isMountedRef.current) {
@@ -458,7 +450,7 @@ const PaywallScreen: React.FC = () => {
         setLoading(false);
       }
     }
-  }, [selected, packages, setLoading, setCurrentPackage, setRevenueCatEntitlement, completeOnboarding, analyzePair, ensureCode, navigateToMainApp]);
+  }, [selected, packages, setLoading, setCurrentPackage, setRevenueCatEntitlement, completeOnboarding, ensureCode, navigateToMainApp]);
 
   const onRestorePurchases = useCallback(async () => {
     setIsLoading(true);

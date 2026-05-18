@@ -1,5 +1,6 @@
 // Static mapping from exercise id → task icon (area-based placeholder until
 // per-exercise pose images are added).
+import { getNewExerciseEntry } from "@/lib/newExerciseCatalog";
 
 const ICON_JAWLINE            = require("../assets/TASK-ICONS/JAWLINE.jpeg");
 const ICON_CHEEKBONES         = require("../assets/TASK-ICONS/CHEEKBONES.jpeg");
@@ -46,8 +47,38 @@ export const EXERCISE_ICONS: Record<string, any> = {
   "neck-stretch":       ICON_JAWLINE,
   "tongue-touching":    ICON_CHEEKBONES_JAWLINE,
   "side-tongue":        ICON_CHEEKBONES,
+
+  // New video catalogue
+  "neck-pull": ICON_JAWLINE,
+  "chin-tucks-v2": ICON_JAWLINE,
+  "fish-face-v2": ICON_CHEEKBONES_JAWLINE,
+  "eyebrows-lifting": ICON_EYES,
+  "orbicularis-muscles-eye": ICON_EYES,
+  "jaw-forcing": ICON_JAWLINE,
+  "chin-massage": ICON_ALL,
+  "neck-massage": ICON_ALL,
+  "forward-pulling-neck": ICON_JAWLINE,
+  "slim-nose-side": ICON_NOSE,
+  "slim-nose1": ICON_NOSE,
+  "slim-nose2": ICON_NOSE,
+  "chin-forcing-while-laying-down": ICON_JAWLINE,
+  "chi-ball-training": ICON_JAWLINE,
+  "midface-lift": ICON_CHEEKBONES,
+  "downward-chin-forcing": ICON_JAWLINE,
+  "upward-chin-stretch": ICON_JAWLINE,
+  "tongue-nose-touching": ICON_CHEEKBONES_JAWLINE,
+  "mewing": ICON_CHEEKBONES_JAWLINE,
 };
 
 export function getExerciseIcon(exerciseId: string): any {
-  return EXERCISE_ICONS[exerciseId] ?? ICON_ALL;
+  const direct = EXERCISE_ICONS[exerciseId];
+  if (direct) return direct;
+
+  const entry = getNewExerciseEntry(exerciseId);
+  if (entry?.targets.includes("eyes")) return ICON_EYES;
+  if (entry?.targets.includes("nose")) return ICON_NOSE;
+  if (entry?.targets.includes("cheekbones") && entry.targets.includes("jawline")) return ICON_CHEEKBONES_JAWLINE;
+  if (entry?.targets.includes("cheekbones")) return ICON_CHEEKBONES;
+  if (entry?.targets.includes("jawline")) return ICON_JAWLINE;
+  return ICON_ALL;
 }

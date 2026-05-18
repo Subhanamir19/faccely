@@ -39,6 +39,12 @@ export interface PotentialFace {
   unlockedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  weeklyQuota?: {
+    used: number;
+    limit: number;
+    remaining: number;
+    weekStart: string;
+  };
 }
 
 export interface UnlockPerMetric {
@@ -123,7 +129,8 @@ export async function fetchCurrentPotentialFace(opts?: {
  * backend auto-trigger generation right after /analyze/advanced-explain.
  */
 export async function requestPotentialFaceGeneration(
-  scanId: string
+  scanId: string,
+  opts?: { force?: boolean }
 ): Promise<{ enqueued: boolean; potentialFace: PotentialFace }> {
   if (!scanId) {
     throw new Error("requestPotentialFaceGeneration: scanId is required");
@@ -132,7 +139,7 @@ export async function requestPotentialFaceGeneration(
   const res = await fetchWithRetry(`${BASE}/generate`, {
     method: "POST",
     headers,
-    body: JSON.stringify({ scanId }),
+    body: JSON.stringify({ scanId, force: opts?.force === true }),
   });
 
   // 200 = no-op (already ready), 202 = enqueued — both are success

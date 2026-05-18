@@ -21,7 +21,10 @@ import {
   getActivePotentialFace,
   getPotentialFaceForUserStage,
   createPendingPotentialFace,
+  getWeeklyGenerationQuota,
+  resetForRegeneration,
   resetForRetry,
+  recordGenerationAttempt,
   swapToAlternate,
   markUnlocked,
   type PotentialFaceRecord,
@@ -40,6 +43,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 const GenerateBody = z.object({
   scanId: z.string().regex(UUID_RE, "scanId must be a UUID"),
+  force: z.boolean().optional().default(false),
 });
 
 const UseAlternateBody = z.object({
@@ -77,6 +81,12 @@ interface SerializedPotentialFace {
   unlockedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  weeklyQuota?: {
+    used: number;
+    limit: number;
+    remaining: number;
+    weekStart: string;
+  };
 }
 
 /**
@@ -145,7 +155,7 @@ potentialFaceRouter.post("/generate", async (req: Request, res: Response) => {
         issues: mapZod(parsed.error),
       });
     }
-    const { scanId } = parsed.data;
+    const { scanId, force } = parsed.data;
 
     // Verify the scan belongs to this user — also guards against the "stale
     // scanId from a different account" footgun on shared devices.
@@ -171,9 +181,18 @@ potentialFaceRouter.post("/generate", async (req: Request, res: Response) => {
       });
     }
 
-    if (existing?.status === "ready") {
+    if (existing?.status === "ready" && !force) {
       const out = await serialize(existing);
       return res.status(200).json({ enqueued: false, potentialFace: out });
+    }
+
+    const quota = await getWeeklyGenerationQuota(userId);
+    if (quota.remaining <= 0) {
+      return res.status(429).json({
+        errorCode: "weekly_quota_exceeded",
+        message: "You've used both potential face generations for this week.",
+        quota,
+      });
     }
 
     let row: PotentialFaceRecord;
@@ -187,6 +206,9 @@ potentialFaceRouter.post("/generate", async (req: Request, res: Response) => {
       });
     } else if (existing.status === "failed") {
       row = await resetForRetry(existing.id);
+      forceRequeue = true;
+    } else if (existing.status === "ready" && force) {
+      row = await resetForRegeneration(existing.id);
       forceRequeue = true;
     } else {
       // status === 'pending' — the row already exists; just refresh the queue.
@@ -234,7 +256,8 @@ potentialFaceRouter.get("/current", async (_req, res) => {
       return res.json({ potentialFace: null });
     }
     const out = await serialize(row);
-    return res.json({ potentialFace: out });
+    const quota = await getWeeklyGenerationQuota(userId).catch(() => null);
+    return res.json({ potentialFace: quota ? { ...out, weeklyQuota: quota } : out });
   } catch (err) {
     console.error("[/potential-face/current] error:", err);
     return res.status(500).json({
@@ -266,7 +289,26 @@ potentialFaceRouter.post("/use-alternate", async (req, res) => {
       });
     }
 
+    const quota = await getWeeklyGenerationQuota(userId);
+    if (quota.remaining <= 0) {
+      return res.status(429).json({
+        errorCode: "weekly_quota_exceeded",
+        message: "You've used both potential face generations for this week.",
+        quota,
+      });
+    }
+
     const updated = await swapToAlternate(userId, parsed.data.potentialFaceId);
+    await recordGenerationAttempt({
+      userId,
+      potentialFaceId: updated.id,
+      promptVersion: `${updated.prompt_version}:alternate`,
+      model: "stored-alternate",
+      candidateCount: 0,
+      latencyMs: 0,
+      costCents: 0,
+      success: true,
+    });
     const out = await serialize(updated);
     return res.json({ potentialFace: out });
   } catch (err: unknown) {

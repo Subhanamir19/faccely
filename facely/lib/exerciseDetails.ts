@@ -264,6 +264,28 @@ export const EXERCISE_DETAILS: Record<string, ExerciseDetail> = {
   },
 };
 
+const DETAIL_ID_ALIASES: Record<string, string> = {
+  "neck-pull": "sternocleidomastoid-stretch",
+  "chin-tucks-v2": "chin-tucks",
+  "fish-face-v2": "fish-face",
+  "eyebrows-lifting": "hunter-eyes-1",
+  "orbicularis-muscles-eye": "hunter-eyes-2",
+  "jaw-forcing": "jaw-resistance",
+  "chin-massage": "lymphatic-drainage",
+  "neck-massage": "lymphatic-drainage",
+  "forward-pulling-neck": "neck-lift-2",
+  "slim-nose-side": "nose-massage",
+  "slim-nose1": "slim-nose-massage",
+  "slim-nose2": "slim-nose-massage",
+  "chin-forcing-while-laying-down": "neck-curls",
+  "chi-ball-training": "chin-training",
+  "midface-lift": "midface-exercise",
+  "downward-chin-forcing": "chin-tucks",
+  "upward-chin-stretch": "chin-stretch",
+  "tongue-nose-touching": "nose-tongue-touch",
+  "mewing": "mewing",
+};
+
 export function getExerciseDetail(id: string): ExerciseDetail | null {
-  return EXERCISE_DETAILS[id] ?? null;
+  return EXERCISE_DETAILS[id] ?? EXERCISE_DETAILS[DETAIL_ID_ALIASES[id]] ?? null;
 }

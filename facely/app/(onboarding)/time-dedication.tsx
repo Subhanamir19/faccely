@@ -62,7 +62,7 @@ export default function TimeDedicationScreen() {
 
   const handleNext = useCallback(() => {
     if (!saved) return;
-    router.push("/(onboarding)/routine-animation");
+    router.push("/(onboarding)/score-projection");
   }, [saved]);
 
   return (

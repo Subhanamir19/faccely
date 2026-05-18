@@ -3,7 +3,7 @@
 // notification to show, or null if nothing is relevant.
 // No side effects, no async, fully testable.
 
-import type { InsightData } from "@/lib/api/insights";
+import type { InsightContent, InsightData } from "@/lib/api/insights";
 import type { PulseType } from "@/components/ui/InsightPulseCard";
 
 export interface NotificationPayload {
@@ -42,7 +42,7 @@ function daysSince(isoString: string): number {
 
 /** Best single improving metric label + delta, for use in message copy. */
 function bestImprovingMetric(
-  metrics: InsightData["insight"]["content"]["metrics"] | undefined,
+  metrics: InsightContent["metrics"] | undefined,
 ): { label: string; delta: number } | null {
   if (!metrics) return null;
   const MAP: Record<string, string> = {
@@ -94,6 +94,7 @@ export function evaluateNotification(
 
   const { insight, overall, scan_count, graph_points, history } = data;
   const content = insight?.content ?? null;
+  const insightId = insight?.id ?? "latest";
 
   // ── 1. Milestone ──────────────────────────────────────────────────────────
   // New personal best. Requires at least 2 scans so it's earned, not trivial.
@@ -125,7 +126,7 @@ export function evaluateNotification(
 
     return {
       type: "momentum",
-      key: `momentum-${insight!.id}`,
+      key: `momentum-${insightId}`,
       message,
       detail: `Based on your last 2 scans. Stay consistent with your routine.`,
       ctaLabel: "View Breakdown",
@@ -142,7 +143,7 @@ export function evaluateNotification(
   ) {
     return {
       type: "alert",
-      key: `alert-${insight!.id}`,
+      key: `alert-${insightId}`,
       message: `Score dipped ${round1(content.overall_delta)} pts — check your routine`,
       detail: `Small drops are normal. Sleep, hydration, and lighting all affect scores. Scan again tomorrow.`,
       ctaLabel: "See What Changed",

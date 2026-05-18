@@ -321,19 +321,22 @@ export const ONBOARDING_FLOW = {
     { key: "trust", label: "Trust" },
     { key: "improve-areas", label: "Improve Areas" },
     { key: "time-dedication", label: "Time Dedication" },
-    { key: "routine-animation", label: "Routine Animation" },
     { key: "score-projection", label: "Score Projection" },
     { key: "features", label: "Features" },
     { key: "transformation", label: "Transformation" },
     { key: "paywall", label: "Paywall" },
-    { key: "score-teaser", label: "Score Teaser" },
+    { key: "potential-face-reveal", label: "Potential Face" },
+    { key: "analysis-intro", label: "Analysis Intro" },
+    { key: "potential-face-bridge", label: "Analysis Bridge" },
+    { key: "plan-intro", label: "Plan Intro" },
+    { key: "routine-animation", label: "Routine Animation" },
   ],
 } as const;
 
 // Orphans / alt entries resolve to the step they visually follow.
 const PROGRESS_ALIASES: Record<string, string> = {
   "face-scan": "scan",
-  "results-reveal": "score-teaser",
+  "results-reveal": "potential-face-reveal",
   "building-plan": "transformation",
   reviews: "transformation",
   experience: "goals",

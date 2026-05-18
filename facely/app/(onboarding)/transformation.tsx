@@ -59,8 +59,7 @@ function ScoreBadge({ side, score }: { side: "before" | "after"; score: number }
             ? ["rgba(180,243,77,0.32)", "rgba(0,0,0,0.55)"]
             : ["rgba(0,0,0,0.72)", "rgba(0,0,0,0.50)"]
         }
-        style={StyleSheet.absoluteFill}
-        borderRadius={10}
+        style={[StyleSheet.absoluteFill, { borderRadius: 10 }]}
       />
       <T style={[styles.badgeLabel, isAfter && { color: SAGE_SOFT }]}>
         {side.toUpperCase()}

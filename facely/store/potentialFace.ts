@@ -8,7 +8,9 @@
 // is called on mount to mint fresh URLs in the background.
 //
 // Polling: `pollUntilReady()` is the reveal-screen path. It polls /current
-// every 2s until status === "ready" or the timeout fires. A module-level
+// every 2s until status === "ready" or the timeout fires. Image generation can
+// take a few minutes, so the default should not push users into fallback early.
+// A module-level
 // guard prevents two polls running at once; a generation counter protects
 // against stale-fetch races (mirrors insights.ts).
 
@@ -31,7 +33,8 @@ import type { LatestAdvanced } from "../lib/api/insights";
 const STORAGE_KEY = "sigma_potential_face_v1";
 
 const POLL_INTERVAL_MS = 2_000;
-const POLL_TIMEOUT_MS = 30_000;
+const POLL_TIMEOUT_MS = 180_000;
+const DEV_PREVIEW_ID_PREFIX = "dev-potential-face";
 
 /* -------------------------------------------------------------------------- */
 /*   Module-level mutable refs (kept outside zustand to avoid re-renders)     */
@@ -94,6 +97,7 @@ type Actions = {
   /** Mark the current Stage-1 reveal as seen (called from the reveal screen's primary CTA). */
   markRevealSeen: () => void;
   /** Wipe — call from sign-out. */
+  seedDevPreview: (input: { potentialUri: string }) => void;
   clear: () => void;
 };
 
@@ -117,6 +121,11 @@ export const usePotentialFace = create<State & Actions>()(
       // load
       // ---------------------------------------------------------------------
       load: async () => {
+        const current = get().data;
+        if (__DEV__ && current?.id?.startsWith(DEV_PREVIEW_ID_PREFIX)) {
+          return current;
+        }
+
         if (get().loading) return get().data;
 
         _fetchGen += 1;
@@ -182,7 +191,7 @@ export const usePotentialFace = create<State & Actions>()(
       retryGeneration: async (scanId) => {
         set({ loading: true, error: null });
         try {
-          const { potentialFace } = await requestPotentialFaceGeneration(scanId);
+          const { potentialFace } = await requestPotentialFaceGeneration(scanId, { force: true });
           set({ data: potentialFace, loading: false, lastFetchedAt: Date.now() });
           return potentialFace;
         } catch (err: any) {
@@ -242,6 +251,60 @@ export const usePotentialFace = create<State & Actions>()(
       markRevealSeen: () => {
         const currentId = get().data?.id ?? null;
         set({ revealSeen: true, revealSeenPotentialFaceId: currentId });
+      },
+
+      seedDevPreview: ({ potentialUri }) => {
+        const now = new Date().toISOString();
+        const id = `${DEV_PREVIEW_ID_PREFIX}-${Date.now()}`;
+        set({
+          data: {
+            id,
+            stage: 1,
+            status: "ready",
+            baselineScanId: "dev-scan-preview",
+            primaryImageUrl: potentialUri,
+            alternateImageUrl: null,
+            promptVersion: "dev-preview",
+            targetedMetrics: [
+              {
+                group: "jawline",
+                sub_metric: "development_score",
+                baseline_score: 44,
+                target_score: 72,
+              },
+              {
+                group: "cheekbones",
+                sub_metric: "face_fat_score",
+                baseline_score: 41,
+                target_score: 70,
+              },
+              {
+                group: "skin",
+                sub_metric: "quality_score",
+                baseline_score: 60,
+                target_score: 82,
+              },
+            ],
+            regeneratedCount: 1,
+            errorReason: null,
+            generatedAt: now,
+            unlockedAt: null,
+            createdAt: now,
+            updatedAt: now,
+            weeklyQuota: {
+              used: 2,
+              limit: 2,
+              remaining: 0,
+              weekStart: now,
+            },
+          },
+          loading: false,
+          error: null,
+          lastFetchedAt: Date.now(),
+          isPolling: false,
+          revealSeen: false,
+          revealSeenPotentialFaceId: null,
+        });
       },
 
       // ---------------------------------------------------------------------

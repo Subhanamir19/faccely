@@ -128,6 +128,14 @@ type Actions = {
 
   /** Reset all state. */
   reset: () => void;
+
+  /** Dev-only seed path for previewing paid flows without backend calls. */
+  seedDevScan: (input: {
+    frontUri: string;
+    sideUri?: string | null;
+    scores: Scores;
+    scanId?: string;
+  }) => void;
 };
 
 const getUri = (x: InputFile): string =>
@@ -153,6 +161,20 @@ export const useScores = create<State & Actions>((set, get) => ({
   setImage: (uri) => set({ imageUri: uri }),
   setSideImage: (uri) => set({ sideImageUri: uri }),
   setScores: (scores) => set({ scores }),
+  seedDevScan: ({ frontUri, sideUri = null, scores, scanId = "dev-scan-preview" }) =>
+    set((state) => {
+      const requests = createInitialRequests();
+      return {
+        ...state,
+        imageUri: frontUri,
+        sideImageUri: sideUri,
+        scores,
+        scanId,
+        explanations: null,
+        requests,
+        ...deriveLegacyFlags(requests),
+      };
+    }),
 
   analyze: async (input: InputFile) => {
     const originalUri = getUri(input);

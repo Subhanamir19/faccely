@@ -73,8 +73,7 @@ function ScoreBadge({ date, score, side }: BadgeProps) {
             ? ["rgba(180,243,77,0.20)", "rgba(0,0,0,0.60)"]
             : ["rgba(0,0,0,0.72)", "rgba(0,0,0,0.50)"]
         }
-        style={StyleSheet.absoluteFill}
-        borderRadius={10}
+        style={[StyleSheet.absoluteFill, { borderRadius: 10 }]}
       />
       <Text style={[styles.badgeDate, isRight && styles.badgeDateAccent]} numberOfLines={1}>
         {date}

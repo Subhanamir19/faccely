@@ -14,7 +14,10 @@
       "distribution": "internal"
     },
     "production": {
-      "distribution": "store"
+      "distribution": "store",
+      "ios": {
+        "image": "latest"
+      }
     }
   },
   "submit": {

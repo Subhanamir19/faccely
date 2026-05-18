@@ -2,9 +2,10 @@
 // Continuous session player — plays all pending exercises one by one.
 // Flow: exercise (video+ring timer) → rest overlay (3s) → next exercise → ... → session complete
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BackHandler,
+  ActivityIndicator,
   Image,
   Modal,
   Pressable,
@@ -15,9 +16,11 @@ import {
   View,
   useWindowDimensions,
 } from "react-native";
-import { Image as ExpoImage } from "expo-image";
+import { Image as ExpoImage, type ImageContentPosition } from "expo-image";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Video, ResizeMode } from "expo-av";
+import LottieView from "lottie-react-native";
 import Svg, { Circle, Path, Rect } from "react-native-svg";
 import Animated, {
   FadeIn,
@@ -38,10 +41,19 @@ import Animated, {
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
+import { BookOpen, ChevronLeft, Info, Pause, Play, SkipBack, SkipForward, X } from "lucide-react-native";
 import { COLORS, RADII, SP } from "@/lib/tokens";
 import { useExerciseSettings } from "@/store/exerciseSettings";
-import { getExerciseVideo } from "@/lib/exerciseVideos";
+import { getExerciseMedia } from "@/lib/exerciseVideos";
 import { getExerciseDetail } from "@/lib/exerciseDetails";
+import {
+  getNewExerciseGuideId,
+  getNewExerciseInstruction,
+  getNewExerciseTimingLabel,
+  getNewExerciseTitle,
+  resolveExerciseId,
+} from "@/lib/newExerciseCatalog";
+import { getExerciseGuide } from "@/lib/exerciseGuideData";
 import { useTasksStore, type DailyTask } from "@/store/tasks";
 import { EXERCISE_CATALOG } from "@/lib/taskSelection";
 
@@ -83,7 +95,7 @@ const EXERCISE_IMAGE_PAIRS: Record<string, any[]> = {
 
 // Content position for image-pair exercises — controls which part of the image
 // fills the circular crop. Side-profile images need "left" to show the face.
-const EXERCISE_IMAGE_POSITION: Record<string, string> = {
+const EXERCISE_IMAGE_POSITION: Record<string, ImageContentPosition> = {
   "chin-tucks":        "left center",
   "lowerface-exercise":"left center",
   "hunter-eyes-1":     "center",
@@ -108,11 +120,130 @@ const EXERCISE_ZOOM_IMAGES: Record<string, any> = {
 };
 
 // ---------------------------------------------------------------------------
+// Exercises that use Lottie animation instead of video
+// ---------------------------------------------------------------------------
+
+const EXERCISE_LOTTIE_ANIMATIONS: Record<string, any> = {
+  "chin-training": require("../../assets/new-exercises-images/chin-ball-pressing.embedded.json"),
+};
+
+// ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
 const RING_STROKE = 10;
 const PREP_SECONDS = 3;
+const VIDEO_TEXT = "#000000";
+const VIDEO_SUB_TEXT = "#767A83";
+const VIDEO_SURFACE = "#F3F4F6";
+const VIDEO_TRACK = "#E5E7EB";
+
+const VIDEO_MEDIA_FRAMES: Record<string, { scale: number; translateX: number; translateY: number }> = {
+  "chin-tucks-v2": { scale: 1.45, translateX: 0.1, translateY: 0 },
+  "fish-face-v2": { scale: 1.18, translateX: 0, translateY: 0.04 },
+};
+
+function formatSessionSeconds(total: number) {
+  const mins = Math.floor(Math.max(0, total) / 60);
+  const secs = Math.max(0, total) % 60;
+  return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function createVideoTimerLayout({
+  width,
+  height,
+  bottomInset,
+  exerciseId,
+}: {
+  width: number;
+  height: number;
+  bottomInset: number;
+  exerciseId: string;
+}) {
+  const baseWidth = 390;
+  const baseHeight = 844;
+  const shortEdge = Math.max(1, Math.min(width, height));
+  const viewportScale = clamp(Math.min(width / baseWidth, height / baseHeight), 0.86, 1.18);
+  const unit = shortEdge / 100;
+  const scale = (value: number) => Math.round(value * viewportScale);
+
+  const gutter = clamp(width * 0.052, scale(16), scale(24));
+  const headerHeight = clamp(height * 0.112, scale(78), scale(104));
+  const headerButtonSize = clamp(shortEdge * 0.145, scale(48), scale(58));
+  const counterWidth = clamp(shortEdge * 0.24, scale(78), scale(96));
+  const counterHeight = clamp(shortEdge * 0.135, scale(44), scale(54));
+  const transportButtonSize = clamp(shortEdge * 0.145, scale(48), scale(58));
+  const playButtonSize = clamp(shortEdge * 0.215, scale(72), scale(88));
+  const bottomButtonSize = clamp(shortEdge * 0.13, scale(46), scale(54));
+  const bottomBarHeight = clamp(height * 0.088, scale(64), scale(80)) + bottomInset;
+  const transportHeight = clamp(height * 0.11, scale(82), scale(100));
+  const infoPaddingX = clamp(width * 0.097, scale(28), scale(40));
+  const infoGap = clamp(unit * 3.6, scale(10), scale(15));
+  const instructionFont = clamp(unit * 4.3, scale(15), scale(18));
+  const instructionLine = Math.round(instructionFont * 1.48);
+  const timerFont = clamp(unit * 14.7, scale(48), scale(60));
+  const targetFont = clamp(unit * 3.1, scale(10), scale(12));
+  const titleFont = clamp(unit * 6.1, scale(19), scale(24));
+  const progressHeight = clamp(unit * 1.8, scale(6), scale(8));
+  const counterTrackWidth = counterWidth * 0.62;
+  const mediaRatio = exerciseId === "chin-tucks-v2" ? 0.48 : 0.42;
+  const reservedHeight =
+    headerHeight +
+    bottomBarHeight +
+    transportHeight +
+    timerFont * 1.2 +
+    instructionLine * 2.8 +
+    infoGap * 5;
+  const minMediaHeight = shortEdge * 0.62;
+  const maxMediaHeight = Math.max(minMediaHeight, height - reservedHeight);
+  const mediaHeight = clamp(height * mediaRatio, minMediaHeight, maxMediaHeight);
+
+  return {
+    gutter,
+    headerHeight,
+    headerGap: unit * 3,
+    headerButtonSize,
+    headerIconSize: headerButtonSize * 0.54,
+    headerIconStroke: clamp(unit * 0.84, 2.6, 3.4),
+    titleFont,
+    titleLineHeight: titleFont * 1.2,
+    counterWidth,
+    counterHeight,
+    counterRadius: counterHeight / 2,
+    counterFont: titleFont * 0.84,
+    counterTrackWidth,
+    counterTrackHeight: progressHeight,
+    mediaWidth: width,
+    mediaHeight,
+    prepFont: shortEdge * 0.24,
+    infoPaddingX,
+    infoPaddingTop: unit * 3.6,
+    infoGap,
+    timerFont,
+    timerLineHeight: timerFont * 1.1,
+    progressHeight,
+    instructionFont,
+    instructionLine,
+    targetFont,
+    targetLineHeight: targetFont * 1.35,
+    transportHeight,
+    transportGap: unit * 7.6,
+    transportMarginBottom: unit * 4.6,
+    transportButtonSize,
+    transportIconSize: transportButtonSize * 0.48,
+    playButtonSize,
+    playIconSize: playButtonSize * 0.49,
+    bottomBarHeight,
+    bottomBarPaddingX: width * 0.14,
+    bottomButtonSize,
+    bottomIconSize: bottomButtonSize * 0.58,
+    bottomInset,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Module-level flag — program.tsx reads this on re-focus to show DayComplete
@@ -134,6 +265,7 @@ function CircleFrame({
   imagePair,
   imagePairPosition,
   zoomImage,
+  lottieSource,
   isPaused,
   progress,
   timeLeft,
@@ -144,8 +276,9 @@ function CircleFrame({
 }: {
   videoSrc: any;
   imagePair?: any[];
-  imagePairPosition?: string;
+  imagePairPosition?: ImageContentPosition;
   zoomImage?: any;
+  lottieSource?: any;
   isPaused: boolean;
   progress: number;
   timeLeft: number;
@@ -274,6 +407,17 @@ function CircleFrame({
             contentFit="cover"
             contentPosition={imagePairPosition ?? "center"}
           />
+        ) : lottieSource ? (
+          <LottieView
+            key={exerciseKey}
+            source={lottieSource}
+            style={StyleSheet.absoluteFill}
+            autoPlay
+            loop
+            speed={prepCountdown <= 0 && !isPaused ? 1 : 0}
+            resizeMode="cover"
+            renderMode="SOFTWARE"
+          />
         ) : videoSrc ? (
           // Always mounted so it preloads during the prep countdown;
           // shouldPlay is gated so it only starts after prep ends.
@@ -337,6 +481,12 @@ function HowToSheet({
   onClose: () => void;
 }) {
   const detail = getExerciseDetail(exerciseId);
+  const guide = getExerciseGuide(getNewExerciseGuideId(exerciseId));
+  const instruction = getNewExerciseInstruction(exerciseId);
+  const timingLabel = getNewExerciseTimingLabel(exerciseId);
+  const steps = detail?.steps?.length ? detail.steps : guide?.howTo ?? [];
+  const durationCopy = detail?.reps ?? guide?.holdTime ?? guide?.reps ?? timingLabel;
+  const tipCopy = detail?.tip ?? guide?.tips?.[0];
   return (
     <Modal
       transparent
@@ -356,27 +506,41 @@ function HowToSheet({
               </Pressable>
             </View>
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.howToScroll}>
-              {detail ? (
+              {instruction || detail ? (
                 <>
-                  <Text style={styles.howToSectionLabel}>BENEFITS</Text>
+                  <Text style={styles.howToSectionLabel}>START HERE</Text>
                   <View style={styles.benefitBox}>
-                    <Text style={styles.benefitText}>{detail.benefits}</Text>
+                    <Text style={styles.benefitText}>
+                      {instruction || detail?.steps[0]}
+                    </Text>
                   </View>
-                  <Text style={[styles.howToSectionLabel, { marginTop: SP[5] }]}>HOW TO DO IT</Text>
-                  {detail.steps.map((step, i) => (
-                    <View key={i} style={styles.stepRow}>
-                      <View style={styles.stepNum}>
-                        <Text style={styles.stepNumText}>{i + 1}</Text>
+                  {steps.length ? (
+                    <>
+                      <Text style={[styles.howToSectionLabel, { marginTop: SP[5] }]}>STEPS</Text>
+                      {steps.map((step, i) => (
+                        <View key={i} style={styles.stepRow}>
+                          <View style={styles.stepNum}>
+                            <Text style={styles.stepNumText}>{i + 1}</Text>
+                          </View>
+                          <Text style={styles.stepText}>{step}</Text>
+                        </View>
+                      ))}
+                    </>
+                  ) : null}
+                  {durationCopy ? (
+                    <>
+                      <Text style={[styles.howToSectionLabel, { marginTop: SP[5] }]}>REPS / DURATION</Text>
+                      <Text style={styles.repsText}>{durationCopy}</Text>
+                    </>
+                  ) : null}
+                  {tipCopy ? (
+                    <>
+                      <Text style={[styles.howToSectionLabel, { marginTop: SP[5] }]}>PRO TIP</Text>
+                      <View style={styles.tipBox}>
+                        <Text style={styles.tipText}>{tipCopy}</Text>
                       </View>
-                      <Text style={styles.stepText}>{step}</Text>
-                    </View>
-                  ))}
-                  <Text style={[styles.howToSectionLabel, { marginTop: SP[5] }]}>REPS / DURATION</Text>
-                  <Text style={styles.repsText}>{detail.reps}</Text>
-                  <Text style={[styles.howToSectionLabel, { marginTop: SP[5] }]}>PRO TIP</Text>
-                  <View style={styles.tipBox}>
-                    <Text style={styles.tipText}>{detail.tip}</Text>
-                  </View>
+                    </>
+                  ) : null}
                 </>
               ) : (
                 <Text style={styles.repsText}>No details available.</Text>
@@ -396,7 +560,8 @@ function HowToSheet({
 type Phase = "exercise" | "complete";
 
 export default function SessionScreen() {
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const circleSize = Math.min(width - SP[6] * 2, 300);
 
   const { today, completeTask, skipTask } = useTasksStore();
@@ -427,6 +592,7 @@ export default function SessionScreen() {
   });
 
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [sequenceFrameIndex, setSequenceFrameIndex] = useState(0);
   // Initialize with the real duration of the first exercise so timeLeft is never
   // 0 on mount. The auto-complete effect fires when timeLeft === 0, so starting
   // at 0 would incorrectly credit the first exercise before the user does anything.
@@ -491,12 +657,31 @@ export default function SessionScreen() {
   };
 
   const current    = exercises[currentIndex];
+  const resolvedExerciseId = current ? resolveExerciseId(current.exerciseId) : "";
   const duration   = current ? getEffectiveDuration(current.exerciseId) : 30;
-  const videoSrc   = current ? getExerciseVideo(current.exerciseId) : null;
+  const exerciseMedia = current ? getExerciseMedia(current.exerciseId) : null;
+  const videoSrc   = exerciseMedia?.mediaType === "video" ? exerciseMedia.source : null;
   const imagePair         = current ? (EXERCISE_IMAGE_PAIRS[current.exerciseId] ?? undefined) : undefined;
   const imagePairPosition = current ? (EXERCISE_IMAGE_POSITION[current.exerciseId] ?? "center") : "center";
   const zoomImage         = current ? (EXERCISE_ZOOM_IMAGES[current.exerciseId] ?? undefined) : undefined;
+  const lottieSource      = current ? (EXERCISE_LOTTIE_ANIMATIONS[current.exerciseId] ?? undefined) : undefined;
   const videoOffset       = current ? (EXERCISE_VIDEO_OFFSET[current.exerciseId] ?? undefined) : undefined;
+  const isImageMedia = exerciseMedia?.mediaType === "image" || exerciseMedia?.mediaType === "imageSequence";
+  const sequenceSources = Array.isArray(exerciseMedia?.source) ? exerciseMedia.source : exerciseMedia?.source ? [exerciseMedia.source] : [];
+  const currentImageSource = sequenceSources[sequenceFrameIndex % Math.max(1, sequenceSources.length)];
+  const mediaFrame = resolvedExerciseId ? VIDEO_MEDIA_FRAMES[resolvedExerciseId] : undefined;
+  const timerLayout = useMemo(
+    () =>
+      createVideoTimerLayout({
+        width,
+        height,
+        bottomInset: insets.bottom,
+        exerciseId: resolvedExerciseId,
+      }),
+    [width, height, insets.bottom, resolvedExerciseId],
+  );
+  const timerInstruction = current ? getNewExerciseInstruction(current.exerciseId) || current.reason : "";
+  const timerTitle = current ? getNewExerciseTitle(current.exerciseId) : "";
   const total      = exercises.length;
 
   // ---------------------------------------------------------------------------
@@ -515,7 +700,18 @@ export default function SessionScreen() {
     if (exercises.length === 0) return;
     const ex = exercises[currentIndex];
     if (ex) setTimeLeft(getEffectiveDuration(ex.exerciseId));
+    setSequenceFrameIndex(0);
   }, [currentIndex]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (exerciseMedia?.mediaType !== "imageSequence" || isPaused || prepCountdown > 0 || sequenceSources.length < 2) {
+      return;
+    }
+    const id = setInterval(() => {
+      setSequenceFrameIndex((index) => (index + 1) % sequenceSources.length);
+    }, 760);
+    return () => clearInterval(id);
+  }, [exerciseMedia?.mediaType, isPaused, prepCountdown, sequenceSources.length, currentIndex]);
 
   // ---------------------------------------------------------------------------
   // Pause on screen blur
@@ -773,8 +969,323 @@ export default function SessionScreen() {
   // ---------------------------------------------------------------------------
   return (
     <SafeAreaView style={styles.safe}>
+      <View style={styles.videoOverlayRoot}>
+        <View
+          style={[
+            styles.videoHeader,
+            {
+              height: timerLayout.headerHeight,
+              paddingHorizontal: timerLayout.gutter,
+              gap: timerLayout.headerGap,
+            },
+          ]}
+        >
+          <Pressable
+            onPress={handleExit}
+            style={[
+              styles.videoBackButton,
+              {
+                width: timerLayout.headerButtonSize,
+                height: timerLayout.headerButtonSize,
+                borderRadius: timerLayout.headerButtonSize / 2,
+              },
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel="Leave session"
+          >
+            <ChevronLeft color={VIDEO_TEXT} size={timerLayout.headerIconSize} strokeWidth={timerLayout.headerIconStroke} />
+          </Pressable>
+          <Text
+            style={[
+              styles.videoHeaderTitle,
+              { fontSize: timerLayout.titleFont, lineHeight: timerLayout.titleLineHeight },
+            ]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.68}
+          >
+            {(timerTitle || current?.name || "").toUpperCase()}
+          </Text>
+          <Pressable
+            onPress={() => { setIsPaused(true); setShowHowTo(true); }}
+            style={[
+              styles.videoCounterPill,
+              {
+                width: timerLayout.counterWidth,
+                height: timerLayout.counterHeight,
+                borderRadius: timerLayout.counterRadius,
+                gap: timerLayout.counterTrackHeight,
+              },
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel="How to perform this exercise"
+          >
+            <Text
+              style={[
+                styles.videoCounterText,
+                { fontSize: timerLayout.counterFont, lineHeight: timerLayout.counterFont * 1.1 },
+              ]}
+            >
+              {currentIndex + 1}/{total}
+            </Text>
+            <View
+              style={[
+                styles.videoCounterTrack,
+                { width: timerLayout.counterTrackWidth, height: timerLayout.counterTrackHeight },
+              ]}
+            >
+              <View style={[styles.videoCounterFill, { width: `${((currentIndex + 1) / total) * 100}%` }]} />
+            </View>
+          </Pressable>
+        </View>
+
+        <Animated.View
+          key={`video-media-${currentIndex}`}
+          entering={slideDir === "right" ? FadeInRight.duration(280).springify() : FadeInLeft.duration(280).springify()}
+          style={[styles.videoMediaStage, { height: timerLayout.mediaHeight }]}
+        >
+          <View
+            style={[
+              styles.videoMediaCanvas,
+              { width: timerLayout.mediaWidth, height: timerLayout.mediaHeight },
+              mediaFrame
+                ? {
+                    transform: [
+                      { translateX: timerLayout.mediaWidth * mediaFrame.translateX },
+                      { translateY: timerLayout.mediaHeight * mediaFrame.translateY },
+                      { scale: mediaFrame.scale },
+                    ],
+                  }
+                : null,
+            ]}
+          >
+            {videoSrc ? (
+              <Video
+                key={current?.exerciseId}
+                source={videoSrc}
+                style={styles.videoMedia}
+                resizeMode={ResizeMode.CONTAIN}
+                shouldPlay={prepCountdown <= 0 && !isPaused}
+                isLooping
+                isMuted
+              />
+            ) : isImageMedia && currentImageSource ? (
+              <Image
+                key={`${current?.exerciseId}-${sequenceFrameIndex}`}
+                source={currentImageSource}
+                style={styles.videoMedia}
+                resizeMode="contain"
+              />
+            ) : (
+              <View style={styles.videoFallbackMedia}>
+                <ActivityIndicator color={VIDEO_TEXT} />
+              </View>
+            )}
+          </View>
+          {prepCountdown > 0 && (
+            <View style={styles.videoPrepOverlay}>
+              <Animated.Text
+                key={prepCountdown}
+                entering={ZoomIn.duration(260).springify()}
+                style={[
+                  styles.videoPrepText,
+                  { fontSize: timerLayout.prepFont, lineHeight: timerLayout.prepFont * 1.08 },
+                ]}
+              >
+                {prepCountdown}
+              </Animated.Text>
+            </View>
+          )}
+        </Animated.View>
+
+        {isRedo && (
+          <Animated.View
+            entering={FadeIn.duration(200)}
+            style={[
+              styles.videoRedoBanner,
+              {
+                marginHorizontal: timerLayout.infoPaddingX,
+                borderRadius: timerLayout.gutter * 0.76,
+                paddingVertical: timerLayout.infoGap * 0.74,
+              },
+            ]}
+          >
+            <Text style={styles.videoRedoText}>Already done - tap play to redo</Text>
+          </Animated.View>
+        )}
+
+        <Animated.View
+          key={`video-info-${currentIndex}`}
+          entering={slideDir === "right" ? FadeInRight.duration(280).springify() : FadeInLeft.duration(280).springify()}
+          style={[
+            styles.videoInfo,
+            {
+              paddingHorizontal: timerLayout.infoPaddingX,
+              paddingTop: timerLayout.infoPaddingTop,
+              gap: timerLayout.infoGap,
+            },
+          ]}
+        >
+          <Animated.Text
+            style={[
+              styles.videoTime,
+              {
+                fontSize: timerLayout.timerFont,
+                lineHeight: timerLayout.timerLineHeight,
+              },
+              timerAnimStyle,
+            ]}
+          >
+            {formatSessionSeconds(timeLeft)}
+          </Animated.Text>
+          <View style={[styles.videoProgressTrack, { height: timerLayout.progressHeight }]}>
+            <View style={[styles.videoProgressFill, { width: `${Math.max(0.03, Math.min(1, progress)) * 100}%` }]} />
+          </View>
+          <Text
+            style={[
+              styles.videoInstruction,
+              { fontSize: timerLayout.instructionFont, lineHeight: timerLayout.instructionLine },
+            ]}
+          >
+            {timerInstruction}
+          </Text>
+          <Text
+            style={[
+              styles.videoTarget,
+              { fontSize: timerLayout.targetFont, lineHeight: timerLayout.targetLineHeight },
+            ]}
+            numberOfLines={1}
+          >
+            {current?.targets.map((t) => (t === "all" ? "Full Face" : t)).join(" - ").toUpperCase() ?? ""} - {duration}s set
+          </Text>
+        </Animated.View>
+
+        <View
+          style={[
+            styles.videoTransport,
+            {
+              minHeight: timerLayout.transportHeight,
+              marginBottom: timerLayout.transportMarginBottom,
+              gap: timerLayout.transportGap,
+            },
+          ]}
+        >
+          <Pressable
+            onPress={handlePrev}
+            disabled={currentIndex === 0}
+            style={[
+              styles.videoTransportBtn,
+              {
+                width: timerLayout.transportButtonSize,
+                height: timerLayout.transportButtonSize,
+                borderRadius: timerLayout.transportButtonSize / 2,
+              },
+              currentIndex === 0 && styles.videoTransportBtnDisabled,
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel="Previous exercise"
+          >
+            <SkipBack color="#808080" size={timerLayout.transportIconSize} strokeWidth={2.8} />
+          </Pressable>
+          <Animated.View style={playBtnAnimStyle}>
+            <Pressable
+              onPress={handlePause}
+              style={[
+                styles.videoPlayBtn,
+                {
+                  width: timerLayout.playButtonSize,
+                  height: timerLayout.playButtonSize,
+                  borderRadius: timerLayout.playButtonSize / 2,
+                },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel={isPaused ? "Play exercise" : "Pause exercise"}
+            >
+              {isPaused ? (
+                <Play color="#FFFFFF" size={timerLayout.playIconSize} fill="#FFFFFF" strokeWidth={2.2} style={{ marginLeft: timerLayout.playButtonSize * 0.046 }} />
+              ) : (
+                <Pause color="#FFFFFF" size={timerLayout.playIconSize} fill="#FFFFFF" strokeWidth={2.2} />
+              )}
+            </Pressable>
+          </Animated.View>
+          <Pressable
+            onPress={handleSkip}
+            style={[
+              styles.videoTransportBtn,
+              {
+                width: timerLayout.transportButtonSize,
+                height: timerLayout.transportButtonSize,
+                borderRadius: timerLayout.transportButtonSize / 2,
+              },
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel="Next exercise"
+          >
+            <SkipForward color="#808080" size={timerLayout.transportIconSize} strokeWidth={2.8} />
+          </Pressable>
+        </View>
+
+        <View
+          style={[
+            styles.videoBottomBar,
+            {
+              minHeight: timerLayout.bottomBarHeight,
+              paddingHorizontal: timerLayout.bottomBarPaddingX,
+              paddingBottom: timerLayout.bottomInset,
+            },
+          ]}
+        >
+          <Pressable
+            onPress={handleExit}
+            style={[
+              styles.videoBottomBtn,
+              {
+                width: timerLayout.bottomButtonSize,
+                height: timerLayout.bottomButtonSize,
+                borderRadius: timerLayout.bottomButtonSize / 2,
+              },
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel="Leave session"
+          >
+            <X color={VIDEO_TEXT} size={timerLayout.bottomIconSize} strokeWidth={3} />
+          </Pressable>
+          <Pressable
+            onPress={() => { setIsPaused(true); setShowHowTo(true); }}
+            style={[
+              styles.videoBottomBtn,
+              {
+                width: timerLayout.bottomButtonSize,
+                height: timerLayout.bottomButtonSize,
+                borderRadius: timerLayout.bottomButtonSize / 2,
+              },
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel="How to perform"
+          >
+            <Info color={VIDEO_TEXT} size={timerLayout.bottomIconSize} strokeWidth={2.8} />
+          </Pressable>
+          <Pressable
+            onPress={() => { setIsPaused(true); setShowHowTo(true); }}
+            style={[
+              styles.videoBottomBtn,
+              {
+                width: timerLayout.bottomButtonSize,
+                height: timerLayout.bottomButtonSize,
+                borderRadius: timerLayout.bottomButtonSize / 2,
+              },
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel="Open exercise guide"
+          >
+            <BookOpen color="#8A8A8E" size={timerLayout.bottomIconSize} strokeWidth={2.8} />
+          </Pressable>
+        </View>
+      </View>
 
       {/* ── Clean top bar: exit · dots · counter + info ── */}
+      {false && (
+      <>
       <View style={styles.topBar}>
 
         {/* Exit button */}
@@ -848,10 +1359,11 @@ export default function SessionScreen() {
             : FadeInLeft.duration(320).springify()}
         >
           <CircleFrame
-            videoSrc={videoSrc}
+            videoSrc={null}
             imagePair={imagePair}
             imagePairPosition={imagePairPosition}
             zoomImage={zoomImage}
+            lottieSource={lottieSource}
             isPaused={isPaused}
             progress={progress}
             timeLeft={timeLeft}
@@ -939,6 +1451,9 @@ export default function SessionScreen() {
       </View>
 
       {/* ── Leave session modal ── */}
+      </>
+      )}
+
       <Modal
         transparent
         visible={showLeaveModal}
@@ -1058,6 +1573,161 @@ export default function SessionScreen() {
 // ---------------------------------------------------------------------------
 
 const styles = StyleSheet.create({
+  videoOverlayRoot: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 50,
+    elevation: 50,
+    backgroundColor: "#FFFFFF",
+  },
+  videoHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  videoBackButton: {
+    backgroundColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000000",
+    shadowOpacity: 0.12,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 6,
+  },
+  videoHeaderTitle: {
+    flex: 1,
+    textAlign: "center",
+    fontFamily: "ProximaNova-Bold",
+    color: VIDEO_TEXT,
+  },
+  videoCounterPill: {
+    backgroundColor: VIDEO_SURFACE,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  videoCounterText: {
+    fontFamily: "ProximaNova-Bold",
+    color: VIDEO_TEXT,
+  },
+  videoCounterTrack: {
+    borderRadius: 999,
+    backgroundColor: "#E1E3E7",
+    overflow: "hidden",
+  },
+  videoCounterFill: {
+    height: "100%",
+    borderRadius: 999,
+    backgroundColor: VIDEO_TEXT,
+  },
+  videoMediaStage: {
+    width: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  videoMediaCanvas: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  videoMedia: {
+    width: "100%",
+    height: "100%",
+    backgroundColor: "#FFFFFF",
+  },
+  videoFallbackMedia: {
+    flex: 1,
+    alignSelf: "stretch",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FFFFFF",
+  },
+  videoPrepOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(255,255,255,0.72)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  videoPrepText: {
+    fontFamily: "ProximaNova-Bold",
+    color: VIDEO_TEXT,
+  },
+  videoRedoBanner: {
+    backgroundColor: "#FFF7E6",
+    borderWidth: 1,
+    borderColor: "#F7D58A",
+  },
+  videoRedoText: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 13,
+    color: "#9A6500",
+    textAlign: "center",
+  },
+  videoInfo: {
+    alignItems: "center",
+  },
+  videoTime: {
+    fontFamily: "ProximaNova-Bold",
+    color: VIDEO_TEXT,
+    textAlign: "center",
+  },
+  videoProgressTrack: {
+    width: "100%",
+    borderRadius: 999,
+    backgroundColor: VIDEO_TRACK,
+    overflow: "hidden",
+  },
+  videoProgressFill: {
+    height: "100%",
+    borderRadius: 999,
+    backgroundColor: VIDEO_TEXT,
+  },
+  videoInstruction: {
+    fontFamily: "Poppins-Regular",
+    color: VIDEO_SUB_TEXT,
+    textAlign: "center",
+  },
+  videoTarget: {
+    alignSelf: "stretch",
+    fontFamily: "ProximaNova-Bold",
+    color: "#A1A4AA",
+    textAlign: "center",
+  },
+  videoTransport: {
+    marginTop: "auto",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  videoTransportBtn: {
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#F4F4F5",
+  },
+  videoTransportBtnDisabled: {
+    opacity: 0.35,
+  },
+  videoPlayBtn: {
+    backgroundColor: VIDEO_TEXT,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000000",
+    shadowOpacity: 0.22,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 10,
+  },
+  videoBottomBar: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "#EEEEF0",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: "#FFFFFF",
+  },
+  videoBottomBtn: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
   safe: {
     flex: 1,
     backgroundColor: COLORS.bgBottom,

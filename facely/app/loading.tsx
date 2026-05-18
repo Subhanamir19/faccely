@@ -8,13 +8,15 @@ import CinematicLoader from "@/components/ui/CinematicLoader";
 import { useOnboarding } from "@/store/onboarding";
 import { useScores } from "../store/scores";
 import { useAdvancedAnalysis } from "@/store/advancedAnalysis";
+import { usePotentialFace } from "@/store/potentialFace";
 import { ensureJpegCompressed } from "../lib/api/media";
 import { useAuthStore } from "@/store/auth";
+import { requestPotentialFaceGeneration } from "@/lib/api/potentialFace";
 
 type ParamValue = string | string[] | undefined;
 
 type Params = {
-  mode?: "analyzePair" | "advanced" | string;
+  mode?: "analyzePair" | "advanced" | "onboardingPotentialFace" | string;
   front?: ParamValue;
   side?: ParamValue;
   phase?: ParamValue;
@@ -23,9 +25,17 @@ type Params = {
   frontMime?: ParamValue;
   sideMime?: ParamValue;
   normalized?: ParamValue;
+  onboardingFlow?: ParamValue;
+  next?: ParamValue;
+  devPreview?: ParamValue;
 };
 
 type ImageMeta = { uri: string; name: string; mime: string };
+
+// Keep the generic loader short. The dedicated reveal screen owns the long
+// image wait, so users do not get stranded behind an opaque spinner.
+const ONBOARDING_POTENTIAL_FACE_HANDOFF_POLL_MS = 8_000;
+const ONBOARDING_ADVANCED_MIN_LOADING_MS = 1800;
 
 function takeFirst(value?: ParamValue): string | undefined {
   if (!value) return undefined;
@@ -34,8 +44,8 @@ function takeFirst(value?: ParamValue): string | undefined {
 
 function normalizeMode(
   value?: string
-): "analyzePair" | "advanced" | undefined {
-  if (value === "analyzePair" || value === "advanced") return value;
+): "analyzePair" | "advanced" | "onboardingPotentialFace" | undefined {
+  if (value === "analyzePair" || value === "advanced" || value === "onboardingPotentialFace") return value;
   return undefined;
 }
 
@@ -113,6 +123,8 @@ export default function LoadingScreen() {
   const params = useLocalSearchParams<Params>();
   const analyzePair = useScores((state) => state.analyzePair);
   const explainPair = useScores((state) => state.explainPair);
+  const loadPotentialFace = usePotentialFace((state) => state.load);
+  const pollPotentialFace = usePotentialFace((state) => state.pollUntilReady);
 
   const mode = normalizeMode(takeFirst(params.mode));
   const front = takeFirst(params.front);
@@ -123,6 +135,9 @@ export default function LoadingScreen() {
   const frontMime = takeFirst(params.frontMime);
   const sideMime = takeFirst(params.sideMime);
   const normalized = normalizeNormalized(takeFirst(params.normalized));
+  const onboardingFlow = takeFirst(params.onboardingFlow) === "1";
+  const nextRoute = takeFirst(params.next);
+  const devPreview = takeFirst(params.devPreview) === "1";
 
   const storedImageUri = useScores((state) => state.imageUri);
   const [isLoading, setIsLoading] = useState(true);
@@ -169,7 +184,7 @@ export default function LoadingScreen() {
       if (canGoBack) {
         router.back();
       } else {
-        router.replace("/error");
+        router.replace("/(tabs)/take-picture");
       }
     };
 
@@ -272,17 +287,111 @@ export default function LoadingScreen() {
         if (!storedImageUri || !storedScores) {
           throw new Error("Scores not found. Please run analysis again.");
         }
+        const startedAt = Date.now();
         const { data, error: advError } = await useAdvancedAnalysis
           .getState()
           .ensureFetched();
+        if (onboardingFlow && nextRoute === "findingsBridge") {
+          const elapsed = Date.now() - startedAt;
+          const remaining = ONBOARDING_ADVANCED_MIN_LOADING_MS - elapsed;
+          if (remaining > 0) {
+            await new Promise((resolve) => setTimeout(resolve, remaining));
+          }
+        }
         if (cancelled) return;
         if (!data) {
           throw new Error(advError ?? "Advanced analysis did not return results.");
         }
         setIsLoading(false);
-        router.replace("/(tabs)/analysis");
+        if (onboardingFlow && nextRoute === "findingsBridge") {
+          router.replace({
+            pathname: "/(onboarding)/potential-face-bridge",
+            params: devPreview ? { devPreview: "1" } : {},
+          });
+          return;
+        }
+        router.replace(
+          onboardingFlow
+            ? { pathname: "/(tabs)/analysis", params: { onboardingFlow: "1" } }
+            : "/(tabs)/analysis"
+        );
       } catch (error) {
         handleError(error, "Advanced analysis failed");
+      }
+    };
+
+    const runOnboardingPotentialFaceWorkflow = async () => {
+      try {
+        const onboarding = useOnboarding.getState();
+        const frontUri = onboarding.scanFrontalUri;
+        const sideUri = onboarding.scanSideUri;
+        if (!frontUri || !sideUri) {
+          throw new Error("Onboarding scan photos were not found.");
+        }
+
+        const [frontResolved, sideResolved] = await Promise.all([
+          ensureFileUriAsync(frontUri),
+          ensureFileUriAsync(sideUri),
+        ]);
+        if (!frontResolved || !sideResolved) {
+          throw new Error("Image paths could not be resolved.");
+        }
+        if (cancelled) return;
+
+        const [frontTemp, sideTemp] = await Promise.all([
+          ensureJpegCompressed(frontResolved),
+          ensureJpegCompressed(sideResolved),
+        ]);
+        if (cancelled) return;
+
+        const [frontPersisted, sidePersisted] = await Promise.all([
+          persistCompressedResult(frontTemp),
+          persistCompressedResult(sideTemp),
+        ]);
+
+        const frontMeta = {
+          uri: frontPersisted.uri,
+          name: frontPersisted.name,
+          mime: "image/jpeg",
+        };
+        const sideMeta = {
+          uri: sidePersisted.uri,
+          name: sidePersisted.name,
+          mime: "image/jpeg",
+        };
+
+        await ensureLocalPairExists(frontMeta.uri, sideMeta.uri);
+        if (cancelled) return;
+
+        const scores = await analyzePair(frontMeta, sideMeta);
+        if (cancelled) return;
+
+        const scanId = useScores.getState().scanId;
+        if (!scanId) {
+          throw new Error("Scan was scored but not saved. Please try again later.");
+        }
+
+        let generationStarted = false;
+        try {
+          await requestPotentialFaceGeneration(scanId);
+          generationStarted = true;
+          await loadPotentialFace();
+          await pollPotentialFace(ONBOARDING_POTENTIAL_FACE_HANDOFF_POLL_MS);
+        } catch (generationError) {
+          // Non-fatal by design. The reveal screen has a graceful fallback,
+          // and the user can still continue into advanced analysis.
+          console.warn("[loading] onboarding potential face generation did not finish:", generationError);
+        }
+
+        explainPair(frontMeta.uri, sideMeta.uri, scores).catch(() => {});
+        onboarding.clearScanPhotos();
+        setIsLoading(false);
+        router.replace(generationStarted ? "/(onboarding)/potential-face-reveal" : "/(onboarding)/potential-face-bridge");
+      } catch (error) {
+        console.warn("[loading] onboarding potential face workflow failed:", error);
+        setIsLoading(false);
+        const hasScores = !!useScores.getState().scores;
+        router.replace(hasScores ? "/(onboarding)/potential-face-bridge" : "/(tabs)/program");
       }
     };
 
@@ -295,6 +404,13 @@ export default function LoadingScreen() {
 
     if (mode === "advanced") {
       runAdvancedWorkflow();
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    if (mode === "onboardingPotentialFace") {
+      runOnboardingPotentialFaceWorkflow();
       return () => {
         cancelled = true;
       };
@@ -317,6 +433,8 @@ export default function LoadingScreen() {
   }, [
     analyzePair,
     explainPair,
+    loadPotentialFace,
+    pollPotentialFace,
     completed,
     onboardingHydrated,
     mode,
@@ -324,6 +442,9 @@ export default function LoadingScreen() {
     front,
     side,
     normalized,
+    onboardingFlow,
+    nextRoute,
+    devPreview,
     frontName,
     sideName,
     frontMime,

@@ -16,6 +16,7 @@ import {
   StyleSheet,
   View,
 } from "react-native";
+import { ChevronLeft, ChevronRight } from "lucide-react-native";
 import Text from "@/components/ui/T";
 import { COLORS, RADII, SP } from "@/lib/tokens";
 import { ms, sh, sw } from "@/lib/responsive";
@@ -69,6 +70,7 @@ type Props = {
   /** Total usable viewport width (screen − horizontal padding). */
   viewportWidth: number;
   onCardPress:   (m: CarouselMetric) => void;
+  showControls?: boolean;
 };
 
 // ─── Carousel ────────────────────────────────────────────────────────────────
@@ -77,11 +79,13 @@ export default function AnalysisCarousel({
   metrics,
   viewportWidth,
   onCardPress,
+  showControls = false,
 }: Props) {
   const CARD_W   = Math.round(viewportWidth * 0.85);
   const SIDE_GAP = Math.round((viewportWidth - CARD_W) / 2);
   const SNAP_LEN = CARD_W;
 
+  const listRef = useRef<FlatList<CarouselMetric> | null>(null);
   const [activeIdx, setActiveIdx] = useState(0);
   const onMomentumEnd = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const x = e.nativeEvent.contentOffset.x;
@@ -92,10 +96,21 @@ export default function AnalysisCarousel({
   const scrollX = useRef(new Animated.Value(0)).current;
 
   const activeSection = metrics[activeIdx]?.section;
+  const canGoPrev = activeIdx > 0;
+  const canGoNext = activeIdx < metrics.length - 1;
+  const scrollToMetric = useCallback(
+    (nextIdx: number) => {
+      const clamped = Math.max(0, Math.min(metrics.length - 1, nextIdx));
+      listRef.current?.scrollToOffset({ offset: clamped * SNAP_LEN, animated: true });
+      setActiveIdx(clamped);
+    },
+    [SNAP_LEN, metrics.length]
+  );
 
   return (
     <View style={styles.wrap}>
       <Animated.FlatList
+        ref={listRef}
         data={metrics}
         keyExtractor={(m) => m.id}
         horizontal
@@ -146,6 +161,40 @@ export default function AnalysisCarousel({
           </Text>
         </View>
       )}
+
+      {showControls && metrics.length > 1 ? (
+        <View style={styles.controlsRow}>
+          <Pressable
+            onPress={() => scrollToMetric(activeIdx - 1)}
+            disabled={!canGoPrev}
+            accessibilityRole="button"
+            accessibilityLabel="Previous metric"
+            style={({ pressed }) => [
+              styles.metricNavBtn,
+              !canGoPrev && styles.metricNavBtnDisabled,
+              pressed && canGoPrev && { opacity: 0.82 },
+            ]}
+          >
+            <ChevronLeft size={ms(17)} color={COLORS.lightText} strokeWidth={2.4} />
+            <Text style={styles.metricNavText}>PREV</Text>
+          </Pressable>
+
+          <Pressable
+            onPress={() => scrollToMetric(activeIdx + 1)}
+            disabled={!canGoNext}
+            accessibilityRole="button"
+            accessibilityLabel="Next metric"
+            style={({ pressed }) => [
+              styles.metricNavBtn,
+              !canGoNext && styles.metricNavBtnDisabled,
+              pressed && canGoNext && { opacity: 0.82 },
+            ]}
+          >
+            <Text style={styles.metricNavText}>NEXT METRIC</Text>
+            <ChevronRight size={ms(17)} color={COLORS.lightText} strokeWidth={2.4} />
+          </Pressable>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -317,5 +366,33 @@ const styles = StyleSheet.create({
     fontFamily: FONT,
     fontSize: ms(13),
     letterSpacing: 0.8,
+  },
+  controlsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: sw(10),
+    marginTop: SP[4],
+  },
+  metricNavBtn: {
+    minHeight: sh(44),
+    borderRadius: 999,
+    backgroundColor: COLORS.lightSurfaceAlt,
+    borderWidth: 1,
+    borderColor: COLORS.lightHairline,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: sw(5),
+    paddingHorizontal: sw(14),
+  },
+  metricNavBtnDisabled: {
+    opacity: 0.38,
+  },
+  metricNavText: {
+    fontFamily: FONT,
+    fontSize: ms(11, 0.2),
+    color: COLORS.lightText,
+    letterSpacing: 0.4,
   },
 });

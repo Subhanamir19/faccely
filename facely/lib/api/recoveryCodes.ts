@@ -32,6 +32,7 @@ export async function restoreWithCode(code: string): Promise<RestoreResult> {
     if (!res.ok) return "server_error";
 
     const json = (await res.json()) as {
+      token_hash?: string;
       access_token?: string;
       refresh_token?: string;
       user_id?: string;

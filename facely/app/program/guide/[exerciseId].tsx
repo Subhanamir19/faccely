@@ -17,6 +17,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { COLORS, RADII, SP, TYPE } from "@/lib/tokens";
 import { getExerciseGuide } from "@/lib/exerciseGuideData";
 import { POSE_FRAMES, FALLBACK_FRAME } from "@/lib/programAssets";
+import { getNewExerciseGuideId } from "@/lib/newExerciseCatalog";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const HERO_HEIGHT = 380;
@@ -97,10 +98,11 @@ export default function ExerciseGuideScreen() {
   const insets = useSafeAreaInsets();
   const [activeSlide, setActiveSlide] = useState(0);
 
-  const guide = exerciseId ? getExerciseGuide(exerciseId) : null;
+  const guideId = exerciseId ? getNewExerciseGuideId(exerciseId) : "";
+  const guide = guideId ? getExerciseGuide(guideId) : null;
   // Only show the hero carousel for facial exercises that have pose frames.
   // Protocol/dietary guides have no relevant images — hide the carousel entirely.
-  const rawFrames = exerciseId ? POSE_FRAMES[exerciseId] : undefined;
+  const rawFrames = exerciseId ? POSE_FRAMES[exerciseId] ?? POSE_FRAMES[guideId] : undefined;
   const hasFrames = !!rawFrames;
   const frames = rawFrames ?? [FALLBACK_FRAME];
 

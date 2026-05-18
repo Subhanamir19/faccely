@@ -5,6 +5,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import { getExerciseDuration } from "@/lib/exerciseDurations";
+import { getLegacyIdsForExercise, resolveExerciseId } from "@/lib/newExerciseCatalog";
 
 export const DURATION_STEP = 15;
 export const DURATION_MIN  = 15;
@@ -25,18 +26,24 @@ export const useExerciseSettings = create<ExerciseSettingsState>()(
       customDurations: {},
 
       getDuration: (exerciseId: string) => {
-        const custom = get().customDurations[exerciseId];
+        const canonicalId = resolveExerciseId(exerciseId);
+        const custom =
+          get().customDurations[canonicalId] ??
+          get().customDurations[exerciseId] ??
+          getLegacyIdsForExercise(canonicalId)
+            .map((legacyId) => get().customDurations[legacyId])
+            .find((value): value is number => typeof value === "number");
         return custom ?? getExerciseDuration(exerciseId);
       },
 
       incrementDuration: (exerciseId: string) => {
         const next = Math.min(DURATION_MAX, get().getDuration(exerciseId) + DURATION_STEP);
-        set((s) => ({ customDurations: { ...s.customDurations, [exerciseId]: next } }));
+        set((s) => ({ customDurations: { ...s.customDurations, [resolveExerciseId(exerciseId)]: next } }));
       },
 
       decrementDuration: (exerciseId: string) => {
         const next = Math.max(DURATION_MIN, get().getDuration(exerciseId) - DURATION_STEP);
-        set((s) => ({ customDurations: { ...s.customDurations, [exerciseId]: next } }));
+        set((s) => ({ customDurations: { ...s.customDurations, [resolveExerciseId(exerciseId)]: next } }));
       },
     }),
     {

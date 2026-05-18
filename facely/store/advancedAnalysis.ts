@@ -35,6 +35,8 @@ type Actions = {
    * and falsely report failure while the background call is still working.
    */
   ensureFetched: () => Promise<EnsureFetchedResult>;
+  /** Dev-only seed path for previewing paid flows without backend calls. */
+  seedDevData: (data: AdvancedAnalysis, scanId?: string) => void;
   reset: () => void;
 };
 
@@ -113,6 +115,9 @@ export const useAdvancedAnalysis = create<State & Actions>((set, get) => ({
     const after = get();
     return { data: after.data, error: after.error };
   },
+
+  seedDevData: (data, scanId = "dev-scan-preview") =>
+    set({ data, loading: false, error: null, cachedScanId: scanId }),
 
   reset: () => set({ data: null, loading: false, error: null, cachedScanId: null }),
 }));

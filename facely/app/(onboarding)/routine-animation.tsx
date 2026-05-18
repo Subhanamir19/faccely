@@ -6,6 +6,7 @@ import {
   View,
   Text,
   Pressable,
+  ScrollView,
   StatusBar,
   StyleSheet,
   Animated,
@@ -328,7 +329,7 @@ export default function RoutineAnimationScreen() {
   const handleContinue = useCallback(async () => {
     if (!ctaReady) return;
     await finish();
-    router.replace("/(onboarding)/score-projection");
+    router.replace("/(tabs)/program");
   }, [ctaReady, finish]);
 
   return (
@@ -340,6 +341,11 @@ export default function RoutineAnimationScreen() {
         <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
       </View>
 
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
       {/* Header */}
       <Reanimated.View entering={FadeInDown.duration(420)} style={styles.header}>
         <Text style={styles.heading}>Building Your{"\n"}Daily Routine…</Text>
@@ -361,6 +367,7 @@ export default function RoutineAnimationScreen() {
           <Text style={styles.statusText}>{STATUS_TEXTS[statusIdx]}</Text>
         </Reanimated.View>
       </View>
+      </ScrollView>
 
       {/* Sticky CTA */}
       <View style={[styles.ctaContainer, { paddingBottom: insets.bottom + SP[4] }]}>
@@ -385,6 +392,13 @@ export default function RoutineAnimationScreen() {
 /* ── Styles ──────────────────────────────────────────────────── */
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: COLORS.lightBg },
+  scroll: {
+    flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    paddingBottom: SP[3],
+  },
 
   progressTrack: {
     height: sh(6),

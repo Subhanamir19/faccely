@@ -2,6 +2,7 @@
 // Developer tooling screen — only reachable in __DEV__ builds.
 
 import React, { useState, useEffect, useCallback } from "react";
+import { Asset } from "expo-asset";
 import * as ImagePicker from "expo-image-picker";
 import {
   SafeAreaView,
@@ -13,10 +14,13 @@ import {
   Modal,
   Pressable,
   ImageBackground,
+  Text,
+  useWindowDimensions,
 } from "react-native";
 import InsightRevealCard from "@/components/scores/InsightRevealCard";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { router } from "expo-router";
+import { Redirect, router } from "expo-router";
+import LottieView from "lottie-react-native";
 import T from "@/components/ui/T";
 import GlassCard from "@/components/ui/GlassCard";
 import { COLORS, SP, RADII } from "@/lib/tokens";
@@ -31,6 +35,7 @@ import { useTasksStore } from "@/store/tasks";
 import { BlueprintModal } from "@/components/analysis/BlueprintModal";
 import { useAdvancedAnalysis } from "@/store/advancedAnalysis";
 import { useScores } from "@/store/scores";
+import { usePotentialFace } from "@/store/potentialFace";
 import type { AdvancedAnalysis } from "@/lib/api/advancedAnalysis";
 import ProgramHero from "@/components/program/ProgramHero";
 import InsightPulseCard, { PulseType } from "@/components/ui/InsightPulseCard";
@@ -39,6 +44,18 @@ import RingLoader, { type RingLoaderKind } from "@/components/ui/RingLoader";
 import { Image as RNImage } from "react-native";
 import { API_BASE } from "@/lib/api/config";
 import { buildAuthHeadersAsync } from "@/lib/api/authHeaders";
+import {
+  AlarmClock,
+  Aperture,
+  BookOpen,
+  ChevronLeft,
+  Home,
+  Pause,
+  Play,
+  SkipBack,
+  SkipForward,
+  X,
+} from "lucide-react-native";
 
 const FONT = "ProximaNova-Bold";
 
@@ -67,16 +84,19 @@ const ONBOARDING_FLOW_SCREENS: { label: string; route: string }[] = [
   { label: "Ethnicity",         route: "/(onboarding)/ethnicity" },        // → scan
   { label: "Scan",              route: "/(onboarding)/scan" },             // → trust
   { label: "Trust",             route: "/(onboarding)/trust" },            // → time-dedication
-  { label: "Time Dedication",   route: "/(onboarding)/time-dedication" },  // → routine-animation
-  { label: "Routine Animation", route: "/(onboarding)/routine-animation" },// → score-projection
+  { label: "Time Dedication",   route: "/(onboarding)/time-dedication" },  // → score-projection
   { label: "Score Projection",  route: "/(onboarding)/score-projection" }, // → features
   { label: "Features",          route: "/(onboarding)/features" },         // → transformation
   { label: "Transformation",    route: "/(onboarding)/transformation" },   // → paywall
-  { label: "Paywall",           route: "/(onboarding)/paywall" },          // → score-teaser
-  { label: "Score Teaser",      route: "/(onboarding)/score-teaser" },     // → (tabs)/program
+  { label: "Paywall",           route: "/(onboarding)/paywall" },          // → potential face workflow
+  { label: "Potential Face",    route: "/(onboarding)/potential-face-reveal" }, // → analysis intro
+  { label: "Analysis Intro",    route: "/(onboarding)/analysis-intro" },    // → bridge
+  { label: "Analysis Bridge",   route: "/(onboarding)/potential-face-bridge" }, // → advanced analysis
+  { label: "Plan Intro",        route: "/(onboarding)/plan-intro" },        // → routine-animation
+  { label: "Routine Animation", route: "/(onboarding)/routine-animation" }, // → program
 ];
 
-// Screens that exist but are NOT reachable from the main splash → score-teaser flow.
+// Screens that exist but are NOT reachable from the main splash → potential-face flow.
 // Preview only.
 const ONBOARDING_ORPHANS: { label: string; route: string; note: string }[] = [
   { label: "Hook",            route: "/(onboarding)/hook",           note: "alt entry — only used by loading.tsx for returning users" },
@@ -86,6 +106,7 @@ const ONBOARDING_ORPHANS: { label: string; route: string; note: string }[] = [
   { label: "Experience",      route: "/(onboarding)/experience",     note: "no inbound route" },
   { label: "Face Scan (alt)", route: "/(onboarding)/face-scan",      note: "alt to /scan" },
   { label: "Results Reveal",  route: "/(onboarding)/results-reveal", note: "legacy" },
+  { label: "Score Teaser",    route: "/(onboarding)/score-teaser",    note: "legacy score reveal — removed from onboarding" },
   { label: "Building Plan",   route: "/(onboarding)/building-plan",  note: "unlinked" },
 ];
 
@@ -105,6 +126,8 @@ function DevButton({
     <TouchableOpacity
       onPress={onPress}
       activeOpacity={0.7}
+      accessibilityRole="button"
+      accessibilityLabel={label}
       style={[styles.devBtn, accent && styles.devBtnAccent]}
     >
       <T style={[styles.devBtnText, accent && styles.devBtnTextAccent]}>{label}</T>
@@ -520,10 +543,676 @@ type PotentialDevPayload = {
   providerMessage?: string;
 };
 const POTENTIAL_PROMPT_MODES: PotentialPromptMode[] = ["aggressive", "balanced", "conservative"];
+const LOTTIE_PREVIEWS = {
+  neck1: {
+    title: "neck1.lottie",
+    detail: "neck1.embedded.json",
+    source: require("../../assets/new-exercises-images/neck1.embedded.json"),
+  },
+  nose1: {
+    title: "nose1-slimnose.lottie",
+    detail: "nose1-slimnose.embedded.json",
+    source: require("../../assets/new-exercises-images/nose1-slimnose.embedded.json"),
+  },
+  noseSlim2: {
+    title: "Slim Nose 2",
+    detail: "nose-slim2.embedded.json",
+    source: require("../../assets/new-exercises-images/nose-slim2.embedded.json"),
+  },
+  slimNose3: {
+    title: "Slim Nose 3",
+    detail: "slim-nose3.embedded.json",
+    source: require("../../assets/new-exercises-images/slim-nose3.embedded.json"),
+  },
+  chinTucksBasic: {
+    title: "chin-tucks-basic.lottie",
+    detail: "chin-tucks-basic.embedded.json",
+    source: require("../../assets/new-exercises-images/chin-tucks-basic.embedded.json"),
+  },
+  neck2: {
+    title: "neck2.lottie",
+    detail: "neck2.embedded.json",
+    source: require("../../assets/new-exercises-images/neck2.embedded.json"),
+  },
+  neck3: {
+    title: "neck3.lottie",
+    detail: "neck3.embedded.json",
+    source: require("../../assets/new-exercises-images/neck3.embedded.json"),
+  },
+  eyeArea1: {
+    title: "eye-area1.lottie",
+    detail: "eye-area1.embedded.json",
+    source: require("../../assets/new-exercises-images/eye-area1.embedded.json"),
+  },
+  eyeBrowsLifting: {
+    title: "Eye Brow Lifting",
+    detail: "eye-brows-lifting.embedded.json",
+    source: require("../../assets/new-exercises-images/eye-brows-lifting.embedded.json"),
+  },
+  jawForcing: {
+    title: "jaw-forcing.lottie",
+    detail: "jaw-forcing.embedded.json",
+    source: require("../../assets/new-exercises-images/jaw-forcing.embedded.json"),
+  },
+  tongueTouching1: {
+    title: "tongue-touching-1.lottie",
+    detail: "tongue-touching-1.embedded.json",
+    source: require("../../assets/new-exercises-images/tongue-touching-1.embedded.json"),
+  },
+  chinTraining: {
+    title: "Chin Ball Press",
+    detail: "chin-ball-pressing.embedded.json",
+    source: require("../../assets/new-exercises-images/chin-ball-pressing.embedded.json"),
+  },
+  cheekPuffs: {
+    title: "cheek-puffs",
+    detail: "cheek-puffs.embedded.json",
+    source: require("../../assets/new-exercises-images/cheek-puffs.embedded.json"),
+  },
+  chinStretch: {
+    title: "chin-stretch",
+    detail: "chin-stretch.embedded.json",
+    source: require("../../assets/new-exercises-images/chin-stretch.embedded.json"),
+  },
+  upwardChinStretch: {
+    title: "Upward Chin Stretch",
+    detail: "upward-chin-stretch.embedded.json",
+    source: require("../../assets/new-exercises-images/upward-chin-stretch.embedded.json"),
+  },
+  chinBallPressing: {
+    title: "Chin Ball Pressing",
+    detail: "chin-ball-pressing.embedded.json",
+    source: require("../../assets/new-exercises-images/chin-ball-pressing.embedded.json"),
+  },
+  midfaceLift: {
+    title: "midface-lift",
+    detail: "midface-lift.embedded.json",
+    source: require("../../assets/new-exercises-images/midface-lift.embedded.json"),
+  },
+} as const;
+type LottiePreviewId = keyof typeof LOTTIE_PREVIEWS;
+const LOTTIE_PREVIEW_OPTIONS: { id: LottiePreviewId; label: string }[] = [
+  { id: "neck1", label: "Neck 1" },
+  { id: "nose1", label: "Nose 1" },
+  { id: "noseSlim2", label: "Slim Nose 2" },
+  { id: "slimNose3", label: "Slim Nose 3" },
+  { id: "chinTucksBasic", label: "Chin Tucks" },
+  { id: "neck2", label: "Neck 2" },
+  { id: "neck3", label: "Neck 3" },
+  { id: "eyeArea1", label: "Eye Area 1" },
+  { id: "eyeBrowsLifting", label: "Eye Brow Lifting" },
+  { id: "jawForcing", label: "Jaw Forcing" },
+  { id: "tongueTouching1", label: "Tongue Touching" },
+  { id: "chinTraining", label: "Chin Training" },
+  { id: "cheekPuffs", label: "Cheek Puffs" },
+  { id: "chinStretch", label: "Chin Stretch" },
+  { id: "upwardChinStretch", label: "Upward Chin Stretch" },
+  { id: "chinBallPressing", label: "Chin Ball Pressing" },
+  { id: "midfaceLift", label: "Midface Lift" },
+];
+
+type TimerExercisePreview = {
+  id: LottiePreviewId;
+  title: string;
+  target: string;
+  instruction: string;
+  duration: number;
+};
+
+type TimerMediaLayout = {
+  scale: number;
+  x: number;
+  y: number;
+};
+
+const TIMER_MEDIA_LAYOUTS: Record<LottiePreviewId, TimerMediaLayout> = {
+  neck1: { scale: 1.04, x: 0.16, y: 0.03 },
+  nose1: { scale: 0.98, x: 0, y: 0.01 },
+  noseSlim2: { scale: 0.98, x: 0, y: 0.01 },
+  slimNose3: { scale: 0.98, x: 0, y: 0.01 },
+  chinTucksBasic: { scale: 1.12, x: 0, y: 0.02 },
+  neck2: { scale: 1.36, x: 0.16, y: 0.02 },
+  neck3: { scale: 1.18, x: 0.16, y: 0.02 },
+  eyeArea1: { scale: 0.96, x: 0, y: 0.03 },
+  eyeBrowsLifting: { scale: 0.96, x: 0, y: 0.03 },
+  jawForcing: { scale: 0.98, x: 0, y: 0.02 },
+  tongueTouching1: { scale: 0.94, x: 0, y: 0.02 },
+  chinTraining: { scale: 1.12, x: 0, y: 0.02 },
+  cheekPuffs: { scale: 1.02, x: 0, y: 0.02 },
+  chinStretch: { scale: 1.02, x: 0, y: 0.02 },
+  upwardChinStretch: { scale: 1.02, x: 0, y: 0.02 },
+  chinBallPressing: { scale: 1.02, x: 0, y: 0.02 },
+  midfaceLift: { scale: 1.02, x: 0, y: 0.02 },
+};
+
+const TIMER_DESIGN_EXERCISES: TimerExercisePreview[] = [
+  {
+    id: "neck1",
+    title: "Neck Lift",
+    target: "Jawline",
+    instruction: "Lie back, keep shoulders low, and lift through the neck with slow control.",
+    duration: 30,
+  },
+  {
+    id: "nose1",
+    title: "Nose Contour",
+    target: "Nose",
+    instruction: "Glide both fingers along the nose bridge with steady, even pressure.",
+    duration: 30,
+  },
+  {
+    id: "noseSlim2",
+    title: "Slim Nose 2",
+    target: "Nose",
+    instruction: "Use both fingertips to contour along the nose with light, symmetrical pressure.",
+    duration: 30,
+  },
+  {
+    id: "slimNose3",
+    title: "Slim Nose 3",
+    target: "Nose",
+    instruction: "Follow the nose-slimming motion slowly, keeping pressure controlled and even.",
+    duration: 30,
+  },
+  {
+    id: "chinTucksBasic",
+    title: "Chin Tucks",
+    target: "Posture",
+    instruction: "Slide your chin straight back without looking down. Hold the tuck briefly.",
+    duration: 30,
+  },
+  {
+    id: "neck2",
+    title: "Neck Raise",
+    target: "Neck",
+    instruction: "Brace your torso and raise your head from the bench in a smooth line.",
+    duration: 30,
+  },
+  {
+    id: "neck3",
+    title: "Neck Curl",
+    target: "Under Chin",
+    instruction: "Curl from the neck only, then return slowly until the head is neutral.",
+    duration: 30,
+  },
+  {
+    id: "eyeArea1",
+    title: "Eye Area Lift",
+    target: "Eyes",
+    instruction: "Place your fingers lightly and lift the under-eye area without forehead tension.",
+    duration: 30,
+  },
+  {
+    id: "eyeBrowsLifting",
+    title: "Eye Brow Lifting",
+    target: "Brows",
+    instruction: "Lift through the brow area with steady fingertip support and relaxed forehead tension.",
+    duration: 30,
+  },
+  {
+    id: "jawForcing",
+    title: "Jaw Forcing",
+    target: "Jawline",
+    instruction: "Press both palms together and drive the jaw gently against resistance.",
+    duration: 30,
+  },
+  {
+    id: "tongueTouching1",
+    title: "Tongue Touching",
+    target: "Tongue Posture",
+    instruction: "Lift the tongue toward the upper palate and hold steady without jaw tension.",
+    duration: 30,
+  },
+  {
+    id: "chinTraining",
+    title: "Chin Ball Press",
+    target: "Chin",
+    instruction: "Press the chin into the ball with firm, controlled resistance while keeping shoulders low.",
+    duration: 30,
+  },
+  {
+    id: "cheekPuffs",
+    title: "Cheek Puffs",
+    target: "Cheeks",
+    instruction: "Fill one cheek with air, hold the tension, then switch sides with control.",
+    duration: 30,
+  },
+  {
+    id: "chinStretch",
+    title: "Chin Stretch",
+    target: "Jawline",
+    instruction: "Lengthen through the chin and neck, then return slowly to neutral posture.",
+    duration: 30,
+  },
+  {
+    id: "upwardChinStretch",
+    title: "Upward Chin Stretch",
+    target: "Chin",
+    instruction: "Tilt upward into the stretch and keep the chin line long without forcing the neck.",
+    duration: 30,
+  },
+  {
+    id: "chinBallPressing",
+    title: "Chin Ball Pressing",
+    target: "Under Chin",
+    instruction: "Press the chin into the ball with firm, controlled resistance while keeping shoulders low.",
+    duration: 30,
+  },
+  {
+    id: "midfaceLift",
+    title: "Midface Lift",
+    target: "Midface",
+    instruction: "Place your fingers near the midface and lift with steady, controlled pressure.",
+    duration: 30,
+  },
+];
+
+function useResolvedLottieSource(source: any, enabled: boolean) {
+  const [resolvedSource, setResolvedSource] = useState<any>(source);
+
+  useEffect(() => {
+    let cancelled = false;
+    setResolvedSource(source);
+
+    if (!enabled || typeof source !== "number") {
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    Asset.fromModule(source)
+      .downloadAsync()
+      .then((asset) => {
+        if (cancelled) return;
+        const uri = asset.localUri ?? asset.uri;
+        setResolvedSource(uri ? { uri } : source);
+      })
+      .catch(() => {
+        if (!cancelled) setResolvedSource(source);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [enabled, source]);
+
+  return resolvedSource;
+}
+
+function formatSeconds(total: number) {
+  const mins = Math.floor(total / 60);
+  const secs = total % 60;
+  return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+}
+
+const timerStyles = StyleSheet.create({
+  safe: {
+    flex: 1,
+    backgroundColor: "#FFFFFF",
+  },
+  root: {
+    flex: 1,
+    backgroundColor: "#FFFFFF",
+    paddingHorizontal: 22,
+  },
+  header: {
+    minHeight: 96,
+    paddingTop: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  backBtn: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000000",
+    shadowOpacity: 0.12,
+    shadowRadius: 22,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 8,
+  },
+  title: {
+    flex: 1,
+    textAlign: "center",
+    fontFamily: FONT,
+    fontSize: 25,
+    lineHeight: 30,
+    color: "#050505",
+  },
+  counterPill: {
+    width: 116,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: "#F0F0F2",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 22,
+    gap: 8,
+  },
+  counterText: {
+    fontFamily: FONT,
+    fontSize: 22,
+    lineHeight: 24,
+    color: "#050505",
+  },
+  counterTrack: {
+    width: "100%",
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: "#DCDDE0",
+    overflow: "hidden",
+  },
+  counterFill: {
+    height: "100%",
+    borderRadius: 4,
+    backgroundColor: "#050505",
+  },
+  mediaSlot: {
+    alignSelf: "center",
+    width: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 18,
+    marginBottom: 12,
+    overflow: "hidden",
+  },
+  mediaCanvas: {
+    width: "100%",
+    height: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  media: {
+    width: "100%",
+    height: "100%",
+  },
+  info: {
+    paddingHorizontal: 18,
+    alignItems: "center",
+    gap: 15,
+  },
+  time: {
+    fontFamily: FONT,
+    fontSize: 64,
+    lineHeight: 68,
+    color: "#000000",
+  },
+  progressTrack: {
+    width: "100%",
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: "#E6E7EA",
+    overflow: "hidden",
+  },
+  progressFill: {
+    height: "100%",
+    borderRadius: 4,
+    backgroundColor: "#000000",
+  },
+  instruction: {
+    maxWidth: 360,
+    fontFamily: FONT,
+    color: "#7D7D86",
+    fontSize: 21,
+    lineHeight: 28,
+    textAlign: "center",
+  },
+  target: {
+    fontFamily: FONT,
+    color: "#A2A2AA",
+    fontSize: 12,
+  },
+  transport: {
+    marginTop: "auto",
+    height: 92,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 28,
+    paddingBottom: 8,
+  },
+  transportBtn: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#F4F4F5",
+  },
+  playBtn: {
+    width: 86,
+    height: 86,
+    borderRadius: 43,
+    backgroundColor: "#000000",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000000",
+    shadowOpacity: 0.22,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 10,
+  },
+  bottomBar: {
+    height: 78,
+    marginHorizontal: -22,
+    paddingHorizontal: 54,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "#EEEEF0",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: "#FFFFFF",
+  },
+  closeChip: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(0,0,0,0.18)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+});
+
+function ExerciseTimerDesignPreview({
+  visible,
+  onClose,
+}: {
+  visible: boolean;
+  onClose: () => void;
+}) {
+  const { width, height } = useWindowDimensions();
+  const [index, setIndex] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(true);
+  const [replayKey, setReplayKey] = useState(0);
+  const exercise = TIMER_DESIGN_EXERCISES[index];
+  const duration = exercise.duration;
+  const [timeLeft, setTimeLeft] = useState(duration - 7);
+  const progress = duration > 0 ? (duration - timeLeft) / duration : 0;
+  const mediaWidth = Math.min(width - 44, 410);
+  const mediaHeight = Math.min(Math.max(height * 0.36, 280), 360);
+  const mediaLayout = TIMER_MEDIA_LAYOUTS[exercise.id];
+  const lottieSource = useResolvedLottieSource(LOTTIE_PREVIEWS[exercise.id].source, visible);
+
+  useEffect(() => {
+    if (!visible) return;
+    setIndex(0);
+    setIsPlaying(true);
+    setTimeLeft(TIMER_DESIGN_EXERCISES[0].duration - 7);
+    setReplayKey((key) => key + 1);
+  }, [visible]);
+
+  useEffect(() => {
+    setTimeLeft(Math.max(0, duration - 7));
+    setReplayKey((key) => key + 1);
+  }, [index, duration]);
+
+  useEffect(() => {
+    if (!visible || !isPlaying || timeLeft <= 0) return;
+    const timer = setInterval(() => {
+      setTimeLeft((current) => Math.max(0, current - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [visible, isPlaying, timeLeft]);
+
+  const goTo = (nextIndex: number) => {
+    setIndex((nextIndex + TIMER_DESIGN_EXERCISES.length) % TIMER_DESIGN_EXERCISES.length);
+    setIsPlaying(true);
+  };
+
+  return (
+    <Modal
+      visible={visible}
+      animationType="slide"
+      presentationStyle="fullScreen"
+      onRequestClose={onClose}
+    >
+      <SafeAreaView style={timerStyles.safe}>
+        <View style={timerStyles.root}>
+          <View style={timerStyles.header}>
+            <Pressable
+              onPress={onClose}
+              accessibilityRole="button"
+              accessibilityLabel="Close timer design preview"
+              style={timerStyles.backBtn}
+            >
+              <ChevronLeft color="#050505" size={34} strokeWidth={3.2} />
+            </Pressable>
+
+            <Text
+              style={timerStyles.title}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.72}
+            >
+              {exercise.title.toUpperCase()}
+            </Text>
+
+            <View style={timerStyles.counterPill}>
+              <Text style={timerStyles.counterText}>{index + 1}/{TIMER_DESIGN_EXERCISES.length}</Text>
+              <View style={timerStyles.counterTrack}>
+                <View
+                  style={[
+                    timerStyles.counterFill,
+                    { width: `${((index + 1) / TIMER_DESIGN_EXERCISES.length) * 100}%` },
+                  ]}
+                />
+              </View>
+            </View>
+          </View>
+
+          <View style={[timerStyles.mediaSlot, { width: mediaWidth, height: mediaHeight }]}>
+            <View
+              style={[
+                timerStyles.mediaCanvas,
+                {
+                  transform: [
+                    { translateX: mediaWidth * mediaLayout.x },
+                    { translateY: mediaHeight * mediaLayout.y },
+                    { scale: mediaLayout.scale },
+                  ],
+                },
+              ]}
+            >
+              <LottieView
+                key={`${exercise.id}-${replayKey}`}
+                source={lottieSource}
+                autoPlay
+                loop
+                speed={isPlaying ? 1 : 0}
+                resizeMode="contain"
+                renderMode="SOFTWARE"
+                style={timerStyles.media}
+              />
+            </View>
+          </View>
+
+          <View style={timerStyles.info}>
+            <Text style={timerStyles.time}>{formatSeconds(timeLeft)}</Text>
+            <View style={timerStyles.progressTrack}>
+              <View style={[timerStyles.progressFill, { width: `${Math.max(0.03, progress) * 100}%` }]} />
+            </View>
+            <Text style={timerStyles.instruction}>{exercise.instruction}</Text>
+            <Text style={timerStyles.target}>{exercise.target.toUpperCase()} - {duration}s set</Text>
+          </View>
+
+          <View style={timerStyles.transport}>
+            <Pressable
+              onPress={() => goTo(index - 1)}
+              accessibilityRole="button"
+              accessibilityLabel="Previous exercise"
+              style={timerStyles.transportBtn}
+            >
+              <SkipBack color="#808080" size={28} strokeWidth={2.8} />
+            </Pressable>
+
+            <Pressable
+              onPress={() => setIsPlaying((playing) => !playing)}
+              accessibilityRole="button"
+              accessibilityLabel={isPlaying ? "Pause exercise" : "Play exercise"}
+              style={timerStyles.playBtn}
+            >
+              {isPlaying ? (
+                <Pause color="#FFFFFF" size={42} fill="#FFFFFF" strokeWidth={2.2} />
+              ) : (
+                <Play color="#FFFFFF" size={42} fill="#FFFFFF" strokeWidth={2.2} />
+              )}
+            </Pressable>
+
+            <Pressable
+              onPress={() => goTo(index + 1)}
+              accessibilityRole="button"
+              accessibilityLabel="Next exercise"
+              style={timerStyles.transportBtn}
+            >
+              <SkipForward color="#808080" size={28} strokeWidth={2.8} />
+            </Pressable>
+          </View>
+
+          <View style={timerStyles.bottomBar}>
+            <Home color="#050505" size={33} strokeWidth={3.2} />
+            <BookOpen color="#8A8A8E" size={32} strokeWidth={2.8} />
+            <Aperture color="#8A8A8E" size={34} strokeWidth={2.6} />
+            <AlarmClock color="#8A8A8E" size={34} strokeWidth={2.8} />
+          </View>
+
+          <Pressable
+            onPress={onClose}
+            accessibilityRole="button"
+            accessibilityLabel="Close preview"
+            style={timerStyles.closeChip}
+          >
+            <X color="#FFFFFF" size={16} strokeWidth={3} />
+          </Pressable>
+        </View>
+      </SafeAreaView>
+    </Modal>
+  );
+}
 
 export default function DevScreen() {
+  if (!__DEV__) {
+    return <Redirect href="/(tabs)/program" />;
+  }
+
   const [consentValue, setConsentValue] = useState<string | null | "…">("…");
   const [previewVisible, setPreviewVisible] = useState(false);
+  const [lottiePreviewVisible, setLottiePreviewVisible] = useState(false);
+  const [lottiePreviewKey, setLottiePreviewKey] = useState(0);
+  const [lottiePreviewStatus, setLottiePreviewStatus] = useState("Ready");
+  const [lottiePreviewId, setLottiePreviewId] = useState<LottiePreviewId>("neck1");
+  const [timerDesignPreviewVisible, setTimerDesignPreviewVisible] = useState(false);
+  const lottiePreviewSource = useResolvedLottieSource(
+    LOTTIE_PREVIEWS[lottiePreviewId].source,
+    lottiePreviewVisible
+  );
   const [progressMockupsVisible, setProgressMockupsVisible] = useState(false);
   const [potentialSourceUri, setPotentialSourceUri] = useState<string | null>(null);
   const [potentialResultUri, setPotentialResultUri] = useState<string | null>(null);
@@ -721,6 +1410,31 @@ export default function DevScreen() {
     }
   };
 
+  const handlePreviewPotentialFaceFlowFree = () => {
+    const fallbackCurrent = RNImage.resolveAssetSource(require("../../assets/before.jpeg")).uri;
+    const fallbackPotential = RNImage.resolveAssetSource(require("../../assets/after.jpeg")).uri;
+    const currentUri = potentialSourceUri ?? imageUri ?? fallbackCurrent;
+    const potentialUri = potentialResultUri ?? fallbackPotential;
+
+    useScores.getState().seedDevScan({
+      frontUri: currentUri,
+      sideUri: currentUri,
+      scanId: "dev-scan-preview",
+      scores: {
+        jawline: 67,
+        facial_symmetry: 72,
+        skin_quality: 60,
+        cheekbones: 64,
+        eyes_symmetry: 71,
+        nose_harmony: 68,
+        sexual_dimorphism: 66,
+      },
+    });
+    useAdvancedAnalysis.getState().seedDevData(MOCK_ADVANCED, "dev-scan-preview");
+    usePotentialFace.getState().seedDevPreview({ potentialUri });
+    router.push("/(onboarding)/potential-face-reveal");
+  };
+
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView
@@ -728,6 +1442,56 @@ export default function DevScreen() {
         showsVerticalScrollIndicator={false}
       >
         <T style={styles.screenTitle}>Dev Tools</T>
+
+        <GlassCard style={styles.card}>
+          <SectionHeader
+            title="New Exercise Video Preview"
+            subtitle="Open the production-style player for assets/new-exercises-videos"
+          />
+          <DevButton
+            label="Preview New Exercise Videos"
+            accent
+            onPress={() => router.push("/(tabs)/new-exercises-preview" as any)}
+          />
+        </GlassCard>
+
+        <GlassCard style={styles.card}>
+          <SectionHeader
+            title="Exercise Timer Redesign"
+            subtitle="Production-style preview using the exercise Lottie animations"
+          />
+          <DevButton
+            label="Preview Timer Screen"
+            accent
+            onPress={() => setTimerDesignPreviewVisible(true)}
+          />
+        </GlassCard>
+
+        <GlassCard style={styles.card}>
+          <SectionHeader
+            title="Lottie Animation Preview"
+            subtitle="Preview exercise animation files from assets/new-exercises-images"
+          />
+          <View style={styles.lottieButtonGrid}>
+            {LOTTIE_PREVIEW_OPTIONS.map((option) => (
+              <TouchableOpacity
+                key={option.id}
+                onPress={() => {
+                  setLottiePreviewId(option.id);
+                  setLottiePreviewKey((key) => key + 1);
+                  setLottiePreviewStatus("Loading");
+                  setLottiePreviewVisible(true);
+                }}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={`Preview ${option.label}`}
+                style={[styles.devBtn, styles.lottieGridBtn, styles.devBtnAccent]}
+              >
+                <T style={[styles.devBtnText, styles.devBtnTextAccent]}>{option.label}</T>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </GlassCard>
 
         {/* Progress Dashboard Mockups */}
         <GlassCard style={styles.card}>
@@ -812,6 +1576,17 @@ export default function DevScreen() {
               onPress={handleGeneratePotentialDev}
             />
           </View>
+
+          <View style={styles.divider} />
+
+          <DevButton
+            label="Preview Full Story Flow (Free)"
+            accent
+            onPress={handlePreviewPotentialFaceFlowFree}
+          />
+          <T style={styles.sectionSubtitle} variant="small" color="sub">
+            Uses the current lab result if present, then opens the full reveal-to-routine story flow. No backend call.
+          </T>
         </GlassCard>
 
         <GlassCard style={styles.card}>
@@ -1355,6 +2130,66 @@ export default function DevScreen() {
         visible={progressMockupsVisible}
         onClose={() => setProgressMockupsVisible(false)}
       />
+
+      <ExerciseTimerDesignPreview
+        visible={timerDesignPreviewVisible}
+        onClose={() => setTimerDesignPreviewVisible(false)}
+      />
+
+      <Modal
+        visible={lottiePreviewVisible}
+        animationType="slide"
+        presentationStyle="fullScreen"
+        onRequestClose={() => setLottiePreviewVisible(false)}
+      >
+        <SafeAreaView style={styles.lottieModalRoot}>
+          <View style={styles.previewHeader}>
+            <View style={{ flex: 1 }}>
+              <T style={styles.previewTitle}>{LOTTIE_PREVIEWS[lottiePreviewId].title}</T>
+              <T style={styles.lottieModalSub}>
+                {lottiePreviewStatus} - {LOTTIE_PREVIEWS[lottiePreviewId].detail}
+              </T>
+            </View>
+            <View style={styles.previewActions}>
+              <Pressable
+                onPress={() => {
+                  setLottiePreviewStatus("Loading");
+                  setLottiePreviewKey((key) => key + 1);
+                }}
+                hitSlop={12}
+                style={styles.previewBtn}
+                accessibilityRole="button"
+                accessibilityLabel="Replay lottie animation"
+              >
+                <T style={styles.previewBtnText}>Replay</T>
+              </Pressable>
+              <Pressable
+                onPress={() => setLottiePreviewVisible(false)}
+                hitSlop={12}
+                style={[styles.previewBtn, styles.previewBtnClose]}
+                accessibilityRole="button"
+                accessibilityLabel="Close lottie preview"
+              >
+                <T style={styles.previewBtnText}>Close</T>
+              </Pressable>
+            </View>
+          </View>
+
+          <View style={styles.lottieStage}>
+            <LottieView
+              key={lottiePreviewKey}
+              source={lottiePreviewSource}
+              autoPlay
+              loop
+              resizeMode="contain"
+              renderMode="SOFTWARE"
+              onAnimationLoaded={() => setLottiePreviewStatus("Loaded")}
+              onAnimationFailure={(error) => setLottiePreviewStatus(`Failed: ${error}`)}
+              style={styles.lottieAnimation}
+            />
+          </View>
+        </SafeAreaView>
+      </Modal>
 
       <Modal
         visible={!!potentialPreview}
@@ -2273,6 +3108,17 @@ const styles = StyleSheet.create({
   devBtnTextAccent: {
     color: COLORS.accent,
   },
+  lottieButtonGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: SP[3],
+  },
+  lottieGridBtn: {
+    flexBasis: "47%",
+    flexGrow: 1,
+    minHeight: 48,
+    justifyContent: "center",
+  },
 
   // Consent status
   statusRow: {
@@ -2337,5 +3183,31 @@ const styles = StyleSheet.create({
   previewBtnText: {
     fontSize: 13,
     color: COLORS.dim,
+  },
+  lottieModalRoot: {
+    flex: 1,
+    backgroundColor: COLORS.bgBottom,
+  },
+  lottieModalSub: {
+    marginTop: 2,
+    fontSize: 11,
+    color: COLORS.sub,
+    fontFamily: "Poppins-Regular",
+  },
+  lottieStage: {
+    flex: 1,
+    marginHorizontal: SP[4],
+    marginBottom: SP[5],
+    borderRadius: RADII.xl,
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: COLORS.cardBorder,
+    overflow: "hidden",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  lottieAnimation: {
+    width: "100%",
+    height: "100%",
   },
 });

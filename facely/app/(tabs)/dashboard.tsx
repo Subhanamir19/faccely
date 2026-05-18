@@ -43,7 +43,7 @@ import Svg, {
   Text as SvgText,
 } from "react-native-svg";
 import { useRouter, useFocusEffect } from "expo-router";
-import { TrendingUp, TrendingDown, ChevronRight, ArrowLeft, Sparkles, RefreshCw, Bell } from "lucide-react-native";
+import { TrendingUp, TrendingDown, ChevronRight, ArrowLeft, Sparkles, RefreshCw, Bell, Flame } from "lucide-react-native";
 import Text from "@/components/ui/T";
 import InsightPulseCard from "@/components/ui/InsightPulseCard";
 import { COLORS, SP, RADII, TYPE, SHADOWS } from "@/lib/tokens";
@@ -280,44 +280,6 @@ function projectGraph(points: number[], daysAhead: number): number[] | null {
     out.push(Math.max(0, Math.min(100, y)));
   }
   return out;
-}
-
-/**
- * 7-day ribbon driven by tasks-store history. Each cell:
- *   { day: "M"|"T"|... , done: boolean, isToday: boolean, date: string }
- * Cells are ordered Monday → Sunday so the row reads naturally.
- */
-function buildWeekRibbon(
-  history: { date: string; streakEarned?: boolean }[],
-  todayRecord: { date: string; streakEarned?: boolean } | null,
-): { day: string; done: boolean; isToday: boolean; date: string }[] {
-  const dayLetters = ["M", "T", "W", "T", "F", "S", "S"]; // Mon..Sun
-  const allRecords = todayRecord
-    ? [todayRecord, ...history.filter((h) => h.date !== todayRecord.date)]
-    : history;
-  const byDate = new Map(allRecords.map((r) => [r.date, !!r.streakEarned]));
-
-  const today = new Date();
-  // Monday-anchor — JS Sunday=0; shift so Monday=0.
-  const jsDow = today.getDay();
-  const monOffset = (jsDow + 6) % 7; // 0 if Monday, 6 if Sunday
-  const monday = new Date(today);
-  monday.setDate(today.getDate() - monOffset);
-
-  const cells: { day: string; done: boolean; isToday: boolean; date: string }[] = [];
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(monday);
-    d.setDate(monday.getDate() + i);
-    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-    const isToday = iso === `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
-    cells.push({
-      day: dayLetters[i],
-      done: byDate.get(iso) ?? false,
-      isToday,
-      date: iso,
-    });
-  }
-  return cells;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1285,14 +1247,11 @@ function JourneyCard({
 }
 
 /* -------------------------------------------------------------------------- */
-/*  IdentityStrip — caption + week ribbon                                      */
+/*  IdentityStrip - tracking detail header                                     */
 /* -------------------------------------------------------------------------- */
 
 function IdentityStrip({
-  userName,
-  joinedDaysAgo,
   currentStreak,
-  avatarUri,
   onBack,
 }: {
   userName: string | null;
@@ -1301,91 +1260,36 @@ function IdentityStrip({
   avatarUri: string | null;
   onBack: () => void;
 }) {
-  const history     = useTasksStore((s) => s.history);
-  const todayRecord = useTasksStore((s) => s.today);
-  const cells       = buildWeekRibbon(history, todayRecord);
-
-  // Day count derives from joinedDaysAgo (clamped at 1 — Day 1 minimum).
-  const dayN = Math.max(1, joinedDaysAgo + 1);
-  const displayName = userName ?? "Champion";
+  const streakUnit = currentStreak === 1 ? "day streak" : "days streak";
 
   return (
     <Animated.View entering={FadeInDown.delay(0).duration(360)} style={styles.identityWrap}>
       <View style={styles.identityHeader}>
-        <View style={styles.identityProfile}>
-          <View style={styles.identityAvatar}>
-            {avatarUri ? (
-              <Image source={{ uri: avatarUri }} style={styles.identityAvatarImage} resizeMode="cover" />
-            ) : (
-              <Text style={styles.identityAvatarText}>{displayName.charAt(0).toUpperCase()}</Text>
-            )}
-          </View>
-          <View style={styles.identityNameBlock}>
-            <Text style={styles.identityName} numberOfLines={1}>{displayName}</Text>
-            <Text style={styles.identityCaption} numberOfLines={1}>
-              {`Day ${dayN} of your transformation`}
-            </Text>
-          </View>
+        <Pressable
+          onPress={onBack}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel="Back to overview"
+          style={({ pressed }) => [styles.identityRailButton, pressed && styles.identityRailPressed]}
+        >
+          <ArrowLeft size={18} color={TRACKING_HEADER.text} strokeWidth={2.4} />
+        </Pressable>
+
+        <View style={styles.identityStreakPill}>
+          <Flame size={13} color="#FF7A1A" strokeWidth={2.4} />
+          <Text style={styles.identityStreakNum}>{currentStreak}</Text>
+          <Text style={styles.identityStreakText}>{streakUnit}</Text>
         </View>
 
-        <View style={styles.identityActions}>
-          <Pressable
-            onPress={onBack}
-            style={({ pressed }) => [styles.identityOverviewPill, pressed && styles.overviewPressed]}
-          >
-            <ArrowLeft size={14} color="#FFFFFF" strokeWidth={2.5} />
-            <Text style={styles.identityOverviewText}>Overview</Text>
-          </Pressable>
-          <View style={styles.identityBell}>
-            <Bell size={18} color={TRACKING_HEADER.text} strokeWidth={2.5} />
-            {currentStreak > 0 && (
-              <View style={styles.identityBellDot}>
-                <Text style={styles.identityBellDotText}>{Math.min(currentStreak, 9)}</Text>
-              </View>
-            )}
-          </View>
-        </View>
-      </View>
-      {/*
-        <View style={{ flex: 1 }}>
-          <Text style={styles.identityCaption}>
-            {`Day ${dayN}${userName ? ` · ${userName}'s transformation` : " of your transformation"}`}
-          </Text>
-        </View>
-        {currentStreak > 0 && (
-          <View style={styles.identityStreak}>
-            <Flame size={13} color={COLORS.lightText} strokeWidth={2.4} />
-            <Text style={styles.identityStreakNum}>{currentStreak}</Text>
-          </View>
-        )}
-      */}
-
-      <View style={styles.ribbonRow}>
-        {cells.map((c, i) => (
-          <View
-            key={i}
-            style={[
-              styles.ribbonCell,
-              c.done && styles.ribbonCellDone,
-              c.isToday && styles.ribbonCellToday,
-            ]}
-          >
-            <View
-              style={[
-                styles.ribbonDot,
-                c.done    && styles.ribbonDotDone,
-                c.isToday && styles.ribbonDotToday,
-                c.isToday && !c.done && styles.ribbonDotTodayPending,
-              ]}
-            />
-            <Text style={[styles.ribbonDay, (c.done || c.isToday) && styles.ribbonDayToday]}>
-              {c.day}
-            </Text>
-            <Text style={[styles.ribbonDate, (c.done || c.isToday) && styles.ribbonDateActive]}>
-              {new Date(`${c.date}T00:00:00`).getDate()}
-            </Text>
-          </View>
-        ))}
+        <Pressable
+          onPress={() => Haptics.selectionAsync()}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel="Progress tracking"
+          style={({ pressed }) => [styles.identityRailButton, pressed && styles.identityRailPressed]}
+        >
+          <TrendingUp size={18} color={TRACKING_HEADER.text} strokeWidth={2.3} />
+        </Pressable>
       </View>
     </Animated.View>
   );
@@ -2622,19 +2526,6 @@ export default function DashboardScreen() {
       <>
         {/* ── Section 1.5: Potential Face — top-anchored "% closer" card ── */}
         {/* Renders nothing when no row exists yet; handles its own state machine. */}
-        <View style={styles.detailBackRow}>
-          <Pressable
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              setProgressView("overview");
-            }}
-            style={({ pressed }) => [styles.detailBackButton, pressed && styles.overviewPressed]}
-          >
-            <ArrowLeft size={20} color={COLORS.lightText} strokeWidth={2.5} />
-            <Text style={styles.detailBackText}>Overview</Text>
-          </Pressable>
-        </View>
-
         <IdentityStrip
           userName={userName}
           joinedDaysAgo={data?.joined_days_ago ?? 0}
@@ -3637,7 +3528,47 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     gap: SP[4],
-    marginBottom: SP[5],
+  },
+  identityRailButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 16,
+    backgroundColor: "#F8F9F8",
+    borderWidth: 1,
+    borderColor: "#ECEEEC",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000000",
+    shadowOpacity: 0.08,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 4,
+  },
+  identityRailPressed: {
+    opacity: 0.72,
+    transform: [{ translateY: 1 }],
+  },
+  identityStreakPill: {
+    minHeight: 38,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    paddingHorizontal: 15,
+    borderRadius: RADII.circle,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#ECEEEC",
+    shadowColor: "#000000",
+    shadowOpacity: 0.08,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 4,
+  },
+  identityStreakText: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 12,
+    color: TRACKING_HEADER.muted,
   },
   identityLegacyHeader: {
     display: "none",
@@ -3745,67 +3676,9 @@ const styles = StyleSheet.create({
   },
   identityStreakNum: {
     fontFamily: "ProximaNova-Bold",
-    fontSize: 12,
-    color: COLORS.lightText,
-    letterSpacing: -0.1,
+    fontSize: 13,
+    color: "#E85F00",
   },
-  ribbonRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: SP[2],
-  },
-  ribbonCell: {
-    alignItems: "center",
-    justifyContent: "center",
-    flex: 1,
-    minHeight: 58,
-    borderRadius: 22,
-    gap: 5,
-  },
-  ribbonCellDone: {
-    backgroundColor: TRACKING_HEADER.accentSoft,
-  },
-  ribbonCellToday: {
-    borderWidth: 1.5,
-    borderColor: TRACKING_HEADER.accent,
-    backgroundColor: TRACKING_HEADER.accentSoft,
-  },
-  ribbonDot: {
-    display: "none",
-  },
-  ribbonDotDone: {
-    backgroundColor: COLORS.ctaBlack,
-  },
-  ribbonDotToday: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-  },
-  ribbonDotTodayPending: {
-    backgroundColor: COLORS.lightCard,
-    borderWidth: 2,
-    borderColor: COLORS.ctaBlack,
-  },
-  ribbonDay: {
-    fontFamily: "ProximaNova-Bold",
-    fontSize: 11,
-    color: TRACKING_HEADER.muted,
-    letterSpacing: 0.4,
-  },
-  ribbonDayToday: {
-    color: TRACKING_HEADER.accent,
-  },
-  ribbonDate: {
-    fontFamily: "ProximaNova-Bold",
-    fontSize: 14,
-    color: TRACKING_HEADER.faint,
-    letterSpacing: 0.2,
-  },
-  ribbonDateActive: {
-    color: TRACKING_HEADER.accent,
-  },
-
   /* Legacy header / streak — kept for safety, no longer rendered */
   headerRow: {
     flexDirection: "row",

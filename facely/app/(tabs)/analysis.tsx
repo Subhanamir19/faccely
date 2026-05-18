@@ -13,8 +13,7 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { Image as ExpoImage } from "expo-image";
-import { useFocusEffect } from "expo-router";
-import { router } from "expo-router";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import Animated, {
@@ -38,7 +37,6 @@ import { ms, sw, sh } from "@/lib/responsive";
 import { useScores } from "@/store/scores";
 import { useAdvancedAnalysis } from "@/store/advancedAnalysis";
 import { useTasksStore } from "@/store/tasks";
-import { usePotentialFace } from "@/store/potentialFace";
 import { useAdvancedAnalysisConsent } from "@/hooks/useAdvancedAnalysisConsent";
 import { BlueprintModal } from "@/components/analysis/BlueprintModal";
 import type { AdvancedAnalysis } from "@/lib/api/advancedAnalysis";
@@ -632,22 +630,15 @@ export function AnalysisContent({
   data,
   viewportWidth,
   imageUri,
+  onboardingFlow = false,
 }: {
   data: AdvancedAnalysis;
   viewportWidth: number;
   imageUri?: string | null;
+  onboardingFlow?: boolean;
 }) {
   const currentStreak = useTasksStore((s) => s.currentStreak);
   const metrics   = useMemo(() => flattenData(data), [data]);
-
-  // True only after the user acknowledges this exact potential-face row.
-  // This prevents stale persisted state from skipping the first reveal.
-  const ackedCurrentReveal = usePotentialFace(
-    (s) =>
-      s.data?.status === "ready" &&
-      s.revealSeenPotentialFaceId !== null &&
-      s.revealSeenPotentialFaceId === s.data.id
-  );
 
   // Single carousel ordered by section: working → okay → needs_work.
   // Section identity is conveyed via a chip on each card; chip color shifts
@@ -705,6 +696,7 @@ export function AnalysisContent({
         <AnalysisCarousel
           metrics={ordered}
           viewportWidth={viewportWidth}
+          showControls={onboardingFlow}
           onCardPress={(c) => {
             // Carousel emits a slim CarouselMetric — find the full FlatMetric
             // by id so the popup gets commentary + ideal range too.
@@ -720,19 +712,12 @@ export function AnalysisContent({
         style={sx.footerCta}
       >
         <Pressable
-          onPress={() => {
-            // First-time onboarding flow: route through the Potential Face
-            // reveal once, then the user lands in the program. After the
-            // reveal has been *successfully* dismissed once, this CTA goes
-            // straight to the program tab on every subsequent visit.
-            if (ackedCurrentReveal) router.push("/(tabs)/program");
-            else router.push("/(onboarding)/potential-face-reveal");
-          }}
+          onPress={() =>
+            router.push(onboardingFlow ? "/(onboarding)/plan-intro" : "/(tabs)/program")
+          }
           style={({ pressed }) => [sx.ctaBtn, pressed && { opacity: 0.9 }]}
         >
-          <Text style={sx.ctaBtnText}>
-            {ackedCurrentReveal ? "START YOUR ROUTINE" : "SEE YOUR POTENTIAL FACE"}
-          </Text>
+          <Text style={sx.ctaBtnText}>{onboardingFlow ? "NEXT" : "START YOUR ROUTINE"}</Text>
           <ChevronRight size={ms(16)} color="#FFFFFF" strokeWidth={2.5} />
         </Pressable>
       </Animated.View>
@@ -832,6 +817,8 @@ function ErrorState({ message, onRetry }: { message: string; onRetry: () => void
 export default function AnalysisScreen() {
   const insets = useSafeAreaInsets();
   const { width: SW } = useWindowDimensions();
+  const params = useLocalSearchParams<{ onboardingFlow?: string | string[] }>();
+  const onboardingFlow = (Array.isArray(params.onboardingFlow) ? params.onboardingFlow[0] : params.onboardingFlow) === "1";
 
   const { scores, imageUri }               = useScores();
   const { data, loading, error, fetch, cachedScanId } = useAdvancedAnalysis();
@@ -925,7 +912,15 @@ export default function AnalysisScreen() {
             </View>
           )}
 
-          {showContent && <AnalysisContent key={focusKey} data={data!} viewportWidth={viewportWidth} imageUri={imageUri} />}
+          {showContent && (
+            <AnalysisContent
+              key={focusKey}
+              data={data!}
+              viewportWidth={viewportWidth}
+              imageUri={imageUri}
+              onboardingFlow={onboardingFlow}
+            />
+          )}
         </ScrollView>
       </View>
 

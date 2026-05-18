@@ -1,76 +1,56 @@
 // app/(onboarding)/potential-face-reveal.tsx
-//
-// Stage-1 Potential Face reveal — the emotional climax of onboarding.
-// Slotted between /(tabs)/analysis and /(tabs)/program.
-//
-// Visual language: matches the light-theme treatment used by the dashboard
-// and the redesigned advanced-analysis tab — soft white surfaces, sage-green
-// "what changed" chips, lime accent on the right-hand "potential" card,
-// black pill CTA at the bottom. The reveal is meant to feel like a calm,
-// confident handoff, not a dark-mode hype moment.
-//
-// State machine (driven by potentialFace.data.status + isPolling):
-//   pending     → "polishing" loader, polls /current every 2s for up to 30s
-//   ready       → reveal layout
-//                  Primary CTA → /(tabs)/program (sets revealSeen = true)
-//                  Secondary "doesn't look like me" → swap to alternate (one-shot)
-//   failed      → fallback: friendly message + Continue
-//   unlocked    → user has graduated; bounce straight to program
-//   poll timeout (still pending) → fallback message + Continue
+// First post-purchase hero moment: reveal the user's generated potential face.
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  View,
-  Image,
-  Pressable,
-  StyleSheet,
   ActivityIndicator,
-  useWindowDimensions,
   Alert,
+  Image,
+  Modal,
+  Pressable,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  useWindowDimensions,
+  View,
 } from "react-native";
-import { ChevronRight } from "lucide-react-native";
 import { router } from "expo-router";
+import { ChevronRight, Maximize2, X } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Animated, { FadeIn, FadeInDown, FadeInUp } from "react-native-reanimated";
+import Animated, {
+  Easing,
+  FadeIn,
+  FadeInDown,
+  FadeInUp,
+  useAnimatedStyle,
+  useSharedValue,
+  withDelay,
+  withSpring,
+  withTiming,
+} from "react-native-reanimated";
 
 import T from "@/components/ui/T";
-import { COLORS, SP, RADII } from "@/lib/tokens";
+import { COLORS, RADII, SP } from "@/lib/tokens";
+import { hapticLight, hapticSuccess } from "@/lib/haptics";
 import { ms, sh, sw } from "@/lib/responsive";
-import { hapticSuccess, hapticLight } from "@/lib/haptics";
-
-import {
-  usePotentialFace,
-  type PotentialFace,
-} from "@/store/potentialFace";
-import { useScores } from "@/store/scores";
 import { labelForMetric } from "@/lib/potentialFaceLabels";
+import { usePotentialFace, type PotentialFace } from "@/store/potentialFace";
+import { useScores } from "@/store/scores";
 
 const FONT = "ProximaNova-Bold";
 
-// Sage palette mirrored from the analysis tab's "WORKING" treatment so the
-// chip language is identical to what the user just saw.
 const CHIP = {
   bg: "#E2F1D8",
   border: "#C7E2B4",
   text: "#1F3D1F",
 };
 
-// Soft drop shadow recipe used across the dashboard / score / analysis cards.
-const SOFT_SHADOW = {
-  shadowColor: "#000000",
-  shadowOpacity: 0.06,
-  shadowRadius: 16,
-  shadowOffset: { width: 0, height: 6 },
-  elevation: 3,
-} as const;
-
-/* -------------------------------------------------------------------------- */
-/*   Screen                                                                   */
-/* -------------------------------------------------------------------------- */
+const REVEAL_POLL_TIMEOUT_MS = 180_000;
+const SLOW_WAIT_HINT_MS = 45_000;
 
 export default function PotentialFaceRevealScreen() {
   const insets = useSafeAreaInsets();
-  const { width: SW } = useWindowDimensions();
+  const { width } = useWindowDimensions();
 
   const data = usePotentialFace((s) => s.data);
   const error = usePotentialFace((s) => s.error);
@@ -78,110 +58,104 @@ export default function PotentialFaceRevealScreen() {
   const load = usePotentialFace((s) => s.load);
   const pollUntilReady = usePotentialFace((s) => s.pollUntilReady);
   const stopPolling = usePotentialFace((s) => s.stopPolling);
-  const useAlternate = usePotentialFace((s) => s.useAlternate);
+  const retryGeneration = usePotentialFace((s) => s.retryGeneration);
   const markRevealSeen = usePotentialFace((s) => s.markRevealSeen);
-
   const currentImageUri = useScores((s) => s.imageUri);
 
-  const [pollTimedOut, setPollTimedOut] = useState(false);
+  const [slowWait, setSlowWait] = useState(false);
+  const [pollExhausted, setPollExhausted] = useState(false);
   const [swapping, setSwapping] = useState(false);
   const navigatedRef = useRef(false);
 
-  /* ------------------------------------------------------------------------ */
-  /*   On mount: refresh state and start polling if pending                   */
-  /* ------------------------------------------------------------------------ */
-
   useEffect(() => {
     let cancelled = false;
+    const slowTimer = setTimeout(() => {
+      if (!cancelled) setSlowWait(true);
+    }, SLOW_WAIT_HINT_MS);
+
     (async () => {
       const fresh = await load();
       if (cancelled) return;
 
       if (fresh?.status === "unlocked") {
-        navigatedRef.current = true;
-        router.replace("/(tabs)/program");
+        goBridge();
         return;
       }
 
       if (fresh?.status === "pending" || !fresh) {
-        const settled = await pollUntilReady(30_000);
+        const settled = await pollUntilReady(REVEAL_POLL_TIMEOUT_MS);
         if (cancelled) return;
-        if (!settled || settled.status === "pending") {
-          setPollTimedOut(true);
-        }
+        if (!settled || settled.status === "pending") setPollExhausted(true);
       }
     })();
     return () => {
       cancelled = true;
+      clearTimeout(slowTimer);
       stopPolling();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /* ------------------------------------------------------------------------ */
-  /*   Handlers                                                               */
-  /* ------------------------------------------------------------------------ */
-
-  // Two distinct exits from this screen:
-  //
-  //   acknowledgeReveal — fires from the *successful* reveal's primary CTA.
-  //                       Marks the reveal as seen so the analysis-tab CTA
-  //                       routes future visits straight to the program.
-  //
-  //   bypassToProgram   — fires from the fallback screen ("we'll have it
-  //                       ready soon"). The user hasn't actually *seen* a
-  //                       face here, so we leave revealSeen alone — they'll
-  //                       get another chance next time the row is ready.
-  const acknowledgeReveal = useCallback(() => {
+  const goBridge = useCallback(() => {
     if (navigatedRef.current) return;
     navigatedRef.current = true;
-    markRevealSeen();
-    hapticSuccess();
-    router.replace("/(tabs)/program");
-  }, [markRevealSeen]);
-
-  const bypassToProgram = useCallback(() => {
-    if (navigatedRef.current) return;
-    navigatedRef.current = true;
-    hapticSuccess();
-    router.replace("/(tabs)/program");
+    const current = usePotentialFace.getState().data;
+    const isDevPreview = __DEV__ && !!current?.id?.startsWith("dev-potential-face");
+    router.replace(
+      isDevPreview
+        ? { pathname: "/(onboarding)/analysis-intro", params: { devPreview: "1" } }
+        : "/(onboarding)/analysis-intro"
+    );
   }, []);
 
-  const onPressAlternate = useCallback(async () => {
+  const acknowledgeReveal = useCallback(() => {
+    markRevealSeen();
+    hapticSuccess();
+    goBridge();
+  }, [goBridge, markRevealSeen]);
+
+  const onPressRetry = useCallback(async () => {
     if (swapping) return;
     setSwapping(true);
+    setSlowWait(false);
+    setPollExhausted(false);
     hapticLight();
+    const slowTimer = setTimeout(() => setSlowWait(true), SLOW_WAIT_HINT_MS);
     try {
-      await useAlternate();
+      const current = usePotentialFace.getState().data;
+      if (!current?.baselineScanId) {
+        throw new Error("Potential face scan is not available.");
+      }
+      await retryGeneration(current.baselineScanId);
+      const settled = await pollUntilReady(REVEAL_POLL_TIMEOUT_MS);
+      if (!settled || settled.status === "pending") setPollExhausted(true);
     } catch (err: any) {
+      const message = String(err?.message ?? "");
       Alert.alert(
-        "Couldn't swap image",
-        err?.message ?? "Please try again in a moment."
+        "Couldn't retry image",
+        message.includes("weekly_quota_exceeded") || message.includes("429")
+          ? "You've used both potential face generations for this week."
+          : "Please try again in a moment."
       );
     } finally {
+      clearTimeout(slowTimer);
       setSwapping(false);
     }
-  }, [swapping, useAlternate]);
+  }, [pollUntilReady, retryGeneration, swapping]);
 
-  /* ------------------------------------------------------------------------ */
-  /*   Render branches                                                        */
-  /* ------------------------------------------------------------------------ */
-
-  const isFailed = data?.status === "failed";
   const isReady = data?.status === "ready";
-  const showFallback = isFailed || (pollTimedOut && !isReady);
+  const showFallback = data?.status === "failed";
 
   if (showFallback) {
     return (
       <FallbackView
         insetsTop={insets.top}
         insetsBottom={insets.bottom}
-        message={
-          isFailed
-            ? "We hit a snag generating your potential face. We'll have it ready on your dashboard shortly."
-            : "Your potential face is taking a little longer than expected. We'll have it ready on your dashboard shortly."
-        }
-        onContinue={bypassToProgram}
+        reason={data?.errorReason ?? error}
+        onContinue={() => {
+          hapticSuccess();
+          goBridge();
+        }}
       />
     );
   }
@@ -193,6 +167,12 @@ export default function PotentialFaceRevealScreen() {
         insetsBottom={insets.bottom}
         polling={isPolling}
         error={error}
+        slow={slowWait || pollExhausted}
+        exhausted={pollExhausted}
+        onContinue={() => {
+          hapticSuccess();
+          goBridge();
+        }}
       />
     );
   }
@@ -201,83 +181,115 @@ export default function PotentialFaceRevealScreen() {
     <RevealView
       insetsTop={insets.top}
       insetsBottom={insets.bottom}
-      screenWidth={SW}
+      screenWidth={width}
       potentialFace={data}
       currentImageUri={currentImageUri}
       onPrimary={acknowledgeReveal}
-      onAlternate={onPressAlternate}
+      onRetry={onPressRetry}
       swapping={swapping}
     />
   );
 }
-
-/* -------------------------------------------------------------------------- */
-/*   Subviews                                                                 */
-/* -------------------------------------------------------------------------- */
 
 function PolishingView({
   insetsTop,
   insetsBottom,
   polling,
   error,
+  slow,
+  exhausted,
+  onContinue,
 }: {
   insetsTop: number;
   insetsBottom: number;
   polling: boolean;
   error: string | null;
-}) {
-  return (
-    <View style={[styles.screen, { paddingTop: insetsTop, paddingBottom: insetsBottom }]}>
-      <View style={styles.centerColumn}>
-        <ActivityIndicator color={COLORS.lightText} size="large" />
-        <Animated.View entering={FadeIn.duration(400).delay(120)}>
-          <T style={styles.polishingTitle}>Polishing your potential face</T>
-        </Animated.View>
-        <Animated.View entering={FadeIn.duration(400).delay(240)}>
-          <T style={styles.polishingSubtitle}>
-            {polling
-              ? "Almost there — this only takes a few seconds."
-              : error ?? "One moment…"}
-          </T>
-        </Animated.View>
-      </View>
-    </View>
-  );
-}
-
-function FallbackView({
-  insetsTop,
-  insetsBottom,
-  message,
-  onContinue,
-}: {
-  insetsTop: number;
-  insetsBottom: number;
-  message: string;
+  slow: boolean;
+  exhausted: boolean;
   onContinue: () => void;
 }) {
   return (
-    <View
-      style={[
-        styles.screen,
+    <ScrollView
+      style={styles.screen}
+      contentContainerStyle={[
+        styles.centerScrollContent,
         {
           paddingTop: insetsTop + SP[5],
           paddingBottom: insetsBottom + SP[5],
           paddingHorizontal: SP[5],
         },
       ]}
+      showsVerticalScrollIndicator={false}
+    >
+      <View style={styles.centerColumn}>
+        <ActivityIndicator color={COLORS.lightText} size="large" />
+        <Animated.View entering={FadeIn.duration(360).delay(120)}>
+          <T style={styles.polishingTitle}>Polishing your potential face</T>
+        </Animated.View>
+        <Animated.View entering={FadeIn.duration(360).delay(220)}>
+          <T style={styles.polishingSubtitle}>
+            {slow
+              ? "This can take a couple of minutes. You can keep this screen open, or continue to your breakdown while it finishes."
+              : polling
+              ? "The image model is still working. Keep this screen open for the first reveal."
+              : error ?? "One moment..."}
+          </T>
+        </Animated.View>
+        {slow ? (
+          <Animated.View entering={FadeInDown.duration(320)} style={styles.polishingAction}>
+            <PrimaryPill
+              label="NEXT"
+              onPress={onContinue}
+            />
+          </Animated.View>
+        ) : null}
+      </View>
+    </ScrollView>
+  );
+}
+
+function FallbackView({
+  insetsTop,
+  insetsBottom,
+  reason,
+  onContinue,
+}: {
+  insetsTop: number;
+  insetsBottom: number;
+  reason: string | null;
+  onContinue: () => void;
+}) {
+  const quotaBlocked = !!reason && reason.includes("weekly_quota_exceeded");
+  return (
+    <ScrollView
+      style={styles.screen}
+      contentContainerStyle={[
+        styles.centerScrollContent,
+        {
+          paddingTop: insetsTop + SP[5],
+          paddingBottom: insetsBottom + SP[5],
+          paddingHorizontal: SP[5],
+        },
+      ]}
+      showsVerticalScrollIndicator={false}
     >
       <View style={styles.fallbackCenter}>
-        <Animated.View entering={FadeInDown.duration(420)} style={styles.fallbackInner}>
-          <T style={styles.eyebrow}>STAGE 1</T>
-          <T style={styles.fallbackTitle}>We'll have it ready soon</T>
-          <T style={styles.fallbackBody}>{message}</T>
+        <Animated.View entering={FadeInDown.duration(380)} style={styles.fallbackInner}>
+          <T style={styles.eyebrow}>POTENTIAL FACE</T>
+          <T style={styles.fallbackTitle}>
+            {quotaBlocked ? "Your weekly generations are used" : "We'll have it ready soon"}
+          </T>
+          <T style={styles.fallbackBody}>
+            {quotaBlocked
+              ? "You can still continue into your breakdown and start the plan today."
+              : "Your breakdown is ready to continue. The image can finish in the background or be retried later."}
+          </T>
         </Animated.View>
       </View>
-      <Animated.View entering={FadeInDown.duration(420).delay(120)}>
-        <PrimaryPill label="Continue to your program" onPress={onContinue} />
+      <Animated.View entering={FadeInDown.duration(380).delay(120)}>
+        <PrimaryPill label="NEXT" onPress={onContinue} />
       </Animated.View>
-    </View>
+    </ScrollView>
   );
 }
 
@@ -288,7 +300,7 @@ function RevealView({
   potentialFace,
   currentImageUri,
   onPrimary,
-  onAlternate,
+  onRetry,
   swapping,
 }: {
   insetsTop: number;
@@ -297,115 +309,80 @@ function RevealView({
   potentialFace: PotentialFace;
   currentImageUri: string | null | undefined;
   onPrimary: () => void;
-  onAlternate: () => void;
+  onRetry: () => void;
   swapping: boolean;
 }) {
+  const [previewOpen, setPreviewOpen] = useState(false);
   const horizontalPad = SP[5];
-  const gap = sw(10);
-  const cardWidth = (screenWidth - horizontalPad * 2 - gap) / 2;
-  const cardHeight = Math.round(cardWidth * 1.32);
+  const heroWidth = Math.min(screenWidth - horizontalPad * 2, ms(356));
+  const heroHeight = Math.round(heroWidth * 1.18);
+  const thumbWidth = Math.min(ms(92), Math.round(heroWidth * 0.28));
 
-  const improvements = useMemo(
-    () => potentialFace.targetedMetrics.map(labelForMetric),
-    [potentialFace.targetedMetrics]
-  );
+  const improvements = useMemo(() => {
+    const mapped = potentialFace.targetedMetrics.map(labelForMetric);
+    return mapped.length
+      ? mapped
+      : ["Sharper structure", "Cleaner skin", "More defined features"];
+  }, [potentialFace.targetedMetrics]);
 
-  const canSwap =
-    potentialFace.regeneratedCount === 0 &&
-    Boolean(potentialFace.alternateImageUrl) &&
-    !swapping;
+  const remaining = potentialFace.weeklyQuota?.remaining;
+  const canRetry = !swapping && (remaining == null ? potentialFace.regeneratedCount === 0 : remaining > 0);
 
   return (
-    <View
-      style={[
-        styles.screen,
+    <ScrollView
+      style={styles.screen}
+      contentContainerStyle={[
+        styles.revealScrollContent,
         {
           paddingTop: insetsTop + SP[4],
           paddingBottom: insetsBottom + SP[4],
           paddingHorizontal: horizontalPad,
         },
       ]}
+      showsVerticalScrollIndicator={false}
     >
-      {/* ── Header ── */}
-      <Animated.View entering={FadeInDown.duration(420)} style={styles.header}>
-        <T style={styles.eyebrow}>STAGE 1</T>
-        <T style={styles.title}>This is who you could become</T>
-        <T style={styles.subtitle}>
-          A believable 6-month version of you, generated from your scan.
-        </T>
+      <Animated.View entering={FadeInDown.duration(380)} style={styles.header}>
+        <T style={styles.eyebrow}>YOUR POTENTIAL FACE</T>
+        <T style={styles.title}>This is the version you're building toward</T>
+        <T style={styles.subtitle}>Generated from your scan, with identity preserved.</T>
       </Animated.View>
 
-      {/* ── Two-up image comparison ── */}
-      <View style={[styles.compareRow, { gap }]}>
-        <Animated.View entering={FadeIn.duration(500).delay(160)} style={styles.compareCol}>
-          <View style={[styles.imageCard, { width: cardWidth, height: cardHeight }]}>
-            {currentImageUri ? (
-              <Image
-                source={{ uri: currentImageUri }}
-                style={StyleSheet.absoluteFillObject}
-                resizeMode="cover"
-              />
-            ) : (
-              <View style={[StyleSheet.absoluteFillObject, styles.imagePlaceholder]} />
-            )}
-          </View>
-          <T style={styles.imageLabel}>You today</T>
-        </Animated.View>
+      <HeroPotentialCard
+        width={heroWidth}
+        height={heroHeight}
+        thumbWidth={thumbWidth}
+        potentialUri={potentialFace.primaryImageUrl}
+        currentUri={currentImageUri}
+        onPress={() => setPreviewOpen(true)}
+      />
 
-        <Animated.View entering={FadeIn.duration(500).delay(320)} style={styles.compareCol}>
-          <View
-            style={[
-              styles.imageCard,
-              styles.imageCardAccent,
-              { width: cardWidth, height: cardHeight },
-            ]}
-          >
-            {potentialFace.primaryImageUrl ? (
-              <Image
-                source={{ uri: potentialFace.primaryImageUrl }}
-                style={StyleSheet.absoluteFillObject}
-                resizeMode="cover"
-              />
-            ) : (
-              <View style={[StyleSheet.absoluteFillObject, styles.imagePlaceholder]} />
-            )}
-          </View>
-          <T style={[styles.imageLabel, styles.imageLabelAccent]}>Your potential</T>
-        </Animated.View>
-      </View>
-
-      {/* ── What changed ── */}
-      <Animated.View
-        entering={FadeInUp.duration(420).delay(480)}
-        style={styles.improvementsBlock}
-      >
+      <Animated.View entering={FadeInUp.duration(360).delay(480)} style={styles.improvementsBlock}>
         <T style={styles.improvementsLabel}>WHAT CHANGED</T>
         <View style={styles.chipRow}>
           {improvements.map((label, idx) => (
             <Animated.View
               key={`${label}-${idx}`}
-              entering={FadeInUp.duration(360).delay(560 + idx * 70)}
+              entering={FadeInUp.duration(300).delay(560 + idx * 55)}
               style={styles.chip}
             >
+              <View style={styles.chipDot} />
               <T style={styles.chipText}>{label}</T>
             </Animated.View>
           ))}
         </View>
       </Animated.View>
 
-      {/* ── Footer CTAs ── */}
       <View style={styles.footer}>
-        <Animated.View entering={FadeInDown.duration(420).delay(820)}>
-          <PrimaryPill label="Build my program" onPress={onPrimary} withChevron />
+        <Animated.View entering={FadeInDown.duration(360).delay(760)}>
+          <PrimaryPill label="NEXT" onPress={onPrimary} withChevron />
         </Animated.View>
-        {canSwap ? (
+        {canRetry ? (
           <Pressable
-            onPress={onAlternate}
+            onPress={onRetry}
             disabled={swapping}
-            style={({ pressed }) => [
-              styles.secondary,
-              pressed && !swapping && { opacity: 0.6 },
-            ]}
+            accessibilityRole="button"
+            accessibilityLabel="Retry potential face image"
+            style={({ pressed }) => [styles.secondary, pressed && !swapping && { opacity: 0.65 }]}
             hitSlop={8}
           >
             {swapping ? (
@@ -418,13 +395,141 @@ function RevealView({
           <View style={styles.secondaryPlaceholder} />
         )}
       </View>
+
+      <ImagePreviewModal
+        visible={previewOpen}
+        uri={potentialFace.primaryImageUrl}
+        onClose={() => setPreviewOpen(false)}
+      />
+    </ScrollView>
+  );
+}
+
+function HeroPotentialCard({
+  width,
+  height,
+  thumbWidth,
+  potentialUri,
+  currentUri,
+  onPress,
+}: {
+  width: number;
+  height: number;
+  thumbWidth: number;
+  potentialUri: string | null;
+  currentUri: string | null | undefined;
+  onPress: () => void;
+}) {
+  const progress = useSharedValue(0);
+  const thumb = useSharedValue(0);
+
+  useEffect(() => {
+    progress.value = withSpring(1, { damping: 18, stiffness: 110, mass: 0.9 });
+    thumb.value = withDelay(
+      420,
+      withTiming(1, { duration: 260, easing: Easing.out(Easing.cubic) })
+    );
+  }, [progress, thumb]);
+
+  const cardStyle = useAnimatedStyle(() => ({
+    opacity: progress.value,
+    transform: [
+      { translateY: (1 - progress.value) * 230 },
+      { rotate: `${(1 - progress.value) * -7}deg` },
+      { scale: 0.94 + progress.value * 0.06 },
+    ],
+  }));
+
+  const thumbStyle = useAnimatedStyle(() => ({
+    opacity: thumb.value,
+    transform: [{ translateY: (1 - thumb.value) * 12 }],
+  }));
+
+  return (
+    <View style={[styles.heroWrap, { width, height }]}>
+      <Pressable
+        onPress={onPress}
+        disabled={!potentialUri}
+        accessibilityRole="imagebutton"
+        accessibilityLabel="Open full potential face image"
+        style={({ pressed }) => [pressed && potentialUri && { opacity: 0.96 }]}
+      >
+        <Animated.View style={[styles.heroCard, { width, height }, cardStyle]}>
+          {potentialUri ? (
+            <Image source={{ uri: potentialUri }} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
+          ) : (
+            <View style={[StyleSheet.absoluteFillObject, styles.imagePlaceholder]} />
+          )}
+          <View style={styles.heroScrim} />
+          <View style={styles.heroLabel}>
+            <T style={styles.heroLabelText}>YOUR POTENTIAL</T>
+          </View>
+          <View style={styles.expandBadge}>
+            <Maximize2 size={ms(14)} color="#FFFFFF" strokeWidth={2.4} />
+          </View>
+        </Animated.View>
+      </Pressable>
+
+      <Animated.View
+        style={[
+          styles.todayThumb,
+          {
+            width: thumbWidth,
+            height: Math.round(thumbWidth * 1.25),
+            right: SP[4],
+            bottom: SP[4],
+          },
+          thumbStyle,
+        ]}
+      >
+        {currentUri ? (
+          <Image source={{ uri: currentUri }} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
+        ) : (
+          <View style={[StyleSheet.absoluteFillObject, styles.imagePlaceholder]} />
+        )}
+        <View style={styles.thumbLabel}>
+          <T style={styles.thumbLabelText}>TODAY</T>
+        </View>
+      </Animated.View>
     </View>
   );
 }
 
-/* -------------------------------------------------------------------------- */
-/*   Bits                                                                     */
-/* -------------------------------------------------------------------------- */
+function ImagePreviewModal({
+  visible,
+  uri,
+  onClose,
+}: {
+  visible: boolean;
+  uri: string | null;
+  onClose: () => void;
+}) {
+  return (
+    <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
+      <View style={styles.previewBackdrop}>
+        <SafeAreaView style={styles.previewSafe}>
+          <View style={styles.previewHeader}>
+            <T style={styles.previewTitle}>Potential face</T>
+            <Pressable
+              onPress={onClose}
+              accessibilityRole="button"
+              accessibilityLabel="Close full image"
+              hitSlop={12}
+              style={({ pressed }) => [styles.previewClose, pressed && { opacity: 0.72 }]}
+            >
+              <X size={ms(20)} color="#FFFFFF" strokeWidth={2.4} />
+            </Pressable>
+          </View>
+          <Pressable onPress={onClose} style={styles.previewImageWrap}>
+            {uri ? (
+              <Image source={{ uri }} style={styles.previewImage} resizeMode="contain" />
+            ) : null}
+          </Pressable>
+        </SafeAreaView>
+      </View>
+    </Modal>
+  );
+}
 
 function PrimaryPill({
   label,
@@ -438,30 +543,30 @@ function PrimaryPill({
   return (
     <Pressable
       onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
       style={({ pressed }) => [styles.primaryPill, pressed && { opacity: 0.92 }]}
     >
       <T style={styles.primaryPillText}>{label.toUpperCase()}</T>
-      {withChevron && (
-        <ChevronRight size={ms(16)} color="#FFFFFF" strokeWidth={2.5} />
-      )}
+      {withChevron && <ChevronRight size={ms(16)} color="#FFFFFF" strokeWidth={2.5} />}
     </Pressable>
   );
 }
-
-/* -------------------------------------------------------------------------- */
-/*   Styles                                                                   */
-/* -------------------------------------------------------------------------- */
 
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: COLORS.lightBg,
   },
-
-  /* Header */
+  centerScrollContent: {
+    flexGrow: 1,
+  },
+  revealScrollContent: {
+    flexGrow: 1,
+  },
   header: {
-    gap: sh(6),
-    marginBottom: SP[5],
+    gap: sh(4),
+    marginBottom: SP[3],
   },
   eyebrow: {
     fontFamily: FONT,
@@ -471,62 +576,99 @@ const styles = StyleSheet.create({
   },
   title: {
     fontFamily: FONT,
-    fontSize: ms(26),
+    fontSize: ms(25),
     color: COLORS.lightText,
-    lineHeight: ms(30),
-    letterSpacing: -0.4,
+    lineHeight: ms(28),
+    letterSpacing: 0,
   },
   subtitle: {
     fontFamily: FONT,
-    fontSize: ms(13),
+    fontSize: ms(12),
     color: COLORS.lightSub,
-    lineHeight: ms(18),
-    marginTop: sh(4),
+    lineHeight: ms(16),
   },
-
-  /* Two-up compare */
-  compareRow: {
-    flexDirection: "row",
+  heroWrap: {
+    alignSelf: "center",
     justifyContent: "center",
-    alignItems: "flex-start",
   },
-  compareCol: {
-    alignItems: "center",
-    gap: sh(10),
-  },
-  imageCard: {
+  heroCard: {
     borderRadius: RADII.lg,
     overflow: "hidden",
     backgroundColor: COLORS.lightCard,
     borderWidth: 1,
     borderColor: COLORS.lightBorder,
-    ...SOFT_SHADOW,
+    shadowColor: "#000000",
+    shadowOpacity: 0.14,
+    shadowRadius: 26,
+    shadowOffset: { width: 0, height: 16 },
+    elevation: 8,
   },
-  imageCardAccent: {
-    borderColor: COLORS.accent,
-    shadowColor: COLORS.accent,
-    shadowOpacity: 0.22,
-    shadowRadius: 18,
+  heroScrim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.08)",
+  },
+  heroLabel: {
+    position: "absolute",
+    top: SP[3],
+    left: SP[3],
+    paddingHorizontal: SP[3],
+    paddingVertical: sh(6),
+    borderRadius: 999,
+    backgroundColor: "rgba(0,0,0,0.56)",
+  },
+  heroLabelText: {
+    fontFamily: FONT,
+    fontSize: ms(10),
+    color: "#FFFFFF",
+    letterSpacing: 1.2,
+  },
+  expandBadge: {
+    position: "absolute",
+    top: SP[3],
+    right: SP[3],
+    width: ms(32),
+    height: ms(32),
+    borderRadius: 999,
+    backgroundColor: "rgba(0,0,0,0.48)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(255,255,255,0.26)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  todayThumb: {
+    position: "absolute",
+    borderRadius: RADII.md,
+    overflow: "hidden",
+    borderWidth: 2,
+    borderColor: "#FFFFFF",
+    backgroundColor: COLORS.lightSurfaceAlt,
+    shadowColor: "#000000",
+    shadowOpacity: 0.18,
+    shadowRadius: 14,
     shadowOffset: { width: 0, height: 8 },
-    elevation: 6,
+    elevation: 7,
+  },
+  thumbLabel: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: "center",
+    paddingVertical: sh(5),
+    backgroundColor: "rgba(0,0,0,0.55)",
+  },
+  thumbLabelText: {
+    fontFamily: FONT,
+    fontSize: ms(9),
+    color: "#FFFFFF",
+    letterSpacing: 1,
   },
   imagePlaceholder: {
     backgroundColor: COLORS.lightSurfaceAlt,
   },
-  imageLabel: {
-    fontFamily: FONT,
-    fontSize: ms(12),
-    color: COLORS.lightSub,
-    letterSpacing: 0.6,
-  },
-  imageLabelAccent: {
-    color: COLORS.accentDepth,
-  },
-
-  /* What changed */
   improvementsBlock: {
-    marginTop: SP[5],
-    gap: sh(12),
+    marginTop: SP[4],
+    gap: sh(10),
   },
   improvementsLabel: {
     fontFamily: FONT,
@@ -537,27 +679,37 @@ const styles = StyleSheet.create({
   chipRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: sw(8),
+    columnGap: sw(7),
+    rowGap: sh(8),
   },
   chip: {
-    paddingHorizontal: SP[3],
-    paddingVertical: sh(8),
+    minHeight: sh(34),
+    paddingLeft: sw(8),
+    paddingRight: sw(10),
+    paddingVertical: sh(7),
     borderRadius: 999,
     borderWidth: 1,
     borderColor: CHIP.border,
     backgroundColor: CHIP.bg,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: sw(5),
+  },
+  chipDot: {
+    width: ms(6),
+    height: ms(6),
+    borderRadius: 999,
+    backgroundColor: COLORS.accentDepth,
   },
   chipText: {
     fontFamily: FONT,
-    fontSize: ms(12),
+    fontSize: ms(11.5, 0.2),
     color: CHIP.text,
-    letterSpacing: 0.2,
+    letterSpacing: 0,
   },
-
-  /* Footer */
   footer: {
     marginTop: "auto",
-    gap: sh(14),
+    gap: sh(10),
   },
   primaryPill: {
     minHeight: sh(56),
@@ -578,29 +730,24 @@ const styles = StyleSheet.create({
   },
   secondary: {
     alignSelf: "center",
-    paddingVertical: sh(8),
-    paddingHorizontal: SP[3],
-    minHeight: sh(34),
-    alignItems: "center",
+    minHeight: sh(30),
     justifyContent: "center",
+    paddingHorizontal: SP[3],
   },
   secondaryText: {
     fontFamily: FONT,
     fontSize: ms(12),
     color: COLORS.lightSub,
-    letterSpacing: 0.3,
+    letterSpacing: 0,
   },
   secondaryPlaceholder: {
     height: sh(34),
   },
-
-  /* Polishing state */
   centerColumn: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
     gap: sh(16),
-    paddingHorizontal: SP[5],
   },
   polishingTitle: {
     fontFamily: FONT,
@@ -616,8 +763,10 @@ const styles = StyleSheet.create({
     maxWidth: ms(280),
     lineHeight: ms(18),
   },
-
-  /* Fallback state */
+  polishingAction: {
+    width: "100%",
+    marginTop: sh(10),
+  },
   fallbackCenter: {
     flex: 1,
     justifyContent: "center",
@@ -626,7 +775,7 @@ const styles = StyleSheet.create({
   fallbackInner: {
     alignItems: "center",
     gap: sh(8),
-    maxWidth: ms(300),
+    maxWidth: ms(310),
   },
   fallbackTitle: {
     fontFamily: FONT,
@@ -634,7 +783,7 @@ const styles = StyleSheet.create({
     color: COLORS.lightText,
     textAlign: "center",
     lineHeight: ms(28),
-    letterSpacing: -0.3,
+    letterSpacing: 0,
   },
   fallbackBody: {
     fontFamily: FONT,
@@ -643,5 +792,44 @@ const styles = StyleSheet.create({
     textAlign: "center",
     lineHeight: ms(18),
     marginTop: sh(4),
+  },
+  previewBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.94)",
+  },
+  previewSafe: {
+    flex: 1,
+  },
+  previewHeader: {
+    minHeight: sh(58),
+    paddingHorizontal: SP[4],
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  previewTitle: {
+    fontFamily: FONT,
+    fontSize: ms(14),
+    color: "#FFFFFF",
+    letterSpacing: 0.2,
+  },
+  previewClose: {
+    width: ms(42),
+    height: ms(42),
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  previewImageWrap: {
+    flex: 1,
+    paddingHorizontal: SP[3],
+    paddingBottom: SP[5],
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  previewImage: {
+    width: "100%",
+    height: "100%",
   },
 });

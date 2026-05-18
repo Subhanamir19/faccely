@@ -4,7 +4,8 @@
 // WorkoutPreview screen so animation timing stays identical across surfaces.
 
 import React, { useEffect, useState } from "react";
-import { StyleSheet, Text } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
+import type { LucideIcon } from "lucide-react-native";
 import Animated, {
   Easing,
   FadeInDown,
@@ -24,6 +25,7 @@ export default function SpeechBubble({
   left,
   delay = 240,
   floatPhase = 0,
+  Icon,
 }: {
   text: string;
   top: string | number;
@@ -31,6 +33,7 @@ export default function SpeechBubble({
   left?: number;
   delay?: number;
   floatPhase?: number;  // ms offset so bubbles float out of sync
+  Icon?: LucideIcon;
 }) {
   const [displayed, setDisplayed] = useState("");
   const floatY = useSharedValue(0);
@@ -88,6 +91,11 @@ export default function SpeechBubble({
       ]}
       accessibilityLabel={text}
     >
+      {Icon ? (
+        <View style={styles.iconChip}>
+          <Icon size={ms(12)} color="#58BF19" strokeWidth={2.3} />
+        </View>
+      ) : null}
       <Text style={styles.bubbleText}>{displayed}</Text>
     </Animated.View>
   );
@@ -101,13 +109,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: sw(6),
     paddingVertical: sh(4),
     minWidth: sw(64),
-    maxWidth: sw(82),
+    maxWidth: sw(88),
     minHeight: sh(24),
     shadowColor: "#000000",
     shadowOffset: { width: 0, height: sh(1.5) },
     shadowOpacity: 0.16,
     shadowRadius: sw(4),
     elevation: 4,
+  },
+  iconChip: {
+    width: ms(18),
+    height: ms(18),
+    borderRadius: ms(6),
+    backgroundColor: "#EFFAE9",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: sh(2),
   },
   bubbleText: {
     fontSize: ms(8),

@@ -312,8 +312,8 @@ function FailedCard({ reason }: { reason: string | null }) {
       <View style={[styles.card, styles.failedCard]}>
         <T style={styles.failedTitle}>Potential face is being prepared</T>
         <T style={styles.failedBody}>
-          {reason && reason.startsWith("missing_advanced_analysis")
-            ? "Run advanced analysis on a recent scan to generate your potential face."
+          {reason && reason.startsWith("weekly_quota_exceeded")
+            ? "You've used both potential face generations for this week."
             : "We'll retry shortly. Check back in a moment."}
         </T>
       </View>
@@ -379,6 +379,15 @@ function DetailModal({
             contentContainerStyle={styles.sheetScroll}
             showsVerticalScrollIndicator={false}
           >
+            {breakdown.length === 0 && (
+              <View style={styles.emptyBreakdown}>
+                <T style={styles.emptyBreakdownTitle}>Your image is saved</T>
+                <T style={styles.emptyBreakdownBody}>
+                  Re-scan after a few days of routine work to compare your progress against this potential face.
+                </T>
+              </View>
+            )}
+
             {breakdown.map((row, idx) => (
               <View key={`${row.key}-${idx}`} style={styles.metricRow}>
                 <View style={styles.metricRowHeader}>
@@ -710,5 +719,23 @@ const styles = StyleSheet.create({
     lineHeight: ms(15),
     marginTop: SP[3],
     textAlign: "center",
+  },
+  emptyBreakdown: {
+    gap: sh(6),
+    paddingVertical: SP[4],
+    paddingHorizontal: SP[4],
+    borderRadius: RADII.md,
+    backgroundColor: COLORS.lightSurface,
+  },
+  emptyBreakdownTitle: {
+    fontFamily: FONT,
+    fontSize: ms(15),
+    color: COLORS.lightText,
+  },
+  emptyBreakdownBody: {
+    fontFamily: FONT,
+    fontSize: ms(12),
+    color: COLORS.lightSub,
+    lineHeight: ms(17),
   },
 });

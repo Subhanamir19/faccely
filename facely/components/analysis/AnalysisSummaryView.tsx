@@ -13,7 +13,7 @@ import Animated, { FadeInDown } from "react-native-reanimated";
 import { COLORS, RADII, SP } from "@/lib/tokens";
 import { sw, sh, ms } from "@/lib/responsive";
 import Text from "@/components/ui/T";
-import type { MetricKey } from "@/store/scores";
+import type { MetricKey } from "@/lib/types";
 import {
   buildInsightSentence,
   getArchetype,

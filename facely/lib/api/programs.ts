@@ -2,7 +2,7 @@ import { z } from "zod";
 import { API_BASE } from "./config";
 import { requestJSON, DEFAULT_REQUEST_TIMEOUT_MS } from "./client";
 import { buildAuthHeadersAsync } from "./authHeaders";
-import { logger } from "./logger";
+import { logger } from "@/lib/logger";
 
 const ProgramExerciseSchema = z
   .object({

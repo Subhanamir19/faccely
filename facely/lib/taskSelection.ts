@@ -3,6 +3,12 @@
 // No React, no side effects — just data in, picks out.
 
 import type { Scores } from "./api/scores";
+import {
+  NEW_EXERCISE_CATALOG,
+  resolveExerciseId,
+  type ExerciseIntensity,
+  type ExerciseTargetArea,
+} from "@/lib/newExerciseCatalog";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -10,9 +16,9 @@ import type { Scores } from "./api/scores";
 
 export type ScoreField = keyof Scores;
 
-export type TargetArea = "jawline" | "cheekbones" | "eyes" | "nose" | "skin" | "all";
+export type TargetArea = ExerciseTargetArea;
 
-export type Intensity = "high" | "medium" | "low";
+export type Intensity = ExerciseIntensity;
 
 export type ExerciseEntry = {
   id: string;
@@ -20,6 +26,7 @@ export type ExerciseEntry = {
   targets: TargetArea[];
   intensity: Intensity;
   scoreFields: ScoreField[];
+  movementFamily?: string;
   weight: number; // 1–7: target appearances per week
 };
 
@@ -55,7 +62,7 @@ const ALL_FIELDS: ScoreField[] = [
   "facial_symmetry", "skin_quality", "sexual_dimorphism",
 ];
 
-export const EXERCISE_CATALOG: ExerciseEntry[] = [
+const LEGACY_EXERCISE_CATALOG: ExerciseEntry[] = [
   // ── Jawline ────────────────────────────────────────────────────────────────
   {
     id: "jawline-1",
@@ -250,10 +257,20 @@ export const EXERCISE_CATALOG: ExerciseEntry[] = [
   },
 ];
 
+export const EXERCISE_CATALOG: ExerciseEntry[] = NEW_EXERCISE_CATALOG.map((entry) => ({
+  id: entry.id,
+  name: entry.title,
+  targets: entry.targets,
+  intensity: entry.intensity,
+  scoreFields: entry.scoreFields,
+  weight: entry.weight,
+  movementFamily: entry.movementFamily,
+}));
+
 const EXERCISES_BY_ID = new Map(EXERCISE_CATALOG.map((e) => [e.id, e]));
 
 export function getExerciseById(id: string): ExerciseEntry | undefined {
-  return EXERCISES_BY_ID.get(id);
+  return EXERCISES_BY_ID.get(resolveExerciseId(id));
 }
 
 // ---------------------------------------------------------------------------
@@ -274,11 +291,11 @@ const GOAL_TO_SCORE_FIELDS: Record<string, ScoreField[]> = {
 // ---------------------------------------------------------------------------
 
 const UNIVERSAL_STARTER: string[] = [
-  "chin-tucks",
-  "lymphatic-drainage",
+  "chin-tucks-v2",
+  "chin-massage",
   "alternating-cheek-puffs",
-  "hunter-eyes-1",
-  "neck-curls",
+  "eyebrows-lifting",
+  "chin-forcing-while-laying-down",
 ];
 
 // ---------------------------------------------------------------------------
@@ -454,7 +471,7 @@ function enforceVariety(
 // overall ≥ 70             → 4 out of every 7 days (deterministic by day slot)
 // ---------------------------------------------------------------------------
 
-function shouldIncludeNeckCurlsToday(
+function shouldIncludeNeckStrengthToday(
   scores: Partial<Record<ScoreField, number>> | null,
 ): boolean {
   const overall = computeOverall(scores);
@@ -496,10 +513,13 @@ export function selectDailyTasks(input: SelectionInput): TaskPick[] {
     });
   }
 
-  const recentSet = new Set(input.recentExerciseIds);          // yesterday
+  const recentSet = new Set(input.recentExerciseIds.map(resolveExerciseId));
+  /*
   const olderSet  = new Set(input.olderExerciseIds ?? []);     // 2–3 days ago
-  const forceNeckCurls = shouldIncludeNeckCurlsToday(input.scores);
-  const neckCurlsEntry = EXERCISES_BY_ID.get("neck-curls")!;
+  */
+  const olderSet  = new Set((input.olderExerciseIds ?? []).map(resolveExerciseId));
+  const forceNeckStrength = shouldIncludeNeckStrengthToday(input.scores);
+  const neckStrengthEntry = EXERCISES_BY_ID.get("chin-forcing-while-laying-down")!;
 
   // Recovery mode: after 3+ consecutive missed days, progressively penalise
   // high-intensity exercises so the returning user eases back in.
@@ -508,9 +528,9 @@ export function selectDailyTasks(input: SelectionInput): TaskPick[] {
     ? Math.max(0.2, 1 - (input.consecutiveMissed - 2) * 0.2)
     : 1;
 
-  // Score all exercises except neck-curls (handled separately)
+  // Score all exercises except the required neck-strength movement (handled separately)
   const scored: ScoredExercise[] = EXERCISE_CATALOG
-    .filter((e) => e.id !== "neck-curls")
+    .filter((e) => e.id !== "chin-forcing-while-laying-down")
     .map((entry) => {
       let rank = 0;
 
@@ -541,29 +561,29 @@ export function selectDailyTasks(input: SelectionInput): TaskPick[] {
 
   let picks: ScoredExercise[];
 
-  if (forceNeckCurls) {
-    // Reserve 1 slot for neck curls, fill remaining 4 from scored pool
+  if (forceNeckStrength) {
+    // Reserve 1 slot for neck strength, fill remaining 4 from scored pool
     picks = scored.slice(0, DAILY_COUNT - 1);
     picks = enforceVariety(picks, scored);
-    picks.push({ entry: neckCurlsEntry, rank: 999 });
+    picks.push({ entry: neckStrengthEntry, rank: 999 });
   } else {
-    // Neck curls competes normally with its weight
+    // Neck strength competes normally with its weight
     let neckRank = 0;
     if (tier === 1 || tier === 2) {
-      neckRank = getScoreGap(input.scores!, neckCurlsEntry.scoreFields);
+      neckRank = getScoreGap(input.scores!, neckStrengthEntry.scoreFields);
       if (tier === 1) {
-        neckRank = neckRank * 0.6 + goalMatchScore(neckCurlsEntry.scoreFields, input.goals!) * 0.4;
+        neckRank = neckRank * 0.6 + goalMatchScore(neckStrengthEntry.scoreFields, input.goals!) * 0.4;
       }
     } else if (tier === 3) {
-      neckRank = goalMatchScore(neckCurlsEntry.scoreFields, input.goals!);
+      neckRank = goalMatchScore(neckStrengthEntry.scoreFields, input.goals!);
     }
-    if (recentSet.has("neck-curls"))      neckRank *= 0.15;
-    else if (olderSet.has("neck-curls")) neckRank *= 0.45;
-    neckRank *= neckCurlsEntry.weight / 7;
+    if (recentSet.has("chin-forcing-while-laying-down"))      neckRank *= 0.15;
+    else if (olderSet.has("chin-forcing-while-laying-down")) neckRank *= 0.45;
+    neckRank *= neckStrengthEntry.weight / 7;
     // neck-curls is high-intensity — apply recovery penalty in competition mode too
     neckRank *= missedPenalty;
 
-    scored.push({ entry: neckCurlsEntry, rank: neckRank });
+    scored.push({ entry: neckStrengthEntry, rank: neckRank });
     scored.sort((a, b) => b.rank - a.rank);
     picks = scored.slice(0, DAILY_COUNT);
     picks = enforceVariety(picks, scored);

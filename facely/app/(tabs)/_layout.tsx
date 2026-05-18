@@ -146,6 +146,7 @@ export default function TabsLayout() {
 
       {/* hidden screens */}
       <Tabs.Screen name="ten-by-ten" options={{ href: null }} />
+      <Tabs.Screen name="new-exercises-preview" options={{ href: null }} />
 
       {/* Tab 3: progress */}
       <Tabs.Screen
@@ -171,16 +172,11 @@ export default function TabsLayout() {
       {/* Dev — visible only in __DEV__ builds; hidden from production tab bar */}
       <Tabs.Screen
         name="dev"
-        options={
-          __DEV__
-            ? {
-                title: "Dev",
-                tabBarIcon: ({ color, size }) => (
-                  <Wrench color={color} size={size ?? 24} />
-                ),
-              }
-            : { href: null }
-        }
+        options={{
+          title: "Dev",
+          href: null,
+          tabBarIcon: undefined,
+        }}
       />
 
       {/* Keep routes, hide from bar */}
