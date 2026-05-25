@@ -49,8 +49,10 @@ import type { AdvancedAnalysis } from "@/lib/api/advancedAnalysis";
 // to the same light vocabulary used across dashboard / routine list / scan /
 // score screens. Semantic keys preserved so STATUS_CONFIG / ZONE_CONFIG still
 // work without restructuring.
+const SCREEN_BG = "#FEF5E4";
+
 const C = {
-  bg:          COLORS.lightBg,
+  bg:          SCREEN_BG,
   card:        COLORS.lightCard,
   cardDepth:   "transparent",
   iconBox:     COLORS.iconTileLavender,

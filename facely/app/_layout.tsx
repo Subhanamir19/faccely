@@ -1,6 +1,8 @@
 // app/_layout.tsx
+import "react-native-gesture-handler";
 import React, { useEffect, useState } from "react";
 import { View, Platform } from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import UpdateModal from "@/components/ui/UpdateModal";
 import { checkForUpdate, type UpdateStatus } from "@/lib/updateCheck";
 import * as NavigationBar from "expo-navigation-bar";
@@ -13,8 +15,8 @@ import {
   Poppins_600SemiBold,
 } from "@expo-google-fonts/poppins";
 import { MaterialCommunityIcons, Ionicons } from "@expo/vector-icons";
-import LoadingOverlay from "../components/ui/LoadingOverlay";
 import "react-native-reanimated";
+import LoadingOverlay from "../components/ui/LoadingOverlay";
 import { useRoutineStore } from "../store/routineStore";
 import { scheduleDaily } from "../lib/time/nextMidnight";
 import { AuthProvider } from "@/providers/AuthProvider";
@@ -37,6 +39,8 @@ export default function RootLayout() {
     "Poppins-Medium":   Poppins_500Medium,
     "Poppins-SemiBold": Poppins_600SemiBold,
     "ProximaNova-Bold": require("../assets/fonts/ProximaNova-Bold.otf"),
+    "DuolingoFeather-Bold": require("../assets/fonts/Duolingo Feather Bold.ttf"),
+    "DINNextRounded-Regular": require("../assets/fonts/DIN Next Rounded LT W01 Regular.ttf"),
     ...MaterialCommunityIcons.font,
     ...Ionicons.font,
   });
@@ -135,7 +139,7 @@ export default function RootLayout() {
     <ErrorBoundary>
       <AuthProvider>
         {fontsLoaded || fontError ? (
-          <View style={{ flex: 1, backgroundColor: "#0E0B08" }}>
+          <GestureHandlerRootView style={{ flex: 1, backgroundColor: "#0E0B08" }}>
             <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: "#0E0B08" } }}>
               <Stack.Screen name="index" />
               <Stack.Screen name="(auth)" />
@@ -154,7 +158,7 @@ export default function RootLayout() {
                 onDismiss={() => setUpdateDismissed(true)}
               />
             )}
-          </View>
+          </GestureHandlerRootView>
         ) : null}
       </AuthProvider>
     </ErrorBoundary>

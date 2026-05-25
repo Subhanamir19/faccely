@@ -13,14 +13,24 @@ import {
   Alert,
   Modal,
   Pressable,
-  ImageBackground,
   Text,
   useWindowDimensions,
 } from "react-native";
 import InsightRevealCard from "@/components/scores/InsightRevealCard";
+import StackedScoreDeckPreview from "@/components/scores/StackedScoreDeckPreview";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Redirect, router } from "expo-router";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import LottieView from "lottie-react-native";
+import Animated, {
+  Easing,
+  FadeInDown,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withSequence,
+  withTiming,
+} from "react-native-reanimated";
 import T from "@/components/ui/T";
 import GlassCard from "@/components/ui/GlassCard";
 import { COLORS, SP, RADII } from "@/lib/tokens";
@@ -38,6 +48,7 @@ import { useScores } from "@/store/scores";
 import { usePotentialFace } from "@/store/potentialFace";
 import type { AdvancedAnalysis } from "@/lib/api/advancedAnalysis";
 import ProgramHero from "@/components/program/ProgramHero";
+import ProgramLoadingScreen, { PROGRAM_LOADING_BG } from "@/components/program/ProgramLoadingScreen";
 import InsightPulseCard, { PulseType } from "@/components/ui/InsightPulseCard";
 import { useNotifications } from "@/store/notifications";
 import RingLoader, { type RingLoaderKind } from "@/components/ui/RingLoader";
@@ -49,13 +60,30 @@ import {
   Aperture,
   BookOpen,
   ChevronLeft,
+  ChevronRight,
+  CircleCheck,
+  Dumbbell,
+  Flame,
   Home,
   Pause,
   Play,
+  Sparkles,
+  Target,
+  TrendingUp,
   SkipBack,
   SkipForward,
   X,
 } from "lucide-react-native";
+import Svg, {
+  Circle,
+  Defs,
+  LinearGradient as SvgGradient,
+  Path,
+  Stop,
+  Text as SvgText,
+} from "react-native-svg";
+import SpeechBubble from "@/components/program/SpeechBubble";
+import { CARD_FACE_IMAGES } from "@/lib/faceTargets";
 
 const FONT = "ProximaNova-Bold";
 
@@ -71,6 +99,22 @@ const DASH_SHADOW = {
 // Constants
 // ---------------------------------------------------------------------------
 const CONSENT_KEY = "advanced_analysis_consent";
+const LOWER_FACE_PREVIEW_STICKER = require("../../assets/preview-screen-images/lower-face.png");
+const MIDFACE_PREVIEW_STICKER = require("../../assets/preview-screen-images/midface.png");
+const FULL_FACE_PREVIEW_STICKER = require("../../assets/preview-screen-images/full-face.png");
+const STREAK_PREVIEW_ICON = require("../../assets/icons/streak-icon.png");
+const DUMBBELL_EXERCISE_ICON = require("../../assets/icons/dumbell-exercise.png");
+const ATTR_ICON_HARMONY = require("../../assets/attractiveness-icons/harmony.png");
+const ATTR_ICON_DIMORPHISM = require("../../assets/attractiveness-icons/dimorphism.png");
+const ATTR_ICON_ANGULARITY = require("../../assets/attractiveness-icons/angularity.png");
+const ATTR_ICON_SKIN_QUALITY = require("../../assets/attractiveness-icons/skin-quality.png");
+const EXERCISE_INTRO_PROMPT = "We are about to sculpt your lower face today";
+const EXERCISE_INTRO_TARGET = "lower face";
+const EXERCISE_BENEFITS_LINE_ONE = "Today builds a cleaner lower face.";
+const EXERCISE_BENEFITS_LINE_TWO = "Each rep supports sharper jawline posture and tighter under-chin control.";
+const ROUTINE_BUILD_TILE_WIDTH = 286;
+const ROUTINE_BUILD_SEQUENCE_MS = 6380;
+type ExercisePreviewStep = "focus" | "benefits" | "choice" | "choosing";
 
 // Actual sequence the user sees from a fresh install.
 // Entry is /(onboarding)/splash (see app/index.tsx). Each step's router.push
@@ -144,6 +188,547 @@ function SectionHeader({ title, subtitle }: { title: string; subtitle?: string }
       <T style={styles.sectionTitle}>{title}</T>
       {subtitle ? <T style={styles.sectionSubtitle}>{subtitle}</T> : null}
     </View>
+  );
+}
+
+function ExerciseIntroPreviewCard({
+  currentStreak,
+  onClose,
+  onContinue,
+}: {
+  currentStreak: number;
+  onClose: () => void;
+  onContinue?: () => void;
+}) {
+  const float = useSharedValue(0);
+  const pulse = useSharedValue(1);
+  const [typedPrompt, setTypedPrompt] = useState("");
+
+  useEffect(() => {
+    float.value = withRepeat(
+      withSequence(
+        withTiming(-10, { duration: 1350, easing: Easing.inOut(Easing.sin) }),
+        withTiming(0, { duration: 1350, easing: Easing.inOut(Easing.sin) })
+      ),
+      -1,
+      true
+    );
+    pulse.value = withRepeat(
+      withSequence(
+        withTiming(1.035, { duration: 1200, easing: Easing.inOut(Easing.sin) }),
+        withTiming(1, { duration: 1200, easing: Easing.inOut(Easing.sin) })
+      ),
+      -1,
+      true
+    );
+  }, [float, pulse]);
+
+  useEffect(() => {
+    setTypedPrompt("");
+    let index = 0;
+    const timer = setInterval(() => {
+      index += 1;
+      setTypedPrompt(EXERCISE_INTRO_PROMPT.slice(0, index));
+      if (index >= EXERCISE_INTRO_PROMPT.length) clearInterval(timer);
+    }, 38);
+
+    return () => clearInterval(timer);
+  }, []);
+
+  const stickerMotionStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: float.value }, { scale: pulse.value }],
+  }));
+
+  const targetStart = EXERCISE_INTRO_PROMPT.indexOf(EXERCISE_INTRO_TARGET);
+  const targetEnd = targetStart + EXERCISE_INTRO_TARGET.length;
+  const typedBeforeTarget =
+    targetStart >= 0 ? typedPrompt.slice(0, Math.min(typedPrompt.length, targetStart)) : typedPrompt;
+  const typedTarget =
+    targetStart >= 0 && typedPrompt.length > targetStart
+      ? typedPrompt.slice(targetStart, Math.min(typedPrompt.length, targetEnd))
+      : "";
+  const typedAfterTarget =
+    targetStart >= 0 && typedPrompt.length > targetEnd ? typedPrompt.slice(targetEnd) : "";
+
+  return (
+    <SafeAreaView style={previewIntroStyles.screen}>
+      <View style={previewIntroStyles.topRail}>
+        <Pressable
+          onPress={onClose}
+          hitSlop={12}
+          accessibilityRole="button"
+          accessibilityLabel="Close exercise intro preview"
+          style={previewIntroStyles.closeButton}
+        >
+          <X size={38} color="#9AA4AA" strokeWidth={2.4} />
+        </Pressable>
+        <Text style={previewIntroStyles.brandText}>TODAY'S FOCUS</Text>
+        <View
+          style={previewIntroStyles.streakBadge}
+          accessibilityLabel={`${currentStreak} day streak`}
+        >
+          <RNImage
+            source={STREAK_PREVIEW_ICON}
+            style={previewIntroStyles.streakIcon}
+            resizeMode="contain"
+            accessibilityIgnoresInvertColors
+          />
+          <Text style={previewIntroStyles.streakText}>{currentStreak}</Text>
+        </View>
+      </View>
+
+      <View style={previewIntroStyles.content}>
+        <View style={previewIntroStyles.stickerStage}>
+          <View style={previewIntroStyles.stickerBase} />
+          <Animated.View style={[previewIntroStyles.animatedSticker, stickerMotionStyle]}>
+            <RNImage
+              source={LOWER_FACE_PREVIEW_STICKER}
+              style={previewIntroStyles.sticker}
+              resizeMode="contain"
+              accessibilityLabel="Lower face exercise area sticker"
+            />
+          </Animated.View>
+        </View>
+
+        <Text style={previewIntroStyles.prompt} numberOfLines={3} adjustsFontSizeToFit>
+          {typedBeforeTarget}
+          {typedTarget ? <Text style={previewIntroStyles.promptTarget}>{typedTarget}</Text> : null}
+          {typedAfterTarget}
+        </Text>
+      </View>
+
+      <View style={previewIntroStyles.bottomRail}>
+        <Pressable
+          onPress={onContinue}
+          accessibilityRole="button"
+          accessibilityLabel="Continue"
+          style={({ pressed }) => [
+            previewIntroStyles.exerciseCtaButton,
+            pressed && previewIntroStyles.exerciseCtaButtonPressed,
+          ]}
+        >
+          <Text style={previewIntroStyles.exerciseCtaText}>CONTINUE</Text>
+        </Pressable>
+      </View>
+    </SafeAreaView>
+  );
+}
+
+function ExerciseBenefitsPreviewScreen({
+  currentStreak,
+  onClose,
+  onContinue,
+}: {
+  currentStreak: number;
+  onClose: () => void;
+  onContinue: () => void;
+}) {
+  const [typedLineOne, setTypedLineOne] = useState("");
+  const [typedLineTwo, setTypedLineTwo] = useState("");
+
+  useEffect(() => {
+    setTypedLineOne("");
+    setTypedLineTwo("");
+
+    let lineOneIndex = 0;
+    let lineTwoIndex = 0;
+    let lineTwoTimer: ReturnType<typeof setInterval> | null = null;
+
+    const lineOneTimer = setInterval(() => {
+      lineOneIndex += 1;
+      setTypedLineOne(EXERCISE_BENEFITS_LINE_ONE.slice(0, lineOneIndex));
+
+      if (lineOneIndex >= EXERCISE_BENEFITS_LINE_ONE.length) {
+        clearInterval(lineOneTimer);
+        lineTwoTimer = setInterval(() => {
+          lineTwoIndex += 1;
+          setTypedLineTwo(EXERCISE_BENEFITS_LINE_TWO.slice(0, lineTwoIndex));
+          if (lineTwoIndex >= EXERCISE_BENEFITS_LINE_TWO.length && lineTwoTimer) {
+            clearInterval(lineTwoTimer);
+          }
+        }, 34);
+      }
+    }, 38);
+
+    return () => {
+      clearInterval(lineOneTimer);
+      if (lineTwoTimer) clearInterval(lineTwoTimer);
+    };
+  }, []);
+
+  const targetStart = EXERCISE_BENEFITS_LINE_ONE.indexOf(EXERCISE_INTRO_TARGET);
+  const targetEnd = targetStart + EXERCISE_INTRO_TARGET.length;
+  const typedBeforeTarget =
+    targetStart >= 0 ? typedLineOne.slice(0, Math.min(typedLineOne.length, targetStart)) : typedLineOne;
+  const typedTarget =
+    targetStart >= 0 && typedLineOne.length > targetStart
+      ? typedLineOne.slice(targetStart, Math.min(typedLineOne.length, targetEnd))
+      : "";
+  const typedAfterTarget =
+    targetStart >= 0 && typedLineOne.length > targetEnd ? typedLineOne.slice(targetEnd) : "";
+
+  return (
+    <SafeAreaView style={previewIntroStyles.screen}>
+      <View style={previewIntroStyles.topRail}>
+        <Pressable
+          onPress={onClose}
+          hitSlop={12}
+          accessibilityRole="button"
+          accessibilityLabel="Close exercise benefits preview"
+          style={previewIntroStyles.closeButton}
+        >
+          <X size={38} color="#9AA4AA" strokeWidth={2.4} />
+        </Pressable>
+        <Text style={previewIntroStyles.brandText}>WHY TODAY HELPS</Text>
+        <View
+          style={previewIntroStyles.streakBadge}
+          accessibilityLabel={`${currentStreak} day streak`}
+        >
+          <RNImage
+            source={STREAK_PREVIEW_ICON}
+            style={previewIntroStyles.streakIcon}
+            resizeMode="contain"
+            accessibilityIgnoresInvertColors
+          />
+          <Text style={previewIntroStyles.streakText}>{currentStreak}</Text>
+        </View>
+      </View>
+
+      <View style={previewIntroStyles.benefitsContent}>
+        <Text style={previewIntroStyles.benefitsHeadline}>
+          {typedBeforeTarget}
+          {typedTarget ? <Text style={previewIntroStyles.promptTarget}>{typedTarget}</Text> : null}
+          {typedAfterTarget}
+        </Text>
+        <Text style={previewIntroStyles.benefitsBody}>{typedLineTwo}</Text>
+      </View>
+
+      <View style={previewIntroStyles.bottomRail}>
+        <Pressable
+          onPress={onContinue}
+          accessibilityRole="button"
+          accessibilityLabel="Start routine"
+          style={({ pressed }) => [
+            previewIntroStyles.exerciseCtaButton,
+            pressed && previewIntroStyles.exerciseCtaButtonPressed,
+          ]}
+        >
+          <Text style={previewIntroStyles.exerciseCtaText}>START ROUTINE</Text>
+        </Pressable>
+      </View>
+    </SafeAreaView>
+  );
+}
+
+function ExerciseChoicePreviewScreen({
+  currentStreak,
+  onClose,
+  onChooseForMe,
+  onChooseMyself,
+}: {
+  currentStreak: number;
+  onClose: () => void;
+  onChooseForMe: () => void;
+  onChooseMyself: () => void;
+}) {
+  const float = useSharedValue(0);
+  const tilt = useSharedValue(-9);
+
+  useEffect(() => {
+    float.value = withRepeat(
+      withSequence(
+        withTiming(-7, { duration: 1100, easing: Easing.inOut(Easing.sin) }),
+        withTiming(0, { duration: 1100, easing: Easing.inOut(Easing.sin) })
+      ),
+      -1,
+      true
+    );
+    tilt.value = withRepeat(
+      withSequence(
+        withTiming(-4, { duration: 1250, easing: Easing.inOut(Easing.sin) }),
+        withTiming(-12, { duration: 1250, easing: Easing.inOut(Easing.sin) })
+      ),
+      -1,
+      true
+    );
+  }, [float, tilt]);
+
+  const iconMotionStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: float.value }, { rotateZ: `${tilt.value}deg` }],
+  }));
+
+  return (
+    <SafeAreaView style={previewIntroStyles.screen}>
+      <View style={previewIntroStyles.topRail}>
+        <Pressable
+          onPress={onClose}
+          hitSlop={12}
+          accessibilityRole="button"
+          accessibilityLabel="Close exercise choice preview"
+          style={previewIntroStyles.closeButton}
+        >
+          <X size={38} color="#9AA4AA" strokeWidth={2.4} />
+        </Pressable>
+        <Text style={previewIntroStyles.brandText}>TODAY'S ROUTINE</Text>
+        <View
+          style={previewIntroStyles.streakBadge}
+          accessibilityLabel={`${currentStreak} day streak`}
+        >
+          <RNImage
+            source={STREAK_PREVIEW_ICON}
+            style={previewIntroStyles.streakIcon}
+            resizeMode="contain"
+            accessibilityIgnoresInvertColors
+          />
+          <Text style={previewIntroStyles.streakText}>{currentStreak}</Text>
+        </View>
+      </View>
+
+      <View style={previewIntroStyles.choiceContent}>
+        <View style={previewIntroStyles.choiceIconStage}>
+          <Animated.View style={[previewIntroStyles.choiceIconWrap, iconMotionStyle]}>
+            <RNImage
+              source={DUMBBELL_EXERCISE_ICON}
+              style={previewIntroStyles.choiceIcon}
+              resizeMode="contain"
+              accessibilityLabel="Exercise dumbbell icon"
+              accessibilityIgnoresInvertColors
+            />
+          </Animated.View>
+        </View>
+        <Text style={previewIntroStyles.choiceQuestion}>
+          Do you want us to choose today's exercises?
+        </Text>
+      </View>
+
+      <View style={previewIntroStyles.choiceBottomRail}>
+        <Pressable
+          onPress={onChooseForMe}
+          accessibilityRole="button"
+          accessibilityLabel="Choose exercises for me"
+          style={({ pressed }) => [
+            previewIntroStyles.exerciseCtaButton,
+            pressed && previewIntroStyles.exerciseCtaButtonPressed,
+          ]}
+        >
+          <Text style={previewIntroStyles.exerciseCtaText}>CHOOSE FOR ME</Text>
+        </Pressable>
+        <Pressable
+          onPress={onChooseMyself}
+          accessibilityRole="button"
+          accessibilityLabel="Let me choose exercises"
+          style={({ pressed }) => [
+            previewIntroStyles.secondaryChoiceButton,
+            pressed && previewIntroStyles.secondaryChoiceButtonPressed,
+          ]}
+        >
+          <Text style={previewIntroStyles.secondaryChoiceText}>I'LL CHOOSE</Text>
+        </Pressable>
+      </View>
+    </SafeAreaView>
+  );
+}
+
+function RoutineBuildTile({
+  label,
+  icon,
+  progress,
+  reveal,
+}: {
+  label: string;
+  icon: any;
+  progress: { value: number };
+  reveal: { value: number };
+}) {
+  const fillStyle = useAnimatedStyle(() => ({
+    width: ROUTINE_BUILD_TILE_WIDTH * progress.value,
+  }));
+  const textRevealStyle = useAnimatedStyle(() => ({
+    width: Math.max(0, ROUTINE_BUILD_TILE_WIDTH * progress.value - 20),
+  }));
+  const revealStyle = useAnimatedStyle(() => ({
+    opacity: reveal.value,
+    transform: [{ translateY: (1 - reveal.value) * 10 }],
+  }));
+
+  return (
+    <Animated.View style={[previewIntroStyles.routineTileListed, revealStyle]}>
+      <Animated.View style={[previewIntroStyles.routineTileFill, fillStyle]} />
+      <Animated.View style={[previewIntroStyles.routineTileTextClip, textRevealStyle]}>
+        <Text style={previewIntroStyles.routineTileText} numberOfLines={1}>{label}</Text>
+      </Animated.View>
+      <RNImage
+        source={icon}
+        style={previewIntroStyles.routineTileWatermark}
+        resizeMode="contain"
+        accessibilityIgnoresInvertColors
+      />
+    </Animated.View>
+  );
+}
+
+function ExerciseChoosingPreviewScreen({
+  currentStreak,
+  onClose,
+  onContinue,
+}: {
+  currentStreak: number;
+  onClose: () => void;
+  onContinue: () => void;
+}) {
+  const fillOne = useSharedValue(0);
+  const fillTwo = useSharedValue(0);
+  const fillThree = useSharedValue(0);
+  const fillFour = useSharedValue(0);
+  const revealOne = useSharedValue(0);
+  const revealTwo = useSharedValue(0);
+  const revealThree = useSharedValue(0);
+  const revealFour = useSharedValue(0);
+  const [loadingPercent, setLoadingPercent] = useState(0);
+  const [isComplete, setIsComplete] = useState(false);
+
+  useEffect(() => {
+    setLoadingPercent(0);
+    setIsComplete(false);
+
+    revealOne.value = withSequence(
+      withTiming(1, { duration: 220, easing: Easing.out(Easing.cubic) }),
+      withTiming(1, { duration: ROUTINE_BUILD_SEQUENCE_MS - 220 })
+    );
+    revealTwo.value = withSequence(
+      withTiming(0, { duration: 1520 }),
+      withTiming(1, { duration: 220, easing: Easing.out(Easing.cubic) }),
+      withTiming(1, { duration: ROUTINE_BUILD_SEQUENCE_MS - 1740 })
+    );
+    revealThree.value = withSequence(
+      withTiming(0, { duration: 3040 }),
+      withTiming(1, { duration: 220, easing: Easing.out(Easing.cubic) }),
+      withTiming(1, { duration: ROUTINE_BUILD_SEQUENCE_MS - 3260 })
+    );
+    revealFour.value = withSequence(
+      withTiming(0, { duration: 4560 }),
+      withTiming(1, { duration: 220, easing: Easing.out(Easing.cubic) }),
+      withTiming(1, { duration: ROUTINE_BUILD_SEQUENCE_MS - 4780 })
+    );
+    fillOne.value = withSequence(
+      withTiming(0, { duration: 220 }),
+      withTiming(1, { duration: 1500, easing: Easing.out(Easing.cubic) }),
+      withTiming(1, { duration: ROUTINE_BUILD_SEQUENCE_MS - 1720 })
+    );
+    fillTwo.value = withSequence(
+      withTiming(0, { duration: 1740 }),
+      withTiming(1, { duration: 1500, easing: Easing.out(Easing.cubic) }),
+      withTiming(1, { duration: ROUTINE_BUILD_SEQUENCE_MS - 3240 })
+    );
+    fillThree.value = withSequence(
+      withTiming(0, { duration: 3260 }),
+      withTiming(1, { duration: 1500, easing: Easing.out(Easing.cubic) }),
+      withTiming(1, { duration: ROUTINE_BUILD_SEQUENCE_MS - 4760 })
+    );
+    fillFour.value = withSequence(
+      withTiming(0, { duration: 4780 }),
+      withTiming(1, { duration: 1500, easing: Easing.out(Easing.cubic) }),
+      withTiming(1, { duration: ROUTINE_BUILD_SEQUENCE_MS - 6280 })
+    );
+
+    const startedAt = Date.now();
+    const timer = setInterval(() => {
+      const nextPercent = Math.min(100, Math.round(((Date.now() - startedAt) / ROUTINE_BUILD_SEQUENCE_MS) * 100));
+      setLoadingPercent(nextPercent);
+      if (nextPercent >= 100) {
+        clearInterval(timer);
+        setIsComplete(true);
+      }
+    }, 80);
+
+    return () => clearInterval(timer);
+  }, [fillFour, fillOne, fillThree, fillTwo, revealFour, revealOne, revealThree, revealTwo]);
+
+  return (
+    <SafeAreaView style={previewIntroStyles.screen}>
+      <View style={previewIntroStyles.topRail}>
+        <Pressable
+          onPress={onClose}
+          hitSlop={12}
+          accessibilityRole="button"
+          accessibilityLabel="Close exercise choosing preview"
+          style={previewIntroStyles.closeButton}
+        >
+          <X size={38} color="#9AA4AA" strokeWidth={2.4} />
+        </Pressable>
+        <Text style={previewIntroStyles.brandText}>BUILDING ROUTINE</Text>
+        <View
+          style={previewIntroStyles.streakBadge}
+          accessibilityLabel={`${currentStreak} day streak`}
+        >
+          <RNImage
+            source={STREAK_PREVIEW_ICON}
+            style={previewIntroStyles.streakIcon}
+            resizeMode="contain"
+            accessibilityIgnoresInvertColors
+          />
+          <Text style={previewIntroStyles.streakText}>{currentStreak}</Text>
+        </View>
+      </View>
+
+      <View style={previewIntroStyles.choosingContent}>
+        <View style={previewIntroStyles.routineListStage}>
+          <RoutineBuildTile label="Targeting exact parts" icon={ATTR_ICON_HARMONY} progress={fillOne} reveal={revealOne} />
+          <RoutineBuildTile label="Focusing on proportions" icon={ATTR_ICON_DIMORPHISM} progress={fillTwo} reveal={revealTwo} />
+          <RoutineBuildTile label="Looking at every face part" icon={ATTR_ICON_ANGULARITY} progress={fillThree} reveal={revealThree} />
+          <RoutineBuildTile label="Beautifying harmony" icon={ATTR_ICON_SKIN_QUALITY} progress={fillFour} reveal={revealFour} />
+        </View>
+        <View
+          style={previewIntroStyles.routineProgressRow}
+          accessibilityRole="progressbar"
+          accessibilityValue={{ min: 0, max: 100, now: loadingPercent }}
+        >
+          <View style={previewIntroStyles.routineProgressTrack}>
+            <View
+              style={[
+                previewIntroStyles.routineProgressFill,
+                { width: `${loadingPercent}%` },
+              ]}
+            />
+          </View>
+          <Text style={previewIntroStyles.routineProgressText}>
+            {loadingPercent}%
+          </Text>
+        </View>
+        {isComplete ? (
+          <Animated.Text
+            entering={FadeInDown.duration(380).springify().damping(13).stiffness(170)}
+            style={previewIntroStyles.choosingText}
+          >
+            Your routine is ready!
+          </Animated.Text>
+        ) : (
+          <Text style={previewIntroStyles.choosingText}>
+            <>
+              Building your <Text style={previewIntroStyles.promptTarget}>lower face</Text> routine
+            </>
+          </Text>
+        )}
+      </View>
+
+      <View style={previewIntroStyles.bottomRail}>
+        {isComplete ? (
+          <Pressable
+            onPress={onContinue}
+            accessibilityRole="button"
+            accessibilityLabel="Continue"
+            style={({ pressed }) => [
+              previewIntroStyles.exerciseCtaButton,
+              pressed && previewIntroStyles.exerciseCtaButtonPressed,
+            ]}
+          >
+            <Text style={previewIntroStyles.exerciseCtaText}>CONTINUE</Text>
+          </Pressable>
+        ) : (
+          <View style={previewIntroStyles.exerciseCtaPlaceholder} />
+        )}
+      </View>
+    </SafeAreaView>
   );
 }
 
@@ -525,6 +1110,556 @@ function ProgressDashboardMockupsModal({
   );
 }
 
+const STORY_GREEN = "#58BF19";
+const STORY_GREEN_SOFT = "#EFFAE9";
+const STORY_TEXT = "#111111";
+const STORY_SUB = "#5E625F";
+const STORY_HAIRLINE = "rgba(17,17,17,0.08)";
+const STORY_AXES = [
+  { label: "SKIN", value: 74 },
+  { label: "EYES", value: 79 },
+  { label: "SYMMETRY", value: 68 },
+  { label: "JAW", value: 61 },
+  { label: "MIDFACE", value: 72 },
+] as const;
+
+const PROGRESS_FOCUS_STEPS = [
+  {
+    brand: "PROGRESS CHECK",
+    image: FULL_FACE_PREVIEW_STICKER,
+    before: "Your face has moved ",
+    highlight: "+4.2 points",
+    after: " since Day 1",
+    cta: "CONTINUE",
+  },
+  {
+    brand: "BIGGEST LIFT",
+    image: MIDFACE_PREVIEW_STICKER,
+    before: "Your ",
+    highlight: "midface and eyes",
+    after: " are carrying the lift",
+    cta: "CONTINUE",
+  },
+  {
+    brand: "NEXT FOCUS",
+    image: LOWER_FACE_PREVIEW_STICKER,
+    before: "Next we train your ",
+    highlight: "jaw definition",
+    after: " to unlock the next jump",
+    cta: "START WORKOUT",
+  },
+] as const;
+
+function storyRadarPoint(index: number, value: number, cx: number, cy: number, radius: number) {
+  const step = (Math.PI * 2) / STORY_AXES.length;
+  const angle = -Math.PI / 2 + index * step;
+  const r = (Math.max(0, Math.min(100, value)) / 100) * radius;
+  return {
+    x: cx + Math.cos(angle) * r,
+    y: cy + Math.sin(angle) * r,
+  };
+}
+
+function storyRadarPath(values: number[], cx: number, cy: number, radius: number) {
+  return values
+    .map((value, index) => {
+      const p = storyRadarPoint(index, value, cx, cy, radius);
+      return `${index === 0 ? "M" : "L"} ${p.x.toFixed(2)} ${p.y.toFixed(2)}`;
+    })
+    .join(" ") + " Z";
+}
+
+function StoryStatTile({
+  Icon,
+  label,
+  value,
+  unit,
+}: {
+  Icon: React.ComponentType<{ size: number; color: string; strokeWidth?: number }>;
+  label: string;
+  value: string;
+  unit: string;
+}) {
+  return (
+    <View style={storyStyles.tile}>
+      <View style={storyStyles.tileIconChip}>
+        <Icon size={16} color={STORY_GREEN} strokeWidth={2.2} />
+      </View>
+      <Text style={storyStyles.tileLabel}>{label}</Text>
+      <View style={storyStyles.tileValueRow}>
+        <Text style={storyStyles.tileValue}>{value}</Text>
+        <Text style={storyStyles.tileUnit}>{unit}</Text>
+      </View>
+    </View>
+  );
+}
+
+function StoryFaceMap({ width }: { width: number }) {
+  const chartW = Math.min(300, width - SP[10]);
+  const chartH = 238;
+  const cx = chartW / 2;
+  const cy = 118;
+  const radius = 78;
+  const labelRadius = 102;
+  const values = STORY_AXES.map((axis) => axis.value);
+
+  return (
+    <View style={storyStyles.faceMapCard}>
+      <View style={storyStyles.cardHeaderRow}>
+        <View>
+          <Text style={storyStyles.cardTitle}>Face map</Text>
+          <Text style={storyStyles.cardSub}>Your current shape across five areas.</Text>
+        </View>
+        <View style={storyStyles.avgPill}>
+          <Text style={storyStyles.avgPillValue}>71</Text>
+          <Text style={storyStyles.avgPillLabel}>AVG</Text>
+        </View>
+      </View>
+
+      <View style={storyStyles.radarWrap}>
+        <Svg width={chartW} height={chartH}>
+          <Defs>
+            <SvgGradient id="storyRadarFill" x1="0" y1="0" x2="1" y2="1">
+              <Stop offset="0" stopColor={STORY_GREEN} stopOpacity="0.34" />
+              <Stop offset="1" stopColor={STORY_GREEN} stopOpacity="0.10" />
+            </SvgGradient>
+          </Defs>
+
+          {[20, 40, 60, 80, 100].map((level) => (
+            <Path
+              key={`story-ring-${level}`}
+              d={storyRadarPath(STORY_AXES.map(() => level), cx, cy, radius)}
+              stroke="rgba(17,17,17,0.11)"
+              strokeWidth={1}
+              fill="none"
+            />
+          ))}
+
+          <Path
+            d={storyRadarPath(values, cx, cy, radius)}
+            stroke={STORY_GREEN}
+            strokeWidth={2.6}
+            strokeLinejoin="round"
+            fill="url(#storyRadarFill)"
+          />
+
+          {values.map((value, index) => {
+            const p = storyRadarPoint(index, value, cx, cy, radius);
+            return (
+              <Circle
+                key={`story-dot-${STORY_AXES[index].label}`}
+                cx={p.x}
+                cy={p.y}
+                r={4}
+                fill={STORY_GREEN}
+                stroke="#FFFFFF"
+                strokeWidth={1.5}
+              />
+            );
+          })}
+
+          {STORY_AXES.map((axis, index) => {
+            const p = storyRadarPoint(index, 100, cx, cy, labelRadius);
+            const left = p.x < cx - 8;
+            const right = p.x > cx + 8;
+            const labelX = left ? Math.max(64, p.x) : right ? Math.min(chartW - 58, p.x) : p.x;
+            const yNudge = index === 0 ? -6 : index === 2 || index === 3 ? 8 : 2;
+            return (
+              <SvgText
+                key={`story-label-${axis.label}`}
+                x={labelX}
+                y={p.y + yNudge}
+                fill="rgba(17,17,17,0.62)"
+                fontFamily={FONT}
+                fontSize={10}
+                textAnchor={left ? "end" : right ? "start" : "middle"}
+              >
+                {axis.label}
+              </SvgText>
+            );
+          })}
+        </Svg>
+      </View>
+    </View>
+  );
+}
+
+function JourneyPathPreview() {
+  return (
+    <View style={storyStyles.pathCard}>
+      <View style={storyStyles.cardHeaderRow}>
+        <View>
+          <Text style={storyStyles.cardTitle}>Progress path</Text>
+          <Text style={storyStyles.cardSub}>Six scans tracked since Day 1.</Text>
+        </View>
+        <Text style={storyStyles.pathGain}>+4.2</Text>
+      </View>
+      <View style={storyStyles.pathRail}>
+        {[0, 1, 2, 3, 4, 5].map((step) => (
+          <View key={step} style={storyStyles.pathStepWrap}>
+            <View
+              style={[
+                storyStyles.pathStep,
+                step < 5 && storyStyles.pathStepDone,
+                step === 5 && storyStyles.pathStepCurrent,
+              ]}
+            >
+              {step < 5 ? <CircleCheck size={11} color="#FFFFFF" strokeWidth={2.6} /> : null}
+            </View>
+            <Text style={[storyStyles.pathStepLabel, step === 5 && storyStyles.pathStepLabelCurrent]}>
+              {step === 0 ? "Day 1" : step === 5 ? "Now" : String(step + 1)}
+            </Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+function DashboardStoryScreenContent({ onClose }: { onClose: () => void }) {
+  const { width } = useWindowDimensions();
+  const float = useSharedValue(0);
+  const pulse = useSharedValue(1);
+  const cardWidth = Math.min(width - SP[8], 430);
+
+  useEffect(() => {
+    float.value = withRepeat(
+      withSequence(
+        withTiming(-7, { duration: 1400, easing: Easing.inOut(Easing.sin) }),
+        withTiming(0, { duration: 1400, easing: Easing.inOut(Easing.sin) })
+      ),
+      -1,
+      true
+    );
+    pulse.value = withRepeat(
+      withSequence(
+        withTiming(1.025, { duration: 1300, easing: Easing.inOut(Easing.sin) }),
+        withTiming(1, { duration: 1300, easing: Easing.inOut(Easing.sin) })
+      ),
+      -1,
+      true
+    );
+  }, [float, pulse]);
+
+  const stickerStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: float.value }, { scale: pulse.value }],
+  }));
+
+  return (
+    <SafeAreaView style={storyTopStyles.screen}>
+      <ScrollView
+        contentContainerStyle={storyTopStyles.screenScroll}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={[storyTopStyles.screenInner, { width: cardWidth }]}>
+        <View style={storyTopStyles.topRail}>
+          <Pressable
+            onPress={onClose}
+            accessibilityRole="button"
+            accessibilityLabel="Close dashboard story preview"
+            style={({ pressed }) => [
+              storyTopStyles.iconButton,
+              pressed && storyTopStyles.iconButtonPressed,
+            ]}
+          >
+            <X size={22} color={STORY_TEXT} strokeWidth={2.7} />
+          </Pressable>
+          <View style={storyTopStyles.streakPill}>
+            <RNImage
+              source={STREAK_PREVIEW_ICON}
+              style={storyTopStyles.streakIcon}
+              resizeMode="contain"
+              accessibilityIgnoresInvertColors
+            />
+            <Text style={storyTopStyles.streakText}>4 day streak</Text>
+          </View>
+          <View style={storyTopStyles.iconButton}>
+            <TrendingUp size={20} color={STORY_TEXT} strokeWidth={2.7} />
+          </View>
+        </View>
+
+        <View style={storyTopStyles.briefingHero}>
+          <View style={storyTopStyles.heroCopy}>
+            <Text style={storyTopStyles.heroKicker}>TODAY'S BRIEFING</Text>
+            <Text style={storyTopStyles.heroTitle}>
+              Your profile held steady.
+            </Text>
+            <Text style={storyTopStyles.heroSub}>
+              Midface and eyes are carrying the lift. Jaw definition is the next lever.
+            </Text>
+          </View>
+
+          <View style={storyTopStyles.heroVisual}>
+            <View style={storyTopStyles.heroShadow} />
+            <Animated.View style={[storyTopStyles.heroStickerWrap, stickerStyle]}>
+              <RNImage
+                source={FULL_FACE_PREVIEW_STICKER}
+                style={storyTopStyles.heroSticker}
+                resizeMode="contain"
+                accessibilityLabel="Face profile preview"
+              />
+            </Animated.View>
+            <View style={storyTopStyles.scoreBubble}>
+              <Text style={storyTopStyles.scoreValue}>71</Text>
+              <Text style={storyTopStyles.scoreLabel}>AVG</Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={storyTopStyles.pathStrip}>
+          {[
+            { label: "Scan", done: true },
+            { label: "Insight", done: true },
+            { label: "Focus", done: true },
+            { label: "Train", done: false },
+          ].map((item, index) => (
+            <View key={item.label} style={storyTopStyles.pathItem}>
+              <View style={[storyTopStyles.pathDot, item.done && storyTopStyles.pathDotDone]}>
+                {item.done ? <CircleCheck size={11} color="#FFFFFF" strokeWidth={3} /> : null}
+              </View>
+              {index < 3 ? <View style={[storyTopStyles.pathLine, item.done && storyTopStyles.pathLineDone]} /> : null}
+              <Text style={[storyTopStyles.pathText, item.done && storyTopStyles.pathTextDone]}>{item.label}</Text>
+            </View>
+          ))}
+        </View>
+
+        <View style={storyTopStyles.insightRow}>
+          <View style={storyTopStyles.insightCard}>
+            <View style={storyTopStyles.insightIconTile}>
+              <RNImage source={MIDFACE_PREVIEW_STICKER} style={storyTopStyles.insightImage} resizeMode="contain" />
+            </View>
+            <Text style={storyTopStyles.insightKicker}>BIGGEST LIFT</Text>
+            <Text style={storyTopStyles.insightTitle}>Eyes + midface</Text>
+            <Text style={storyTopStyles.insightMeta}>+3.1 since baseline</Text>
+          </View>
+
+          <View style={storyTopStyles.insightCard}>
+            <View style={[storyTopStyles.insightIconTile, storyTopStyles.nextTile]}>
+              <Target size={22} color={STORY_GREEN} strokeWidth={2.6} />
+            </View>
+            <Text style={storyTopStyles.insightKicker}>NEXT MOVE</Text>
+            <Text style={storyTopStyles.insightTitle}>Jaw definition</Text>
+            <Text style={storyTopStyles.insightMeta}>Best lever today</Text>
+          </View>
+        </View>
+
+        <View style={storyTopStyles.nextCard}>
+          <View style={storyTopStyles.nextImageTile}>
+            <RNImage source={LOWER_FACE_PREVIEW_STICKER} style={storyTopStyles.nextImage} resizeMode="contain" />
+          </View>
+          <View style={storyTopStyles.nextCopy}>
+            <Text style={storyTopStyles.nextKicker}>YOUR NEXT QUEST</Text>
+            <Text style={storyTopStyles.nextTitle}>Train lower face control</Text>
+            <Text style={storyTopStyles.nextMeta}>One session moves the weakest lever first.</Text>
+          </View>
+          <View style={storyTopStyles.nextScore}>
+            <Flame size={15} color="#E85F00" strokeWidth={2.5} />
+            <Text style={storyTopStyles.nextScoreText}>12</Text>
+          </View>
+        </View>
+      </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+function DashboardStoryScreenPreview({
+  visible,
+  onClose,
+}: {
+  visible: boolean;
+  onClose: () => void;
+}) {
+  return (
+    <Modal
+      visible={visible}
+      animationType="slide"
+      presentationStyle="fullScreen"
+      onRequestClose={onClose}
+    >
+      <DashboardStoryScreenContent onClose={onClose} />
+    </Modal>
+  );
+}
+
+function DashboardStoryLaunchCard({ onPress }: { onPress: () => void }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel="Open dashboard story redesign preview"
+      style={({ pressed }) => [
+        storyTopStyles.launchCard,
+        pressed && storyTopStyles.launchCardPressed,
+      ]}
+    >
+      <View style={storyTopStyles.launchCopy}>
+        <Text style={storyTopStyles.devKicker}>DASHBOARD REDESIGN</Text>
+        <Text style={storyTopStyles.devTitle}>Story-first daily briefing</Text>
+        <Text style={storyTopStyles.launchSub}>
+          Opens the full-screen prototype using current preview assets.
+        </Text>
+      </View>
+      <View style={storyTopStyles.launchPreview}>
+        <RNImage
+          source={FULL_FACE_PREVIEW_STICKER}
+          style={storyTopStyles.launchImage}
+          resizeMode="contain"
+          accessibilityIgnoresInvertColors
+        />
+        <View style={storyTopStyles.launchArrow}>
+          <ChevronRight size={18} color="#FFFFFF" strokeWidth={3} />
+        </View>
+      </View>
+    </Pressable>
+  );
+}
+
+function ProgressStoryDashboardPreview({
+  visible,
+  onClose,
+}: {
+  visible: boolean;
+  onClose: () => void;
+}) {
+  const [stepIndex, setStepIndex] = useState(0);
+  const float = useSharedValue(0);
+  const pulse = useSharedValue(1);
+  const step = PROGRESS_FOCUS_STEPS[stepIndex];
+
+  useEffect(() => {
+    if (visible) setStepIndex(0);
+  }, [visible]);
+
+  useEffect(() => {
+    float.value = withRepeat(
+      withSequence(
+        withTiming(-8, { duration: 1350, easing: Easing.inOut(Easing.sin) }),
+        withTiming(0, { duration: 1350, easing: Easing.inOut(Easing.sin) })
+      ),
+      -1,
+      true
+    );
+    pulse.value = withRepeat(
+      withSequence(
+        withTiming(1.025, { duration: 1250, easing: Easing.inOut(Easing.sin) }),
+        withTiming(1, { duration: 1250, easing: Easing.inOut(Easing.sin) })
+      ),
+      -1,
+      true
+    );
+  }, [float, pulse]);
+
+  const stickerMotionStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: float.value }, { scale: pulse.value }],
+  }));
+
+  const handleContinue = () => {
+    if (stepIndex < PROGRESS_FOCUS_STEPS.length - 1) {
+      setStepIndex((index) => index + 1);
+      return;
+    }
+    router.push("/(tabs)/program");
+  };
+
+  return (
+    <Modal
+      visible={visible}
+      animationType="slide"
+      presentationStyle="fullScreen"
+      onRequestClose={onClose}
+    >
+      <SafeAreaView style={progressFocusStyles.screen}>
+        <View style={progressFocusStyles.topRail}>
+          <Pressable
+            onPress={onClose}
+            hitSlop={12}
+            accessibilityRole="button"
+            accessibilityLabel="Close progress story preview"
+            style={progressFocusStyles.closeButton}
+          >
+            <X size={38} color="#9AA4AA" strokeWidth={2.4} />
+          </Pressable>
+          <Text style={progressFocusStyles.brandText}>{step.brand}</Text>
+          <View style={progressFocusStyles.streakBadge} accessibilityLabel="4 day streak">
+            <RNImage
+              source={STREAK_PREVIEW_ICON}
+              style={progressFocusStyles.streakIcon}
+              resizeMode="contain"
+              accessibilityIgnoresInvertColors
+            />
+            <Text style={progressFocusStyles.streakText}>4</Text>
+          </View>
+        </View>
+
+        <View style={progressFocusStyles.content}>
+          <View style={progressFocusStyles.stepDots}>
+            {PROGRESS_FOCUS_STEPS.map((_, index) => (
+              <View
+                key={index}
+                style={[
+                  progressFocusStyles.stepDot,
+                  index <= stepIndex && progressFocusStyles.stepDotActive,
+                ]}
+              />
+            ))}
+          </View>
+
+          <View style={progressFocusStyles.stickerStage}>
+            <View style={progressFocusStyles.stickerBase} />
+            <Animated.View key={step.brand} style={[progressFocusStyles.animatedSticker, stickerMotionStyle]}>
+              <RNImage
+                source={step.image}
+                style={progressFocusStyles.sticker}
+                resizeMode="contain"
+                accessibilityLabel={step.brand}
+              />
+            </Animated.View>
+          </View>
+
+          <Text style={progressFocusStyles.prompt} numberOfLines={3} adjustsFontSizeToFit>
+            {step.before}
+            <Text style={progressFocusStyles.promptTarget}>{step.highlight}</Text>
+            {step.after}
+          </Text>
+        </View>
+
+        <View style={progressFocusStyles.bottomRail}>
+          <Pressable
+            onPress={handleContinue}
+            accessibilityRole="button"
+            accessibilityLabel={step.cta}
+            style={({ pressed }) => [
+              progressFocusStyles.exerciseCtaButton,
+              pressed && progressFocusStyles.exerciseCtaButtonPressed,
+            ]}
+          >
+            <Text style={progressFocusStyles.exerciseCtaText}>{step.cta}</Text>
+          </Pressable>
+
+          <View style={progressFocusStyles.previewTabBar}>
+            <View style={progressFocusStyles.tabIcon}>
+              <Aperture size={24} color="#8A8F93" strokeWidth={2.3} />
+            </View>
+            <View style={[progressFocusStyles.tabIcon, progressFocusStyles.tabIconActive]}>
+              <CircleCheck size={35} color="#111111" strokeWidth={2.3} />
+            </View>
+            <View style={progressFocusStyles.tabIcon}>
+              <TrendingUp size={27} color="#8A8F93" strokeWidth={2.3} />
+            </View>
+            <View style={progressFocusStyles.tabIcon}>
+              <Home size={25} color="#8A8F93" strokeWidth={2.2} />
+            </View>
+            <View style={progressFocusStyles.tabIcon}>
+              <Dumbbell size={25} color="#8A8F93" strokeWidth={2.2} />
+            </View>
+          </View>
+        </View>
+      </SafeAreaView>
+    </Modal>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Screen
 // ---------------------------------------------------------------------------
@@ -844,6 +1979,321 @@ function formatSeconds(total: number) {
   const secs = total % 60;
   return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
 }
+
+const previewIntroStyles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: "#111A20",
+  },
+  topRail: {
+    minHeight: 88,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 24,
+    paddingTop: 10,
+  },
+  closeButton: {
+    width: 52,
+    height: 52,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  brandText: {
+    color: "#8FA0AA",
+    fontFamily: "DuolingoFeather-Bold",
+    fontSize: 18,
+    lineHeight: 24,
+    letterSpacing: 1.5,
+  },
+  topSpacer: {
+    width: 52,
+    height: 52,
+  },
+  streakBadge: {
+    minWidth: 52,
+    height: 38,
+    paddingHorizontal: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+  },
+  streakIcon: {
+    width: 24,
+    height: 24,
+  },
+  streakText: {
+    color: "#E9EFF2",
+    fontFamily: "DuolingoFeather-Bold",
+    fontSize: 18,
+    lineHeight: 22,
+    letterSpacing: 0,
+  },
+  content: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 32,
+    paddingBottom: 86,
+  },
+  stickerStage: {
+    width: 318,
+    height: 318,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 8,
+  },
+  stickerBase: {
+    position: "absolute",
+    top: 194,
+    width: 136,
+    height: 64,
+    borderRadius: 64,
+    backgroundColor: "#2B363C",
+    transform: [{ scaleX: 1.08 }],
+  },
+  animatedSticker: {
+    width: 268,
+    height: 268,
+  },
+  sticker: {
+    width: "100%",
+    height: "100%",
+  },
+  prompt: {
+    maxWidth: 326,
+    minHeight: 120,
+    color: "#E9EFF2",
+    fontFamily: "DINNextRounded-Regular",
+    fontSize: 27,
+    lineHeight: 40,
+    letterSpacing: 0,
+    textAlign: "center",
+  },
+  promptTarget: {
+    color: "#58CC02",
+    fontFamily: "DINNextRounded-Regular",
+  },
+  benefitsContent: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 34,
+    paddingBottom: 72,
+  },
+  benefitsHeadline: {
+    maxWidth: 334,
+    color: "#E9EFF2",
+    fontFamily: "DINNextRounded-Regular",
+    fontSize: 31,
+    lineHeight: 42,
+    letterSpacing: 0,
+    textAlign: "center",
+    marginBottom: 18,
+  },
+  benefitsBody: {
+    maxWidth: 330,
+    color: "#C5D0D6",
+    fontFamily: "DINNextRounded-Regular",
+    fontSize: 21,
+    lineHeight: 32,
+    letterSpacing: 0,
+    textAlign: "center",
+  },
+  choiceContent: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 34,
+    paddingBottom: 56,
+  },
+  choiceIconStage: {
+    width: 178,
+    height: 150,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 34,
+  },
+  choiceIconWrap: {
+    width: 148,
+    height: 148,
+  },
+  choiceIcon: {
+    width: "100%",
+    height: "100%",
+  },
+  choiceQuestion: {
+    maxWidth: 330,
+    color: "#E9EFF2",
+    fontFamily: "DINNextRounded-Regular",
+    fontSize: 31,
+    lineHeight: 42,
+    letterSpacing: 0,
+    textAlign: "center",
+    marginBottom: 18,
+  },
+  choosingContent: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 34,
+    paddingBottom: 18,
+  },
+  routineListStage: {
+    width: ROUTINE_BUILD_TILE_WIDTH,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 12,
+    marginBottom: 22,
+  },
+  routineTileListed: {
+    width: ROUTINE_BUILD_TILE_WIDTH,
+    height: 64,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#34424A",
+    backgroundColor: "#2B363C",
+    overflow: "hidden",
+    justifyContent: "center",
+    paddingLeft: 20,
+    paddingRight: 84,
+    shadowColor: "#000000",
+    shadowOpacity: 0.14,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4,
+  },
+  routineTileFill: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    left: 0,
+    backgroundColor: "#FFFFFF",
+    borderTopLeftRadius: 16,
+    borderBottomLeftRadius: 16,
+  },
+  routineTileTextClip: {
+    overflow: "hidden",
+    zIndex: 2,
+  },
+  routineTileText: {
+    width: ROUTINE_BUILD_TILE_WIDTH - 104,
+    color: "#111A20",
+    fontFamily: "DINNextRounded-Regular",
+    fontSize: 17,
+    lineHeight: 22,
+    letterSpacing: 0,
+  },
+  routineTileWatermark: {
+    position: "absolute",
+    right: -8,
+    width: 84,
+    height: 84,
+    opacity: 1,
+    transform: [{ rotateZ: "-8deg" }],
+  },
+  routineProgressRow: {
+    width: ROUTINE_BUILD_TILE_WIDTH,
+    minHeight: 24,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 24,
+  },
+  routineProgressTrack: {
+    flex: 1,
+    height: 5,
+    borderRadius: 999,
+    backgroundColor: "#2B363C",
+    overflow: "hidden",
+  },
+  routineProgressFill: {
+    height: "100%",
+    borderRadius: 999,
+    backgroundColor: "#FFFFFF",
+  },
+  routineProgressText: {
+    width: 42,
+    color: "#E9EFF2",
+    fontFamily: "DINNextRounded-Regular",
+    fontSize: 14,
+    lineHeight: 18,
+    letterSpacing: 0,
+    textAlign: "right",
+  },
+  choosingText: {
+    maxWidth: 326,
+    color: "#E9EFF2",
+    fontFamily: "DINNextRounded-Regular",
+    fontSize: 29,
+    lineHeight: 38,
+    letterSpacing: 0,
+    textAlign: "center",
+  },
+  bottomRail: {
+    paddingHorizontal: 24,
+    paddingTop: 12,
+    paddingBottom: 26,
+  },
+  exerciseCtaPlaceholder: {
+    minHeight: 58,
+  },
+  choiceBottomRail: {
+    gap: 12,
+    paddingHorizontal: 24,
+    paddingTop: 12,
+    paddingBottom: 26,
+  },
+  exerciseCtaButton: {
+    minHeight: 58,
+    borderRadius: RADII.circle,
+    backgroundColor: "#58CC02",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: SP[6],
+    paddingVertical: 18,
+    shadowColor: "#58CC02",
+    shadowOpacity: 0.24,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 6,
+  },
+  exerciseCtaButtonPressed: {
+    backgroundColor: "#46A302",
+    transform: [{ translateY: 1 }],
+  },
+  exerciseCtaText: {
+    color: "#FFFFFF",
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 17,
+    lineHeight: 20,
+    letterSpacing: 0.6,
+    textAlign: "center",
+  },
+  secondaryChoiceButton: {
+    minHeight: 58,
+    borderRadius: RADII.circle,
+    borderWidth: 2,
+    borderColor: "#2B363C",
+    backgroundColor: "transparent",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: SP[6],
+    paddingVertical: 18,
+  },
+  secondaryChoiceButtonPressed: {
+    backgroundColor: "rgba(255,255,255,0.05)",
+  },
+  secondaryChoiceText: {
+    color: "#E9EFF2",
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 17,
+    lineHeight: 20,
+    letterSpacing: 0.6,
+    textAlign: "center",
+  },
+});
 
 const timerStyles = StyleSheet.create({
   safe: {
@@ -1209,11 +2659,15 @@ export default function DevScreen() {
   const [lottiePreviewStatus, setLottiePreviewStatus] = useState("Ready");
   const [lottiePreviewId, setLottiePreviewId] = useState<LottiePreviewId>("neck1");
   const [timerDesignPreviewVisible, setTimerDesignPreviewVisible] = useState(false);
+  const [exerciseIntroPreviewVisible, setExerciseIntroPreviewVisible] = useState(false);
+  const [exerciseIntroPreviewStep, setExerciseIntroPreviewStep] = useState<ExercisePreviewStep>("focus");
   const lottiePreviewSource = useResolvedLottieSource(
     LOTTIE_PREVIEWS[lottiePreviewId].source,
     lottiePreviewVisible
   );
+  const [dashboardStoryPreviewVisible, setDashboardStoryPreviewVisible] = useState(false);
   const [progressMockupsVisible, setProgressMockupsVisible] = useState(false);
+  const [progressStoryPreviewVisible, setProgressStoryPreviewVisible] = useState(false);
   const [potentialSourceUri, setPotentialSourceUri] = useState<string | null>(null);
   const [potentialResultUri, setPotentialResultUri] = useState<string | null>(null);
   const [potentialGenerating, setPotentialGenerating] = useState(false);
@@ -1223,6 +2677,8 @@ export default function DevScreen() {
   const [dayCompleteVisible, setDayCompleteVisible] = useState(false);
   const [insightPreviewVisible, setInsightPreviewVisible] = useState(false);
   const [insightPreviewKey, setInsightPreviewKey] = useState(0); // bump to replay
+  const [scoreDeckPreviewVisible, setScoreDeckPreviewVisible] = useState(false);
+  const [scoreDeckPreviewKey, setScoreDeckPreviewKey] = useState(0);
   const currentStreak = useTasksStore((s) => s.currentStreak);
   const history       = useTasksStore((s) => s.history);
   const dayNumber     = history.length + 1; // total days since user started
@@ -1240,6 +2696,7 @@ export default function DevScreen() {
 
   // Blueprint modal preview
   const [blueprintVisible, setBlueprintVisible] = useState(false);
+  const [programLoadingPreviewVisible, setProgramLoadingPreviewVisible] = useState(false);
   const [loaderPreviewVisible, setLoaderPreviewVisible] = useState(false);
   const [loaderKindIdx, setLoaderKindIdx] = useState(0);
   const { data: advancedData } = useAdvancedAnalysis();
@@ -1441,7 +2898,36 @@ export default function DevScreen() {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
+        <DashboardStoryLaunchCard onPress={() => setDashboardStoryPreviewVisible(true)} />
+
         <T style={styles.screenTitle}>Dev Tools</T>
+
+        <GlassCard style={styles.card}>
+          <SectionHeader
+            title="Progress Story Preview"
+            subtitle="Duolingo-style progress dashboard concept"
+          />
+          <DevButton
+            label="Preview Progress Story Screen"
+            accent
+            onPress={() => setProgressStoryPreviewVisible(true)}
+          />
+        </GlassCard>
+
+        <GlassCard style={styles.card}>
+          <SectionHeader
+            title="Exercise Preview Redesign"
+            subtitle="New low-cognitive-load intro screen for the exercise tab"
+          />
+          <DevButton
+            label="Preview Exercise Intro Screen"
+            accent
+            onPress={() => {
+              setExerciseIntroPreviewStep("focus");
+              setExerciseIntroPreviewVisible(true);
+            }}
+          />
+        </GlassCard>
 
         <GlassCard style={styles.card}>
           <SectionHeader
@@ -1501,7 +2987,6 @@ export default function DevScreen() {
           />
           <DevButton
             label="Preview All Variations"
-            accent
             onPress={() => setProgressMockupsVisible(true)}
           />
         </GlassCard>
@@ -1737,6 +3222,12 @@ export default function DevScreen() {
             subtitle="Ring loader — mascot · user photo · brand. Switch via header."
           />
           <DevButton
+            label="▶  Preview Program Loading"
+            accent
+            onPress={() => setProgramLoadingPreviewVisible(true)}
+          />
+          <View style={{ height: SP[2] }} />
+          <DevButton
             label="▶  Preview All Loaders"
             accent
             onPress={() => {
@@ -1750,12 +3241,15 @@ export default function DevScreen() {
         <GlassCard style={styles.card}>
           <SectionHeader
             title="Score Card"
-            subtitle="Jump directly to the live scoring screen"
+            subtitle="Preview the stacked swipe deck before wiring it into the live scoring screen"
           />
           <DevButton
-            label="▶  Open Score Screen"
+            label="▶  Preview Stacked Score Cards"
             accent
-            onPress={() => router.push("/(tabs)/score" as any)}
+            onPress={() => {
+              setScoreDeckPreviewKey((key) => key + 1);
+              setScoreDeckPreviewVisible(true);
+            }}
           />
         </GlassCard>
 
@@ -1968,6 +3462,18 @@ export default function DevScreen() {
           </View>
         </GlassCard>
 
+        <GlassCard style={styles.card}>
+          <SectionHeader
+            title="Routine List Screen"
+            subtitle="Preview the edited light routine list at /program/list"
+          />
+          <DevButton
+            label="▶  Preview Routine List"
+            accent
+            onPress={() => router.push("/program/list" as any)}
+          />
+        </GlassCard>
+
         {/* ── Daily Flow Screen Previews ────────────────────────────── */}
         <GlassCard style={styles.card}>
           <SectionHeader
@@ -2130,11 +3636,59 @@ export default function DevScreen() {
         visible={progressMockupsVisible}
         onClose={() => setProgressMockupsVisible(false)}
       />
+      <DashboardStoryScreenPreview
+        visible={dashboardStoryPreviewVisible}
+        onClose={() => setDashboardStoryPreviewVisible(false)}
+      />
+      <ProgressStoryDashboardPreview
+        visible={progressStoryPreviewVisible}
+        onClose={() => setProgressStoryPreviewVisible(false)}
+      />
 
       <ExerciseTimerDesignPreview
         visible={timerDesignPreviewVisible}
         onClose={() => setTimerDesignPreviewVisible(false)}
       />
+
+      <Modal
+        visible={exerciseIntroPreviewVisible}
+        animationType="slide"
+        presentationStyle="fullScreen"
+        onRequestClose={() => setExerciseIntroPreviewVisible(false)}
+      >
+        {exerciseIntroPreviewStep === "focus" ? (
+          <ExerciseIntroPreviewCard
+            currentStreak={currentStreak}
+            onClose={() => setExerciseIntroPreviewVisible(false)}
+            onContinue={() => setExerciseIntroPreviewStep("benefits")}
+          />
+        ) : exerciseIntroPreviewStep === "benefits" ? (
+          <ExerciseBenefitsPreviewScreen
+            currentStreak={currentStreak}
+            onClose={() => setExerciseIntroPreviewVisible(false)}
+            onContinue={() => setExerciseIntroPreviewStep("choice")}
+          />
+        ) : exerciseIntroPreviewStep === "choice" ? (
+          <ExerciseChoicePreviewScreen
+            currentStreak={currentStreak}
+            onClose={() => setExerciseIntroPreviewVisible(false)}
+            onChooseForMe={() => setExerciseIntroPreviewStep("choosing")}
+            onChooseMyself={() => {
+              setExerciseIntroPreviewVisible(false);
+              router.push("/(tabs)/program?openList=1&openEdit=1" as any);
+            }}
+          />
+        ) : (
+          <ExerciseChoosingPreviewScreen
+            currentStreak={currentStreak}
+            onClose={() => setExerciseIntroPreviewVisible(false)}
+            onContinue={() => {
+              setExerciseIntroPreviewVisible(false);
+              router.push("/(tabs)/program?openList=1" as any);
+            }}
+          />
+        )}
+      </Modal>
 
       <Modal
         visible={lottiePreviewVisible}
@@ -2282,6 +3836,35 @@ export default function DevScreen() {
         onDismiss={() => setBlueprintVisible(false)}
       />
 
+      {/* ── Program loading screen preview ───────────────────────────── */}
+      <Modal
+        visible={programLoadingPreviewVisible}
+        animationType="fade"
+        presentationStyle="fullScreen"
+        onRequestClose={() => setProgramLoadingPreviewVisible(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: PROGRAM_LOADING_BG }}>
+          <ProgramLoadingScreen phrase="Focusing on your overall improvement goal" />
+          <SafeAreaView
+            pointerEvents="box-none"
+            style={{ position: "absolute", top: 0, left: 0, right: 0 }}
+          >
+            <View style={[styles.previewHeader, { borderBottomColor: "rgba(17,17,17,0.08)" }]}>
+              <T style={[styles.previewTitle, { color: COLORS.lightText }]}>
+                Program Loading
+              </T>
+              <Pressable
+                onPress={() => setProgramLoadingPreviewVisible(false)}
+                hitSlop={12}
+                style={[styles.previewBtn, styles.previewBtnClose]}
+              >
+                <T style={styles.previewBtnText}>✕  Close</T>
+              </Pressable>
+            </View>
+          </SafeAreaView>
+        </View>
+      </Modal>
+
       {/* ── Loaders preview ──────────────────────────────────────────── */}
       <Modal
         visible={loaderPreviewVisible}
@@ -2363,6 +3946,43 @@ export default function DevScreen() {
         onCancel={() => setPreviewVisible(false)}
       />
 
+      {/* Stacked score deck preview */}
+      <Modal
+        visible={scoreDeckPreviewVisible}
+        animationType="slide"
+        presentationStyle="fullScreen"
+        onRequestClose={() => setScoreDeckPreviewVisible(false)}
+      >
+        <GestureHandlerRootView style={styles.scoreDeckModalRoot}>
+          <SafeAreaView style={styles.scoreDeckModalRoot}>
+            <View style={styles.previewHeader}>
+              <T style={[styles.previewTitle, { color: COLORS.lightText }]}>Stacked Score Cards</T>
+              <View style={styles.previewActions}>
+                <Pressable
+                  onPress={() => setScoreDeckPreviewKey((key) => key + 1)}
+                  hitSlop={12}
+                  style={[styles.previewBtn, styles.lightPreviewBtn]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Replay stacked score cards preview"
+                >
+                  <T style={[styles.previewBtnText, styles.lightPreviewBtnText]}>Replay</T>
+                </Pressable>
+                <Pressable
+                  onPress={() => setScoreDeckPreviewVisible(false)}
+                  hitSlop={12}
+                  style={[styles.previewBtn, styles.previewBtnClose]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Close stacked score cards preview"
+                >
+                  <T style={styles.previewBtnText}>Close</T>
+                </Pressable>
+              </View>
+            </View>
+            <StackedScoreDeckPreview key={scoreDeckPreviewKey} />
+          </SafeAreaView>
+        </GestureHandlerRootView>
+      </Modal>
+
       {/* ── Insight Reveal full-screen preview ──────────────────────── */}
       <Modal
         visible={insightPreviewVisible}
@@ -2370,11 +3990,7 @@ export default function DevScreen() {
         presentationStyle="fullScreen"
         onRequestClose={() => setInsightPreviewVisible(false)}
       >
-        <ImageBackground
-          source={require("../../assets/bg/score-bg.jpg")}
-          style={{ flex: 1 }}
-          resizeMode="cover"
-        >
+        <View style={{ flex: 1, backgroundColor: COLORS.bgBottom }}>
           <View style={{ ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.55)" }} />
           <SafeAreaView style={{ flex: 1 }}>
             {/* Close + replay header */}
@@ -2416,7 +4032,7 @@ export default function DevScreen() {
               ]}
             />
           </SafeAreaView>
-        </ImageBackground>
+        </View>
       </Modal>
 
       {/* Life moment modal previews */}
@@ -2448,6 +4064,981 @@ export default function DevScreen() {
 // ---------------------------------------------------------------------------
 // Styles
 // ---------------------------------------------------------------------------
+const storyTopStyles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: "#FFFFFF",
+  },
+  screenScroll: {
+    alignItems: "center",
+    paddingHorizontal: SP[4],
+    paddingTop: SP[4],
+    paddingBottom: SP[8],
+  },
+  screenInner: {
+    alignSelf: "center",
+  },
+  shell: {
+    alignSelf: "center",
+    gap: SP[3],
+  },
+  devLabelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: SP[3],
+  },
+  devKicker: {
+    color: COLORS.accent,
+    fontFamily: FONT,
+    fontSize: 11,
+    letterSpacing: 0.9,
+  },
+  devTitle: {
+    color: COLORS.text,
+    fontFamily: FONT,
+    fontSize: 20,
+    lineHeight: 24,
+    marginTop: 2,
+  },
+  launchCard: {
+    minHeight: 128,
+    borderRadius: 24,
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SP[3],
+    padding: SP[4],
+    overflow: "hidden",
+  },
+  launchCardPressed: {
+    opacity: 0.9,
+    transform: [{ scale: 0.99 }],
+  },
+  launchCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  launchSub: {
+    color: COLORS.sub,
+    fontFamily: "Poppins-Regular",
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 7,
+  },
+  launchPreview: {
+    width: 92,
+    height: 92,
+    borderRadius: 24,
+    backgroundColor: "#F9FBF8",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.16)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  launchImage: {
+    width: 112,
+    height: 112,
+    marginBottom: -13,
+  },
+  launchArrow: {
+    position: "absolute",
+    right: -6,
+    bottom: -6,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: STORY_GREEN,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 3,
+    borderColor: COLORS.bgBottom,
+  },
+  devBadge: {
+    minWidth: 48,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: COLORS.accentGlow,
+    borderWidth: 1,
+    borderColor: COLORS.accentBorder,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  devBadgeText: {
+    color: COLORS.accent,
+    fontFamily: FONT,
+    fontSize: 11,
+    letterSpacing: 0.8,
+  },
+  phone: {
+    borderRadius: 32,
+    backgroundColor: "#FFFFFF",
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 18,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.22)",
+    shadowColor: "#000000",
+    shadowOpacity: 0.34,
+    shadowRadius: 30,
+    shadowOffset: { width: 0, height: 18 },
+    elevation: 12,
+  },
+  topRail: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 14,
+  },
+  iconButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 18,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#ECEEEC",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000000",
+    shadowOpacity: 0.08,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3,
+  },
+  iconButtonPressed: {
+    opacity: 0.78,
+    transform: [{ scale: 0.96 }],
+  },
+  streakPill: {
+    minHeight: 40,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    paddingHorizontal: 15,
+    borderRadius: 999,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#ECEEEC",
+    shadowColor: "#000000",
+    shadowOpacity: 0.08,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3,
+  },
+  streakIcon: {
+    width: 18,
+    height: 18,
+  },
+  streakText: {
+    color: STORY_SUB,
+    fontFamily: FONT,
+    fontSize: 12,
+  },
+  briefingHero: {
+    minHeight: 342,
+    borderRadius: 24,
+    backgroundColor: "#F9FBF8",
+    borderWidth: 1,
+    borderColor: "#EEF2EC",
+    overflow: "hidden",
+  },
+  heroCopy: {
+    paddingHorizontal: 18,
+    paddingTop: 18,
+    paddingRight: 18,
+    zIndex: 2,
+  },
+  heroKicker: {
+    color: STORY_GREEN,
+    fontFamily: FONT,
+    fontSize: 10,
+    letterSpacing: 0.9,
+  },
+  heroTitle: {
+    color: STORY_TEXT,
+    fontFamily: FONT,
+    fontSize: 25,
+    lineHeight: 29,
+    letterSpacing: 0,
+    marginTop: 5,
+  },
+  heroSub: {
+    color: STORY_SUB,
+    fontFamily: "Poppins-Regular",
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 7,
+  },
+  heroVisual: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 184,
+    alignItems: "center",
+    justifyContent: "flex-end",
+  },
+  heroShadow: {
+    position: "absolute",
+    bottom: 13,
+    width: 150,
+    height: 42,
+    borderRadius: 30,
+    backgroundColor: "rgba(17,17,17,0.08)",
+    transform: [{ scaleX: 1.2 }],
+  },
+  heroStickerWrap: {
+    width: 184,
+    height: 184,
+  },
+  heroSticker: {
+    width: "100%",
+    height: "100%",
+  },
+  scoreBubble: {
+    position: "absolute",
+    right: 18,
+    bottom: 20,
+    width: 62,
+    height: 62,
+    borderRadius: 31,
+    backgroundColor: "#111111",
+    borderWidth: 3,
+    borderColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  scoreValue: {
+    color: STORY_GREEN,
+    fontFamily: FONT,
+    fontSize: 22,
+    lineHeight: 24,
+  },
+  scoreLabel: {
+    color: "rgba(255,255,255,0.68)",
+    fontFamily: FONT,
+    fontSize: 8,
+    marginTop: 1,
+  },
+  pathStrip: {
+    marginTop: 14,
+    minHeight: 70,
+    borderRadius: 20,
+    backgroundColor: STORY_GREEN_SOFT,
+    borderWidth: 1,
+    borderColor: "#DDEFD6",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 14,
+  },
+  pathItem: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  pathDot: {
+    width: 27,
+    height: 27,
+    borderRadius: 14,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 2,
+    borderColor: "#D5E6CD",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  pathDotDone: {
+    backgroundColor: STORY_GREEN,
+    borderColor: STORY_GREEN,
+  },
+  pathLine: {
+    position: "absolute",
+    top: 13,
+    left: "50%",
+    right: "-50%",
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: "#D5E6CD",
+    zIndex: -1,
+  },
+  pathLineDone: {
+    backgroundColor: STORY_GREEN,
+  },
+  pathText: {
+    color: STORY_SUB,
+    fontFamily: FONT,
+    fontSize: 10,
+    marginTop: 8,
+  },
+  pathTextDone: {
+    color: STORY_TEXT,
+  },
+  insightRow: {
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 14,
+  },
+  insightCard: {
+    flex: 1,
+    minHeight: 150,
+    borderRadius: 20,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#ECEEEC",
+    padding: 12,
+    shadowColor: "#000000",
+    shadowOpacity: 0.07,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3,
+  },
+  insightIconTile: {
+    width: 54,
+    height: 54,
+    borderRadius: 16,
+    backgroundColor: COLORS.iconTileLavender,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+    marginBottom: 11,
+  },
+  nextTile: {
+    backgroundColor: STORY_GREEN_SOFT,
+  },
+  insightImage: {
+    width: "116%",
+    height: "116%",
+  },
+  insightKicker: {
+    color: STORY_GREEN,
+    fontFamily: FONT,
+    fontSize: 9,
+    letterSpacing: 0.8,
+  },
+  insightTitle: {
+    color: STORY_TEXT,
+    fontFamily: FONT,
+    fontSize: 16,
+    lineHeight: 19,
+    marginTop: 4,
+  },
+  insightMeta: {
+    color: STORY_SUB,
+    fontFamily: "Poppins-Regular",
+    fontSize: 11,
+    lineHeight: 15,
+    marginTop: 4,
+  },
+  nextCard: {
+    marginTop: 14,
+    minHeight: 96,
+    borderRadius: 22,
+    backgroundColor: "#111111",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    padding: 12,
+  },
+  nextImageTile: {
+    width: 68,
+    height: 68,
+    borderRadius: 18,
+    backgroundColor: "#222222",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  nextImage: {
+    width: "124%",
+    height: "124%",
+  },
+  nextCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  nextKicker: {
+    color: STORY_GREEN,
+    fontFamily: FONT,
+    fontSize: 9,
+    letterSpacing: 0.9,
+  },
+  nextTitle: {
+    color: "#FFFFFF",
+    fontFamily: FONT,
+    fontSize: 17,
+    lineHeight: 20,
+    marginTop: 4,
+  },
+  nextMeta: {
+    color: "rgba(255,255,255,0.62)",
+    fontFamily: "Poppins-Regular",
+    fontSize: 11,
+    lineHeight: 15,
+    marginTop: 4,
+  },
+  nextScore: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  nextScoreText: {
+    color: STORY_TEXT,
+    fontFamily: FONT,
+    fontSize: 12,
+    lineHeight: 14,
+  },
+});
+
+const progressFocusStyles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: "#FFFFFF",
+  },
+  topRail: {
+    minHeight: 88,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 24,
+    paddingTop: 10,
+  },
+  closeButton: {
+    width: 52,
+    height: 52,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  brandText: {
+    color: "#58CC02",
+    fontFamily: "DuolingoFeather-Bold",
+    fontSize: 17,
+    lineHeight: 22,
+    letterSpacing: 1.5,
+  },
+  streakBadge: {
+    minWidth: 52,
+    height: 38,
+    paddingHorizontal: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+  },
+  streakIcon: {
+    width: 24,
+    height: 24,
+  },
+  streakText: {
+    color: "#58CC02",
+    fontFamily: "DuolingoFeather-Bold",
+    fontSize: 18,
+    lineHeight: 22,
+  },
+  content: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 32,
+    paddingBottom: 96,
+  },
+  stepDots: {
+    position: "absolute",
+    top: 8,
+    flexDirection: "row",
+    gap: 8,
+  },
+  stepDot: {
+    width: 34,
+    height: 5,
+    borderRadius: 999,
+    backgroundColor: "#E7EAEC",
+  },
+  stepDotActive: {
+    backgroundColor: "#58CC02",
+  },
+  stickerStage: {
+    width: 318,
+    height: 318,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 8,
+  },
+  stickerBase: {
+    position: "absolute",
+    top: 202,
+    width: 150,
+    height: 60,
+    borderRadius: 64,
+    backgroundColor: "#E6E6E6",
+    transform: [{ scaleX: 1.1 }],
+  },
+  animatedSticker: {
+    width: 268,
+    height: 268,
+  },
+  sticker: {
+    width: "100%",
+    height: "100%",
+  },
+  prompt: {
+    maxWidth: 326,
+    minHeight: 120,
+    color: "#111111",
+    fontFamily: "DINNextRounded-Regular",
+    fontSize: 27,
+    lineHeight: 40,
+    letterSpacing: 0,
+    textAlign: "center",
+  },
+  promptTarget: {
+    color: "#58CC02",
+    fontFamily: "DINNextRounded-Regular",
+  },
+  bottomRail: {
+    paddingHorizontal: 24,
+    paddingTop: 12,
+    paddingBottom: 24,
+    gap: 16,
+  },
+  exerciseCtaButton: {
+    minHeight: 58,
+    borderRadius: RADII.circle,
+    backgroundColor: "#58CC02",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: SP[6],
+    paddingVertical: 18,
+    shadowColor: "#58CC02",
+    shadowOpacity: 0.24,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 6,
+  },
+  exerciseCtaButtonPressed: {
+    backgroundColor: "#46A302",
+    transform: [{ translateY: 1 }],
+  },
+  exerciseCtaText: {
+    color: "#FFFFFF",
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 17,
+    lineHeight: 20,
+    letterSpacing: 0.6,
+    textAlign: "center",
+  },
+  previewTabBar: {
+    minHeight: 70,
+    borderRadius: 36,
+    backgroundColor: "#FFFFFF",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-around",
+    paddingHorizontal: 18,
+    shadowColor: "#000000",
+    shadowOpacity: 0.16,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 8,
+  },
+  tabIcon: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  tabIconActive: {
+    backgroundColor: "#F0F1F3",
+  },
+});
+
+const storyStyles = StyleSheet.create({
+  safe: {
+    flex: 1,
+    backgroundColor: "#FFFFFF",
+  },
+  scrollContent: {
+    paddingBottom: SP[8],
+  },
+  topRail: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: SP[5],
+    paddingTop: SP[2],
+    paddingBottom: SP[2],
+  },
+  railButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 16,
+    backgroundColor: "#F8F9F8",
+    borderWidth: 1,
+    borderColor: "#ECEEEC",
+    alignItems: "center",
+    justifyContent: "center",
+    ...DASH_SHADOW,
+  },
+  streakPill: {
+    minHeight: 38,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    paddingHorizontal: 15,
+    borderRadius: 999,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#ECEEEC",
+    ...DASH_SHADOW,
+  },
+  streakNum: {
+    color: "#E85F00",
+    fontFamily: FONT,
+    fontSize: 13,
+  },
+  streakUnit: {
+    color: STORY_SUB,
+    fontFamily: FONT,
+    fontSize: 12,
+  },
+  headBlock: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: SP[5],
+    paddingTop: SP[3],
+    paddingBottom: SP[3],
+    gap: SP[3],
+  },
+  headText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  headline: {
+    color: STORY_TEXT,
+    fontFamily: FONT,
+    fontSize: 28,
+    lineHeight: 32,
+    letterSpacing: 0,
+    marginBottom: 6,
+  },
+  subtitle: {
+    color: STORY_SUB,
+    fontFamily: FONT,
+    fontSize: 12,
+    lineHeight: 16,
+    maxWidth: 232,
+  },
+  doneBadge: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    backgroundColor: "#F0F4EF",
+  },
+  doneBadgeText: {
+    color: STORY_TEXT,
+    fontFamily: FONT,
+    fontSize: 12,
+  },
+  heroCard: {
+    height: 322,
+    marginHorizontal: SP[5],
+    marginTop: SP[2],
+    borderRadius: 18,
+    backgroundColor: "#F9FBF8",
+    borderWidth: 1,
+    borderColor: "#EEF2EC",
+    overflow: "hidden",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    ...DASH_SHADOW,
+  },
+  heroStage: {
+    width: "100%",
+    height: "100%",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    backgroundColor: "#FBFCFA",
+  },
+  heroFace: {
+    width: "146%",
+    height: "146%",
+    marginBottom: -88,
+  },
+  statsCard: {
+    marginHorizontal: SP[5],
+    marginTop: SP[5],
+    marginBottom: SP[4],
+    padding: SP[4],
+    backgroundColor: STORY_GREEN_SOFT,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "#DDEFD6",
+  },
+  statsHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: SP[3],
+  },
+  statsTitle: {
+    color: STORY_TEXT,
+    fontFamily: FONT,
+    fontSize: 17,
+  },
+  viewAllText: {
+    color: STORY_GREEN,
+    fontFamily: FONT,
+    fontSize: 11,
+  },
+  tileRow: {
+    flexDirection: "row",
+    gap: SP[3],
+  },
+  tile: {
+    flex: 1,
+    minHeight: 118,
+    paddingHorizontal: SP[3],
+    paddingVertical: SP[3],
+    borderRadius: 12,
+    backgroundColor: "#FFFFFF",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.72)",
+  },
+  tileIconChip: {
+    width: 34,
+    height: 34,
+    borderRadius: 9,
+    backgroundColor: STORY_GREEN_SOFT,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  tileLabel: {
+    color: STORY_SUB,
+    fontFamily: FONT,
+    fontSize: 10,
+  },
+  tileValueRow: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    gap: 4,
+  },
+  tileValue: {
+    color: STORY_TEXT,
+    fontFamily: FONT,
+    fontSize: 24,
+  },
+  tileUnit: {
+    color: STORY_SUB,
+    fontFamily: FONT,
+    fontSize: 11,
+  },
+  faceMapCard: {
+    marginHorizontal: SP[5],
+    paddingHorizontal: SP[4],
+    paddingTop: SP[4],
+    paddingBottom: SP[2],
+    borderRadius: 18,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#ECEEEC",
+    ...DASH_SHADOW,
+  },
+  cardHeaderRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: SP[3],
+  },
+  cardTitle: {
+    color: STORY_TEXT,
+    fontFamily: FONT,
+    fontSize: 18,
+  },
+  cardSub: {
+    color: STORY_SUB,
+    fontFamily: FONT,
+    fontSize: 12,
+    lineHeight: 16,
+    marginTop: 2,
+  },
+  avgPill: {
+    minWidth: 48,
+    minHeight: 42,
+    borderRadius: 14,
+    backgroundColor: STORY_GREEN_SOFT,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avgPillValue: {
+    color: STORY_GREEN,
+    fontFamily: FONT,
+    fontSize: 18,
+    lineHeight: 20,
+  },
+  avgPillLabel: {
+    color: STORY_SUB,
+    fontFamily: FONT,
+    fontSize: 9,
+  },
+  radarWrap: {
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: SP[2],
+  },
+  nextCard: {
+    marginHorizontal: SP[5],
+    marginTop: SP[4],
+    minHeight: 92,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SP[3],
+    padding: SP[3],
+    borderRadius: 18,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#ECEEEC",
+    ...DASH_SHADOW,
+  },
+  nextIconTile: {
+    width: 58,
+    height: 58,
+    borderRadius: 14,
+    backgroundColor: COLORS.iconTileLavender,
+    overflow: "hidden",
+  },
+  nextIconImage: {
+    width: "100%",
+    height: "100%",
+  },
+  nextCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  nextKicker: {
+    color: STORY_GREEN,
+    fontFamily: FONT,
+    fontSize: 10,
+  },
+  nextTitle: {
+    color: STORY_TEXT,
+    fontFamily: FONT,
+    fontSize: 18,
+    marginTop: 2,
+  },
+  nextSub: {
+    color: STORY_SUB,
+    fontFamily: FONT,
+    fontSize: 12,
+    lineHeight: 16,
+    marginTop: 2,
+  },
+  nextScorePill: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: "#F0F4EF",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  nextScore: {
+    color: STORY_TEXT,
+    fontFamily: FONT,
+    fontSize: 16,
+  },
+  pathCard: {
+    marginHorizontal: SP[5],
+    marginTop: SP[4],
+    padding: SP[4],
+    borderRadius: 18,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#ECEEEC",
+    ...DASH_SHADOW,
+  },
+  pathGain: {
+    color: STORY_GREEN,
+    fontFamily: FONT,
+    fontSize: 22,
+  },
+  pathRail: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    marginTop: SP[4],
+  },
+  pathStepWrap: {
+    flex: 1,
+    alignItems: "center",
+    gap: 7,
+  },
+  pathStep: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: "#EFF1EF",
+    borderWidth: 2,
+    borderColor: "#E2E7E1",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  pathStepDone: {
+    backgroundColor: STORY_GREEN,
+    borderColor: STORY_GREEN,
+  },
+  pathStepCurrent: {
+    backgroundColor: "#FFFFFF",
+    borderColor: STORY_GREEN,
+  },
+  pathStepLabel: {
+    color: STORY_SUB,
+    fontFamily: FONT,
+    fontSize: 10,
+  },
+  pathStepLabelCurrent: {
+    color: STORY_GREEN,
+  },
+  ctaDockInline: {
+    marginHorizontal: SP[5],
+    marginTop: SP[5],
+  },
+  ctaBtn: {
+    minHeight: 58,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    borderRadius: RADII.circle,
+    backgroundColor: STORY_GREEN,
+    paddingHorizontal: SP[6],
+    shadowColor: STORY_GREEN,
+    shadowOpacity: 0.24,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 6,
+  },
+  ctaBtnPressed: {
+    opacity: 0.82,
+    transform: [{ translateY: 1 }],
+  },
+  ctaText: {
+    color: "#FFFFFF",
+    fontFamily: FONT,
+    fontSize: 14,
+  },
+});
+
 const mockStyles = StyleSheet.create({
   modalRoot: {
     flex: 1,
@@ -3180,9 +5771,20 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255,80,80,0.3)",
     backgroundColor: "rgba(255,80,80,0.08)",
   },
+  lightPreviewBtn: {
+    backgroundColor: "rgba(0,0,0,0.06)",
+    borderColor: "rgba(0,0,0,0.08)",
+  },
   previewBtnText: {
     fontSize: 13,
     color: COLORS.dim,
+  },
+  lightPreviewBtnText: {
+    color: COLORS.lightText,
+  },
+  scoreDeckModalRoot: {
+    flex: 1,
+    backgroundColor: COLORS.lightBg,
   },
   lottieModalRoot: {
     flex: 1,

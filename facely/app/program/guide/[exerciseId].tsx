@@ -212,7 +212,7 @@ export default function ExerciseGuideScreen() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: COLORS.lightBg,
+    backgroundColor: "#FEF5E4",
   },
 
   /* hero carousel */

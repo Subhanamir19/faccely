@@ -27,6 +27,8 @@ const SOFT_SHADOW = {
 } as const;
 
 const FONT = "ProximaNova-Bold";
+const DETAIL_FONT = "DINNextRounded-Regular";
+const PROFILE_SCREEN_BG = "#FEF5E4";
 
 function LightCard({
   children,
@@ -68,6 +70,8 @@ function LightBtn({
       ? COLORS.lightSurfaceAlt
       : variant === "primary"
         ? COLORS.ctaBlack
+        : variant === "secondary"
+          ? COLORS.ctaBlack
         : variant === "danger"
           ? COLORS.declineRedSoft
           : COLORS.lightSurfaceAlt;
@@ -76,6 +80,8 @@ function LightBtn({
       ? COLORS.lightSub
       : variant === "primary"
         ? "#FFFFFF"
+        : variant === "secondary"
+          ? "#FFFFFF"
         : variant === "danger"
           ? COLORS.declineRed
           : COLORS.lightText;
@@ -213,7 +219,7 @@ export default function ProfileScreen() {
 
   const avatarSource = avatarUri
     ? { uri: avatarUri }
-    : require("../../assets/icon.png");
+    : require("../../assets/sigmamax-real-updatred-logo.jpeg");
 
   const gender = onboardingData.gender || "Not set";
   const ethnicity = onboardingData.ethnicity || "Not set";
@@ -355,7 +361,7 @@ export default function ProfileScreen() {
         <View style={styles.avatarSection}>
           <View style={styles.avatarRing}>
             <View style={styles.avatarInner}>
-              <Image source={avatarSource} style={styles.avatarImage} resizeMode="cover" />
+              <Image source={avatarSource} style={styles.avatarImage} resizeMode={avatarUri ? "cover" : "contain"} />
             </View>
           </View>
           <View style={styles.avatarButton}>
@@ -510,7 +516,7 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: COLORS.lightBg,
+    backgroundColor: PROFILE_SCREEN_BG,
   },
   scrollContent: {
     paddingHorizontal: SP[5],
@@ -519,7 +525,7 @@ const styles = StyleSheet.create({
   },
   hydratingLabel: {
     color: COLORS.lightSub,
-    fontFamily: FONT,
+    fontFamily: DETAIL_FONT,
     marginBottom: 4,
     fontSize: ms(13),
     textAlign: "center",
@@ -571,7 +577,7 @@ const styles = StyleSheet.create({
   cardSubtext: {
     marginTop: 4,
     color: COLORS.lightSub,
-    fontFamily: FONT,
+    fontFamily: DETAIL_FONT,
     fontSize: ms(13),
   },
   accountRow: {
@@ -585,7 +591,7 @@ const styles = StyleSheet.create({
   },
   subText: {
     color: COLORS.lightSub,
-    fontFamily: FONT,
+    fontFamily: DETAIL_FONT,
     fontSize: ms(14),
     marginTop: 4,
   },
@@ -599,12 +605,12 @@ const styles = StyleSheet.create({
   },
   rowLabel: {
     color: COLORS.lightSub,
-    fontFamily: FONT,
+    fontFamily: DETAIL_FONT,
     fontSize: ms(14),
   },
   rowValue: {
     color: COLORS.lightText,
-    fontFamily: FONT,
+    fontFamily: DETAIL_FONT,
     fontSize: ms(15),
   },
   nameInputRow: {
@@ -616,7 +622,7 @@ const styles = StyleSheet.create({
   },
   nameInput: {
     color: COLORS.lightText,
-    fontFamily: FONT,
+    fontFamily: DETAIL_FONT,
     fontSize: ms(15),
     textAlign: "right",
     flex: 1,
@@ -642,7 +648,7 @@ const styles = StyleSheet.create({
   },
   dangerLabel: {
     color: COLORS.lightSub,
-    fontFamily: FONT,
+    fontFamily: DETAIL_FONT,
     fontSize: ms(13),
     marginBottom: SP[3],
     letterSpacing: 0.4,
@@ -676,7 +682,7 @@ const styles = StyleSheet.create({
   },
   upgradeBannerSub: {
     color: COLORS.lightSub,
-    fontFamily: FONT,
+    fontFamily: DETAIL_FONT,
     fontSize: ms(12),
   },
   recoveryRow: {
@@ -688,7 +694,7 @@ const styles = StyleSheet.create({
   },
   recoveryCode: {
     color: COLORS.lightText,
-    fontFamily: FONT,
+    fontFamily: DETAIL_FONT,
     fontSize: ms(18),
     letterSpacing: 2,
     flex: 1,
@@ -706,13 +712,13 @@ const styles = StyleSheet.create({
   },
   generatingLabel: {
     color: COLORS.lightSub,
-    fontFamily: FONT,
+    fontFamily: DETAIL_FONT,
     fontSize: ms(13),
     marginTop: 4,
   },
   privacyLink: {
     color: COLORS.lightSub,
-    fontFamily: FONT,
+    fontFamily: DETAIL_FONT,
     fontSize: ms(14),
     textDecorationLine: "underline",
     textAlign: "center",

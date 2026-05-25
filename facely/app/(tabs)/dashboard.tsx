@@ -11,9 +11,12 @@ import {
   Pressable,
   Dimensions,
   Image,
+  ActivityIndicator,
+  type ImageSourcePropType,
   Modal,
   TextInput,
 } from "react-native";
+import { Image as ExpoImage } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -41,9 +44,23 @@ import Svg, {
   Path,
   Line,
   Text as SvgText,
+  type SvgProps,
 } from "react-native-svg";
+import { LocalSvg } from "react-native-svg/css";
 import { useRouter, useFocusEffect } from "expo-router";
-import { TrendingUp, TrendingDown, ChevronRight, ArrowLeft, Sparkles, RefreshCw, Bell, Flame } from "lucide-react-native";
+import {
+  TrendingUp,
+  TrendingDown,
+  ChevronRight,
+  ArrowLeft,
+  ArrowRight,
+  Sparkles,
+  RefreshCw,
+  Bell,
+  Target,
+  TriangleAlert,
+  X,
+} from "lucide-react-native";
 import Text from "@/components/ui/T";
 import InsightPulseCard from "@/components/ui/InsightPulseCard";
 import { COLORS, SP, RADII, TYPE, SHADOWS } from "@/lib/tokens";
@@ -63,8 +80,13 @@ import type {
   LatestAdvanced,
 } from "@/lib/api/insights";
 import type { AdvancedAnalysis } from "@/lib/api/advancedAnalysis";
+import { fetchScanDetail } from "@/lib/api/history";
 import { pickTopFive } from "@/lib/submetrics";
 import { TopFiveCard } from "@/components/dashboard/TopFiveCard";
+import ProblemsIcon from "@/assets/icons/problems.svg";
+import ProgressIcon from "@/assets/icons/progress.svg";
+import FocusIcon from "@/assets/icons/next-foucs.svg";
+import StreakIcon from "@/assets/icons/streak-icon.svg";
 
 const AnimatedTextInput = Animated.createAnimatedComponent(TextInput);
 
@@ -87,7 +109,7 @@ const LIME = {
 };
 
 const TRACKING_HEADER = {
-  bg: COLORS.lightBg,
+  bg: "#FEF5E4",
   accent: COLORS.accentDepth,
   accentSoft: "rgba(72,145,32,0.12)",
   text: COLORS.lightText,
@@ -97,11 +119,28 @@ const TRACKING_HEADER = {
   control: COLORS.lightSurfaceAlt,
 } as const;
 
+const DETAIL_FONT = "DINNextRounded-Regular";
+
 const DIR_COLOR: Record<string, string> = {
   up:   COLORS.lightText,
   down: COLORS.lightSub,
   flat: COLORS.lightMuted,
 };
+
+const PROFILE_WEB_AXES = [
+  { key: "skin_quality", label: "SKIN" },
+  { key: "eyes_symmetry", label: "EYES" },
+  { key: "facial_symmetry", label: "SYMMETRY" },
+  { key: "jawline", label: "JAWLINE" },
+  { key: "cheekbones", label: "MIDFACE" },
+] as const;
+
+const PROFILE_WEB_W = 294;
+const PROFILE_WEB_H = 258;
+const PROFILE_WEB_CX = PROFILE_WEB_W / 2;
+const PROFILE_WEB_CY = 134;
+const PROFILE_WEB_RADIUS = 82;
+const PROFILE_WEB_LABEL_RADIUS = 112;
 
 const VERDICT_COLOR: Record<string, string> = {
   improved: COLORS.lightText,
@@ -282,6 +321,34 @@ function projectGraph(points: number[], daysAhead: number): number[] | null {
   return out;
 }
 
+function profileWebPoint(index: number, value: number, radius?: number) {
+  "worklet";
+  const axisCount = 5;
+  const centerX = 147;
+  const centerY = 134;
+  const resolvedRadius = typeof radius === "number" ? radius : 82;
+  const step = (Math.PI * 2) / axisCount;
+  const angle = -Math.PI / 2 + index * step;
+  const clamped = Math.max(0, Math.min(100, value));
+  const r = (clamped / 100) * resolvedRadius;
+
+  return {
+    x: centerX + Math.cos(angle) * r,
+    y: centerY + Math.sin(angle) * r,
+  };
+}
+
+function profileWebPath(values: number[], radius?: number): string {
+  "worklet";
+  const resolvedRadius = typeof radius === "number" ? radius : 82;
+  return values
+    .map((value, index) => {
+      const p = profileWebPoint(index, value, resolvedRadius);
+      return `${index === 0 ? "M" : "L"} ${p.x.toFixed(2)} ${p.y.toFixed(2)}`;
+    })
+    .join(" ") + " Z";
+}
+
 /* -------------------------------------------------------------------------- */
 /*  Metric images                                                              */
 /* -------------------------------------------------------------------------- */
@@ -303,6 +370,32 @@ const TRACKING_MASCOT_IMAGES = {
 } as const;
 
 const TRACKING_NEXT_SCREEN_SIGN = require("@/assets/images-for-initial-tracking-screen/sign-for-next-screen.png");
+
+const DASHBOARD_MODULE_ICONS = {
+  problems: ProblemsIcon,
+  progress: ProgressIcon,
+  focus: FocusIcon,
+} as const;
+
+type DashboardModuleKey = "problems" | "progress" | "focus";
+type SvgIconSource = React.ComponentType<SvgProps> | ImageSourcePropType;
+
+function DashboardSvgIcon({
+  icon,
+  width,
+  height,
+}: {
+  icon: SvgIconSource;
+  width: number;
+  height: number;
+}) {
+  if (typeof icon === "function") {
+    const Icon = icon;
+    return <Icon width={width} height={height} />;
+  }
+
+  return <LocalSvg asset={icon} width={width} height={height} />;
+}
 
 const METRIC_PLACEHOLDER_EMOJI: Record<string, string> = {
   facial_symmetry:   "⚖️",
@@ -737,6 +830,199 @@ function MetricGrid({
 }
 
 /* -------------------------------------------------------------------------- */
+/*  Dashboard module tiles                                                     */
+/* -------------------------------------------------------------------------- */
+
+function DashboardModuleButton({
+  label,
+  subtitle,
+  icon,
+  variant,
+  badgeCount,
+  wide,
+  onPress,
+}: {
+  label: string;
+  subtitle: string;
+  icon: SvgIconSource;
+  variant: DashboardModuleKey;
+  badgeCount?: number;
+  wide?: boolean;
+  onPress: () => void;
+}) {
+  const showBadge = typeof badgeCount === "number" && badgeCount > 0;
+
+  const handlePress = () => {
+    Haptics.selectionAsync();
+    onPress();
+  };
+
+  return (
+    <View style={[styles.dashModuleOuter, wide && styles.dashModuleOuterWide]}>
+      {showBadge && (
+        <View pointerEvents="none" style={styles.dashModuleBadge}>
+          <Text style={styles.dashModuleBadgeText}>{badgeCount > 99 ? "99+" : badgeCount}</Text>
+        </View>
+      )}
+
+      <Pressable
+        onPress={handlePress}
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        style={({ pressed }) => [
+          styles.dashModuleCard,
+          variant === "problems" && styles.dashModuleCardProblems,
+          variant === "progress" && styles.dashModuleCardProgress,
+          variant === "focus" && styles.dashModuleCardFocus,
+          wide && styles.dashModuleCardWide,
+          pressed && styles.dashModuleCardPressed,
+        ]}
+      >
+        <View style={[styles.dashModuleIconSlot, wide && styles.dashModuleIconSlotWide]}>
+          <DashboardSvgIcon
+            icon={icon}
+            width={wide ? 96 : 112}
+            height={wide ? 96 : 112}
+          />
+        </View>
+
+        <View style={[styles.dashModuleCopy, wide && styles.dashModuleCopyWide]}>
+          <Text
+            style={[
+              styles.dashModuleTitle,
+              variant === "problems" && styles.dashModuleTitleProblems,
+              variant === "progress" && styles.dashModuleTitleProgress,
+              variant === "focus" && styles.dashModuleTitleFocus,
+            ]}
+          >
+            {label}
+          </Text>
+          <Text style={styles.dashModuleSubtitle}>{subtitle}</Text>
+        </View>
+
+        <View
+          style={[
+            styles.dashModuleArrow,
+            variant === "problems" && styles.dashModuleArrowProblems,
+            variant === "progress" && styles.dashModuleArrowProgress,
+            variant === "focus" && styles.dashModuleArrowFocus,
+          ]}
+        >
+          <ArrowRight size={23} color="#050505" strokeWidth={3} />
+        </View>
+      </Pressable>
+    </View>
+  );
+}
+
+function DashboardModuleButtons({
+  problemCount,
+  scanCount,
+  focusCount,
+  onOpen,
+}: {
+  problemCount: number;
+  scanCount: number;
+  focusCount: number;
+  onOpen: (key: DashboardModuleKey) => void;
+}) {
+  return (
+    <Animated.View entering={FadeInDown.delay(180).duration(420)} style={styles.dashModuleGrid}>
+      <DashboardModuleButton
+        label="Top 5 Problems"
+        subtitle="Areas that need attention"
+        icon={DASHBOARD_MODULE_ICONS.problems}
+        variant="problems"
+        badgeCount={problemCount}
+        onPress={() => onOpen("problems")}
+      />
+      <DashboardModuleButton
+        label="Progress Graph"
+        subtitle="Track improvement over time"
+        icon={DASHBOARD_MODULE_ICONS.progress}
+        variant="progress"
+        badgeCount={scanCount}
+        onPress={() => onOpen("progress")}
+      />
+      <DashboardModuleButton
+        label="Next Focus"
+        subtitle="Your recommended focus area"
+        icon={DASHBOARD_MODULE_ICONS.focus}
+        variant="focus"
+        badgeCount={focusCount}
+        wide
+        onPress={() => onOpen("focus")}
+      />
+    </Animated.View>
+  );
+}
+
+function DashboardModuleEmptyCard({ title, body }: { title: string; body: string }) {
+  return (
+    <View style={styles.dashModuleEmptyCard}>
+      <Text style={styles.dashModuleEmptyTitle}>{title}</Text>
+      <Text style={styles.dashModuleEmptyBody}>{body}</Text>
+    </View>
+  );
+}
+
+function DashboardModuleOverlay({
+  visible,
+  title,
+  subtitle,
+  topInset,
+  bottomInset,
+  onClose,
+  children,
+}: {
+  visible: boolean;
+  title: string;
+  subtitle: string;
+  topInset: number;
+  bottomInset: number;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <Modal
+      visible={visible}
+      animationType="slide"
+      presentationStyle="fullScreen"
+      statusBarTranslucent
+      onRequestClose={onClose}
+    >
+      <View style={[styles.dashModuleOverlayRoot, { paddingTop: topInset }]}>
+        <View style={styles.dashModuleOverlayHeader}>
+          <View style={styles.dashModuleOverlayTitleBlock}>
+            <Text style={styles.dashModuleOverlayTitle}>{title}</Text>
+            <Text style={styles.dashModuleOverlaySubtitle}>{subtitle}</Text>
+          </View>
+          <Pressable
+            onPress={onClose}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel="Close dashboard module"
+            style={({ pressed }) => [styles.dashModuleOverlayClose, pressed && styles.dashModuleCardPressed]}
+          >
+            <X size={21} color="#FFFFFF" strokeWidth={2.8} />
+          </Pressable>
+        </View>
+
+        <ScrollView
+          contentContainerStyle={[
+            styles.dashModuleOverlayContent,
+            { paddingBottom: bottomInset + SP[8] },
+          ]}
+          showsVerticalScrollIndicator={false}
+        >
+          {children}
+        </ScrollView>
+      </View>
+    </Modal>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
 /*  GlassCard                                                                  */
 /* -------------------------------------------------------------------------- */
 
@@ -1043,6 +1329,7 @@ function JourneyGraph({
   height?: number;
 }) {
   if (points.length < 2) return null;
+  const animationKey = `${points.join(",")}|${projection?.join(",") ?? ""}|${stroke}`;
 
   const padLeft  = 22; // room for Y-axis labels (0/50/100)
   const padRight = 10;
@@ -1087,7 +1374,7 @@ function JourneyGraph({
     lineShift.value   = withDelay(120, withTiming(0, { duration: 900, easing: Easing.out(Easing.cubic) }));
     fillA.value       = withDelay(400, withTiming(1, { duration: 700, easing: Easing.out(Easing.quad) }));
     dotScale.value    = withDelay(900, withSpring(1, { damping: 10, stiffness: 180 }));
-  }, [points]);
+  }, [animationKey]);
 
   const lineStyle = useAnimatedStyle(() => ({
     opacity:   lineOpacity.value,
@@ -1206,6 +1493,7 @@ function JourneyCard({
   const currentTier     = graphPoints.length ? getScoreTier(graphPoints[graphPoints.length - 1]).label : null;
   // Only celebrate the projection when it actually predicts a tier *jump*.
   const willJumpTier = projectedTier && currentTier && projectedTier !== currentTier;
+  const graphAnimationKey = `${graphPoints.join("-")}:${projection?.join("-") ?? "none"}:${deltaColor}`;
 
   return (
     <View style={styles.journeyBase}>
@@ -1233,7 +1521,12 @@ function JourneyCard({
 
         {/* Graph */}
         <View style={styles.journeyGraphWrap}>
-          <JourneyGraph points={graphPoints} projection={projection} stroke={deltaColor} />
+          <JourneyGraph
+            key={graphAnimationKey}
+            points={graphPoints}
+            projection={projection}
+            stroke={deltaColor}
+          />
           <View style={styles.journeyDayLabels}>
             <Text style={styles.journeyDayLabel}>DAY 1</Text>
             <Text style={styles.journeyDayLabel}>
@@ -1243,6 +1536,111 @@ function JourneyCard({
         </View>
       </View>
     </View>
+  );
+}
+
+function ProgressGraphDetail({
+  scanCount,
+  joinedDaysAgo,
+  overallDelta,
+  graphPoints,
+  daysSinceLastScan,
+}: {
+  scanCount: number;
+  joinedDaysAgo: number;
+  overallDelta: number;
+  graphPoints: number[];
+  daysSinceLastScan: number | null;
+}) {
+  const currentScore = graphPoints[graphPoints.length - 1] ?? 0;
+  const tier = getScoreTier(currentScore);
+  const next = nextTier(currentScore);
+  const isUp = overallDelta >= 0;
+  const dayUnit = joinedDaysAgo === 1 ? "day" : "days";
+  const scanUnit = scanCount === 1 ? "scan" : "scans";
+  const lastScanCopy =
+    daysSinceLastScan === null
+      ? "Today"
+      : daysSinceLastScan === 0
+        ? "Today"
+        : `${daysSinceLastScan}d ago`;
+
+  const paceCopy = next
+    ? `${Math.max(0, next.threshold - currentScore).toFixed(0)} pts to ${next.label}`
+    : "Top tier reached";
+
+  const habitCopy =
+    daysSinceLastScan === null || daysSinceLastScan <= 3
+      ? "Fresh data"
+      : "Scan again soon";
+
+  return (
+    <Animated.View entering={FadeInDown.duration(360)} style={styles.progressMockRoot}>
+      <View style={styles.progressHeroCard}>
+        <View style={styles.progressHeroCopy}>
+          <Text style={styles.progressHeroEyebrow}>CURRENT TRAJECTORY</Text>
+          <Text style={styles.progressHeroTitle}>
+            {isUp ? "You are trending up" : "Your score needs attention"}
+          </Text>
+          <Text style={styles.progressHeroBody}>
+            {`${Math.abs(overallDelta).toFixed(1)} point ${isUp ? "gain" : "drop"} across ${joinedDaysAgo} ${dayUnit}.`}
+          </Text>
+        </View>
+        <View style={[styles.progressHeroBadge, !isUp && styles.progressHeroBadgeDown]}>
+          {isUp ? (
+            <TrendingUp size={22} color={COLORS.accentDepth} strokeWidth={2.5} />
+          ) : (
+            <TrendingDown size={22} color={COLORS.declineRed} strokeWidth={2.5} />
+          )}
+        </View>
+      </View>
+
+      <View style={styles.progressStatGrid}>
+        <View style={styles.progressStatCard}>
+          <Text style={styles.progressStatValue}>{Math.round(currentScore)}</Text>
+          <Text style={styles.progressStatLabel}>{tier.label}</Text>
+        </View>
+        <View style={styles.progressStatCard}>
+          <Text style={styles.progressStatValue}>{scanCount}</Text>
+          <Text style={styles.progressStatLabel}>{scanUnit}</Text>
+        </View>
+        <View style={styles.progressStatCard}>
+          <Text style={styles.progressStatValue}>{lastScanCopy}</Text>
+          <Text style={styles.progressStatLabel}>{habitCopy}</Text>
+        </View>
+      </View>
+
+      <JourneyCard
+        scanCount={scanCount}
+        joinedDaysAgo={joinedDaysAgo}
+        overallDelta={overallDelta}
+        graphPoints={graphPoints}
+      />
+
+      <View style={styles.progressInsightCard}>
+        <View style={styles.progressInsightRow}>
+          <View style={styles.progressInsightIcon}>
+            <Target size={18} color={COLORS.lightText} strokeWidth={2.4} />
+          </View>
+          <View style={styles.progressInsightCopy}>
+            <Text style={styles.progressInsightTitle}>Next milestone</Text>
+            <Text style={styles.progressInsightBody}>{paceCopy}</Text>
+          </View>
+        </View>
+        <View style={styles.progressInsightDivider} />
+        <View style={styles.progressInsightRow}>
+          <View style={[styles.progressInsightIcon, styles.progressInsightIconSoft]}>
+            <RefreshCw size={18} color={COLORS.accentDepth} strokeWidth={2.4} />
+          </View>
+          <View style={styles.progressInsightCopy}>
+            <Text style={styles.progressInsightTitle}>Best next move</Text>
+            <Text style={styles.progressInsightBody}>
+              Keep scans consistent so the projected line gets more reliable.
+            </Text>
+          </View>
+        </View>
+      </View>
+    </Animated.View>
   );
 }
 
@@ -1276,7 +1674,7 @@ function IdentityStrip({
         </Pressable>
 
         <View style={styles.identityStreakPill}>
-          <Flame size={13} color="#FF7A1A" strokeWidth={2.4} />
+          <DashboardSvgIcon icon={StreakIcon} width={16} height={16} />
           <Text style={styles.identityStreakNum}>{currentStreak}</Text>
           <Text style={styles.identityStreakText}>{streakUnit}</Text>
         </View>
@@ -1306,13 +1704,21 @@ function HeroImagePreview({
   label,
   visible,
   onClose,
+  onImageError,
 }: {
   uri: string | null;
   label: string;
   visible: boolean;
   onClose: () => void;
+  onImageError?: () => void;
 }) {
-  if (!uri) return null;
+  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+
+  useEffect(() => {
+    if (visible) setStatus("loading");
+  }, [uri, visible]);
+
+  if (!visible) return null;
 
   return (
     <Modal
@@ -1320,68 +1726,174 @@ function HeroImagePreview({
       transparent
       animationType="fade"
       statusBarTranslucent
+      presentationStyle="overFullScreen"
       onRequestClose={onClose}
     >
-      <Pressable style={styles.heroPreviewBackdrop} onPress={onClose}>
-        <Animated.View entering={FadeIn.duration(180)} style={styles.heroPreviewShade} />
+      <View style={styles.heroPreviewBackdrop}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Close image preview"
+          style={styles.heroPreviewShade}
+          onPress={onClose}
+        />
         <Animated.View entering={FadeInDown.duration(260)} style={styles.heroPreviewCard}>
-          <Image source={{ uri }} style={styles.heroPreviewImage} resizeMode="cover" />
+          <View style={styles.heroPreviewImageWrap}>
+            {uri && (
+              <ExpoImage
+                source={{ uri }}
+                style={styles.heroPreviewImage}
+                contentFit="contain"
+                cachePolicy="memory-disk"
+                transition={180}
+                onLoadStart={() => setStatus("loading")}
+                onLoad={() => setStatus("ready")}
+                onDisplay={() => setStatus("ready")}
+                onError={() => {
+                  setStatus("error");
+                  onImageError?.();
+                }}
+              />
+            )}
+            {(!uri || status === "loading") && (
+              <View style={styles.heroPreviewStateOverlay}>
+                <ActivityIndicator color="#FFFFFF" />
+                <Text style={styles.heroPreviewStateText}>Loading image...</Text>
+              </View>
+            )}
+            {status === "error" && (
+              <View style={styles.heroPreviewStateOverlay}>
+                <TriangleAlert size={26} color="#FFFFFF" strokeWidth={2.2} />
+                <Text style={styles.heroPreviewStateText}>Refreshing preview...</Text>
+              </View>
+            )}
+          </View>
           <Text style={styles.heroPreviewLabel}>{label}</Text>
+          <Pressable
+            onPress={onClose}
+            hitSlop={12}
+            accessibilityRole="button"
+            accessibilityLabel="Close image preview"
+            style={styles.heroPreviewClose}
+          >
+            <X size={18} color={COLORS.lightText} strokeWidth={2.4} />
+          </Pressable>
         </Animated.View>
-      </Pressable>
+      </View>
     </Modal>
+  );
+}
+
+function OverviewFaceImage({
+  uri,
+  accent,
+  loading,
+  onError,
+}: {
+  uri: string | null;
+  accent?: boolean;
+  loading?: boolean;
+  onError?: () => void;
+}) {
+  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+
+  useEffect(() => {
+    if (uri) setStatus("loading");
+  }, [uri]);
+
+  if (!uri) {
+    return (
+      <View style={styles.overviewFacePlaceholder}>
+        {loading && <ActivityIndicator size="small" color={COLORS.lightMuted} />}
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.overviewFaceImageWrap}>
+      <ExpoImage
+        source={{ uri }}
+        style={styles.overviewFaceImage}
+        contentFit="cover"
+        cachePolicy="memory-disk"
+        transition={180}
+        onLoadStart={() => setStatus("loading")}
+        onLoad={() => setStatus("ready")}
+        onDisplay={() => setStatus("ready")}
+        onError={() => {
+          setStatus("error");
+          onError?.();
+        }}
+      />
+      {status === "loading" && (
+        <View style={styles.overviewFaceImageOverlay}>
+          <ActivityIndicator size="small" color={accent ? COLORS.accentDepth : COLORS.lightMuted} />
+        </View>
+      )}
+      {status === "error" && (
+        <View style={styles.overviewFaceImageOverlay}>
+          <TriangleAlert size={20} color={accent ? COLORS.accentDepth : COLORS.lightMuted} strokeWidth={2.2} />
+        </View>
+      )}
+    </View>
   );
 }
 
 function UnifiedProgressHero({
   overall,
-  overallDelta,
   scanCount,
-  currentImageUri,
-  latestAdvanced,
+  metrics,
 }: {
   overall: DashboardOverall;
-  overallDelta: number;
   scanCount: number;
-  currentImageUri: string | null;
-  latestAdvanced: LatestAdvanced | null;
+  metrics: DashboardMetric[];
 }) {
-  const [preview, setPreview] = useState<null | { uri: string; label: string }>(null);
   const scoreVal = useSharedValue(0);
-  const potentialScoreVal = useSharedValue(0);
+  const reveal = useSharedValue(0);
+  const webPlot = useSharedValue(0);
+  const pulse = useSharedValue(0);
   const deltaVal = useSharedValue(0);
+  const overallDelta = 0;
+  const [preview, setPreview] = useState<null | { uri: string; label: string }>(null);
   const potentialFace = usePotentialFace((s) => s.data);
-  const loadPotentialFace = usePotentialFace((s) => s.load);
-
-  const next = nextTier(overall.current);
-  const potentialScore = next?.threshold ?? Math.ceil(overall.current);
+  const latestAdvanced: LatestAdvanced | null = null;
+  const metricByKey = useMemo(() => {
+    const out = new Map<string, DashboardMetric>();
+    for (const metric of metrics) out.set(metric.key, metric);
+    return out;
+  }, [metrics]);
+  const webValues = PROFILE_WEB_AXES.map((axis) => metricByKey.get(axis.key)?.current ?? overall.current);
+  const webAverage = webValues.length
+    ? Math.round(webValues.reduce((sum, value) => sum + value, 0) / webValues.length)
+    : Math.round(overall.current);
+  const valueSignature = webValues.map((value) => value.toFixed(1)).join("|");
 
   useEffect(() => {
     scoreVal.value = 0;
-    potentialScoreVal.value = 0;
-    deltaVal.value = 0;
+    reveal.value = 0;
+    webPlot.value = 0;
+    pulse.value = 0;
     const cfg = { duration: 1400, easing: Easing.out(Easing.cubic) };
-    scoreVal.value = withTiming(overall.current, cfg);
-    potentialScoreVal.value = withDelay(100, withTiming(potentialScore, cfg));
-    deltaVal.value = withDelay(100, withTiming(Math.abs(overallDelta), cfg));
-  }, [overall.current, overallDelta, potentialScore]);
+    scoreVal.value = withTiming(webAverage, cfg);
+    reveal.value = withTiming(1, { duration: 900, easing: Easing.out(Easing.cubic) });
+    webPlot.value = withDelay(140, withTiming(1, { duration: 950, easing: Easing.out(Easing.cubic) }));
+    pulse.value = withRepeat(
+      withSequence(
+        withTiming(1, { duration: 900, easing: Easing.inOut(Easing.cubic) }),
+        withTiming(0, { duration: 900, easing: Easing.inOut(Easing.cubic) })
+      ),
+      -1,
+      false
+    );
 
-  useEffect(() => {
-    void loadPotentialFace();
-  }, [loadPotentialFace]);
-
-  useEffect(() => {
-    if (potentialFace?.status !== "pending") return;
-    const id = setInterval(() => void loadPotentialFace(), POTENTIAL_FACE_POLL_MS);
-    return () => clearInterval(id);
-  }, [potentialFace?.status, loadPotentialFace]);
+    return () => {
+      cancelAnimation(reveal);
+      cancelAnimation(webPlot);
+      cancelAnimation(pulse);
+    };
+  }, [scoreVal, reveal, webPlot, pulse, webAverage, valueSignature]);
 
   const scoreProps = useAnimatedProps(() => ({
     text: String(Math.round(scoreVal.value)),
-    defaultValue: "",
-  } as any));
-  const potentialScoreProps = useAnimatedProps(() => ({
-    text: String(Math.round(potentialScoreVal.value)),
     defaultValue: "",
   } as any));
   const deltaProps = useAnimatedProps(() => ({
@@ -1400,13 +1912,146 @@ function UnifiedProgressHero({
     potentialPending ? "Generating" :
     potentialFailed ? "Retry soon" :
     "Potential";
-  const potentialUri = potentialReady ? potentialFace?.primaryImageUrl ?? null : null;
+  const potentialUri: any = potentialReady ? potentialFace?.primaryImageUrl ?? null : null;
+  const currentImageUri: any = null;
+  const potentialScoreProps = scoreProps;
 
   const openPreview = (uri: string | null, label: string) => {
     if (!uri) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setPreview({ uri, label });
   };
+
+  const webRevealStyle = useAnimatedStyle(() => ({
+    opacity: reveal.value,
+    transform: [{ scale: 0.88 + reveal.value * 0.12 }],
+  } as any));
+  const webPathProps = useAnimatedProps(() => ({
+    d: profileWebPath(webValues.map((value) => value * webPlot.value)),
+  } as any));
+  const haloProps = useAnimatedProps(() => ({
+    r: 4 + pulse.value * 4,
+    opacity: 0.18 + (1 - pulse.value) * 0.18,
+  } as any));
+
+  return (
+    <Animated.View entering={FadeInDown.delay(0).duration(450)} style={styles.unifiedOuter}>
+      <View style={styles.profileWebCard}>
+        <View style={styles.profileWebHeader}>
+          <View>
+            <Text style={styles.profileWebEyebrow}>ATTRIBUTE MAP</Text>
+            <Text style={styles.profileWebTitle}>Face profile</Text>
+          </View>
+          {isPB && <Text style={styles.heroMetaPB}>★ PERSONAL BEST</Text>}
+          <View style={styles.profileWebScorePill}>
+            <AnimatedTextInput
+              animatedProps={scoreProps}
+              editable={false}
+              pointerEvents="none"
+              style={[styles.profileWebScoreValue, { padding: 0 }]}
+            />
+            <Text style={styles.profileWebScoreLabel}>AVG</Text>
+          </View>
+        </View>
+
+        <Animated.View style={[styles.profileWebChartWrap, webRevealStyle]}>
+          <Svg width={PROFILE_WEB_W} height={PROFILE_WEB_H}>
+            <Defs>
+              <SvgGradient id="profileWebFill" x1="0" y1="0" x2="1" y2="1">
+                <Stop offset="0" stopColor={COLORS.accent} stopOpacity="0.34" />
+                <Stop offset="1" stopColor={COLORS.accentDepth} stopOpacity="0.12" />
+              </SvgGradient>
+            </Defs>
+
+            {[20, 40, 60, 80, 100].map((level) => (
+              <Path
+                key={`web-ring-${level}`}
+                d={profileWebPath(PROFILE_WEB_AXES.map(() => level))}
+                stroke="rgba(255,255,255,0.12)"
+                strokeWidth={1}
+                fill="none"
+              />
+            ))}
+
+            {PROFILE_WEB_AXES.map((_, index) => {
+              const p = profileWebPoint(index, 100);
+              return (
+                <Line
+                  key={`web-axis-${index}`}
+                  x1={PROFILE_WEB_CX}
+                  y1={PROFILE_WEB_CY}
+                  x2={p.x}
+                  y2={p.y}
+                  stroke="rgba(255,255,255,0.12)"
+                  strokeWidth={1}
+                />
+              );
+            })}
+
+            <AnimatedSvgPath
+              animatedProps={webPathProps}
+              stroke={COLORS.accent}
+              strokeWidth={2.8}
+              strokeLinejoin="round"
+              fill="url(#profileWebFill)"
+            />
+
+            {webValues.map((value, index) => {
+              const p = profileWebPoint(index, value);
+              const axis = PROFILE_WEB_AXES[index];
+              return (
+                <React.Fragment key={`web-dot-${axis.key}`}>
+                  <AnimatedCircle cx={p.x} cy={p.y} fill={COLORS.accent} animatedProps={haloProps} />
+                  <Circle cx={p.x} cy={p.y} r={4.2} fill={COLORS.accent} stroke="#090909" strokeWidth={1.6} />
+                </React.Fragment>
+              );
+            })}
+
+            {PROFILE_WEB_AXES.map((axis, index) => {
+              const p = profileWebPoint(index, 100, PROFILE_WEB_LABEL_RADIUS);
+              const isLeft = p.x < PROFILE_WEB_CX - 8;
+              const isRight = p.x > PROFILE_WEB_CX + 8;
+              const labelX = isLeft ? Math.max(p.x, 58) : isRight ? Math.min(p.x, PROFILE_WEB_W - 58) : p.x;
+              const yNudge = index === 0 ? -8 : index === 2 || index === 3 ? 9 : 2;
+              const score = Math.round(webValues[index] ?? overall.current);
+              const anchor = isLeft ? "end" : isRight ? "start" : "middle";
+
+              return (
+                <React.Fragment key={`web-label-${axis.key}`}>
+                  <SvgText
+                    x={labelX}
+                    y={p.y + yNudge}
+                    fill="rgba(255,255,255,0.76)"
+                    fontFamily="ProximaNova-Bold"
+                    fontSize={12}
+                    letterSpacing={1.1}
+                    textAnchor={anchor}
+                  >
+                    {axis.label}
+                  </SvgText>
+                  <SvgText
+                    x={labelX}
+                    y={p.y + yNudge + 15}
+                    fill="#FFFFFF"
+                    fontFamily="ProximaNova-Bold"
+                    fontSize={12}
+                    textAnchor={anchor}
+                  >
+                    {score}
+                  </SvgText>
+                </React.Fragment>
+              );
+            })}
+          </Svg>
+        </Animated.View>
+
+        <View style={styles.profileWebFooter}>
+          <View style={styles.profileWebLegendDot} />
+          <Text style={styles.profileWebFooterText}>Live profile from your latest scan</Text>
+        </View>
+      </View>
+    </Animated.View>
+  );
 
   return (
     <>
@@ -1527,10 +2172,14 @@ function ProgressOverview({
   latestScanId: string | null;
   onSeeProgress: () => void;
 }) {
-  const [preview, setPreview] = useState<null | { uri: string; label: string }>(null);
+  const [preview, setPreview] = useState<null | { target: "current" | "potential"; label: string }>(null);
+  const [remoteCurrentImageUri, setRemoteCurrentImageUri] = useState<string | null>(null);
+  const [remoteCurrentLoading, setRemoteCurrentLoading] = useState(false);
+  const [currentImageRetryTick, setCurrentImageRetryTick] = useState(0);
+  const currentImageRetryRef = useRef(0);
+  const potentialImageRetryRef = useRef(0);
   const scoreVal = useSharedValue(0);
   const potentialScoreVal = useSharedValue(0);
-  const progressVal = useSharedValue(0);
   const potentialFace = usePotentialFace((s) => s.data);
   const potentialLoading = usePotentialFace((s) => s.loading);
   const loadPotentialFace = usePotentialFace((s) => s.load);
@@ -1542,12 +2191,50 @@ function ProgressOverview({
   const potentialPending = potentialFace?.status === "pending" || potentialLoading;
   const potentialFailed = potentialFace?.status === "failed";
   const potentialUri = potentialReady ? potentialFace?.primaryImageUrl ?? null : null;
-  const progress = computeProgressPercent(potentialFace, latestAdvanced);
-  const progressPct = progress === null ? 0 : Math.max(0, Math.min(100, Math.round(progress * 100)));
+  const displayCurrentImageUri = currentImageUri ?? remoteCurrentImageUri;
 
   useEffect(() => {
     void loadPotentialFace();
   }, [loadPotentialFace]);
+
+  useEffect(() => {
+    currentImageRetryRef.current = 0;
+  }, [currentImageUri, latestScanId]);
+
+  useEffect(() => {
+    potentialImageRetryRef.current = 0;
+  }, [potentialUri]);
+
+  useEffect(() => {
+    if (currentImageUri || !latestScanId) {
+      setRemoteCurrentImageUri(null);
+      setRemoteCurrentLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setRemoteCurrentLoading(true);
+    fetchScanDetail(latestScanId)
+      .then((detail) => {
+        if (!cancelled) setRemoteCurrentImageUri(detail.images?.front?.url ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setRemoteCurrentImageUri(null);
+      })
+      .finally(() => {
+        if (!cancelled) setRemoteCurrentLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentImageUri, latestScanId, currentImageRetryTick]);
+
+  useEffect(() => {
+    const urls = [displayCurrentImageUri, potentialUri].filter((u): u is string => !!u);
+    if (!urls.length) return;
+    ExpoImage.prefetch(urls, "memory-disk").catch(() => {});
+  }, [displayCurrentImageUri, potentialUri]);
 
   useEffect(() => {
     if (potentialFace?.status !== "pending") return;
@@ -1559,11 +2246,9 @@ function ProgressOverview({
     const cfg = { duration: 1250, easing: Easing.out(Easing.cubic) };
     scoreVal.value = 0;
     potentialScoreVal.value = 0;
-    progressVal.value = 0;
     scoreVal.value = withTiming(overall.current, cfg);
     potentialScoreVal.value = withDelay(120, withTiming(potentialScore, cfg));
-    progressVal.value = withDelay(220, withTiming(progressPct, cfg));
-  }, [overall.current, potentialScore, progressPct]);
+  }, [overall.current, potentialScore]);
 
   const scoreProps = useAnimatedProps(() => ({
     text: String(Math.round(scoreVal.value)),
@@ -1573,13 +2258,6 @@ function ProgressOverview({
     text: String(Math.round(potentialScoreVal.value)),
     defaultValue: "",
   } as any));
-  const progressProps = useAnimatedProps(() => ({
-    text: `${Math.round(progressVal.value)}%`,
-    defaultValue: "",
-  } as any));
-  const progressFillStyle = useAnimatedStyle(() => ({
-    width: `${Math.max(0, Math.min(100, progressVal.value))}%` as any,
-  }));
 
   const message =
     verdict === "improved"
@@ -1605,10 +2283,48 @@ function ProgressOverview({
     }
   };
 
-  const openPreview = (uri: string | null, label: string) => {
+  const handleCurrentImageError = useCallback(() => {
+    if (currentImageUri || !latestScanId || currentImageRetryRef.current >= 1) return;
+    currentImageRetryRef.current += 1;
+    setRemoteCurrentImageUri(null);
+    setCurrentImageRetryTick((tick) => tick + 1);
+  }, [currentImageUri, latestScanId]);
+
+  const handlePotentialImageError = useCallback(() => {
+    if (!potentialReady || potentialImageRetryRef.current >= 1) return;
+    potentialImageRetryRef.current += 1;
+    void loadPotentialFace();
+  }, [loadPotentialFace, potentialReady]);
+
+  const openPreview = (target: "current" | "potential", label: string) => {
+    const uri = target === "potential" ? potentialUri : displayCurrentImageUri;
     if (!uri) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setPreview({ uri, label });
+    setPreview({ target, label });
+    if (target === "potential") {
+      void loadPotentialFace();
+    }
+  };
+
+  const handlePreviewImageError = useCallback(() => {
+    if (preview?.target === "potential") {
+      void loadPotentialFace();
+      return;
+    }
+    if (preview?.target === "current") {
+      handleCurrentImageError();
+    }
+  }, [handleCurrentImageError, loadPotentialFace, preview?.target]);
+
+  const previewUri =
+    preview?.target === "potential"
+      ? potentialUri
+      : preview?.target === "current"
+        ? displayCurrentImageUri ?? null
+        : null;
+
+  const closePreview = () => {
+    setPreview(null);
   };
 
   return (
@@ -1626,19 +2342,19 @@ function ProgressOverview({
             <View style={styles.overviewFaceCol}>
               <Text style={styles.overviewFaceLabel}>Current</Text>
               <Pressable
-                disabled={!currentImageUri}
-                onPress={() => openPreview(currentImageUri, "Current face")}
+                disabled={!displayCurrentImageUri}
+                onPress={() => openPreview("current", "Current face")}
                 style={({ pressed }) => [
                   styles.overviewFaceRing,
                   styles.overviewCurrentRing,
-                  pressed && currentImageUri && styles.overviewPressed,
+                  pressed && displayCurrentImageUri && styles.overviewPressed,
                 ]}
               >
-                {currentImageUri ? (
-                  <Image source={{ uri: currentImageUri }} style={styles.overviewFaceImage} resizeMode="cover" />
-                ) : (
-                  <View style={styles.overviewFacePlaceholder} />
-                )}
+                <OverviewFaceImage
+                  uri={displayCurrentImageUri}
+                  loading={remoteCurrentLoading}
+                  onError={handleCurrentImageError}
+                />
               </Pressable>
               <AnimatedTextInput
                 animatedProps={scoreProps}
@@ -1653,7 +2369,7 @@ function ProgressOverview({
               <Text style={[styles.overviewFaceLabel, styles.overviewPotentialLabel]}>Potential</Text>
               <Pressable
                 disabled={!potentialUri}
-                onPress={() => openPreview(potentialUri, "Potential face")}
+                onPress={() => openPreview("potential", "Potential face")}
                 style={({ pressed }) => [
                   styles.overviewFaceRing,
                   styles.overviewPotentialRing,
@@ -1661,7 +2377,7 @@ function ProgressOverview({
                 ]}
               >
                 {potentialUri ? (
-                  <Image source={{ uri: potentialUri }} style={styles.overviewFaceImage} resizeMode="cover" />
+                  <OverviewFaceImage uri={potentialUri} accent onError={handlePotentialImageError} />
                 ) : (
                   <View style={styles.overviewPotentialFallback}>
                     {potentialPending ? (
@@ -1693,26 +2409,6 @@ function ProgressOverview({
             <Text style={styles.overviewMascotText}>{message}</Text>
           </View>
 
-          <View style={styles.overviewProgressCard}>
-            <View style={styles.overviewProgressHeader}>
-              <Text style={styles.overviewProgressTitle}>
-                {progress === null ? "Potential progress" : `${progressPct}% closer to potential`}
-              </Text>
-              <AnimatedTextInput
-                animatedProps={progressProps}
-                editable={false}
-                style={[styles.overviewProgressPct, { padding: 0 }]}
-              />
-            </View>
-            <View style={styles.overviewProgressTrack}>
-              <Animated.View style={[styles.overviewProgressFill, progressFillStyle]} />
-            </View>
-            <Text style={styles.overviewProgressHint}>
-              {progress === null
-                ? "Based on the target metrics behind your potential face once analysis is ready."
-                : "Based on the target metrics behind your potential face."}
-            </Text>
-          </View>
         </View>
 
         <Pressable onPress={onSeeProgress} style={({ pressed }) => [styles.overviewTrackCard, pressed && styles.overviewPressed]}>
@@ -1729,10 +2425,11 @@ function ProgressOverview({
         <LimeButton3D label="See Your Progress" onPress={onSeeProgress} />
       </Animated.View>
       <HeroImagePreview
-        uri={preview?.uri ?? null}
+        uri={previewUri}
         label={preview?.label ?? ""}
         visible={preview !== null}
-        onClose={() => setPreview(null)}
+        onClose={closePreview}
+        onImageError={handlePreviewImageError}
       />
     </>
   );
@@ -2418,6 +3115,7 @@ export default function DashboardScreen() {
   const scanError   = useScores((s) => s.error);
   const scanImageUri = useScores((s) => s.imageUri);
   const [progressView, setProgressView] = useState<"overview" | "details">("overview");
+  const [openDashboardModule, setOpenDashboardModule] = useState<DashboardModuleKey | null>(null);
 
   // UUID pattern — Supabase leaks the auth UUID into name/email fields on some flows.
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -2490,6 +3188,32 @@ export default function DashboardScreen() {
   const latestAdvanced   = data?.latest_advanced ?? (advancedData as LatestAdvanced | null) ?? null;
   const previousAdvanced = data?.previous_advanced ?? null;
   const latestScanId = history[0]?.id ?? null;
+  const topFiveResult = useMemo(
+    () => pickTopFive(latestAdvanced, previousAdvanced, scanCount),
+    [latestAdvanced, previousAdvanced, scanCount]
+  );
+  const dashboardProblemCount = Math.min(5, topFiveResult.rows.length);
+  const dashboardFocusCount = metrics.some((metric) => metric.key !== "sexual_dimorphism") ? 1 : 0;
+
+  const closeDashboardModule = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setOpenDashboardModule(null);
+  }, []);
+
+  const moduleOverlayCopy = openDashboardModule === "problems"
+    ? {
+        title: "Top 5 Problems",
+        subtitle: "Your highest-leverage targets right now.",
+      }
+    : openDashboardModule === "progress"
+      ? {
+          title: "Progress Graph",
+          subtitle: "Your score movement across scans.",
+        }
+      : {
+          title: "Next Focus",
+          subtitle: "The metric that should drive your next session.",
+        };
 
   // Days since the user's most recent scan. `history` is newest-first
   // (see `/insights` server route). Null when no scans exist yet.
@@ -2539,31 +3263,62 @@ export default function DashboardScreen() {
 
         <UnifiedProgressHero
           overall={overall!}
-          overallDelta={overallDelta}
           scanCount={scanCount}
-          currentImageUri={scanImageUri ?? null}
-          latestAdvanced={latestAdvanced}
+          metrics={metrics}
         />
 
         {/* ── Section 3: Your journey ── */}
-        {graphPoints.length >= 2 && (
-          <Animated.View entering={FadeInDown.delay(180).duration(450)}>
-            <JourneyCard
-              scanCount={scanCount}
-              joinedDaysAgo={joinedDaysAgo}
-              overallDelta={overallDelta}
-              graphPoints={graphPoints}
-            />
-          </Animated.View>
-        )}
+        <DashboardModuleButtons
+          problemCount={dashboardProblemCount}
+          scanCount={scanCount}
+          focusCount={dashboardFocusCount}
+          onOpen={setOpenDashboardModule}
+        />
 
         {/* ── Section 3b: Top 5 trainable sub-metrics (improving / to target) ── */}
-        <TopFiveCard result={pickTopFive(latestAdvanced, previousAdvanced, scanCount)} />
+        <DashboardModuleOverlay
+          visible={openDashboardModule !== null}
+          title={moduleOverlayCopy.title}
+          subtitle={moduleOverlayCopy.subtitle}
+          topInset={insets.top}
+          bottomInset={insets.bottom}
+          onClose={closeDashboardModule}
+        >
+          {openDashboardModule === "problems" && (
+            <TopFiveCard result={topFiveResult} />
+          )}
+
+          {openDashboardModule === "progress" && (
+            graphPoints.length >= 2 ? (
+              <ProgressGraphDetail
+                key={`progress-detail-${graphPoints.join("-")}-${scanCount}-${overallDelta}`}
+                scanCount={scanCount}
+                joinedDaysAgo={joinedDaysAgo}
+                overallDelta={overallDelta}
+                graphPoints={graphPoints}
+                daysSinceLastScan={daysSinceLastScan}
+              />
+            ) : (
+              <DashboardModuleEmptyCard
+                title="Progress graph is almost ready"
+                body="Add another scan to unlock your trend line."
+              />
+            )
+          )}
+
+          {openDashboardModule === "focus" && (
+            overall ? (
+              <MetricGrid metrics={metrics} latestAdvanced={latestAdvanced} previousAdvanced={previousAdvanced} />
+            ) : (
+              <DashboardModuleEmptyCard
+                title="Next focus is almost ready"
+                body="Run a scan so we can rank your next training target."
+              />
+            )
+          )}
+        </DashboardModuleOverlay>
 
         {/* ── Section 4: "Where to focus" — header lives inside MetricGrid ── */}
-        {overall && (
-          <MetricGrid metrics={metrics} latestAdvanced={latestAdvanced} previousAdvanced={previousAdvanced} />
-        )}
 
         {/* ── Section 6: AI Coach ── (removed) */}
         {false && content && (
@@ -2714,7 +3469,7 @@ const SOFT_SHADOW = {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: COLORS.lightBg,  // pure white screen — cards float via shadow
+    backgroundColor: "#FEF5E4",
   },
 
   // Atmospheric glow — kept as an empty no-op so existing JSX doesn't need
@@ -2759,7 +3514,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   overviewSubtitle: {
-    fontFamily: "ProximaNova-Bold",
+    fontFamily: DETAIL_FONT,
     fontSize: 19,
     lineHeight: 27,
     color: COLORS.lightSub,
@@ -2787,7 +3542,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   overviewFaceLabel: {
-    fontFamily: "ProximaNova-Bold",
+    fontFamily: DETAIL_FONT,
     fontSize: 19,
     color: COLORS.lightSub,
     marginBottom: SP[4],
@@ -2816,6 +3571,16 @@ const styles = StyleSheet.create({
     width: "100%",
     height: "100%",
   },
+  overviewFaceImageWrap: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: COLORS.iconTileLavender,
+  },
+  overviewFaceImageOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(250,251,252,0.58)",
+  },
   overviewFacePlaceholder: {
     flex: 1,
     width: "100%",
@@ -2831,7 +3596,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#F4FAEA",
   },
   overviewFallbackText: {
-    fontFamily: "ProximaNova-Bold",
+    fontFamily: DETAIL_FONT,
     fontSize: 11,
     color: COLORS.accentDepth,
     textAlign: "center",
@@ -2900,49 +3665,6 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     color: "#27581D",
   },
-  overviewProgressCard: {
-    borderRadius: RADII.xl,
-    backgroundColor: COLORS.lightSurfaceAlt,
-    padding: SP[5],
-    gap: SP[3],
-  },
-  overviewProgressHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: SP[3],
-  },
-  overviewProgressTitle: {
-    flex: 1,
-    fontFamily: "ProximaNova-Bold",
-    fontSize: 18,
-    color: COLORS.lightText,
-    letterSpacing: -0.1,
-  },
-  overviewProgressPct: {
-    fontFamily: "ProximaNova-Bold",
-    fontSize: 20,
-    color: COLORS.accentDepth,
-    minWidth: 54,
-    textAlign: "right",
-  },
-  overviewProgressTrack: {
-    height: 10,
-    borderRadius: 5,
-    overflow: "hidden",
-    backgroundColor: COLORS.lightBorder,
-  },
-  overviewProgressFill: {
-    height: "100%",
-    borderRadius: 5,
-    backgroundColor: COLORS.accentDepth,
-  },
-  overviewProgressHint: {
-    fontFamily: "ProximaNova-Bold",
-    fontSize: 13,
-    lineHeight: 18,
-    color: COLORS.lightSub,
-  },
   overviewTrackCard: {
     minHeight: 118,
     borderRadius: RADII.card,
@@ -2978,7 +3700,7 @@ const styles = StyleSheet.create({
     letterSpacing: -0.2,
   },
   overviewTrackSub: {
-    fontFamily: "ProximaNova-Bold",
+    fontFamily: DETAIL_FONT,
     fontSize: 16,
     lineHeight: 22,
     color: COLORS.lightSub,
@@ -3010,6 +3732,89 @@ const styles = StyleSheet.create({
   unifiedOuter: {
     marginBottom: SP[1],
   },
+  profileWebCard: {
+    borderRadius: RADII.card,
+    backgroundColor: "#050505",
+    paddingHorizontal: SP[5],
+    paddingTop: SP[5],
+    paddingBottom: SP[4],
+    minHeight: 366,
+    ...SOFT_SHADOW,
+  },
+  profileWebHeader: {
+    minHeight: 48,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    marginBottom: SP[1],
+  },
+  profileWebEyebrow: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 10,
+    color: "rgba(255,255,255,0.42)",
+    letterSpacing: 1.7,
+  },
+  profileWebTitle: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 22,
+    lineHeight: 26,
+    color: COLORS.accent,
+    letterSpacing: -0.2,
+    marginTop: 5,
+  },
+  profileWebScorePill: {
+    minWidth: 56,
+    minHeight: 50,
+    borderRadius: 17,
+    backgroundColor: "rgba(180,243,77,0.13)",
+    borderWidth: 1,
+    borderColor: "rgba(180,243,77,0.24)",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: SP[2],
+  },
+  profileWebScoreValue: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 22,
+    lineHeight: 25,
+    color: COLORS.accent,
+    textAlign: "center",
+    minWidth: 34,
+  },
+  profileWebScoreLabel: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 9,
+    color: "rgba(255,255,255,0.48)",
+    letterSpacing: 0.8,
+    marginTop: 1,
+  },
+  profileWebChartWrap: {
+    minHeight: PROFILE_WEB_H,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  profileWebFooter: {
+    minHeight: 28,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: SP[2],
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.08)",
+    paddingTop: SP[3],
+  },
+  profileWebLegendDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: COLORS.accent,
+  },
+  profileWebFooterText: {
+    fontFamily: DETAIL_FONT,
+    fontSize: 11,
+    color: "rgba(255,255,255,0.48)",
+    letterSpacing: 0.2,
+  },
   heroSplitCard: {
     borderRadius: RADII.card,
     backgroundColor: "#000000",
@@ -3039,7 +3844,7 @@ const styles = StyleSheet.create({
     gap: SP[2],
   },
   heroFaceTopLabel: {
-    fontFamily: "ProximaNova-Bold",
+    fontFamily: DETAIL_FONT,
     fontSize: 11,
     color: "rgba(255,255,255,0.56)",
     letterSpacing: 0.4,
@@ -3088,12 +3893,12 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.06)",
   },
   heroPotentialPlaceholderText: {
-    fontFamily: "ProximaNova-Bold",
+    fontFamily: DETAIL_FONT,
     fontSize: 18,
     color: "rgba(255,255,255,0.45)",
   },
   heroPotentialLabel: {
-    fontFamily: "ProximaNova-Bold",
+    fontFamily: DETAIL_FONT,
     fontSize: 11,
     color: COLORS.accent,
     letterSpacing: 0.4,
@@ -3118,7 +3923,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   heroPotentialProgressLabel: {
-    fontFamily: "ProximaNova-Bold",
+    fontFamily: DETAIL_FONT,
     fontSize: 10,
     color: "rgba(255,255,255,0.48)",
     letterSpacing: 0.8,
@@ -3141,7 +3946,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.accent,
   },
   heroPotentialProgressHint: {
-    fontFamily: "ProximaNova-Bold",
+    fontFamily: DETAIL_FONT,
     fontSize: 10,
     color: "rgba(255,255,255,0.38)",
     letterSpacing: 0.2,
@@ -3160,24 +3965,55 @@ const styles = StyleSheet.create({
     width: "100%",
     maxWidth: 360,
     borderRadius: RADII.card,
-    backgroundColor: COLORS.lightCard,
+    backgroundColor: "#0B0B0B",
     padding: SP[3],
     alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.14)",
     ...SOFT_SHADOW,
   },
-  heroPreviewImage: {
+  heroPreviewImageWrap: {
     width: "100%",
     aspectRatio: 1,
     borderRadius: RADII.xl,
-    backgroundColor: COLORS.iconTileLavender,
+    overflow: "hidden",
+    backgroundColor: "#000000",
+  },
+  heroPreviewImage: {
+    width: "100%",
+    height: "100%",
+  },
+  heroPreviewStateOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: SP[2],
+    backgroundColor: "rgba(0,0,0,0.38)",
+  },
+  heroPreviewStateText: {
+    fontFamily: DETAIL_FONT,
+    fontSize: 12,
+    color: "#FFFFFF",
+    letterSpacing: 0.2,
   },
   heroPreviewLabel: {
     fontFamily: "ProximaNova-Bold",
     fontSize: 13,
-    color: COLORS.lightText,
+    color: COLORS.lightBg,
     letterSpacing: 0.3,
     marginTop: SP[3],
     marginBottom: SP[1],
+  },
+  heroPreviewClose: {
+    position: "absolute",
+    top: SP[4],
+    right: SP[4],
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.86)",
   },
   unifiedIdentityRow: {
     flexDirection: "row",
@@ -3187,7 +4023,7 @@ const styles = StyleSheet.create({
   },
   unifiedIdentityText: {
     flex: 1,
-    fontFamily: "ProximaNova-Bold",
+    fontFamily: DETAIL_FONT,
     fontSize: 13,
     color: COLORS.lightSub,
     letterSpacing: 0.1,
@@ -3310,7 +4146,7 @@ const styles = StyleSheet.create({
     color: COLORS.accentDepth,
   },
   unifiedRankSub: {
-    fontFamily: "Poppins-Regular",
+    fontFamily: DETAIL_FONT,
     fontSize: 11,
     color: COLORS.lightMuted,
     marginTop: 1,
@@ -3369,7 +4205,7 @@ const styles = StyleSheet.create({
     color: "#079A3A",
   },
   unifiedMilestoneSub: {
-    fontFamily: "Poppins-Regular",
+    fontFamily: DETAIL_FONT,
     fontSize: 11,
     color: COLORS.lightMuted,
     marginTop: SP[2],
@@ -3384,7 +4220,7 @@ const styles = StyleSheet.create({
     letterSpacing: -0.2,
   },
   unifiedTransformSub: {
-    fontFamily: "Poppins-Regular",
+    fontFamily: DETAIL_FONT,
     fontSize: 13,
     color: COLORS.lightMuted,
   },
@@ -3446,7 +4282,7 @@ const styles = StyleSheet.create({
     color: COLORS.lightText,
   },
   unifiedFaceSubtitle: {
-    fontFamily: "Poppins-Regular",
+    fontFamily: DETAIL_FONT,
     fontSize: 11,
     color: COLORS.lightSub,
     marginTop: 2,
@@ -3495,7 +4331,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.ctaBlack,
   },
   unifiedProgressCaption: {
-    fontFamily: "ProximaNova-Bold",
+    fontFamily: DETAIL_FONT,
     fontSize: 12,
     color: COLORS.lightSub,
     textAlign: "right",
@@ -3565,8 +4401,12 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 8 },
     elevation: 4,
   },
+  identityStreakIcon: {
+    width: 16,
+    height: 16,
+  },
   identityStreakText: {
-    fontFamily: "ProximaNova-Bold",
+    fontFamily: DETAIL_FONT,
     fontSize: 12,
     color: TRACKING_HEADER.muted,
   },
@@ -3611,7 +4451,7 @@ const styles = StyleSheet.create({
     letterSpacing: -0.1,
   },
   identityCaption: {
-    fontFamily: "ProximaNova-Bold",
+    fontFamily: DETAIL_FONT,
     fontSize: 11,
     color: TRACKING_HEADER.muted,
     letterSpacing: 0.1,
@@ -3866,7 +4706,7 @@ const styles = StyleSheet.create({
     letterSpacing: -0.4,
   },
   focusSub: {
-    fontFamily: "ProximaNova-Bold",
+    fontFamily: DETAIL_FONT,
     fontSize: 13,
     color: COLORS.lightSub,
     marginTop: 2,
@@ -3881,6 +4721,220 @@ const styles = StyleSheet.create({
   },
 
   /* Spotlight metric card — L2, the largest white card on the screen */
+  dashModuleGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: SP[3],
+    marginTop: SP[3],
+    marginBottom: SP[2],
+  },
+  dashModuleOuter: {
+    width: Math.floor((Dimensions.get("window").width - SP[5] * 2 - SP[3]) / 2),
+    minHeight: 196,
+  },
+  dashModuleOuterWide: {
+    width: "100%",
+    minHeight: 126,
+  },
+  dashModuleCard: {
+    flex: 1,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "rgba(15,23,42,0.08)",
+    padding: SP[4],
+    backgroundColor: COLORS.lightCard,
+    shadowColor: "#000000",
+    shadowOpacity: 0.09,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 4,
+  },
+  dashModuleCardProblems: {
+    backgroundColor: "#FFF6F7",
+    borderColor: "rgba(229,72,77,0.25)",
+  },
+  dashModuleCardProgress: {
+    backgroundColor: "#FAFFF2",
+    borderColor: "rgba(107,154,30,0.20)",
+  },
+  dashModuleCardFocus: {
+    backgroundColor: "#FFFCF5",
+    borderColor: "rgba(194,107,0,0.18)",
+  },
+  dashModuleCardWide: {
+    minHeight: 112,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingRight: SP[5],
+  },
+  dashModuleCardPressed: {
+    opacity: 0.88,
+    transform: [{ scale: 0.985 }],
+  },
+  dashModuleIconSlot: {
+    width: "100%",
+    height: 104,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: SP[2],
+  },
+  dashModuleIconSlotWide: {
+    width: 96,
+    height: 96,
+    marginBottom: 0,
+    marginRight: SP[5],
+  },
+  dashModuleImage: {
+    width: 112,
+    height: 112,
+  },
+  dashModuleImageWide: {
+    width: 96,
+    height: 96,
+  },
+  dashModuleCopy: {
+    paddingRight: 52,
+  },
+  dashModuleCopyWide: {
+    flex: 1,
+    paddingRight: SP[3],
+  },
+  dashModuleTitle: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 17,
+    lineHeight: 20,
+    color: COLORS.lightText,
+    letterSpacing: -0.2,
+  },
+  dashModuleTitleProblems: {
+    color: COLORS.declineRed,
+  },
+  dashModuleTitleProgress: {
+    color: COLORS.accentDepth,
+  },
+  dashModuleTitleFocus: {
+    color: "#58CC02",
+  },
+  dashModuleSubtitle: {
+    fontFamily: DETAIL_FONT,
+    fontSize: 11,
+    lineHeight: 14,
+    color: COLORS.lightSub,
+    marginTop: 4,
+  },
+  dashModuleArrow: {
+    position: "absolute",
+    right: SP[4],
+    bottom: SP[4],
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#EEF6DF",
+  },
+  dashModuleArrowProblems: {
+    backgroundColor: "#FBDCDD",
+  },
+  dashModuleArrowProgress: {
+    backgroundColor: "#EAF4D8",
+  },
+  dashModuleArrowFocus: {
+    backgroundColor: "#FFF0D7",
+  },
+  dashModuleBadge: {
+    position: "absolute",
+    top: -7,
+    right: -7,
+    minWidth: 24,
+    height: 24,
+    borderRadius: 12,
+    paddingHorizontal: 7,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.declineRed,
+    borderWidth: 2,
+    borderColor: "#FEF5E4",
+    zIndex: 10,
+    shadowColor: "#000000",
+    shadowOpacity: 0.18,
+    shadowRadius: 7,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 6,
+  },
+  dashModuleBadgeText: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 11,
+    lineHeight: 14,
+    color: "#FFFFFF",
+  },
+  dashModuleOverlayRoot: {
+    flex: 1,
+    backgroundColor: "#FEF5E4",
+  },
+  dashModuleOverlayHeader: {
+    minHeight: 78,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: SP[5],
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(15,23,42,0.08)",
+  },
+  dashModuleOverlayTitleBlock: {
+    flex: 1,
+    minWidth: 0,
+    paddingRight: SP[3],
+  },
+  dashModuleOverlayTitle: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 24,
+    lineHeight: 28,
+    color: COLORS.lightText,
+    letterSpacing: -0.3,
+  },
+  dashModuleOverlaySubtitle: {
+    fontFamily: DETAIL_FONT,
+    fontSize: 12,
+    lineHeight: 16,
+    color: COLORS.lightSub,
+    marginTop: 3,
+  },
+  dashModuleOverlayClose: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.ctaBlack,
+  },
+  dashModuleOverlayContent: {
+    paddingHorizontal: SP[5],
+    paddingTop: SP[5],
+  },
+  dashModuleEmptyCard: {
+    borderRadius: 18,
+    backgroundColor: COLORS.lightCard,
+    padding: SP[5],
+    shadowColor: "#000000",
+    shadowOpacity: 0.08,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 4,
+  },
+  dashModuleEmptyTitle: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 19,
+    lineHeight: 24,
+    color: COLORS.lightText,
+  },
+  dashModuleEmptyBody: {
+    fontFamily: DETAIL_FONT,
+    fontSize: 13,
+    lineHeight: 19,
+    color: COLORS.lightSub,
+    marginTop: SP[2],
+  },
+
   spotlightCard: {
     backgroundColor: COLORS.lightCard,
     borderRadius: RADII.lg,
@@ -3905,7 +4959,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   spotlightLabel: {
-    fontFamily: "ProximaNova-Bold",
+    fontFamily: DETAIL_FONT,
     fontSize: 10,
     color: COLORS.lightSub,
     letterSpacing: 0.8,
@@ -3928,13 +4982,13 @@ const styles = StyleSheet.create({
     lineHeight: 34,
   },
   spotlightDelta: {
-    fontFamily: "ProximaNova-Bold",
+    fontFamily: DETAIL_FONT,
     fontSize: 12,
     color: COLORS.lightSub,
     marginTop: 2,
   },
   spotlightInsight: {
-    fontFamily: "ProximaNova-Bold",
+    fontFamily: DETAIL_FONT,
     fontSize: 14,
     lineHeight: 20,
     color: COLORS.lightMuted,
@@ -3995,7 +5049,7 @@ const styles = StyleSheet.create({
     letterSpacing: -0.4,
   },
   midDelta: {
-    fontFamily: "ProximaNova-Bold",
+    fontFamily: DETAIL_FONT,
     fontSize: 12,
     color: COLORS.lightSub,
   },
@@ -4032,7 +5086,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
   },
   refDelta: {
-    fontFamily: "ProximaNova-Bold",
+    fontFamily: DETAIL_FONT,
     fontSize: 12,
     color: COLORS.lightSub,
     minWidth: 50,
@@ -4093,7 +5147,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
   },
   metricRowTier: {
-    fontFamily: "ProximaNova-Bold",
+    fontFamily: DETAIL_FONT,
     fontSize: 11,
     color: COLORS.lightSub,
   },
@@ -4195,7 +5249,7 @@ const styles = StyleSheet.create({
     paddingVertical: SP[2],
   },
   sheetScoreLabel: {
-    fontFamily: "ProximaNova-Bold",
+    fontFamily: DETAIL_FONT,
     fontSize: 11,
     color: COLORS.lightSub,
     letterSpacing: 0.4,
@@ -4212,7 +5266,7 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   sheetScoreDelta: {
-    fontFamily: "ProximaNova-Bold",
+    fontFamily: DETAIL_FONT,
     fontSize: 12,
     color: COLORS.lightSub,
   },
@@ -4239,7 +5293,7 @@ const styles = StyleSheet.create({
     marginRight: SP[2],
   },
   sheetNoSub: {
-    fontFamily: "ProximaNova-Bold",
+    fontFamily: DETAIL_FONT,
     fontSize: 13,
     color: COLORS.lightSub,
     textAlign: "center",
@@ -4319,7 +5373,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   journeySubtitle: {
-    fontFamily: "ProximaNova-Bold",
+    fontFamily: DETAIL_FONT,
     fontSize: 13,
     color: JOURNEY_SUB,
     marginTop: 3,
@@ -4360,6 +5414,137 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: COLORS.lightSub,
     letterSpacing: 0.6,
+  },
+
+  /* Progress graph detail mockup */
+  progressMockRoot: {
+    gap: SP[4],
+  },
+  progressHeroCard: {
+    minHeight: 112,
+    borderRadius: RADII.lg,
+    backgroundColor: COLORS.lightCard,
+    borderWidth: 1,
+    borderColor: "rgba(15,23,42,0.08)",
+    padding: SP[5],
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SP[4],
+    ...SOFT_SHADOW,
+  },
+  progressHeroCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  progressHeroEyebrow: {
+    fontFamily: DETAIL_FONT,
+    fontSize: 10,
+    color: COLORS.lightSub,
+    letterSpacing: 1,
+    marginBottom: SP[1],
+  },
+  progressHeroTitle: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 24,
+    lineHeight: 28,
+    color: COLORS.lightText,
+    letterSpacing: -0.4,
+  },
+  progressHeroBody: {
+    fontFamily: DETAIL_FONT,
+    fontSize: 13,
+    lineHeight: 18,
+    color: COLORS.lightSub,
+    marginTop: SP[2],
+  },
+  progressHeroBadge: {
+    width: 52,
+    height: 52,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#EEF8DE",
+  },
+  progressHeroBadgeDown: {
+    backgroundColor: COLORS.declineRedSoft,
+  },
+  progressStatGrid: {
+    flexDirection: "row",
+    gap: SP[3],
+  },
+  progressStatCard: {
+    flex: 1,
+    minHeight: 78,
+    borderRadius: RADII.md,
+    backgroundColor: COLORS.lightCard,
+    borderWidth: 1,
+    borderColor: "rgba(15,23,42,0.07)",
+    paddingHorizontal: SP[3],
+    paddingVertical: SP[3],
+    justifyContent: "center",
+    ...SOFT_SHADOW,
+  },
+  progressStatValue: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 20,
+    lineHeight: 24,
+    color: COLORS.lightText,
+    letterSpacing: -0.3,
+  },
+  progressStatLabel: {
+    fontFamily: DETAIL_FONT,
+    fontSize: 11,
+    lineHeight: 14,
+    color: COLORS.lightSub,
+    marginTop: 2,
+  },
+  progressInsightCard: {
+    borderRadius: RADII.lg,
+    backgroundColor: COLORS.lightCard,
+    borderWidth: 1,
+    borderColor: "rgba(15,23,42,0.08)",
+    paddingHorizontal: SP[4],
+    paddingVertical: SP[3],
+    ...SOFT_SHADOW,
+  },
+  progressInsightRow: {
+    minHeight: 66,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SP[3],
+  },
+  progressInsightIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.lightSurfaceAlt,
+  },
+  progressInsightIconSoft: {
+    backgroundColor: "#EEF8DE",
+  },
+  progressInsightCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  progressInsightTitle: {
+    fontFamily: "ProximaNova-Bold",
+    fontSize: 15,
+    color: COLORS.lightText,
+    letterSpacing: -0.1,
+  },
+  progressInsightBody: {
+    fontFamily: DETAIL_FONT,
+    fontSize: 12,
+    lineHeight: 17,
+    color: COLORS.lightSub,
+    marginTop: 2,
+  },
+  progressInsightDivider: {
+    height: 1,
+    backgroundColor: COLORS.lightHairline,
+    marginLeft: 52,
   },
 
   /* Trend card — light surface, monochrome */

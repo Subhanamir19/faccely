@@ -75,7 +75,9 @@ export default function HistoryAnalysisCard() {
       <View style={[sx.safeArea, { paddingTop: insets.top }]}>
         {/* ── Top bar with back button ── */}
         <View style={sx.topBar}>
-          <BackButton onPress={handleBack} />
+          <View style={sx.backPill}>
+            <BackButton onPress={handleBack} />
+          </View>
         </View>
 
         {/* ── Header shown for non-content states ── */}
@@ -166,6 +168,15 @@ const sx = StyleSheet.create({
     paddingHorizontal: SP[4],
     paddingTop: SP[2],
     paddingBottom: SP[2],
+  },
+  backPill: {
+    alignSelf: "flex-start",
+    minHeight: 36,
+    paddingHorizontal: SP[3],
+    borderRadius: 999,
+    backgroundColor: COLORS.ctaBlack,
+    alignItems: "center",
+    justifyContent: "center",
   },
 
   header: {

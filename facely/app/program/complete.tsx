@@ -237,7 +237,7 @@ export default function CompleteScreen() {
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#FEF5E4",
   },
   content: {
     flexGrow: 1,

@@ -618,7 +618,7 @@ export default function HistoryScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: COLORS.lightBg,
+    backgroundColor: "#FEF5E4",
   },
   container: {
     flex: 1,

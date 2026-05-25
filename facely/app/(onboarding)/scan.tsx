@@ -41,6 +41,7 @@ import { COLORS, SP, RADII } from "@/lib/tokens";
 import { ms, sh, sw } from "@/lib/responsive";
 
 const FONT_BOLD = "ProximaNova-Bold";
+const SOFT_SCREEN_BG = "#FEF5E4";
 const LIME = "#B4F34D";        // bright fill — scan line, live dot, perm btn, active step dot
 const SAGE = "#3F7A2A";        // dark readable — text on white / lime-soft
 
@@ -462,7 +463,7 @@ export default function OnboardingScanScreen() {
   /* ── intro ── */
   if (step === "intro") {
     return (
-      <View style={styles.screen}>
+      <View style={styles.introScreen}>
         <StatusBar barStyle="dark-content" />
         {cameraModal}
         <SafeAreaView style={styles.safe}>
@@ -557,6 +558,7 @@ export default function OnboardingScanScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: COLORS.lightBg },
+  introScreen: { flex: 1, backgroundColor: SOFT_SCREEN_BG },
   safe: { flex: 1 },
 
   // ── intro ──

@@ -3,7 +3,7 @@
 // user taps Start. Lists today's exercises with per-row duration steppers and
 // a sticky START ROUTINE CTA.
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Image,
   Pressable,
@@ -115,10 +115,12 @@ export default function RoutineList({
   tasks,
   onStart,
   onBack,
+  initialEditOpen = false,
 }: {
   tasks: DailyTask[];
   onStart: () => void;
   onBack: () => void;
+  initialEditOpen?: boolean;
 }) {
   const { getDuration } = useExerciseSettings();
   const todayIndex = useRoutineStore((st) => st.todayIndex);
@@ -129,10 +131,15 @@ export default function RoutineList({
   const [areasOpen, setAreasOpen] = useState(false);
   const [editOpen,  setEditOpen]  = useState(false);
 
+  useEffect(() => {
+    if (initialEditOpen) setEditOpen(true);
+  }, [initialEditOpen]);
+
   const totalSecs = useMemo(
     () => tasks.reduce((sum, t) => sum + getDuration(t.exerciseId), 0),
     [tasks, getDuration],
   );
+  const allResolved = tasks.length > 0 && tasks.every((task) => task.status !== "pending");
   // Chip row: prefer the user's explicit selection (pinned by the Select sheet)
   // over the derived union of every exercise's tags — the union surfaces stray
   // chips like "Nose" when the user only picked "Midface".
@@ -273,12 +280,20 @@ export default function RoutineList({
       <View style={s.ctaDock}>
         <View style={s.ctaDivider} />
         <Pressable
-          onPress={handleStart}
-          style={({ pressed }) => [s.ctaBtn, pressed && s.ctaBtnPressed]}
+          onPress={allResolved ? undefined : handleStart}
+          disabled={allResolved}
+          style={({ pressed }) => [
+            s.ctaBtn,
+            allResolved && s.ctaBtnDisabled,
+            pressed && !allResolved && s.ctaBtnPressed,
+          ]}
           accessibilityRole="button"
-          accessibilityLabel="Start routine"
+          accessibilityLabel={allResolved ? "Routine completed for today" : "Start routine"}
+          accessibilityState={allResolved ? { disabled: true } : undefined}
         >
-          <Text style={s.ctaText}>START ROUTINE</Text>
+          <Text style={[s.ctaText, allResolved && s.ctaTextDisabled]}>
+            {allResolved ? "DONE FOR TODAY" : "START ROUTINE"}
+          </Text>
         </Pressable>
       </View>
 
@@ -309,7 +324,7 @@ export default function RoutineList({
 const s = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: COLORS.lightBg,
+    backgroundColor: "#FEF5E4",
   },
 
   // Header
@@ -358,7 +373,7 @@ const s = StyleSheet.create({
   statsCard: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: COLORS.lightBg,
+    backgroundColor: "#FEF5E4",
     borderRadius: RADII.lg,
     paddingVertical: SP[4],
     paddingHorizontal: SP[3],
@@ -554,7 +569,7 @@ const s = StyleSheet.create({
     paddingTop: SP[3],
     paddingBottom: SP[4],
     paddingHorizontal: SP[5],
-    backgroundColor: COLORS.lightBg,
+    backgroundColor: "#FEF5E4",
   },
   ctaDivider: {
     position: "absolute",
@@ -576,11 +591,17 @@ const s = StyleSheet.create({
   ctaBtnPressed: {
     backgroundColor: COLORS.ctaBlackPressed,
   },
+  ctaBtnDisabled: {
+    backgroundColor: COLORS.lightSurfaceAlt,
+  },
   ctaText: {
     fontFamily: "ProximaNova-Bold",
     fontSize: ms(17),
     letterSpacing: 0.6,
     color: "#FFFFFF",
     textAlign: "center",
+  },
+  ctaTextDisabled: {
+    color: COLORS.lightSub,
   },
 });

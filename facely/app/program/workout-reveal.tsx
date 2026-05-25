@@ -281,7 +281,7 @@ export default function WorkoutRevealScreen() {
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: COLORS.lightBg,
+    backgroundColor: "#FEF5E4",
   },
 
   // Header

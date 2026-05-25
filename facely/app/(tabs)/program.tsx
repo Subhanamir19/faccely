@@ -13,7 +13,7 @@ import {
   View,
 } from "react-native";
 import { Image as ExpoImage } from "expo-image";
-import { router, useFocusEffect } from "expo-router";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { getLocalDateString } from "@/lib/time/nextMidnight";
 import Animated, {
   FadeIn,
@@ -62,17 +62,17 @@ import {
   aggregateIntensity,
   intensityBoostPct,
 } from "@/lib/faceTargets";
-import WorkoutPreview from "@/components/program/WorkoutPreview";
+import DailyRoutineIntroFlow from "@/components/program/DailyRoutineIntroFlow";
 import RoutineList from "@/components/program/RoutineList";
 import SpeechBubble from "@/components/program/SpeechBubble";
-import RingLoader from "@/components/ui/RingLoader";
+import ProgramLoadingScreen from "@/components/program/ProgramLoadingScreen";
 
 // ---------------------------------------------------------------------------
 // Face header images — maps dominant target area to analysis image
 // ---------------------------------------------------------------------------
 
 // CARD_FACE_IMAGES / LABELS / FOCUS + resolveCardTarget live in @/lib/faceTargets
-// (shared with WorkoutPreview). Kept here only: bubble + muscle overlays for the card.
+// (shared with the legacy workout card). Kept here only: bubble + muscle overlays.
 
 // Speech bubble annotation text per zone
 const BUBBLE_TEXT: Record<string, string> = {
@@ -244,15 +244,7 @@ function TasksLoadingScreen() {
     return () => clearInterval(tick);
   }, [phrases.length]);
 
-  const title = firstName ? `${firstName}'s Workout` : "Today's Workout";
-
-  return (
-    <RingLoader
-      kind="mascot"
-      title={title}
-      subtitle={phrases[phraseIndex]}
-    />
-  );
+  return <ProgramLoadingScreen phrase={phrases[phraseIndex]} />;
 }
 
 // ---------------------------------------------------------------------------
@@ -1191,6 +1183,7 @@ function StartSessionBtn({ onPress }: { onPress: () => void }) {
 // ---------------------------------------------------------------------------
 
 export default function TasksScreen() {
+  const params = useLocalSearchParams<{ openList?: string; openEdit?: string }>();
   const {
     today,
     currentStreak,
@@ -1207,13 +1200,15 @@ export default function TasksScreen() {
   const [showMoodCheck, setShowMoodCheck]         = useState(false);
   const [markDoneTask, setMarkDoneTask]           = useState<DailyTask | null>(null);
   const [confirmProtocol, setConfirmProtocol]     = useState<ProtocolTask | null>(null);
-  // Tab presents a preview screen first; "Start"/"Review" on preview reveals the list.
+  // Tab presents an intro flow first; its actions reveal the list or chooser.
   // Reset to preview every time the tab gains focus so returning users always see it.
   const [phase, setPhase] = useState<"preview" | "list">("preview");
+  const [openEditorOnList, setOpenEditorOnList] = useState(false);
   useFocusEffect(
     useCallback(() => {
-      setPhase("preview");
-    }, []),
+      setOpenEditorOnList(false);
+      setPhase(params.openList === "1" ? "list" : "preview");
+    }, [params.openList]),
   );
 
   // Life modals
@@ -1394,6 +1389,7 @@ export default function TasksScreen() {
   const completedCount = tasks.filter((t) => t.status === "completed").length;
   const totalCount     = tasks.length;
   const halfwayReached = totalCount > 0 && completedCount >= totalCount / 2;
+  const allExercisesResolved = totalCount > 0 && tasks.every((t) => t.status !== "pending");
 
   // Life modal: halfway hype — once per day when 50% of exercises are done.
   // Guard: don't fire while intro is showing or tasks are still loading.
@@ -1418,11 +1414,22 @@ export default function TasksScreen() {
 
   if (introVisible || loading || !today) return <TasksLoadingScreen />;
 
-  if (phase === "preview") {
+  const showIntroFlow = phase === "preview" && !allExercisesResolved;
+
+  if (showIntroFlow) {
     return (
-      <WorkoutPreview
+      <DailyRoutineIntroFlow
         tasks={tasks}
-        onStart={() => setPhase("list")}
+        selectedAreas={today.selectedAreas}
+        currentStreak={currentStreak}
+        onReviewRoutine={() => {
+          setOpenEditorOnList(false);
+          setPhase("list");
+        }}
+        onChooseMyself={() => {
+          setOpenEditorOnList(true);
+          setPhase("list");
+        }}
       />
     );
   }
@@ -1432,6 +1439,7 @@ export default function TasksScreen() {
       <RoutineList
         tasks={tasks}
         onBack={() => setPhase("preview")}
+        initialEditOpen={openEditorOnList || params.openEdit === "1"}
         onStart={() => {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
           router.push("/program/session");
@@ -1518,7 +1526,7 @@ export default function TasksScreen() {
 
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: COLORS.bgBottom },
+  safe: { flex: 1, backgroundColor: "#FEF5E4" },
 
   // Layout — unified scroll
   scrollContent: {

@@ -18,8 +18,9 @@ import * as ImagePicker from "expo-image-picker";
 import * as FileSystem from "expo-file-system";
 import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
-import { Flame } from "lucide-react-native";
+import { History as HistoryIcon } from "lucide-react-native";
 import RecoveryCodeHint from "@/components/ui/RecoveryCodeHint";
+import StreakIcon from "@/assets/icons-for-dashboard/streak-icon (1) (1).svg";
 
 // NEW: shared pre-upload compressor (JPEG, max 1080px)
 import { ensureJpegCompressed } from "../../lib/api/media";
@@ -43,6 +44,7 @@ const SOFT_SHADOW = {
 
 // Reusable Proxima Bold font ref — file is large; avoid per-Text repetition.
 const FONT = "ProximaNova-Bold";
+const SOFT_SCREEN_BG = "#FEF5E4";
 
 /* ============================== HELPERS ============================== */
 function toFileUri(u: string) {
@@ -255,7 +257,7 @@ export default function TakePicture() {
   };
 
   const goToHistory = () => {
-    router.push("/history" as any);
+    router.push("/(tabs)/history" as any);
   };
 
   const useBoth = async () => {
@@ -309,7 +311,7 @@ export default function TakePicture() {
   };
 
   const renderIntro = () => (
-    <View style={{ flex: 1, backgroundColor: COLORS.lightBg }}>
+    <View style={{ flex: 1, backgroundColor: SOFT_SCREEN_BG }}>
       <StatusBar barStyle="dark-content" />
       <SafeAreaView style={{ flex: 1 }}>
         <View style={{ flex: 1, paddingHorizontal: SP[5] }}>
@@ -336,7 +338,7 @@ export default function TakePicture() {
                   borderRadius: 999,
                 }}
               >
-                <Flame size={ms(14)} color={COLORS.accent} strokeWidth={2.4} />
+                <StreakIcon width={ms(16)} height={ms(16)} />
                 <Text style={{ color: "#FFFFFF", fontFamily: FONT, fontSize: ms(13), letterSpacing: -0.1 }}>
                   {scansThisWeek ?? 0}
                 </Text>
@@ -352,13 +354,24 @@ export default function TakePicture() {
               }}
               hitSlop={16}
               style={({ pressed }) => ({
-                backgroundColor: COLORS.lightSurfaceAlt,
-                paddingHorizontal: sw(22),
-                paddingVertical: sh(13),
+                minHeight: sh(46),
+                flexDirection: "row",
+                alignItems: "center",
+                gap: sw(8),
+                backgroundColor: COLORS.lightCard,
+                borderWidth: 1,
+                borderColor: "rgba(11,11,11,0.08)",
+                paddingHorizontal: sw(18),
+                paddingVertical: sh(12),
                 borderRadius: 999,
-                opacity: pressed ? 0.7 : 1,
+                opacity: pressed ? 0.82 : 1,
+                transform: [{ scale: pressed ? 0.98 : 1 }],
+                ...SOFT_SHADOW,
               })}
+              accessibilityRole="button"
+              accessibilityLabel="Open scan history"
             >
+              <HistoryIcon size={ms(16)} color={COLORS.lightText} strokeWidth={2.4} />
               <Text style={{ color: COLORS.lightText, fontFamily: FONT, fontSize: ms(16), letterSpacing: 0.2 }}>
                 History
               </Text>
@@ -437,7 +450,7 @@ export default function TakePicture() {
     title: string;
     overlay: "frontal" | "side";
   }) => (
-    <View style={{ flex: 1, backgroundColor: COLORS.lightBg }}>
+    <View style={{ flex: 1, backgroundColor: SOFT_SCREEN_BG }}>
       <StatusBar barStyle="dark-content" />
       <SafeAreaView style={{ flex: 1 }}>
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: SP[5] }}>
@@ -542,7 +555,7 @@ export default function TakePicture() {
         })}
 
       {step === "review" && (
-        <View style={{ flex: 1, backgroundColor: COLORS.lightBg }}>
+        <View style={{ flex: 1, backgroundColor: SOFT_SCREEN_BG }}>
           <StatusBar barStyle="dark-content" />
           <SafeAreaView style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: SP[5] }}>
             <Text

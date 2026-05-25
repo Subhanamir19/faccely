@@ -195,7 +195,7 @@ const s = StyleSheet.create({
     justifyContent: "flex-end",
   },
   sheet: {
-    backgroundColor: COLORS.lightBg,
+    backgroundColor: "#FEF5E4",
     borderTopLeftRadius: RADII.card,
     borderTopRightRadius: RADII.card,
     paddingHorizontal: SP[5],

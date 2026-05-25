@@ -383,7 +383,7 @@ export default function WorkoutPreview({
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#FEF5E4",
   },
   scrollContent: {
     flexGrow: 1,

@@ -1,5 +1,5 @@
 // app/(tabs)/score.tsx
-// Scoring screen — swipeable carousel of 8 metric cards.
+// Scoring screen — swipeable stacked deck of 8 metric cards.
 //
 // Data sources:
 //   useScores()   → current scan scores (always present after any scan)
@@ -19,7 +19,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { router } from "expo-router";
 
-import ScoringCarousel, { type ScoringMetric } from "@/components/scores/ScoringCarousel";
+import type { ScoringMetric } from "@/components/scores/ScoringCarousel";
+import StackedScoreDeckPreview from "@/components/scores/StackedScoreDeckPreview";
 import Text from "@/components/ui/T";
 import { COLORS, RADII, SP } from "@/lib/tokens";
 import { ms, sh, sw } from "@/lib/responsive";
@@ -28,6 +29,7 @@ import { useInsights } from "../../store/insights";
 import { useAdvancedAnalysisConsent } from "@/hooks/useAdvancedAnalysisConsent";
 
 const FONT = "ProximaNova-Bold";
+const SCREEN_BG = "#FEF5E4";
 
 // ─── Metric definitions ───────────────────────────────────────────────────────
 type MetricDef = { apiKey: string; label: string; defaultScore: number };
@@ -133,7 +135,7 @@ export default function ScoreScreen() {
     return overall.current - overall.baseline;
   }, [insightData]);
 
-  // Viewport width passed to the carousel — the screen has SP[5] horizontal pad
+  // Viewport width passed to the card deck — the screen has SP[5] horizontal pad
   const HORIZONTAL_PAD = SP[5];
   const viewportWidth  = SW - HORIZONTAL_PAD * 2;
 
@@ -178,7 +180,7 @@ export default function ScoreScreen() {
           <Text style={styles.subtitle}>Facial analysis breakdown — all 8 metrics</Text>
         </Animated.View>
 
-        {/* Centered stack: avatar + carousel + counter */}
+        {/* Centered stack: avatar + stacked score deck + counter */}
         <View style={styles.centerStack}>
           {/* User avatar — circular, top of the stack */}
           <Animated.View entering={FadeInDown.duration(420).delay(160)}>
@@ -211,14 +213,18 @@ export default function ScoreScreen() {
             </View>
           </Animated.View>
 
-          {/* Carousel + counter */}
+          {/* Stacked score deck + counter */}
           <Animated.View entering={FadeInDown.duration(500).delay(220)} style={{ width: "100%" }}>
-            <ScoringCarousel
+            <StackedScoreDeckPreview
               metrics={metrics}
               totalScore={totalScore}
               dashboardMetrics={dashboardMetrics}
               overallDelta={overallDelta}
               viewportWidth={viewportWidth}
+              embedded
+              showHeader={false}
+              showReset={false}
+              showBackground={false}
             />
           </Animated.View>
         </View>
@@ -245,7 +251,7 @@ export default function ScoreScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: COLORS.lightBg,
+    backgroundColor: SCREEN_BG,
   },
   content: {
     flex: 1,
@@ -268,7 +274,7 @@ const styles = StyleSheet.create({
     marginTop: sh(2),
   },
 
-  // Center column: avatar + carousel + counter, vertically centered in
+  // Center column: avatar + stacked score deck + counter, vertically centered in
   // the available space between header and buttons.
   centerStack: {
     flex: 1,

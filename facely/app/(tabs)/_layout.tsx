@@ -5,12 +5,12 @@ import { Tabs } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import * as Haptics from "expo-haptics";
-import { Scan, CircleCheckBig, UserRound, TrendingUp, Wrench } from "lucide-react-native";
+import { Scan, CircleCheckBig, UserRound, TrendingUp } from "lucide-react-native";
 
-const ACTIVE_ICON   = "#0B0B0B";              // dark icon on white pill
+const ACTIVE_ICON   = "#FEF5E4";              // cream icon on active black chip
 const INACTIVE_ICON = "rgba(11,11,11,0.45)";  // muted dark
-const BAR_BG        = "#FFFFFF";              // white pill
-const ACTIVE_BG     = "#F2F3F5";              // light gray active chip
+const BAR_BG        = "#FEF5E4";              // soft cream pill
+const ACTIVE_BG     = "#0B0B0B";              // active black chip
 
 // ---------------------------------------------------------------------------
 // Custom floating tab bar
@@ -35,7 +35,7 @@ function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   );
 
   return (
-    <View style={{ height: reservedHeight, backgroundColor: "#FFFFFF" }}>
+    <View style={{ height: reservedHeight, backgroundColor: BAR_BG }}>
       {/* Absolutely positioned pill floats on top of the reserved space */}
       <View style={[styles.wrapper, { bottom: safeBottom + PILL_GAP_BOTTOM }]}>
         <View style={styles.pill}>
@@ -121,7 +121,7 @@ export default function TabsLayout() {
       tabBar={(props) => <FloatingTabBar {...props} />}
       screenOptions={{
         headerShown: false,
-        tabBarStyle: { backgroundColor: "#FFFFFF", borderTopWidth: 0, elevation: 0 },
+        tabBarStyle: { backgroundColor: BAR_BG, borderTopWidth: 0, elevation: 0 },
         // @ts-expect-error sceneContainerStyle exists at runtime; types lag.
         sceneContainerStyle: { backgroundColor: "#FFFFFF" },
       }}
@@ -169,15 +169,7 @@ export default function TabsLayout() {
       {/* hidden */}
       <Tabs.Screen name="sigma" options={{ href: null }} />
 
-      {/* Dev — visible only in __DEV__ builds; hidden from production tab bar */}
-      <Tabs.Screen
-        name="dev"
-        options={{
-          title: "Dev",
-          href: null,
-          tabBarIcon: undefined,
-        }}
-      />
+      <Tabs.Screen name="dev" options={{ href: null }} />
 
       {/* Keep routes, hide from bar */}
       <Tabs.Screen name="history"    options={{ href: null }} />

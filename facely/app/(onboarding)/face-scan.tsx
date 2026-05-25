@@ -11,7 +11,6 @@ import {
   Modal,
   StatusBar,
   SafeAreaView,
-  ImageBackground,
   StyleSheet,
   useWindowDimensions,
 } from "react-native";
@@ -522,11 +521,7 @@ export default function OnboardingFaceScan() {
   /* ---- REVIEW ---- */
   return (
     <>
-      <ImageBackground
-        source={require("../../assets/bg/score-bg.jpg")}
-        style={{ flex: 1, backgroundColor: BG }}
-        imageStyle={{ transform: [{ translateY: 40 }] }}
-      >
+      <View style={{ flex: 1, backgroundColor: BG }}>
         <StatusBar barStyle="light-content" />
         <SafeAreaView style={{ flex: 1 }}>
           <View style={[styles.progressTrack, { width: "92%", alignSelf: "center" }]}>
@@ -571,7 +566,7 @@ export default function OnboardingFaceScan() {
             />
           </View>
         </SafeAreaView>
-      </ImageBackground>
+      </View>
 
       <ChooserModal
         visible={chooserOpen}

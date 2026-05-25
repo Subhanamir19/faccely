@@ -19,18 +19,19 @@ import Animated, {
   FadeInDown,
   useSharedValue,
   useAnimatedStyle,
-  withSpring,
   withRepeat,
   withTiming,
   withDelay,
   Easing,
 } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
-import { LinearGradient } from "expo-linear-gradient";
-import { COLORS, RADII, SP, TYPE } from "@/lib/tokens";
+import { Check, ChevronLeft, X } from "lucide-react-native";
+import { COLORS, RADII, SP } from "@/lib/tokens";
 import { useTasksStore, type DailyTask, type ProtocolTask } from "@/store/tasks";
 import { useExerciseSettings } from "@/store/exerciseSettings";
 import { getExerciseIcon } from "@/lib/exerciseIcons";
+
+const FONT_DIN = "DINNextRounded-Regular";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -80,12 +81,6 @@ function SkeletonCard({ index }: { index: number }) {
 // ---------------------------------------------------------------------------
 // Exercise card
 // ---------------------------------------------------------------------------
-
-const STATUS_ICONS: Record<string, string> = {
-  completed: "✓",
-  skipped:   "✗",
-  pending:   "",
-};
 
 function ExerciseCard({ task, index, getDuration }: {
   task: DailyTask;
@@ -138,13 +133,11 @@ function ExerciseCard({ task, index, getDuration }: {
             isCompleted && styles.statusBadgeDone,
             isSkipped   && styles.statusBadgeSkipped,
           ]}>
-            <Text style={[
-              styles.statusBadgeText,
-              isCompleted && styles.statusBadgeTextDone,
-              isSkipped   && styles.statusBadgeTextSkipped,
-            ]}>
-              {STATUS_ICONS[task.status]}
-            </Text>
+            {isCompleted ? (
+              <Check size={15} color="#58BF19" strokeWidth={3} />
+            ) : (
+              <X size={14} color={COLORS.lightSub} strokeWidth={2.7} />
+            )}
           </View>
         )}
 
@@ -203,7 +196,7 @@ function ProtocolRow({ protocol, index }: { protocol: ProtocolTask; index: numbe
       </View>
       {isDone && (
         <View style={styles.protocolDoneBadge}>
-          <Text style={styles.protocolDoneText}>✓</Text>
+          <Check size={15} color="#58BF19" strokeWidth={3} />
         </View>
       )}
     </Animated.View>
@@ -211,51 +204,31 @@ function ProtocolRow({ protocol, index }: { protocol: ProtocolTask; index: numbe
 }
 
 // ---------------------------------------------------------------------------
-// Start button — 3D pressed style
+// Start button
 // ---------------------------------------------------------------------------
-
-const BTN_DEPTH = 4;
 
 function StartButton({ label, onPress, disabled }: {
   label: string;
   onPress: () => void;
   disabled?: boolean;
 }) {
-  const pressed = useSharedValue(0);
-
-  const faceStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: pressed.value * BTN_DEPTH }],
-  }));
-
   return (
-    <View style={[styles.startBtnDepth, disabled && styles.startBtnDepthDisabled]}>
-      <Pressable
-        onPressIn={() => {
-          if (disabled) return;
-          pressed.value = withSpring(1, { damping: 10, stiffness: 400 });
-        }}
-        onPressOut={() => {
-          pressed.value = withSpring(0, { damping: 10, stiffness: 200 });
-        }}
-        onPress={disabled ? undefined : onPress}
-        disabled={disabled}
-        accessibilityRole="button"
-        accessibilityLabel={label}
-      >
-        <Animated.View style={faceStyle}>
-          <LinearGradient
-            colors={disabled ? ["#2A2A2A", "#2A2A2A"] : ["#CCFF6B", "#B4F34D"]}
-            start={{ x: 0.5, y: 0 }}
-            end={{ x: 0.5, y: 1 }}
-            style={styles.startBtnFace}
-          >
-            <Text style={[styles.startBtnText, disabled && styles.startBtnTextDisabled]}>
-              {label}
-            </Text>
-          </LinearGradient>
-        </Animated.View>
-      </Pressable>
-    </View>
+    <Pressable
+      onPress={disabled ? undefined : onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={disabled ? { disabled: true } : undefined}
+      style={({ pressed }) => [
+        styles.startBtn,
+        disabled && styles.startBtnDisabled,
+        pressed && !disabled && styles.startBtnPressed,
+      ]}
+    >
+      <Text style={[styles.startBtnText, disabled && styles.startBtnTextDisabled]}>
+        {label}
+      </Text>
+    </Pressable>
   );
 }
 
@@ -276,6 +249,7 @@ export default function ExerciseListScreen() {
 
   const hasStarted = completed.length > 0 || skipped.length > 0;
   const allDone    = pending.length === 0;
+  const exerciseProgress = tasks.length > 0 ? completed.length / tasks.length : 0;
 
   const handleStart = useCallback(() => {
     if (pending.length === 0) return;
@@ -297,10 +271,9 @@ export default function ExerciseListScreen() {
   if (loading || !today) {
     return (
       <SafeAreaView style={styles.safe}>
-        <LinearGradient colors={["#000000", "#0B0B0B"]} style={StyleSheet.absoluteFill} />
         <View style={styles.loadingHeader}>
           <Pressable onPress={handleBack} style={styles.backBtn} hitSlop={12}>
-            <Text style={styles.backBtnText}>←</Text>
+            <ChevronLeft size={26} color={COLORS.lightText} strokeWidth={2.4} />
           </Pressable>
           <Text style={styles.headerTitle}>Today's Routine</Text>
           <View style={styles.backBtn} />
@@ -323,12 +296,11 @@ export default function ExerciseListScreen() {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <LinearGradient colors={["#000000", "#0B0B0B"]} style={StyleSheet.absoluteFill} />
 
       {/* ── Header ── */}
       <Animated.View entering={FadeIn.duration(260)} style={styles.header}>
         <Pressable onPress={handleBack} style={styles.backBtn} hitSlop={12}>
-          <Text style={styles.backBtnText}>←</Text>
+          <ChevronLeft size={26} color={COLORS.lightText} strokeWidth={2.4} />
         </Pressable>
         <Text style={styles.headerTitle}>Today's Routine</Text>
         {/* Right: Progress count */}
@@ -340,6 +312,10 @@ export default function ExerciseListScreen() {
       </Animated.View>
 
       {/* ── Exercise list ── */}
+      <Animated.View entering={FadeIn.duration(260).delay(70)} style={styles.topProgressTrack}>
+        <View style={[styles.topProgressFill, { width: `${Math.max(0.03, exerciseProgress) * 100}%` }]} />
+      </Animated.View>
+
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={[
@@ -396,12 +372,6 @@ export default function ExerciseListScreen() {
         entering={FadeInDown.duration(380).delay(200).springify()}
         style={[styles.footer, { paddingBottom: Math.max(insets.bottom, SP[4]) + SP[2] }]}
       >
-        <LinearGradient
-          colors={["rgba(0,0,0,0)", "rgba(0,0,0,0.97)", "#000000"]}
-          style={styles.footerGradient}
-          pointerEvents="none"
-        />
-
         <View style={styles.footerInner}>
           <StartButton
             label={btnLabel}
@@ -441,71 +411,81 @@ export default function ExerciseListScreen() {
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: "#000000",
+    backgroundColor: "#FEF5E4",
   },
 
   // Header
   header: {
+    height: 58,
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: SP[5],
-    paddingVertical: SP[4],
+    paddingHorizontal: SP[4],
     justifyContent: "space-between",
   },
   backBtn: {
-    width: 40,
-    height: 40,
-    alignItems: "center",
+    width: 44,
+    height: 44,
+    alignItems: "flex-start",
     justifyContent: "center",
   },
-  backBtnText: {
-    fontSize: 22,
-    color: COLORS.text,
-    fontFamily: "Poppins-Regular",
-  },
   headerTitle: {
-    fontSize: 17,
-    fontFamily: "Poppins-SemiBold",
-    color: COLORS.text,
+    fontSize: 27,
+    lineHeight: 31,
+    fontFamily: FONT_DIN,
+    color: COLORS.lightText,
     flex: 1,
     textAlign: "center",
   },
   progressPill: {
-    backgroundColor: "rgba(255,255,255,0.08)",
+    backgroundColor: COLORS.lightSurfaceAlt,
     borderRadius: RADII.pill,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    minWidth: 40,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    minWidth: 48,
     alignItems: "center",
   },
   progressPillText: {
-    fontSize: 12,
-    fontFamily: "Poppins-SemiBold",
-    color: COLORS.sub,
+    fontSize: 14,
+    lineHeight: 18,
+    fontFamily: FONT_DIN,
+    color: COLORS.lightMuted,
+  },
+  topProgressTrack: {
+    height: 5,
+    marginHorizontal: SP[5],
+    borderRadius: 999,
+    backgroundColor: "#E5E7EB",
+    overflow: "hidden",
+  },
+  topProgressFill: {
+    height: "100%",
+    borderRadius: 999,
+    backgroundColor: COLORS.lightText,
   },
 
   // Scroll
   scroll: { flex: 1 },
   scrollContent: {
     paddingHorizontal: SP[5],
-    paddingTop: SP[2],
+    paddingTop: SP[5],
   },
 
   // Focus summary
   focusSummary: {
-    fontSize: 13,
-    fontFamily: "Poppins-Regular",
-    color: COLORS.sub,
-    marginBottom: SP[4],
-    lineHeight: 20,
+    fontSize: 15,
+    fontFamily: FONT_DIN,
+    color: COLORS.lightMuted,
+    marginBottom: SP[5],
+    lineHeight: 21,
   },
 
   // Section label
   sectionLabel: {
-    fontSize: 11,
-    fontFamily: "Poppins-SemiBold",
-    color: COLORS.muted,
-    letterSpacing: 1.5,
+    fontSize: 12,
+    lineHeight: 16,
+    fontFamily: FONT_DIN,
+    color: COLORS.lightSub,
+    letterSpacing: 1.2,
     marginBottom: SP[3],
   },
 
@@ -513,153 +493,137 @@ const styles = StyleSheet.create({
   exerciseCard: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(22,22,22,0.90)",
-    borderRadius: RADII.md,
-    borderWidth: 1,
-    borderColor: COLORS.cardBorder,
-    paddingVertical: 6,
-    paddingHorizontal: SP[3],
-    marginBottom: SP[1],
-    gap: SP[2],
+    minHeight: 70,
+    paddingVertical: 7,
+    gap: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: COLORS.lightDivider,
   },
   exerciseCardDone: {
-    backgroundColor: "rgba(22,22,22,0.50)",
-    borderColor: "rgba(255,255,255,0.04)",
+    opacity: 0.58,
   },
   exerciseCardSkipped: {
-    backgroundColor: "rgba(18,18,18,0.40)",
-    borderColor: "rgba(255,255,255,0.04)",
+    opacity: 0.42,
   },
   exerciseIconWrap: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
+    width: 56,
+    height: 56,
+    borderRadius: RADII.md,
     overflow: "hidden",
-    backgroundColor: "#1A1A1A",
+    backgroundColor: COLORS.iconTileLavender,
+    alignItems: "center",
+    justifyContent: "center",
   },
   exerciseIconDimmed: {
-    opacity: 0.38,
+    opacity: 0.54,
   },
   exerciseIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
+    width: "100%",
+    height: "100%",
+    resizeMode: "cover",
   },
   exerciseInfo: {
     flex: 1,
-    gap: 1,
+    minWidth: 0,
+    gap: 3,
   },
   exerciseName: {
-    fontSize: 13,
-    fontFamily: "Poppins-SemiBold",
-    color: COLORS.text,
-    letterSpacing: -0.2,
+    fontSize: 16,
+    lineHeight: 20,
+    fontFamily: FONT_DIN,
+    color: COLORS.lightText,
+    letterSpacing: 0,
   },
   exerciseNameDone: {
-    color: COLORS.muted,
+    color: COLORS.lightSub,
     textDecorationLine: "line-through",
   },
   exerciseNameSkipped: {
-    color: "rgba(255,255,255,0.28)",
+    color: COLORS.lightSub,
     textDecorationLine: "line-through",
   },
   exerciseMeta: {
-    fontSize: 11,
-    fontFamily: "Poppins-Regular",
-    color: COLORS.sub,
+    fontSize: 13,
+    lineHeight: 17,
+    fontFamily: FONT_DIN,
+    color: COLORS.lightSub,
   },
   exerciseDuration: {
-    color: COLORS.muted,
+    color: COLORS.lightMuted,
   },
   statusBadge: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor: COLORS.lightSurfaceAlt,
   },
   statusBadgeDone: {
-    backgroundColor: "rgba(34,197,94,0.15)",
-    borderWidth: 1,
-    borderColor: "rgba(34,197,94,0.40)",
+    backgroundColor: "#EFFAE9",
   },
   statusBadgeSkipped: {
-    backgroundColor: "rgba(255,255,255,0.06)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
-  },
-  statusBadgeText: {
-    fontSize: 12,
-    fontFamily: "Poppins-SemiBold",
-    color: COLORS.muted,
-  },
-  statusBadgeTextDone: {
-    color: "#22C55E",
-  },
-  statusBadgeTextSkipped: {
-    color: COLORS.muted,
+    backgroundColor: COLORS.lightSurfaceAlt,
   },
   pendingDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: COLORS.accent,
-    opacity: 0.6,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: "#58BF19",
   },
 
   // Protocol row
   protocolRow: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(22,22,22,0.70)",
-    borderRadius: RADII.md,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.05)",
-    padding: SP[3],
-    marginBottom: SP[2],
-    gap: SP[3],
+    minHeight: 70,
+    paddingVertical: 7,
+    gap: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: COLORS.lightDivider,
   },
   protocolRowDone: {
-    opacity: 0.5,
+    opacity: 0.58,
   },
   protocolEmoji: {
-    fontSize: 22,
-    width: 36,
+    width: 56,
+    height: 56,
+    borderRadius: RADII.md,
+    backgroundColor: COLORS.lightSurface,
+    overflow: "hidden",
+    fontSize: 25,
+    lineHeight: 56,
     textAlign: "center",
   },
   protocolInfo: {
     flex: 1,
+    minWidth: 0,
   },
   protocolName: {
-    fontSize: 13,
-    fontFamily: "Poppins-Medium",
-    color: COLORS.text,
+    fontSize: 16,
+    lineHeight: 20,
+    fontFamily: FONT_DIN,
+    color: COLORS.lightText,
   },
   protocolNameDone: {
     textDecorationLine: "line-through",
-    color: COLORS.muted,
+    color: COLORS.lightSub,
   },
   protocolQty: {
-    fontSize: 12,
-    fontFamily: "Poppins-Regular",
-    color: COLORS.sub,
-    marginTop: 2,
+    fontSize: 13,
+    lineHeight: 17,
+    fontFamily: FONT_DIN,
+    color: COLORS.lightSub,
+    marginTop: 3,
   },
   protocolDoneBadge: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: "rgba(34,197,94,0.15)",
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "#EFFAE9",
     alignItems: "center",
     justifyContent: "center",
   },
-  protocolDoneText: {
-    fontSize: 11,
-    color: "#22C55E",
-    fontFamily: "Poppins-SemiBold",
-  },
-
   // Footer
   footer: {
     position: "absolute",
@@ -667,111 +631,104 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     paddingHorizontal: SP[5],
-    paddingTop: SP[5],
-  },
-  footerGradient: {
-    position: "absolute",
-    top: -60,
-    left: 0,
-    right: 0,
-    height: 60,
+    paddingTop: SP[3],
+    backgroundColor: "#FEF5E4",
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: COLORS.lightDivider,
   },
   footerInner: {
-    gap: SP[3],
+    gap: SP[2],
   },
 
-  // Start button (3D)
-  startBtnDepth: {
+  startBtn: {
+    minHeight: 58,
     borderRadius: RADII.pill,
-    backgroundColor: COLORS.accentDepth,
-    shadowColor: COLORS.accent,
-    shadowOpacity: 0.30,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 10,
-  },
-  startBtnDepthDisabled: {
-    backgroundColor: "#1E1E1E",
-    shadowOpacity: 0,
-  },
-  startBtnFace: {
-    borderRadius: RADII.pill,
-    paddingVertical: SP[4],
+    backgroundColor: COLORS.ctaBlack,
     alignItems: "center",
     justifyContent: "center",
-    transform: [{ translateY: -BTN_DEPTH }],
+    paddingHorizontal: SP[6],
+    paddingVertical: 18,
+  },
+  startBtnPressed: {
+    backgroundColor: COLORS.ctaBlackPressed,
+    transform: [{ translateY: 1 }],
+  },
+  startBtnDisabled: {
+    backgroundColor: COLORS.lightSurfaceAlt,
   },
   startBtnText: {
     fontSize: 17,
-    fontFamily: "Poppins-SemiBold",
-    color: "#0A0A0A",
-    letterSpacing: -0.3,
+    lineHeight: 20,
+    fontFamily: FONT_DIN,
+    color: "#FFFFFF",
+    letterSpacing: 0.2,
   },
   startBtnTextDisabled: {
-    color: "#7A7A7A",
+    color: COLORS.lightSub,
   },
 
   // Skip button
   skipBtn: {
-    paddingVertical: SP[3],
+    paddingVertical: SP[2],
     alignItems: "center",
   },
   skipBtnPressed: {
     opacity: 0.55,
   },
   skipBtnText: {
-    fontSize: 14,
-    fontFamily: "Poppins-Regular",
-    color: COLORS.sub,
+    fontSize: 15,
+    lineHeight: 20,
+    fontFamily: FONT_DIN,
+    color: COLORS.lightSub,
   },
 
   // Loading state
   loadingHeader: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: SP[5],
-    paddingVertical: SP[4],
+    height: 58,
+    paddingHorizontal: SP[4],
     justifyContent: "space-between",
   },
   loadingBody: {
     paddingHorizontal: SP[5],
-    paddingTop: SP[4],
+    paddingTop: SP[5],
     gap: SP[2],
   },
   loadingHint: {
-    fontSize: 13,
-    fontFamily: "Poppins-Regular",
-    color: COLORS.muted,
+    fontSize: 15,
+    lineHeight: 21,
+    fontFamily: FONT_DIN,
+    color: COLORS.lightMuted,
     marginBottom: SP[3],
   },
   skeletonCard: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(30,30,30,0.8)",
-    borderRadius: RADII.md,
-    paddingVertical: 6,
-    paddingHorizontal: SP[3],
-    gap: SP[2],
-    marginBottom: SP[1],
+    minHeight: 70,
+    paddingVertical: 7,
+    gap: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: COLORS.lightDivider,
   },
   skeletonIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    backgroundColor: "rgba(255,255,255,0.08)",
+    width: 56,
+    height: 56,
+    borderRadius: RADII.md,
+    backgroundColor: COLORS.lightSurface,
   },
   skeletonContent: {
     flex: 1,
   },
   skeletonLine: {
-    height: 12,
+    height: 13,
     borderRadius: 6,
-    backgroundColor: "rgba(255,255,255,0.08)",
+    backgroundColor: COLORS.lightSurface,
   },
   skeletonBadge: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: "rgba(255,255,255,0.06)",
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: COLORS.lightSurface,
   },
 });

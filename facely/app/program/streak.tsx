@@ -316,7 +316,7 @@ export default function StreakScreen() {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <LinearGradient colors={["#060606","#000000"]} style={StyleSheet.absoluteFill} />
+      <LinearGradient colors={["#FEF5E4", "#FEF5E4"]} style={StyleSheet.absoluteFill} />
 
       {/* ── Phase 1 / Phase 2 hero ── */}
       <Animated.View
@@ -367,7 +367,7 @@ export default function StreakScreen() {
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: "#060606",
+    backgroundColor: "#FEF5E4",
   },
 
   // ── Hero ──────────────────────────────────────────────────────────────────
@@ -401,7 +401,7 @@ const styles = StyleSheet.create({
   streakNum: {
     fontSize:           80,
     fontFamily:         "Poppins-SemiBold",
-    color:              COLORS.text,
+    color:              COLORS.lightText,
     lineHeight:         NUM_H,
     letterSpacing:      -3,
     includeFontPadding: false,
@@ -411,7 +411,7 @@ const styles = StyleSheet.create({
   streakUnit: {
     fontSize:    18,
     fontFamily:  "Poppins-Regular",
-    color:       COLORS.sub,
+    color:       COLORS.lightMuted,
     letterSpacing: 0.5,
     marginTop:   2,
   },
@@ -426,10 +426,10 @@ const styles = StyleSheet.create({
 
   // ── Calendar ──────────────────────────────────────────────────────────────
   calCard: {
-    backgroundColor: "rgba(16,16,16,0.92)",
+    backgroundColor: "#FFFFFF",
     borderRadius:    RADII.lg,
     borderWidth:     1,
-    borderColor:     "rgba(255,255,255,0.07)",
+    borderColor:     COLORS.lightBorder,
     paddingVertical: SP[5],
     paddingHorizontal: SP[3],
     marginBottom:    SP[5],
@@ -437,7 +437,7 @@ const styles = StyleSheet.create({
   calTitle: {
     fontSize:    10,
     fontFamily:  "Poppins-SemiBold",
-    color:       "rgba(255,255,255,0.30)",
+    color:       COLORS.lightSub,
     letterSpacing: 2.5,
     textAlign:   "center",
     marginBottom: SP[4],
@@ -457,10 +457,10 @@ const styles = StyleSheet.create({
   cellLabel: {
     fontSize:   11,
     fontFamily: "Poppins-Medium",
-    color:      "rgba(255,255,255,0.28)",
+    color:      COLORS.lightSub,
   },
   cellLabelToday: {
-    color:      COLORS.text,
+    color:      COLORS.lightText,
     fontFamily: "Poppins-SemiBold",
   },
 
@@ -500,10 +500,10 @@ const styles = StyleSheet.create({
   cellDate: {
     fontSize:   10,
     fontFamily: "Poppins-Regular",
-    color:      "rgba(255,255,255,0.28)",
+    color:      COLORS.lightSub,
   },
   cellDateToday: {
-    color:      COLORS.accent,
+    color:      "#58BF19",
     fontFamily: "Poppins-SemiBold",
   },
 
@@ -511,7 +511,7 @@ const styles = StyleSheet.create({
   hook: {
     fontSize:    14,
     fontFamily:  "Poppins-Regular",
-    color:       COLORS.sub,
+    color:       COLORS.lightMuted,
     textAlign:   "center",
     lineHeight:  22,
     marginBottom: SP[2],
