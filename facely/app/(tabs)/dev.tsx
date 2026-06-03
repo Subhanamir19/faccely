@@ -18,6 +18,8 @@ import {
 } from "react-native";
 import InsightRevealCard from "@/components/scores/InsightRevealCard";
 import StackedScoreDeckPreview from "@/components/scores/StackedScoreDeckPreview";
+import DietDevPreview from "@/components/dev/DietDevPreview";
+import DevTopPreview from "@/components/dev/DevTopPreview";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Redirect, router } from "expo-router";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -55,6 +57,8 @@ import RingLoader, { type RingLoaderKind } from "@/components/ui/RingLoader";
 import { Image as RNImage } from "react-native";
 import { API_BASE } from "@/lib/api/config";
 import { buildAuthHeadersAsync } from "@/lib/api/authHeaders";
+import { EXERCISE_CATALOG } from "@/lib/taskSelection";
+import { EXERCISE_ICONS, getExerciseIcon } from "@/lib/exerciseIcons";
 import {
   AlarmClock,
   Aperture,
@@ -188,6 +192,86 @@ function SectionHeader({ title, subtitle }: { title: string; subtitle?: string }
       <T style={styles.sectionTitle}>{title}</T>
       {subtitle ? <T style={styles.sectionSubtitle}>{subtitle}</T> : null}
     </View>
+  );
+}
+
+const EXERCISE_NAME_BY_ID = new Map(EXERCISE_CATALOG.map((exercise) => [exercise.id, exercise.name]));
+
+function titleFromExerciseId(id: string): string {
+  return id
+    .split("-")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function ExerciseIconPreviewGrid() {
+  const items = Object.keys(EXERCISE_ICONS)
+    .sort((a, b) => {
+      const nameA = EXERCISE_NAME_BY_ID.get(a) ?? titleFromExerciseId(a);
+      const nameB = EXERCISE_NAME_BY_ID.get(b) ?? titleFromExerciseId(b);
+      return nameA.localeCompare(nameB);
+    })
+    .map((id) => ({
+      id,
+      name: EXERCISE_NAME_BY_ID.get(id) ?? titleFromExerciseId(id),
+    }));
+
+  return (
+    <View style={styles.exerciseIconGrid}>
+      {items.map((item) => (
+        <TouchableOpacity
+          key={item.id}
+          activeOpacity={0.78}
+          style={styles.exerciseIconPreviewCard}
+          onPress={() => router.push(`/program/session?previewExerciseIds=${item.id}` as any)}
+          accessibilityRole="button"
+          accessibilityLabel={`Preview ${item.name}`}
+        >
+          <View style={styles.exerciseIconPreviewFrame}>
+            <RNImage source={getExerciseIcon(item.id)} style={styles.exerciseIconPreviewImage} />
+          </View>
+          <View style={styles.exerciseIconPreviewCopy}>
+            <T style={styles.exerciseIconPreviewName} numberOfLines={2}>
+              {item.name}
+            </T>
+            <T style={styles.exerciseIconPreviewId} numberOfLines={1}>
+              {item.id}
+            </T>
+          </View>
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
+}
+
+function AsymmetryExerciseDevPreviewCard() {
+  return (
+    <GlassCard style={styles.card}>
+      <SectionHeader
+        title="Asymmetry Chin Tucks"
+        subtitle="Two-pose sequence: asymmetry chin tuck, then downward chin forcing"
+      />
+      <View style={styles.statusRow}>
+        <T style={styles.statusLabel}>Pose 1</T>
+        <T style={styles.statusValue} numberOfLines={1}>Asymmetry Chin Tuck</T>
+      </View>
+      <View style={styles.statusRow}>
+        <T style={styles.statusLabel}>Pose 2</T>
+        <T style={styles.statusValue} numberOfLines={1}>Downward Chin Forcing</T>
+      </View>
+      <View style={styles.row}>
+        <DevButton
+          label="Preview Timer"
+          accent
+          onPress={() => router.push("/program/session?previewExerciseIds=asymmetry-chin-tucks" as any)}
+        />
+        <DevButton
+          label="Preview Catalog"
+          onPress={() => router.push("/(tabs)/new-exercises-preview" as any)}
+        />
+      </View>
+    </GlassCard>
   );
 }
 
@@ -1660,6 +1744,182 @@ function ProgressStoryDashboardPreview({
   );
 }
 
+function ProgressPreviewScreenContent({ onClose }: { onClose: () => void }) {
+  const { width } = useWindowDimensions();
+  const cardWidth = Math.min(width - SP[8], 430);
+  const float = useSharedValue(0);
+  const glow = useSharedValue(0.35);
+
+  useEffect(() => {
+    float.value = withRepeat(
+      withSequence(
+        withTiming(-6, { duration: 1300, easing: Easing.inOut(Easing.sin) }),
+        withTiming(0, { duration: 1300, easing: Easing.inOut(Easing.sin) })
+      ),
+      -1,
+      true
+    );
+    glow.value = withRepeat(
+      withSequence(
+        withTiming(1, { duration: 1150, easing: Easing.inOut(Easing.sin) }),
+        withTiming(0.35, { duration: 1150, easing: Easing.inOut(Easing.sin) })
+      ),
+      -1,
+      true
+    );
+  }, [float, glow]);
+
+  const potentialMotion = useAnimatedStyle(() => ({
+    transform: [{ translateY: float.value }],
+    shadowOpacity: glow.value * 0.32,
+  }));
+
+  const statusItems = [
+    { label: "Potential", value: "Unlocked", sub: "stage 1 ready" },
+    { label: "Next view", value: "Progress", sub: "full breakdown" },
+    { label: "Streak", value: "4", sub: "days active" },
+  ];
+
+  return (
+    <SafeAreaView style={progressPreviewStyles.screen}>
+      <ScrollView contentContainerStyle={progressPreviewStyles.scroll} showsVerticalScrollIndicator={false}>
+        <View style={[progressPreviewStyles.inner, { width: cardWidth }]}>
+          <View style={progressPreviewStyles.topRail}>
+            <Pressable
+              onPress={onClose}
+              accessibilityRole="button"
+              accessibilityLabel="Close progress preview screen"
+              style={({ pressed }) => [progressPreviewStyles.iconButton, pressed && progressPreviewStyles.pressed]}
+            >
+              <X size={22} color="#111111" strokeWidth={2.7} />
+            </Pressable>
+            <View style={progressPreviewStyles.streakChip}>
+              <RNImage source={STREAK_PREVIEW_ICON} style={progressPreviewStyles.streakIcon} resizeMode="contain" />
+              <Text style={progressPreviewStyles.streakText}>4 day streak</Text>
+            </View>
+            <View style={progressPreviewStyles.iconButton}>
+              <TrendingUp size={20} color="#111111" strokeWidth={2.6} />
+            </View>
+          </View>
+
+          <View style={progressPreviewStyles.header}>
+            <Text style={progressPreviewStyles.kicker}>PROGRESS PREVIEW</Text>
+            <Text style={progressPreviewStyles.title}>Your potential is ready.</Text>
+            <Text style={progressPreviewStyles.subtitle}>
+              This screen should set the emotional target, then send users forward to see what changed.
+            </Text>
+          </View>
+
+          <View style={progressPreviewStyles.heroCard}>
+            <View style={progressPreviewStyles.heroTopRow}>
+              <View>
+                <Text style={progressPreviewStyles.heroLabel}>CURRENT SNAPSHOT</Text>
+                <Text style={progressPreviewStyles.heroScore}>72</Text>
+                <Text style={progressPreviewStyles.heroTier}>READY TO REVIEW</Text>
+              </View>
+              <View style={progressPreviewStyles.heroBadge}>
+                <Sparkles size={17} color="#58BF19" strokeWidth={2.4} />
+                <Text style={progressPreviewStyles.heroBadgeText}>STAGE 1</Text>
+              </View>
+            </View>
+
+            <View style={progressPreviewStyles.compareRow}>
+              <View style={progressPreviewStyles.faceCol}>
+                <View style={progressPreviewStyles.faceFrame}>
+                  <RNImage source={require("../../assets/before.jpeg")} style={progressPreviewStyles.faceImage} resizeMode="cover" />
+                </View>
+                <Text style={progressPreviewStyles.faceLabel}>Current</Text>
+              </View>
+
+              <View style={progressPreviewStyles.transferColumn}>
+                <View style={progressPreviewStyles.transferLine} />
+                <View style={progressPreviewStyles.transferDot}>
+                  <ChevronRight size={17} color="#111111" strokeWidth={2.8} />
+                </View>
+              </View>
+
+              <View style={progressPreviewStyles.faceCol}>
+                <Animated.View style={[progressPreviewStyles.potentialFrame, potentialMotion]}>
+                  <RNImage source={require("../../assets/after.jpeg")} style={progressPreviewStyles.faceImage} resizeMode="cover" />
+                  <View style={progressPreviewStyles.unlockedBadge}>
+                    <Sparkles size={12} color="#FFFFFF" strokeWidth={2.4} />
+                    <Text style={progressPreviewStyles.unlockedText}>UNLOCKED</Text>
+                  </View>
+                </Animated.View>
+                <Text style={[progressPreviewStyles.faceLabel, progressPreviewStyles.faceLabelActive]}>Potential</Text>
+              </View>
+            </View>
+
+            <View style={progressPreviewStyles.progressBlock}>
+              <View style={progressPreviewStyles.gatewayPanel}>
+                <View style={progressPreviewStyles.gatewayIcon}>
+                  <ChevronRight size={18} color="#58BF19" strokeWidth={2.8} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={progressPreviewStyles.gatewayTitle}>Open the forward screen for improvements</Text>
+                  <Text style={progressPreviewStyles.gatewayBody}>
+                    Metrics, deltas, and what changed live there. This overview only frames the destination.
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </View>
+
+          <View style={progressPreviewStyles.statsRow}>
+            {statusItems.map((item) => (
+              <View key={item.label} style={progressPreviewStyles.statCard}>
+                <Text style={progressPreviewStyles.statLabel}>{item.label}</Text>
+                <Text style={progressPreviewStyles.statValue}>{item.value}</Text>
+                <Text style={progressPreviewStyles.statSub}>{item.sub}</Text>
+              </View>
+            ))}
+          </View>
+
+          <View style={progressPreviewStyles.coachCard}>
+            <View style={progressPreviewStyles.coachImageWrap}>
+              <RNImage
+                source={require("../../assets/images-for-initial-tracking-screen/progress.png")}
+                style={progressPreviewStyles.coachImage}
+                resizeMode="contain"
+              />
+            </View>
+            <View style={progressPreviewStyles.coachBubble}>
+              <Text style={progressPreviewStyles.coachKicker}>COACH CHECK</Text>
+              <Text style={progressPreviewStyles.coachText}>
+                Your comparison is set. Go forward when you want the actual progress readout.
+              </Text>
+            </View>
+          </View>
+
+          <Pressable
+            onPress={() => {}}
+            accessibilityRole="button"
+            accessibilityLabel="Open detailed progress"
+            style={({ pressed }) => [progressPreviewStyles.cta, pressed && progressPreviewStyles.ctaPressed]}
+          >
+            <Text style={progressPreviewStyles.ctaText}>OPEN DETAILED PROGRESS</Text>
+            <ChevronRight size={18} color="#FFFFFF" strokeWidth={2.8} />
+          </Pressable>
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+function ProgressPreviewScreenModal({
+  visible,
+  onClose,
+}: {
+  visible: boolean;
+  onClose: () => void;
+}) {
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={onClose}>
+      <ProgressPreviewScreenContent onClose={onClose} />
+    </Modal>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Screen
 // ---------------------------------------------------------------------------
@@ -2667,6 +2927,7 @@ export default function DevScreen() {
   );
   const [dashboardStoryPreviewVisible, setDashboardStoryPreviewVisible] = useState(false);
   const [progressMockupsVisible, setProgressMockupsVisible] = useState(false);
+  const [progressPreviewScreenVisible, setProgressPreviewScreenVisible] = useState(false);
   const [progressStoryPreviewVisible, setProgressStoryPreviewVisible] = useState(false);
   const [potentialSourceUri, setPotentialSourceUri] = useState<string | null>(null);
   const [potentialResultUri, setPotentialResultUri] = useState<string | null>(null);
@@ -2898,9 +3159,35 @@ export default function DevScreen() {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
+        <DevTopPreview
+          onPreviewScoreDeck={() => {
+            setScoreDeckPreviewKey((k) => k + 1);
+            setScoreDeckPreviewVisible(true);
+          }}
+          onPreviewProgressStory={() => setProgressStoryPreviewVisible(true)}
+          onPreviewExerciseIntro={() => {
+            setExerciseIntroPreviewStep("focus");
+            setExerciseIntroPreviewVisible(true);
+          }}
+        />
+
+        <DietDevPreview />
+
         <DashboardStoryLaunchCard onPress={() => setDashboardStoryPreviewVisible(true)} />
 
         <T style={styles.screenTitle}>Dev Tools</T>
+
+        <GlassCard style={styles.card}>
+          <SectionHeader
+            title="Progress Preview Screen"
+            subtitle="Premium playful version of the first Progress tab screen"
+          />
+          <DevButton
+            label="Preview Progress Overview"
+            accent
+            onPress={() => setProgressPreviewScreenVisible(true)}
+          />
+        </GlassCard>
 
         <GlassCard style={styles.card}>
           <SectionHeader
@@ -3363,99 +3650,28 @@ export default function DevScreen() {
           />
         </GlassCard>
 
-        {/* ── New Exercise Previews ─────────────────────────────────── */}
         <GlassCard style={styles.card}>
           <SectionHeader
-            title="New Exercise Preview"
-            subtitle="Preview the 2 new exercises in the session player"
+            title="Exercise Icon Gallery"
+            subtitle="Active exercise thumbnails from new-exercises-videos. Tap any card to open it in the session player."
           />
-          <DevButton
-            label="▶  Midface Lift"
-            accent
-            onPress={() => router.push("/program/session?previewExerciseIds=midface-exercise" as any)}
-          />
-          <DevButton
-            label="▶  Lower Face Lift"
-            accent
-            onPress={() => router.push("/program/session?previewExerciseIds=lowerface-exercise" as any)}
-          />
-          <DevButton
-            label="▶  Both Together"
-            accent
-            onPress={() => router.push("/program/session?previewExerciseIds=midface-exercise,lowerface-exercise" as any)}
-          />
+          <ExerciseIconPreviewGrid />
         </GlassCard>
 
-        {/* ── 3 Newest Exercises ────────────────────────────────────── */}
-        <GlassCard style={styles.card}>
-          <SectionHeader
-            title="3 New Exercises"
-            subtitle="Guide screen + session player previews"
-          />
-          {[
-            { label: "Chin Stretch",         id: "chin-stretch" },
-            { label: "Neck Stretch",         id: "neck-stretch" },
-            { label: "Tongue Posture Press", id: "tongue-touching" },
-            { label: "Side Tongue Stretch",  id: "side-tongue" },
-          ].map(({ label, id }) => (
-            <View key={id} style={styles.row}>
-              <DevButton
-                label={`Guide — ${label}`}
-                accent
-                onPress={() => router.push(`/program/guide/${id}` as any)}
-              />
-              <DevButton
-                label="Session"
-                accent
-                onPress={() => router.push(`/program/session?previewExerciseIds=${id}` as any)}
-              />
-            </View>
-          ))}
-          <DevButton
-            label="▶  All 4 Together"
-            accent
-            onPress={() => router.push("/program/session?previewExerciseIds=chin-stretch,neck-stretch,tongue-touching,side-tongue" as any)}
-          />
-        </GlassCard>
-
-        {/* ── Exercise Timer Preview ───────────────────────────────── */}
         <GlassCard style={styles.card}>
           <SectionHeader
             title="Exercise Timer Preview"
             subtitle="Preview every exercise exactly as it appears in the session player"
           />
           <View style={styles.screenGrid}>
-            {[
-              { label: "Neck & Jawline Extension", id: "jawline-1" },
-              { label: "Chin Tuck",                id: "chin-tucks" },
-              { label: "Fish Face",                id: "fish-face" },
-              { label: "Gua Sha Sculpting",        id: "gua-sha" },
-              { label: "Eyelid Isolation Squint",  id: "hunter-eyes-1" },
-              { label: "Hunter Eyes Squinch",      id: "hunter-eyes-2" },
-              { label: "Jaw Resistance Press",     id: "jaw-resistance" },
-              { label: "Lymphatic Drainage",       id: "lymphatic-drainage" },
-              { label: "Neck Lift",                id: "neck-lift-1" },
-              { label: "Skyward Neck Stretch",     id: "neck-lift-2" },
-              { label: "Nasal Bridge Sculpting",   id: "nose-massage" },
-              { label: "Nose Contouring Massage",  id: "slim-nose-massage" },
-              { label: "Neck Curls",               id: "neck-curls" },
-              { label: "Towel Chewing",            id: "towel-chewing" },
-              { label: "Cheek Puffs",              id: "alternating-cheek-puffs" },
-              { label: "Midface Lift",             id: "midface-exercise" },
-              { label: "Lower Face Lift",          id: "lowerface-exercise" },
-              { label: "Chin Training",            id: "chin-training" },
-              { label: "Chin Stretch",             id: "chin-stretch" },
-              { label: "Neck Stretch",             id: "neck-stretch" },
-              { label: "Tongue Posture Press",     id: "tongue-touching" },
-              { label: "Side Tongue Stretch",      id: "side-tongue" },
-            ].map(({ label, id }) => (
+            {EXERCISE_CATALOG.map((exercise) => (
               <TouchableOpacity
-                key={id}
+                key={exercise.id}
                 style={styles.screenChip}
-                onPress={() => router.push(`/program/session?previewExerciseIds=${id}` as any)}
+                onPress={() => router.push(`/program/session?previewExerciseIds=${exercise.id}` as any)}
                 activeOpacity={0.7}
               >
-                <T style={styles.screenChipText}>{label}</T>
+                <T style={styles.screenChipText}>{exercise.name}</T>
                 <T style={styles.screenChipArrow}>→</T>
               </TouchableOpacity>
             ))}
@@ -3630,6 +3846,8 @@ export default function DevScreen() {
             />
           </View>
         </GlassCard>
+
+        <AsymmetryExerciseDevPreviewCard />
       </ScrollView>
 
       <ProgressDashboardMockupsModal
@@ -3639,6 +3857,10 @@ export default function DevScreen() {
       <DashboardStoryScreenPreview
         visible={dashboardStoryPreviewVisible}
         onClose={() => setDashboardStoryPreviewVisible(false)}
+      />
+      <ProgressPreviewScreenModal
+        visible={progressPreviewScreenVisible}
+        onClose={() => setProgressPreviewScreenVisible(false)}
       />
       <ProgressStoryDashboardPreview
         visible={progressStoryPreviewVisible}
@@ -5039,6 +5261,359 @@ const storyStyles = StyleSheet.create({
   },
 });
 
+const progressPreviewStyles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: "#FEF5E4",
+  },
+  scroll: {
+    alignItems: "center",
+    paddingHorizontal: SP[4],
+    paddingTop: SP[3],
+    paddingBottom: SP[10],
+  },
+  inner: {
+    gap: SP[4],
+  },
+  topRail: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingTop: SP[2],
+  },
+  iconButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 16,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#ECEEEC",
+    alignItems: "center",
+    justifyContent: "center",
+    ...DASH_SHADOW,
+  },
+  pressed: {
+    opacity: 0.78,
+    transform: [{ translateY: 1 }],
+  },
+  streakChip: {
+    minHeight: 40,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: SP[4],
+    borderRadius: RADII.circle,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#ECEEEC",
+    ...DASH_SHADOW,
+  },
+  streakIcon: {
+    width: 16,
+    height: 16,
+  },
+  streakText: {
+    fontFamily: "DINNextRounded-Regular",
+    fontSize: 12,
+    color: "#5E625F",
+  },
+  header: {
+    paddingTop: SP[2],
+    paddingHorizontal: SP[1],
+  },
+  kicker: {
+    fontFamily: FONT,
+    fontSize: 11,
+    letterSpacing: 1.4,
+    color: "#58BF19",
+  },
+  title: {
+    fontFamily: FONT,
+    fontSize: 34,
+    lineHeight: 38,
+    letterSpacing: -0.8,
+    color: "#111111",
+    marginTop: SP[2],
+  },
+  subtitle: {
+    fontFamily: "DINNextRounded-Regular",
+    fontSize: 16,
+    lineHeight: 23,
+    color: "#5E625F",
+    marginTop: SP[3],
+  },
+  heroCard: {
+    borderRadius: 32,
+    backgroundColor: "#FFFFFF",
+    padding: SP[5],
+    gap: SP[5],
+    borderWidth: 1,
+    borderColor: "rgba(17,17,17,0.07)",
+    shadowColor: "#000000",
+    shadowOpacity: 0.10,
+    shadowRadius: 26,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 6,
+  },
+  heroTopRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: SP[4],
+  },
+  heroLabel: {
+    fontFamily: FONT,
+    fontSize: 10,
+    letterSpacing: 1.1,
+    color: "#8A8A8E",
+  },
+  heroScore: {
+    fontFamily: FONT,
+    fontSize: 60,
+    lineHeight: 62,
+    letterSpacing: -2.2,
+    color: "#111111",
+    marginTop: SP[1],
+  },
+  heroTier: {
+    fontFamily: FONT,
+    fontSize: 12,
+    letterSpacing: 1.4,
+    color: "#58BF19",
+  },
+  heroBadge: {
+    minHeight: 38,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    borderRadius: RADII.circle,
+    paddingHorizontal: SP[3],
+    backgroundColor: "#EFFAE9",
+    borderWidth: 1,
+    borderColor: "rgba(88,191,25,0.16)",
+  },
+  heroBadgeText: {
+    fontFamily: FONT,
+    fontSize: 11,
+    color: "#58BF19",
+    letterSpacing: 0.4,
+  },
+  compareRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SP[3],
+  },
+  faceCol: {
+    flex: 1,
+    alignItems: "center",
+    gap: SP[2],
+  },
+  faceFrame: {
+    width: "100%",
+    aspectRatio: 0.82,
+    borderRadius: 24,
+    overflow: "hidden",
+    backgroundColor: "#EFEAF7",
+    borderWidth: 1,
+    borderColor: "rgba(17,17,17,0.08)",
+  },
+  potentialFrame: {
+    width: "100%",
+    aspectRatio: 0.82,
+    borderRadius: 24,
+    overflow: "hidden",
+    backgroundColor: "#EFFAE9",
+    borderWidth: 2,
+    borderColor: "#B4F34D",
+    shadowColor: "#58BF19",
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 7,
+  },
+  faceImage: {
+    width: "100%",
+    height: "100%",
+  },
+  faceLabel: {
+    fontFamily: "DINNextRounded-Regular",
+    fontSize: 13,
+    color: "#8A8A8E",
+  },
+  faceLabelActive: {
+    fontFamily: FONT,
+    color: "#58BF19",
+  },
+  transferColumn: {
+    width: 36,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  transferLine: {
+    position: "absolute",
+    width: 1,
+    height: 112,
+    backgroundColor: "rgba(17,17,17,0.08)",
+  },
+  transferDot: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#ECEEEC",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  unlockedBadge: {
+    position: "absolute",
+    left: SP[3],
+    bottom: SP[3],
+    minHeight: 28,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    borderRadius: RADII.circle,
+    paddingHorizontal: SP[3],
+    backgroundColor: "#58BF19",
+  },
+  unlockedText: {
+    fontFamily: FONT,
+    fontSize: 9,
+    color: "#FFFFFF",
+    letterSpacing: 0.8,
+  },
+  progressBlock: {
+    gap: SP[2],
+  },
+  gatewayPanel: {
+    minHeight: 82,
+    borderRadius: 22,
+    backgroundColor: "#F7F8F4",
+    borderWidth: 1,
+    borderColor: "rgba(17,17,17,0.06)",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SP[3],
+    paddingHorizontal: SP[4],
+    paddingVertical: SP[3],
+  },
+  gatewayIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: "#EFFAE9",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  gatewayTitle: {
+    fontFamily: FONT,
+    fontSize: 15,
+    color: "#111111",
+    letterSpacing: -0.1,
+  },
+  gatewayBody: {
+    fontFamily: "DINNextRounded-Regular",
+    fontSize: 12,
+    lineHeight: 17,
+    color: "#6E6E73",
+    marginTop: 2,
+  },
+  statsRow: {
+    flexDirection: "row",
+    gap: SP[3],
+  },
+  statCard: {
+    flex: 1,
+    minHeight: 86,
+    borderRadius: 22,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "rgba(17,17,17,0.07)",
+    alignItems: "center",
+    justifyContent: "center",
+    ...DASH_SHADOW,
+  },
+  statLabel: {
+    fontFamily: "DINNextRounded-Regular",
+    fontSize: 11,
+    color: "#8A8A8E",
+  },
+  statValue: {
+    fontFamily: FONT,
+    fontSize: 22,
+    color: "#111111",
+    marginTop: 3,
+  },
+  statSub: {
+    fontFamily: "DINNextRounded-Regular",
+    fontSize: 11,
+    color: "#6E6E73",
+    marginTop: 1,
+  },
+  coachCard: {
+    minHeight: 112,
+    borderRadius: 28,
+    backgroundColor: "#EFFAE9",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SP[4],
+    paddingHorizontal: SP[5],
+    borderWidth: 1,
+    borderColor: "rgba(88,191,25,0.16)",
+  },
+  coachImageWrap: {
+    width: 78,
+    height: 78,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  coachImage: {
+    width: 92,
+    height: 92,
+  },
+  coachBubble: {
+    flex: 1,
+    gap: 3,
+  },
+  coachKicker: {
+    fontFamily: FONT,
+    fontSize: 10,
+    color: "#58BF19",
+    letterSpacing: 1,
+  },
+  coachText: {
+    fontFamily: FONT,
+    fontSize: 16,
+    lineHeight: 22,
+    color: "#27581D",
+  },
+  cta: {
+    minHeight: 58,
+    borderRadius: RADII.circle,
+    backgroundColor: "#111111",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: SP[2],
+    paddingHorizontal: SP[5],
+    shadowColor: "#000000",
+    shadowOpacity: 0.20,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 7,
+  },
+  ctaPressed: {
+    opacity: 0.88,
+    transform: [{ translateY: 1 }],
+  },
+  ctaText: {
+    fontFamily: FONT,
+    fontSize: 13,
+    color: "#FFFFFF",
+    letterSpacing: 0.5,
+  },
+});
+
 const mockStyles = StyleSheet.create({
   modalRoot: {
     flex: 1,
@@ -5625,6 +6200,57 @@ const styles = StyleSheet.create({
   screenChipArrow: {
     fontSize: 14,
     color: COLORS.sub,
+  },
+
+  // Exercise icon gallery
+  exerciseIconGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: SP[3],
+  },
+  exerciseIconPreviewCard: {
+    width: "47%",
+    minHeight: 148,
+    flexGrow: 1,
+    borderRadius: RADII.lg,
+    backgroundColor: COLORS.whiteGlass,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: COLORS.cardBorder,
+    padding: SP[3],
+    gap: SP[2],
+  },
+  exerciseIconPreviewFrame: {
+    width: 64,
+    height: 64,
+    borderRadius: RADII.md,
+    backgroundColor: "#F7F8F4",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(17,17,17,0.12)",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  exerciseIconPreviewImage: {
+    width: "92%",
+    height: "92%",
+    borderRadius: RADII.sm,
+    resizeMode: "cover",
+  },
+  exerciseIconPreviewCopy: {
+    minHeight: 52,
+    justifyContent: "flex-start",
+    gap: 2,
+  },
+  exerciseIconPreviewName: {
+    fontSize: 13,
+    lineHeight: 17,
+    color: COLORS.text,
+  },
+  exerciseIconPreviewId: {
+    fontSize: 10,
+    lineHeight: 14,
+    color: COLORS.sub,
+    fontFamily: "Poppins-Regular",
   },
 
   // Numbered flow chip

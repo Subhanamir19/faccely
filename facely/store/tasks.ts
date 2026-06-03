@@ -5,6 +5,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import { buildDailyRoutine, buildDailyProtocols, makeRoutineTaskFromId, type RoutineTaskPick, type ProtocolSelectionInput } from "@/lib/taskBuilder";
+import { isDietProtocolId, shuffleDietProtocols } from "@/lib/dietProtocolCatalog";
 import { EXERCISE_CATALOG, type TargetArea } from "@/lib/taskSelection";
 import type { ProtocolType } from "@/lib/protocolCatalog";
 import { summarizeFocusAreas } from "@/lib/taskSelection";
@@ -81,6 +82,7 @@ type TasksState = {
   setTodayTasksByAreas: (areas: TargetArea[]) => void;
   completeProtocol: (id: string, done: boolean) => void;
   rebuildProtocols: () => void;
+  shuffleProtocols: () => void;
   setMood: (mood: string) => void;
   markCompletionModalShown: (date: string) => void;
   reset: () => void;
@@ -106,6 +108,30 @@ function getUid(): string | null {
   } catch {
     return null;
   }
+}
+
+function getAdvancedAnalysisData(): any | null {
+  try {
+    return require("./advancedAnalysis").useAdvancedAnalysis.getState().data ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function getSelectionStores(): {
+  scores: any | null;
+  goals: string[] | null;
+  advanced: any | null;
+} {
+  let scores = null;
+  let goals: string[] | null = null;
+  try {
+    scores = require("./scores").useScores.getState().scores ?? null;
+  } catch {}
+  try {
+    goals = require("./onboarding").useOnboarding.getState().data?.goals ?? null;
+  } catch {}
+  return { scores, goals, advanced: getAdvancedAnalysisData() };
 }
 
 function computeStreak(history: DayRecord[]): number {
@@ -266,13 +292,24 @@ export const useTasksStore = create<TasksState>()(
           if (state.today.completedOnce === undefined) {
             set({ today: { ...state.today, completedOnce: state.today.allComplete } });
           }
-          // Backfill protocols if missing or if any protocol is missing quantity (e.g. hot reload after v5/v6 upgrade)
+          // Backfill protocols if today's in-memory record is still from an
+          // older hot-reload/session. This catches old 2-item protocol sets,
+          // overlong protocol sets, and legacy ids such as "black-raisins"
+          // without waiting for tomorrow.
+          const existingProtocols = state.today.protocols ?? [];
           const needsProtocolBackfill =
-            !state.today.protocols ||
-            state.today.protocols.some((p) => !p.quantity);
+            existingProtocols.length < 3 ||
+            existingProtocols.length > 4 ||
+            existingProtocols.some((p) => !p.quantity || !isDietProtocolId(p.id));
           if (needsProtocolBackfill) {
-            const fresh = buildDailyProtocols({ dateStr: currentDate, scores: null, goals: null });
-            const protocols: ProtocolTask[] = (state.today.protocols ?? []).map((existing) => {
+            const selection = getSelectionStores();
+            const fresh = buildDailyProtocols({
+              dateStr: currentDate,
+              scores: selection.scores,
+              goals: selection.goals,
+              advanced: selection.advanced,
+            });
+            const protocols: ProtocolTask[] = existingProtocols.map((existing) => {
               const updated = fresh.find((f) => f.id === existing.id);
               return updated ? { ...existing, quantity: updated.quantity } : existing;
             });
@@ -298,6 +335,7 @@ export const useTasksStore = create<TasksState>()(
         let scores = null;
         let goals: string[] | null = null;
         let experience: string | null = null;
+        const advanced = getAdvancedAnalysisData();
 
         try {
           const scoresStore = require("./scores").useScores.getState();
@@ -349,6 +387,7 @@ export const useTasksStore = create<TasksState>()(
           dateStr: currentDate,
           scores,
           goals,
+          advanced,
           recentProtocolIds,
         };
         const protocols: ProtocolTask[] = buildDailyProtocols(protocolInput).map((p) => ({
@@ -659,10 +698,11 @@ export const useTasksStore = create<TasksState>()(
       rebuildProtocols: () => {
         const state = get();
         if (!state.today) return;
-        const currentDate = new Date().toISOString().split("T")[0];
+        const currentDate = getLocalDateString();
         const recentProtocolIds = getRecentProtocolIds(state.history);
         let scores = null;
         let goals: string[] | null = null;
+        const advanced = getAdvancedAnalysisData();
         try {
           const scoresStore = require("./scores").useScores.getState();
           scores = scoresStore.scores ?? null;
@@ -671,9 +711,44 @@ export const useTasksStore = create<TasksState>()(
           const onboardingStore = require("./onboarding").useOnboarding.getState();
           goals = onboardingStore.data?.goals ?? null;
         } catch {}
-        const fresh = buildDailyProtocols({ dateStr: currentDate, scores, goals, recentProtocolIds });
+        const fresh = buildDailyProtocols({ dateStr: currentDate, scores, goals, advanced, recentProtocolIds });
         const protocols: ProtocolTask[] = fresh.map((p) => ({ ...p, status: "pending" as ProtocolStatus }));
         set({ today: { ...state.today, protocols } });
+      },
+
+      shuffleProtocols: () => {
+        const state = get();
+        if (!state.today || state.today.protocols.length === 0) return;
+
+        const selection = getSelectionStores();
+        const fresh = shuffleDietProtocols({
+          dateStr: state.today.date,
+          scores: selection.scores,
+          goals: selection.goals,
+          advanced: selection.advanced,
+          recentProtocolIds: getRecentProtocolIds(state.history),
+          currentProtocolIds: state.today.protocols.map((p) => p.id),
+          shuffleSeed: Date.now(),
+        });
+        const protocols: ProtocolTask[] = fresh.map((p) => ({
+          ...p,
+          status: "pending" as ProtocolStatus,
+        }));
+        const allComplete =
+          state.today.tasks.every((t) => t.status !== "pending") &&
+          protocols.every((p) => p.status === "done");
+
+        set({
+          today: {
+            ...state.today,
+            protocols,
+            allComplete,
+            completedOnce: state.today.completedOnce,
+          },
+        });
+
+        const uid = getUid();
+        if (uid) scheduleSyncTaskHistory(uid);
       },
 
       setMood: (mood: string) => {
@@ -700,7 +775,7 @@ export const useTasksStore = create<TasksState>()(
     }),
     {
       name: "sigma_tasks_v1",
-      version: 9,
+      version: 10,
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({
         today: state.today,
@@ -792,6 +867,11 @@ export const useTasksStore = create<TasksState>()(
           if (Array.isArray(persisted.history)) {
             for (const record of persisted.history) addStreakEarned(record);
           }
+        }
+        // v9 -> v10: protocols are now generated from the new diet catalog and
+        // advanced-analysis needs engine. Regenerate today on next init.
+        if (version <= 9 && persisted) {
+          persisted.today = null;
         }
         return persisted as any;
       },

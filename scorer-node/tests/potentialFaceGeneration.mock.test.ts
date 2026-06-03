@@ -139,7 +139,7 @@ test("records generation telemetry on successful potential-face generation", asy
   const attempt = harness.attempts[0] as Record<string, unknown>;
   assert.equal(attempt.success, true);
   assert.equal(attempt.model, "gpt-image-2");
-  assert.equal(attempt.size, "1024x1536");
+  assert.equal(attempt.size, "1024x1024");
   assert.equal(attempt.quality, "medium");
   assert.equal(attempt.requestedCandidateCount, 1);
   assert.equal(attempt.candidateCount, 1);
@@ -196,4 +196,3 @@ test("does not throw for BullMQ retry after OpenAI succeeds but upload fails", a
   assert.equal(attempt.generationPhase, "uploading_primary");
   assert.match(String(attempt.error), /simulated storage outage/);
 });
-

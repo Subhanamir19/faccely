@@ -303,7 +303,7 @@ export default function StreakScreen() {
 
   const handleGo = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    router.push("/program/list");
+    router.replace("/(tabs)/program");
   };
 
   // ── Layout ──────────────────────────────────────────────────────────────────

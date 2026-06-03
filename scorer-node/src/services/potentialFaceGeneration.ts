@@ -3,7 +3,7 @@
 // Phase 2 generation pipeline. Given a `potential_faces` row id, this service:
 //   1. loads the row + its baseline scan
 //   2. downloads the baseline frontal image from the `face-scans` bucket
-//   3. calls the configured GPT Image model for one candidate
+//   3. calls the configured GPT Image model for one fast mobile-preview candidate
 //   4. uploads the candidate to the `potential-faces` bucket
 //   5. transitions the row to `ready` and writes an audit-log entry
 //
@@ -68,8 +68,10 @@ export function setPotentialFaceGenerationDepsForTest(
 
 export const PROMPT_VERSION = "v4";
 const MODEL = PROVIDERS.openai.imageModel;
-const SIZE: "1024x1024" | "1024x1536" | "1536x1024" | "auto" = "1024x1536";
+const SIZE: "1024x1024" | "1024x1536" | "1536x1024" | "auto" = "1024x1024";
 const QUALITY: "low" | "medium" | "high" | "auto" = "medium";
+const OUTPUT_FORMAT = "jpeg";
+const OUTPUT_COMPRESSION = 84;
 const CANDIDATE_COUNT = 1;
 export type PotentialFacePromptMode = "conservative" | "balanced" | "aggressive";
 
@@ -164,8 +166,9 @@ export async function generatePotentialFace(
     if (!baselineBuffer.length) {
       throw makeFailure("baseline_image_empty", "Baseline frontal image is empty.");
     }
-    const sourceMeta = await readImageTelemetry(baselineBuffer);
-    sourceImageBytes = baselineBuffer.length;
+    const normalizedSourceBuffer = await preparePotentialFaceSourceImage(baselineBuffer);
+    const sourceMeta = await readImageTelemetry(normalizedSourceBuffer);
+    sourceImageBytes = normalizedSourceBuffer.length;
     sourceImageWidth = sourceMeta.width;
     sourceImageHeight = sourceMeta.height;
 
@@ -174,11 +177,13 @@ export async function generatePotentialFace(
     response = await openai.images.edit(
       {
         model: MODEL,
-        image: await toFile(baselineBuffer, "baseline.jpg", { type: "image/jpeg" }),
+        image: await toFile(normalizedSourceBuffer, "baseline.jpg", { type: "image/jpeg" }),
         prompt,
         n: CANDIDATE_COUNT,
         size: SIZE,
         quality: QUALITY,
+        output_format: OUTPUT_FORMAT,
+        output_compression: OUTPUT_COMPRESSION,
       } as any // GPT image edits return b64_json for this endpoint shape
     );
     generationPhase = "openai_response_received";
@@ -543,6 +548,26 @@ async function readImageTelemetry(
     };
   } catch {
     return { width: null, height: null };
+  }
+}
+
+export async function preparePotentialFaceSourceImage(buffer: Buffer): Promise<Buffer> {
+  try {
+    return await sharp(buffer, { failOn: "none" })
+      .rotate()
+      .resize({
+        width: 1024,
+        height: 1024,
+        fit: "inside",
+        withoutEnlargement: true,
+      })
+      .jpeg({
+        quality: 90,
+        mozjpeg: true,
+      })
+      .toBuffer();
+  } catch {
+    return buffer;
   }
 }
 

@@ -1,84 +1,41 @@
-// Static mapping from exercise id → task icon (area-based placeholder until
-// per-exercise pose images are added).
-import { getNewExerciseEntry } from "@/lib/newExerciseCatalog";
+// Exercise thumbnails shown in compact routine lists.
+// The active catalogue lives in assets/new-exercises-videos; keep these
+// thumbnails in that same folder so the UI reflects the exercises actually used.
+import { getNewExerciseEntry, resolveExerciseId } from "@/lib/newExerciseCatalog";
 
-const ICON_JAWLINE            = require("../assets/TASK-ICONS/JAWLINE.jpeg");
-const ICON_CHEEKBONES         = require("../assets/TASK-ICONS/CHEEKBONES.jpeg");
-const ICON_EYES               = require("../assets/TASK-ICONS/EYES.jpeg");
-const ICON_NOSE               = require("../assets/TASK-ICONS/NOSE.jpeg");
-const ICON_CHEEKBONES_JAWLINE = require("../assets/TASK-ICONS/face-cheekbones-jawline.jpeg");
-const ICON_ALL                = require("../assets/TASK-ICONS/face-all.jpeg");
+const FALLBACK_ALL = require("../assets/new-exercises-videos/mewing.png");
 
 export const EXERCISE_ICONS: Record<string, any> = {
-  // Jawline
-  "jawline-1":      ICON_CHEEKBONES_JAWLINE,
-  "chin-tucks":     ICON_JAWLINE,
-  "jaw-resistance": ICON_JAWLINE,
-  "neck-lift-1":    ICON_JAWLINE,
-  "neck-lift-2":    ICON_JAWLINE,
-  "neck-curls":     ICON_JAWLINE,
-  "towel-chewing":  ICON_CHEEKBONES_JAWLINE,
-
-  // Cheekbones
-  "alternating-cheek-puffs": ICON_CHEEKBONES,
-  "fish-face":      ICON_CHEEKBONES_JAWLINE,
-
-  // Eyes
-  "hunter-eyes-1":  ICON_EYES,
-  "hunter-eyes-2":  ICON_EYES,
-
-  // Nose
-  "nose-massage":      ICON_NOSE,
-  "slim-nose-massage": ICON_NOSE,
-
-  // All areas
-  "lymphatic-drainage": ICON_ALL,
-  "gua-sha":            ICON_ALL,
-
-  // Midface & Lower Face
-  "midface-exercise":   ICON_CHEEKBONES,
-  "lowerface-exercise": ICON_JAWLINE,
-
-  // Chin
-  "chin-training":      ICON_JAWLINE,
-
-  // Chin / Neck / Tongue
-  "chin-stretch":       ICON_JAWLINE,
-  "neck-stretch":       ICON_JAWLINE,
-  "tongue-touching":    ICON_CHEEKBONES_JAWLINE,
-  "side-tongue":        ICON_CHEEKBONES,
-
-  // New video catalogue
-  "neck-pull": ICON_JAWLINE,
-  "chin-tucks-v2": ICON_JAWLINE,
-  "fish-face-v2": ICON_CHEEKBONES_JAWLINE,
-  "eyebrows-lifting": ICON_EYES,
-  "orbicularis-muscles-eye": ICON_EYES,
-  "jaw-forcing": ICON_JAWLINE,
-  "chin-massage": ICON_ALL,
-  "neck-massage": ICON_ALL,
-  "forward-pulling-neck": ICON_JAWLINE,
-  "slim-nose-side": ICON_NOSE,
-  "slim-nose1": ICON_NOSE,
-  "slim-nose2": ICON_NOSE,
-  "chin-forcing-while-laying-down": ICON_JAWLINE,
-  "chi-ball-training": ICON_JAWLINE,
-  "midface-lift": ICON_CHEEKBONES,
-  "downward-chin-forcing": ICON_JAWLINE,
-  "upward-chin-stretch": ICON_JAWLINE,
-  "tongue-nose-touching": ICON_CHEEKBONES_JAWLINE,
-  "mewing": ICON_CHEEKBONES_JAWLINE,
+  "alternating-cheek-puffs": require("../assets/new-exercises-videos/alternating-cheek-puffs-pose2.png"),
+  "chi-ball-training": require("../assets/new-exercises-videos/chi-ball-training-pose2.png"),
+  "chin-forcing-while-laying-down": require("../assets/new-exercises-videos/chin-forcing-while-laying-down-pose2.png"),
+  "chin-massage": require("../assets/new-exercises-videos/chin-massage-pose2.png"),
+  "chin-tucks-v2": require("../assets/new-exercises-videos/chin-tucks-pose2.png"),
+  "asymmetry-chin-tucks": require("../assets/new-exercises-videos/downward-chin-forcing-pose2.png"),
+  "downward-chin-forcing": require("../assets/new-exercises-videos/downward-chin-forcing-pose2.png"),
+  "eyebrows-lifting": require("../assets/new-exercises-videos/eyebrows-lifting-pose2.png"),
+  "fish-face-v2": require("../assets/new-exercises-videos/FISH-FACE-POSE2.png"),
+  "forward-pulling-neck": require("../assets/new-exercises-videos/forward-pulling-neck-pose2.png"),
+  "jaw-forcing": require("../assets/new-exercises-videos/jaw-forcing-pose2.png"),
+  "mewing": require("../assets/new-exercises-videos/mewing.png"),
+  "midface-lift": require("../assets/new-exercises-videos/midface-lift.png"),
+  "neck-massage": require("../assets/new-exercises-videos/neck-massage-pose2.png"),
+  "neck-pull": require("../assets/new-exercises-videos/neck-pull-pose2.png"),
+  "orbicularis-muscles-eye": require("../assets/new-exercises-videos/orbicularis-muscles-eye-pose2.png"),
+  "side-tongue": require("../assets/new-exercises-videos/side-tongue-pose2.png"),
+  "slim-nose-side": require("../assets/new-exercises-videos/slim-nose-side-pose2.png"),
+  "slim-nose1": require("../assets/new-exercises-videos/slim-nose1-pose2.png"),
+  "slim-nose2": require("../assets/new-exercises-videos/slim-nose2-pose2.png"),
+  "tongue-nose-touching": require("../assets/new-exercises-videos/tongue-nose-touching-pose2.png"),
+  "upward-chin-stretch": require("../assets/new-exercises-videos/upward-chin-stretch-pose2.png"),
 };
 
 export function getExerciseIcon(exerciseId: string): any {
-  const direct = EXERCISE_ICONS[exerciseId];
+  const resolvedId = resolveExerciseId(exerciseId);
+  const direct = EXERCISE_ICONS[resolvedId];
   if (direct) return direct;
 
-  const entry = getNewExerciseEntry(exerciseId);
-  if (entry?.targets.includes("eyes")) return ICON_EYES;
-  if (entry?.targets.includes("nose")) return ICON_NOSE;
-  if (entry?.targets.includes("cheekbones") && entry.targets.includes("jawline")) return ICON_CHEEKBONES_JAWLINE;
-  if (entry?.targets.includes("cheekbones")) return ICON_CHEEKBONES;
-  if (entry?.targets.includes("jawline")) return ICON_JAWLINE;
-  return ICON_ALL;
+  const entry = getNewExerciseEntry(resolvedId);
+  if (entry) return EXERCISE_ICONS[entry.id] ?? FALLBACK_ALL;
+  return FALLBACK_ALL;
 }

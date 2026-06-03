@@ -32,9 +32,6 @@ type Params = {
 
 type ImageMeta = { uri: string; name: string; mime: string };
 
-// Keep the generic loader short. The dedicated reveal screen owns the long
-// image wait, so users do not get stranded behind an opaque spinner.
-const ONBOARDING_POTENTIAL_FACE_HANDOFF_POLL_MS = 8_000;
 const ONBOARDING_ADVANCED_MIN_LOADING_MS = 1800;
 
 function takeFirst(value?: ParamValue): string | undefined {
@@ -123,8 +120,6 @@ export default function LoadingScreen() {
   const params = useLocalSearchParams<Params>();
   const analyzePair = useScores((state) => state.analyzePair);
   const explainPair = useScores((state) => state.explainPair);
-  const loadPotentialFace = usePotentialFace((state) => state.load);
-  const pollPotentialFace = usePotentialFace((state) => state.pollUntilReady);
 
   const mode = normalizeMode(takeFirst(params.mode));
   const front = takeFirst(params.front);
@@ -338,53 +333,44 @@ export default function LoadingScreen() {
         }
         if (cancelled) return;
 
-        const [frontTemp, sideTemp] = await Promise.all([
-          ensureJpegCompressed(frontResolved),
-          ensureJpegCompressed(sideResolved),
-        ]);
-        if (cancelled) return;
-
-        const [frontPersisted, sidePersisted] = await Promise.all([
-          persistCompressedResult(frontTemp),
-          persistCompressedResult(sideTemp),
-        ]);
-
         const frontMeta = {
-          uri: frontPersisted.uri,
-          name: frontPersisted.name,
+          uri: frontResolved,
+          name: "front.jpg",
           mime: "image/jpeg",
         };
         const sideMeta = {
-          uri: sidePersisted.uri,
-          name: sidePersisted.name,
+          uri: sideResolved,
+          name: "side.jpg",
           mime: "image/jpeg",
         };
 
         await ensureLocalPairExists(frontMeta.uri, sideMeta.uri);
         if (cancelled) return;
 
-        const scores = await analyzePair(frontMeta, sideMeta);
+        const scores = await useScores.getState().ensurePairAnalyzed(frontMeta, sideMeta);
         if (cancelled) return;
 
-        const scanId = useScores.getState().scanId;
+        const scoreState = useScores.getState();
+        const scanId = scoreState.scanId;
         if (!scanId) {
           throw new Error("Scan was scored but not saved. Please try again later.");
         }
+        const analyzedFrontUri = scoreState.imageUri ?? frontMeta.uri;
+        const analyzedSideUri = scoreState.sideImageUri ?? sideMeta.uri;
 
         let generationStarted = false;
         try {
           await requestPotentialFaceGeneration(scanId);
           generationStarted = true;
-          await loadPotentialFace();
-          await pollPotentialFace(ONBOARDING_POTENTIAL_FACE_HANDOFF_POLL_MS);
+          usePotentialFace.getState().load().catch(() => {});
         } catch (generationError) {
           // Non-fatal by design. The reveal screen has a graceful fallback,
           // and the user can still continue into advanced analysis.
           console.warn("[loading] onboarding potential face generation did not finish:", generationError);
         }
 
-        explainPair(frontMeta.uri, sideMeta.uri, scores).catch(() => {});
-        onboarding.clearScanPhotos();
+        explainPair(analyzedFrontUri, analyzedSideUri, scores).catch(() => {});
+        useOnboarding.getState().clearScanPhotos();
         setIsLoading(false);
         router.replace(generationStarted ? "/(onboarding)/potential-face-reveal" : "/(onboarding)/potential-face-bridge");
       } catch (error) {
@@ -433,8 +419,6 @@ export default function LoadingScreen() {
   }, [
     analyzePair,
     explainPair,
-    loadPotentialFace,
-    pollPotentialFace,
     completed,
     onboardingHydrated,
     mode,

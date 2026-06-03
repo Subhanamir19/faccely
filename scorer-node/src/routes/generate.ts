@@ -11,6 +11,7 @@ import OpenAI, { toFile } from "openai";
 import { PROVIDERS } from "../config/index.js";
 import {
   buildPotentialFacePrompt,
+  preparePotentialFaceSourceImage,
   PROMPT_VERSION,
   type PotentialFacePromptMode,
 } from "../services/potentialFaceGeneration.js";
@@ -195,13 +196,14 @@ router.post("/potential-face-dev", upload.single("image"), async (req, res) => {
   }
 
   try {
-    const buffer = file.path
+    const rawBuffer = file.path
       ? await fs.promises.readFile(file.path)
       : file.buffer;
 
-    if (!buffer || buffer.length === 0) {
+    if (!rawBuffer || rawBuffer.length === 0) {
       return res.status(400).json({ error: "empty_image" });
     }
+    const buffer = await preparePotentialFaceSourceImage(rawBuffer);
 
     const promptMode = parsePromptMode((req.body as Record<string, unknown>)?.promptMode);
     const prompt = buildPotentialFacePrompt({ mode: promptMode });
@@ -218,8 +220,10 @@ router.post("/potential-face-dev", upload.single("image"), async (req, res) => {
       image: await toFile(buffer, "potential-face-source.jpg", { type: "image/jpeg" }),
       prompt,
       n: 1,
-      size: "1024x1536",
+      size: "1024x1024",
       quality: "medium",
+      output_format: "jpeg",
+      output_compression: 84,
       moderation: "low",
     } as any);
 

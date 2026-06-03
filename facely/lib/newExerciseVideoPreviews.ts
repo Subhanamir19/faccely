@@ -2,6 +2,7 @@ import {
   NEW_EXERCISE_CATALOG,
   getNewExerciseInstruction as getInstructionById,
   getNewExerciseMeta as getMetaById,
+  getNewExercisePoseLabels as getPoseLabelsById,
   getNewExerciseTimingLabel as getTimingLabelById,
   getNewExerciseTitle as getTitleById,
   type ExerciseMediaType,
@@ -20,7 +21,7 @@ export const NEW_EXERCISE_VIDEO_PREVIEWS: NewExerciseVideoPreview[] = NEW_EXERCI
   id: entry.id,
   fileName: entry.fileName,
   source: entry.source,
-  mediaType: entry.mediaType === "video" ? undefined : entry.mediaType,
+  mediaType: entry.mediaType,
   title: entry.title,
   guideId: entry.guideId,
 }));
@@ -39,4 +40,8 @@ export function getNewExerciseTimingLabel(exercise: NewExerciseVideoPreview): st
 
 export function getNewExerciseMeta(exercise: NewExerciseVideoPreview): string {
   return getMetaById(exercise.id);
+}
+
+export function getNewExercisePoseLabels(exerciseId: string): string[] {
+  return getPoseLabelsById(exerciseId);
 }

@@ -30,8 +30,12 @@ import { COLORS, RADII, SP } from "@/lib/tokens";
 import { useTasksStore, type DailyTask, type ProtocolTask } from "@/store/tasks";
 import { useExerciseSettings } from "@/store/exerciseSettings";
 import { getExerciseIcon } from "@/lib/exerciseIcons";
+import ProtocolPlanCard from "@/components/program/ProtocolPlanCard";
+import { setJSON } from "@/lib/storage";
+import { getLocalDateString } from "@/lib/time/nextMidnight";
 
 const FONT_DIN = "DINNextRounded-Regular";
+const ROUTINE_LIST_REACHED_KEY = "daily_routine_list_reached_date";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -239,6 +243,8 @@ function StartButton({ label, onPress, disabled }: {
 export default function ExerciseListScreen() {
   const insets = useSafeAreaInsets();
   const { today, loading } = useTasksStore();
+  const completeProtocol = useTasksStore((s) => s.completeProtocol);
+  const shuffleProtocols = useTasksStore((s) => s.shuffleProtocols);
   const getDuration = useExerciseSettings((s) => s.getDuration);
 
   const tasks     = today?.tasks ?? [];
@@ -248,8 +254,14 @@ export default function ExerciseListScreen() {
   const skipped   = tasks.filter((t) => t.status === "skipped");
 
   const hasStarted = completed.length > 0 || skipped.length > 0;
-  const allDone    = pending.length === 0;
+  const exercisesDone = pending.length === 0;
+  const protocolsDone = protocols.length === 0 || protocols.every((p) => p.status === "done");
+  const allDone = exercisesDone && protocolsDone;
   const exerciseProgress = tasks.length > 0 ? completed.length / tasks.length : 0;
+
+  React.useEffect(() => {
+    setJSON(ROUTINE_LIST_REACHED_KEY, getLocalDateString()).catch(() => {});
+  }, []);
 
   const handleStart = useCallback(() => {
     if (pending.length === 0) return;
@@ -288,8 +300,10 @@ export default function ExerciseListScreen() {
     );
   }
 
-  const btnLabel = allDone
-    ? "All Done"
+  const btnLabel = exercisesDone
+    ? protocolsDone
+      ? "All Done"
+      : "Finish Diet Below"
     : hasStarted
     ? `Resume (${pending.length} left)`
     : `Start Routine`;
@@ -351,20 +365,21 @@ export default function ExerciseListScreen() {
           />
         ))}
 
-        {/* Protocols section */}
-        {protocols.length > 0 && (
-          <>
-            <Animated.Text
-              entering={FadeInDown.duration(260).delay(tasks.length * 60 + 80)}
-              style={[styles.sectionLabel, { marginTop: SP[6] }]}
-            >
-              PROTOCOLS
-            </Animated.Text>
-            {protocols.map((p, i) => (
-              <ProtocolRow key={p.id} protocol={p} index={tasks.length + i} />
-            ))}
-          </>
-        )}
+        {protocols.length > 0 ? (
+          <Animated.Text
+            entering={FadeInDown.duration(260).delay(tasks.length * 60 + 80)}
+            style={[styles.sectionLabel, styles.dietSectionLabel]}
+          >
+            {`DIET (${protocols.length})`}
+          </Animated.Text>
+        ) : null}
+
+        <ProtocolPlanCard
+          protocols={protocols}
+          onToggle={completeProtocol}
+          onShuffle={shuffleProtocols}
+          startDelay={tasks.length * 60 + 80}
+        />
       </ScrollView>
 
       {/* ── Footer CTAs ── */}
@@ -376,10 +391,10 @@ export default function ExerciseListScreen() {
           <StartButton
             label={btnLabel}
             onPress={handleStart}
-            disabled={allDone}
+            disabled={exercisesDone}
           />
 
-          {!allDone && (
+          {!exercisesDone && (
             <Pressable
               onPress={handleSkipToday}
               style={({ pressed }) => [styles.skipBtn, pressed && styles.skipBtnPressed]}
@@ -390,7 +405,7 @@ export default function ExerciseListScreen() {
             </Pressable>
           )}
 
-          {allDone && (
+          {exercisesDone && (
             <Pressable
               onPress={() => router.replace("/(tabs)/program")}
               style={({ pressed }) => [styles.skipBtn, pressed && styles.skipBtnPressed]}
@@ -488,6 +503,9 @@ const styles = StyleSheet.create({
     letterSpacing: 1.2,
     marginBottom: SP[3],
   },
+  dietSectionLabel: {
+    marginTop: SP[5],
+  },
 
   // Exercise card
   exerciseCard: {
@@ -510,16 +528,19 @@ const styles = StyleSheet.create({
     height: 56,
     borderRadius: RADII.md,
     overflow: "hidden",
-    backgroundColor: COLORS.iconTileLavender,
+    backgroundColor: "#F7F8F4",
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(17,17,17,0.08)",
   },
   exerciseIconDimmed: {
     opacity: 0.54,
   },
   exerciseIcon: {
-    width: "100%",
-    height: "100%",
+    width: "92%",
+    height: "92%",
+    borderRadius: RADII.sm,
     resizeMode: "cover",
   },
   exerciseInfo: {

@@ -27,6 +27,7 @@ import {
 import {
   getNewExerciseInstruction,
   getNewExerciseMeta,
+  getNewExercisePoseLabels,
   getNewExerciseTimingLabel,
   getNewExerciseTitle,
   NEW_EXERCISE_VIDEO_PREVIEWS,
@@ -68,6 +69,7 @@ export default function NewExercisesPreviewScreen() {
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const videoRef = useRef<Video>(null);
+  const sequenceVideoRefs = useRef<Array<Video | null>>([]);
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(true);
@@ -85,9 +87,17 @@ export default function NewExercisesPreviewScreen() {
   const timingLabel = useMemo(() => getNewExerciseTimingLabel(current), [current]);
   const isStaticImage = current.mediaType === "image";
   const isImageSequence = current.mediaType === "imageSequence";
+  const isVideoSequence = current.mediaType === "videoSequence";
   const isImageMedia = isStaticImage || isImageSequence;
   const sequenceSources = Array.isArray(current.source) ? current.source : [current.source];
   const imageSource = sequenceSources[sequenceFrameIndex % sequenceSources.length];
+  const videoSource = isVideoSequence
+    ? sequenceSources[sequenceFrameIndex % sequenceSources.length]
+    : current.source;
+  const poseLabels = getNewExercisePoseLabels(current.id);
+  const currentPoseLabel = isVideoSequence
+    ? poseLabels[sequenceFrameIndex % sequenceSources.length] ?? `Pose ${sequenceFrameIndex + 1}`
+    : "";
   const mediaFrame = MEDIA_FRAMES[current.id];
   const videoProgress = isImageMedia ? 1 : durationMillis > 0 ? positionMillis / durationMillis : 0;
   const catalogProgress = exercises.length > 0 ? (currentIndex + 1) / exercises.length : 0;
@@ -124,9 +134,20 @@ export default function NewExercisesPreviewScreen() {
     }
 
     setIsLoading(false);
-    setIsPlaying(status.isPlaying);
     setPositionMillis(status.positionMillis ?? 0);
     setDurationMillis(status.durationMillis ?? 0);
+
+    if (isVideoSequence && status.didJustFinish && sequenceSources.length > 1) {
+      setIsPlaying(true);
+      setSequenceFrameIndex((index) => {
+        const nextIndex = (index + 1) % sequenceSources.length;
+        sequenceVideoRefs.current[nextIndex]?.setPositionAsync(0).catch(() => {});
+        return nextIndex;
+      });
+      return;
+    }
+
+    setIsPlaying(status.isPlaying);
   };
 
   const togglePlayback = async () => {
@@ -140,7 +161,9 @@ export default function NewExercisesPreviewScreen() {
       return;
     }
 
-    const player = videoRef.current;
+    const player = isVideoSequence
+      ? sequenceVideoRefs.current[sequenceFrameIndex % sequenceSources.length]
+      : videoRef.current;
     if (!player) return;
 
     if (isPlaying) {
@@ -216,11 +239,33 @@ export default function NewExercisesPreviewScreen() {
               onError={() => setIsLoading(false)}
             />
           </View>
+        ) : isVideoSequence ? (
+          <>
+            {sequenceSources.map((source, index) => {
+              const isActivePose = index === sequenceFrameIndex % sequenceSources.length;
+              return (
+                <Video
+                  key={`${current.id}-pose-${index}`}
+                  ref={(ref) => {
+                    sequenceVideoRefs.current[index] = ref;
+                  }}
+                  source={source}
+                  style={[styles.video, { width }, !isActivePose && styles.hiddenVideo]}
+                  resizeMode={ResizeMode.CONTAIN}
+                  shouldPlay={isPlaying && isActivePose}
+                  isLooping={false}
+                  isMuted
+                  progressUpdateIntervalMillis={16}
+                  onPlaybackStatusUpdate={isActivePose ? handlePlaybackStatus : undefined}
+                />
+              );
+            })}
+          </>
         ) : (
           <Video
             key={current.id}
             ref={videoRef}
-            source={current.source}
+            source={videoSource}
             style={[styles.video, { width }]}
             resizeMode={ResizeMode.CONTAIN}
             shouldPlay={isPlaying}
@@ -229,6 +274,12 @@ export default function NewExercisesPreviewScreen() {
             onPlaybackStatusUpdate={handlePlaybackStatus}
           />
         )}
+
+        {currentPoseLabel ? (
+          <View style={styles.poseLabelPill}>
+            <Text style={styles.poseLabelText}>{currentPoseLabel}</Text>
+          </View>
+        ) : null}
 
         {isLoading ? (
           <View style={styles.loadingOverlay}>
@@ -454,6 +505,26 @@ const styles = StyleSheet.create({
   video: {
     height: "100%",
     backgroundColor: "#FFFFFF",
+  },
+  hiddenVideo: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0,
+  },
+  poseLabelPill: {
+    position: "absolute",
+    left: 22,
+    bottom: 20,
+    maxWidth: "86%",
+    borderRadius: 999,
+    backgroundColor: "rgba(0,0,0,0.72)",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  poseLabelText: {
+    fontFamily: FONT,
+    color: "#FFFFFF",
+    fontSize: 13,
+    lineHeight: 16,
   },
   framedMedia: {
     width: "100%",

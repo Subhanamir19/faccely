@@ -118,14 +118,16 @@ function getWrappedIndex(index: number, count: number) {
 
 function ScoreCard({
   card,
-  layerIndex,
   barFillStyle,
   embedded,
+  imageSize,
+  bottomSpacerHeight,
 }: {
   card: ScoreDeckCard;
-  layerIndex: number;
   barFillStyle?: any;
   embedded?: boolean;
+  imageSize: number;
+  bottomSpacerHeight: number;
 }) {
   const scoreColor = getScoreColor(card.score);
 
@@ -134,32 +136,44 @@ function ScoreCard({
       style={[
         styles.card,
         embedded && styles.cardEmbedded,
-        layerIndex > 0 && styles.cardBehind,
-        { borderColor: layerIndex === 0 ? "rgba(255,255,255,0.72)" : "rgba(255,255,255,0.55)" },
+        styles.cardBehind,
+        { borderColor: "rgba(255,255,255,0.64)" },
       ]}
       accessibilityRole="summary"
       accessibilityLabel={`${card.label} score ${card.score} out of 100`}
     >
-      <Image source={card.image} style={[styles.image, embedded && styles.imageEmbedded]} resizeMode="contain" />
-
-      <Text style={styles.label}>{card.displayLabel.toUpperCase()}</Text>
-      <Text style={[styles.tier, embedded && styles.tierEmbedded]}>{card.tier}</Text>
-
-      <View style={styles.barTrack}>
-        <Animated.View
+      <View style={styles.cardContent}>
+        <Image
+          source={card.image}
           style={[
-            styles.barFill,
-            {
-              backgroundColor: scoreColor,
-            },
-            barFillStyle,
+            styles.image,
+            embedded && styles.imageEmbedded,
+            { width: imageSize, height: imageSize },
           ]}
+          resizeMode="contain"
         />
-      </View>
 
-      <View style={styles.scoreRow}>
-        <Text style={styles.scoreNum}>{Math.round(card.score)}</Text>
-        <Text style={styles.scoreUnit}> / 100</Text>
+        <Text style={styles.label}>{card.displayLabel.toUpperCase()}</Text>
+        <Text style={[styles.tier, embedded && styles.tierEmbedded]}>{card.tier}</Text>
+
+        <View style={styles.barTrack}>
+          <Animated.View
+            style={[
+              styles.barFill,
+              {
+                backgroundColor: scoreColor,
+              },
+              barFillStyle,
+            ]}
+          />
+        </View>
+
+        <View style={styles.scoreRow}>
+          <Text style={styles.scoreNum}>{Math.round(card.score)}</Text>
+          <Text style={styles.scoreUnit}> / 100</Text>
+        </View>
+
+        <View style={{ height: bottomSpacerHeight }} />
       </View>
     </View>
   );
@@ -171,6 +185,8 @@ function DeckLayer({
   layerIndex,
   deckWidth,
   cardHeight,
+  imageSize,
+  bottomSpacerHeight,
   barMaxWidth,
   screenWidth,
   threshold,
@@ -185,6 +201,8 @@ function DeckLayer({
   layerIndex: number;
   deckWidth: number;
   cardHeight: number;
+  imageSize: number;
+  bottomSpacerHeight: number;
   barMaxWidth: number;
   screenWidth: number;
   threshold: number;
@@ -194,8 +212,8 @@ function DeckLayer({
   cardCount: number;
   embedded?: boolean;
 }) {
-  const secondY = embedded ? sh(18) : sh(22);
-  const thirdY = embedded ? sh(34) : sh(42);
+  const secondY = cardHeight * (embedded ? 0.072 : 0.074);
+  const thirdY = cardHeight * (embedded ? 0.132 : 0.136);
   const scorePct = Math.max(0, Math.min(100, card.score));
   const scoreWidth = Math.max(0, barMaxWidth * (scorePct / 100));
 
@@ -293,7 +311,13 @@ function DeckLayer({
         animatedStyle,
       ]}
     >
-      <ScoreCard card={card} layerIndex={layerIndex} barFillStyle={barFillStyle} embedded={embedded} />
+      <ScoreCard
+        card={card}
+        barFillStyle={barFillStyle}
+        embedded={embedded}
+        imageSize={imageSize}
+        bottomSpacerHeight={bottomSpacerHeight}
+      />
     </Animated.View>
   );
 }
@@ -353,10 +377,37 @@ export default function StackedScoreDeckPreview({
 
   const cardCount = cards.length;
   const threshold = width * 0.24;
-  const deckWidth = Math.min((viewportWidth ?? width - SP[5] * 2), embedded ? 360 : 380);
-  const cardHeight = embedded
-    ? Math.min(354, Math.max(300, height * 0.38))
-    : Math.min(420, Math.max(342, height * 0.48));
+  const availableWidth = Math.max(1, viewportWidth ?? width - SP[5] * 2);
+  const availableHeight = Math.max(1, height);
+  const cardWidthRatio = embedded ? 0.78 : 0.82;
+  const maxDeckWidth = availableWidth - availableWidth * 0.21;
+  const deckWidth = Math.round(Math.min(availableWidth * cardWidthRatio, maxDeckWidth));
+  const cardHeight = Math.round(
+    Math.min(
+      availableHeight * (embedded ? 0.38 : 0.47),
+      deckWidth * (embedded ? 1.08 : 1.14),
+    ),
+  );
+  const imageSize = Math.round(
+    Math.min(
+      deckWidth * (embedded ? 0.58 : 0.56),
+      cardHeight * (embedded ? 0.54 : 0.48),
+    ),
+  );
+  const bottomSpacerHeight = Math.round(cardHeight * (embedded ? 0.085 : 0.09));
+  const controlSize = Math.round(
+    Math.min(
+      availableWidth * (embedded ? 0.105 : 0.11),
+      availableHeight * (embedded ? 0.05 : 0.055),
+    ),
+  );
+  const sideGap = Math.max(0, (availableWidth - deckWidth) / 2);
+  const sideControlInset = Math.max(0, Math.round((sideGap - controlSize) / 2));
+  const controlTop = Math.max(
+    cardHeight * 0.04,
+    Math.round(cardHeight * (embedded ? 0.07 : 0.08) + imageSize * 0.5 - controlSize * 0.5),
+  );
+  const stageHeight = Math.round(cardHeight * (embedded ? 1.14 : 1.15));
 
   const resetDrag = () => {
     "worklet";
@@ -378,14 +429,15 @@ export default function StackedScoreDeckPreview({
     translateY.value = withTiming(exitY * 0.32, { duration: 230 });
   };
 
-  const advanceFromButton = (direction: -1 | 1) => {
-    translateX.value = withTiming(direction * width * 1.18, { duration: 230 }, (finished) => {
+  const advanceFromButton = (step: -1 | 1, exitDirection: -1 | 1) => {
+    const nextIndex = getWrappedIndex(activeIndex + step, cardCount);
+
+    translateX.value = withTiming(exitDirection * width * 1.18, { duration: 230 }, (finished) => {
       if (finished) {
-        const nextIndex = getWrappedIndex(activeIndex + 1, cardCount);
         activeIndexValue.value = nextIndex;
         translateX.value = 0;
         translateY.value = 0;
-        setActiveIndex(nextIndex);
+        runOnJS(setActiveIndex)(nextIndex);
       }
     });
     translateY.value = withTiming(0, { duration: 230 });
@@ -430,62 +482,87 @@ export default function StackedScoreDeckPreview({
         </View>
       ) : null}
 
-      <GestureDetector gesture={panGesture}>
-        <Animated.View
-          collapsable={false}
-          style={[styles.deckStage, { width: deckWidth, height: cardHeight + (embedded ? sh(44) : sh(58)) }]}
-        >
-          {[...cards].reverse().map((card) => {
-            const cardIndex = cards.findIndex((item) => item.label === card.label);
-            return (
-              <DeckLayer
-                key={card.label}
-                card={card}
-                cardIndex={cardIndex}
-                layerIndex={cardIndex}
-                deckWidth={deckWidth}
-                cardHeight={cardHeight}
-                barMaxWidth={Math.max(0, deckWidth - SP[5] * 2)}
-                screenWidth={width}
-                threshold={threshold}
-                translateX={translateX}
-                translateY={translateY}
-                activeIndex={activeIndexValue}
-                cardCount={cardCount}
-                embedded={embedded}
-              />
-            );
-          })}
-        </Animated.View>
-      </GestureDetector>
+      <View style={[styles.deckShell, { width: availableWidth, height: stageHeight }]}>
+        <GestureDetector gesture={panGesture}>
+          <Animated.View
+            collapsable={false}
+            style={[styles.deckStage, { width: deckWidth, height: stageHeight }]}
+          >
+            {[...cards].reverse().map((card) => {
+              const cardIndex = cards.findIndex((item) => item.label === card.label);
+              return (
+                <DeckLayer
+                  key={card.label}
+                  card={card}
+                  cardIndex={cardIndex}
+                  layerIndex={cardIndex}
+                  deckWidth={deckWidth}
+                  cardHeight={cardHeight}
+                  imageSize={imageSize}
+                  bottomSpacerHeight={bottomSpacerHeight}
+                  barMaxWidth={Math.max(0, deckWidth - (embedded ? SP[4] : SP[5]) * 2)}
+                  screenWidth={width}
+                  threshold={threshold}
+                  translateX={translateX}
+                  translateY={translateY}
+                  activeIndex={activeIndexValue}
+                  cardCount={cardCount}
+                  embedded={embedded}
+                />
+              );
+            })}
+          </Animated.View>
+        </GestureDetector>
+
+        {showControls ? (
+          <View pointerEvents="box-none" style={styles.sideControls}>
+            <Pressable
+              onPress={() => advanceFromButton(-1, 1)}
+              hitSlop={14}
+              accessibilityRole="button"
+              accessibilityLabel="Previous score card"
+              style={({ pressed }) => [
+                styles.sideArrowButton,
+                {
+                  width: controlSize,
+                  height: controlSize,
+                  borderRadius: controlSize / 2,
+                  top: controlTop,
+                  left: sideControlInset,
+                  opacity: pressed ? 0.82 : 1,
+                },
+              ]}
+            >
+              <ChevronLeft color="#FFFFFF" size={embedded ? 21 : 23} strokeWidth={3.1} />
+            </Pressable>
+            <Pressable
+              onPress={() => advanceFromButton(1, -1)}
+              hitSlop={14}
+              accessibilityRole="button"
+              accessibilityLabel="Next score card"
+              style={({ pressed }) => [
+                styles.sideArrowButton,
+                {
+                  width: controlSize,
+                  height: controlSize,
+                  borderRadius: controlSize / 2,
+                  top: controlTop,
+                  right: sideControlInset,
+                  opacity: pressed ? 0.82 : 1,
+                },
+              ]}
+            >
+              <ChevronRight color="#FFFFFF" size={embedded ? 21 : 23} strokeWidth={3.1} />
+            </Pressable>
+          </View>
+        ) : null}
+      </View>
 
       <View style={styles.footerRow}>
-        {showControls ? (
-          <Pressable
-            onPress={() => advanceFromButton(-1)}
-            hitSlop={12}
-            accessibilityRole="button"
-            accessibilityLabel="Previous score card"
-            style={[styles.arrowButton, embedded && styles.arrowButtonEmbedded]}
-          >
-            <ChevronLeft color={COLORS.lightText} size={embedded ? 18 : 20} strokeWidth={2.8} />
-          </Pressable>
-        ) : null}
         <View style={styles.counterPill}>
           <Text style={styles.counterCurrent}>{activeIndex + 1}</Text>
           <Text style={styles.counterTotal}> / {cardCount}</Text>
         </View>
-        {showControls ? (
-          <Pressable
-            onPress={() => advanceFromButton(1)}
-            hitSlop={12}
-            accessibilityRole="button"
-            accessibilityLabel="Next score card"
-            style={[styles.arrowButton, embedded && styles.arrowButtonEmbedded]}
-          >
-            <ChevronRight color={COLORS.lightText} size={embedded ? 18 : 20} strokeWidth={2.8} />
-          </Pressable>
-        ) : null}
         {showReset ? <Pressable
           onPress={() => {
             translateX.value = 0;
@@ -559,6 +636,11 @@ const styles = StyleSheet.create({
     justifyContent: "flex-start",
     backgroundColor: "transparent",
   },
+  deckShell: {
+    position: "relative",
+    alignItems: "center",
+    justifyContent: "flex-start",
+  },
   layer: {
     position: "absolute",
     left: 0,
@@ -567,6 +649,7 @@ const styles = StyleSheet.create({
   card: {
     flex: 1,
     alignItems: "center",
+    justifyContent: "center",
     backgroundColor: "#FFFFFF",
     borderRadius: RADII.xl,
     borderWidth: 1,
@@ -588,6 +671,10 @@ const styles = StyleSheet.create({
   },
   cardBehind: {
     backgroundColor: "#FFFFFF",
+  },
+  cardContent: {
+    width: "100%",
+    alignItems: "center",
   },
   image: {
     width: ms(168, 0.85),
@@ -656,8 +743,23 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: SP[3],
   },
+  sideControls: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 50,
+  },
+  sideArrowButton: {
+    position: "absolute",
+    backgroundColor: COLORS.ctaBlack,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000000",
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 6,
+  },
   counterPill: {
-    minHeight: sh(44),
+    minHeight: Math.max(44, sh(44)),
     minWidth: sw(86),
     borderRadius: 999,
     backgroundColor: "rgba(255,255,255,0.76)",
@@ -679,8 +781,8 @@ const styles = StyleSheet.create({
     color: COLORS.lightSub,
   },
   resetButton: {
-    width: sh(44),
-    height: sh(44),
+    width: Math.max(44, sh(44)),
+    height: Math.max(44, sh(44)),
     borderRadius: 999,
     backgroundColor: "rgba(255,255,255,0.76)",
     borderWidth: 1,
@@ -689,8 +791,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   arrowButton: {
-    width: sh(44),
-    height: sh(44),
+    width: Math.max(44, sh(44)),
+    height: Math.max(44, sh(44)),
     borderRadius: 999,
     backgroundColor: "rgba(255,255,255,0.76)",
     borderWidth: 1,
@@ -699,8 +801,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   arrowButtonEmbedded: {
-    width: sh(38),
-    height: sh(38),
+    width: Math.max(44, sh(38)),
+    height: Math.max(44, sh(38)),
     backgroundColor: COLORS.lightSurfaceAlt,
     borderColor: COLORS.lightBorder,
   },

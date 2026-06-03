@@ -5,7 +5,7 @@ import { getExerciseGuide } from "@/lib/exerciseGuideData";
 export type ExerciseScoreField = keyof Scores;
 export type ExerciseTargetArea = "jawline" | "cheekbones" | "eyes" | "nose" | "skin" | "all";
 export type ExerciseIntensity = "high" | "medium" | "low";
-export type ExerciseMediaType = "video" | "image" | "imageSequence";
+export type ExerciseMediaType = "video" | "videoSequence" | "image" | "imageSequence";
 
 export type NewExerciseCatalogEntry = {
   id: string;
@@ -14,6 +14,7 @@ export type NewExerciseCatalogEntry = {
   source: any;
   mediaType: ExerciseMediaType;
   guideId: string;
+  poseLabels?: string[];
   targets: ExerciseTargetArea[];
   intensity: ExerciseIntensity;
   scoreFields: ExerciseScoreField[];
@@ -111,6 +112,25 @@ export const NEW_EXERCISE_CATALOG: NewExerciseCatalogEntry[] = [
     defaultDuration: 30,
     movementFamily: "chin-tuck",
     instruction: "Keep your eyes level, slide your chin straight backward to make a double chin, pause, then return to neutral.",
+  },
+  {
+    id: "asymmetry-chin-tucks",
+    title: "Asymmetry Chin Tucks",
+    fileName: "chin tucks for assymetry pose 1.mp4 + downward-chin-forcing.mp4",
+    source: [
+      require("../assets/new-exercises-videos/chin tucks for assymetry pose 1.mp4"),
+      require("../assets/new-exercises-videos/downward-chin-forcing.mp4"),
+    ],
+    mediaType: "videoSequence",
+    guideId: "chin-tucks-with-head-tilt",
+    poseLabels: ["Pose 1 - Asymmetry Chin Tuck", "Pose 2 - Downward Chin Forcing"],
+    targets: ["jawline"],
+    intensity: "medium",
+    scoreFields: ["facial_symmetry"],
+    weight: 7,
+    defaultDuration: 60,
+    movementFamily: "asymmetry-chin-tuck",
+    instruction: "Start with the asymmetry chin tuck, then move into the downward chin press with slow, even control.",
   },
   {
     id: "downward-chin-forcing",
@@ -446,6 +466,10 @@ export function getNewExerciseMeta(exerciseId: string): string {
   const entry = getNewExerciseEntry(exerciseId);
   if (!entry) return "";
   return `${formatTargetAreas(entry.targets)} - ${entry.defaultDuration}s set - ${formatIntensity(entry.intensity)}`;
+}
+
+export function getNewExercisePoseLabels(exerciseId: string): string[] {
+  return getNewExerciseEntry(exerciseId)?.poseLabels ?? [];
 }
 
 export function getNewExerciseGuideId(exerciseId: string): string {

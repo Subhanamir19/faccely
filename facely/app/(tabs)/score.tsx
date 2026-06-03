@@ -13,6 +13,7 @@ import {
   Image,
   Pressable,
   ActivityIndicator,
+  ScrollView,
   useWindowDimensions,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -92,7 +93,7 @@ function LightPillButton({
       disabled={disabled}
       style={({ pressed }) => ({
         ...(fill ? { flex: 1 } : {}),
-        minHeight: sh(54),
+        minHeight: Math.max(44, sh(54)),
         borderRadius: 999,
         backgroundColor: bg,
         alignItems: "center",
@@ -142,9 +143,10 @@ export default function ScoreScreen() {
   // Avatar must shrink on shorter screens so it can't crash into the header
   // when the centerStack contents exceed the available vertical space.
   const avatarSize = Math.round(
-    Math.min(ms(128), Math.max(72, SH * 0.14))
+    Math.min(ms(128), Math.max(64, SH * 0.13))
   );
   const avatarPad = Math.max(2, Math.round(avatarSize * 0.03));
+  const compactLayout = SH < 720;
 
   const handleBack = () => router.back();
 
@@ -174,14 +176,28 @@ export default function ScoreScreen() {
           },
         ]}
       >
-        {/* Header — top */}
-        <Animated.View entering={FadeInDown.duration(400).delay(100)} style={styles.header}>
-          <Text style={styles.title}>Your Scores</Text>
-          <Text style={styles.subtitle}>Facial analysis breakdown — all 8 metrics</Text>
-        </Animated.View>
+        {/* Header + deck scroll if short screens need extra vertical space. */}
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          bounces={false}
+        >
+          <Animated.View entering={FadeInDown.duration(400).delay(100)} style={styles.header}>
+            <Text style={styles.title}>Your Scores</Text>
+            <Text style={styles.subtitle}>Facial analysis breakdown — all 8 metrics</Text>
+          </Animated.View>
 
         {/* Centered stack: avatar + stacked score deck + counter */}
-        <View style={styles.centerStack}>
+        <View
+          style={[
+            styles.centerStack,
+            {
+              gap: compactLayout ? sh(10) : sh(16),
+              marginTop: compactLayout ? sh(4) : sh(8),
+            },
+          ]}
+        >
           {/* User avatar — circular, top of the stack */}
           <Animated.View entering={FadeInDown.duration(420).delay(160)}>
             <View
@@ -229,6 +245,8 @@ export default function ScoreScreen() {
           </Animated.View>
         </View>
 
+        </ScrollView>
+
         {/* Action buttons — docked at bottom */}
         <Animated.View entering={FadeInDown.duration(400).delay(320)} style={styles.buttonRow}>
           <LightPillButton label="Back" onPress={handleBack} />
@@ -256,6 +274,13 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     paddingHorizontal: SP[5],
+  },
+  scroll: {
+    flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    paddingBottom: sh(12),
   },
   header: {
     gap: sh(4),
@@ -306,5 +331,6 @@ const styles = StyleSheet.create({
   buttonRow: {
     flexDirection: "row",
     gap: SP[3],
+    paddingTop: sh(6),
   },
 });

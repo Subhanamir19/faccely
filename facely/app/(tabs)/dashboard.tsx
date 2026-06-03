@@ -10,6 +10,7 @@ import {
   Platform,
   Pressable,
   Dimensions,
+  useWindowDimensions,
   Image,
   ActivityIndicator,
   type ImageSourcePropType,
@@ -120,6 +121,14 @@ const TRACKING_HEADER = {
 } as const;
 
 const DETAIL_FONT = "DINNextRounded-Regular";
+const FACE_PROGRESS_GREEN = "#89e219";
+const FACE_PROGRESS_SCORE_MIN = 0;
+const FACE_PROGRESS_SCORE_MAX = 100;
+const FACE_PROGRESS_PREVIEW_POTENTIAL_MIN = 85;
+const FACE_PROGRESS_PREVIEW_POTENTIAL_MAX = 90;
+const FACE_PROGRESS_MARKER_VISUAL_MAX = 96;
+const FACE_PROGRESS_MARKER_MIN_GAP = 12;
+const FACE_COMPARE_RAIL_DOT_COUNT = 12;
 
 const DIR_COLOR: Record<string, string> = {
   up:   COLORS.lightText,
@@ -265,6 +274,21 @@ function nextTier(score: number): { threshold: number; label: string } | null {
   return null;
 }
 
+function getProgressPreviewPotentialScore(currentScore: number): number {
+  const currentCeil = Math.ceil(currentScore);
+  const nextThreshold = nextTier(currentScore)?.threshold ?? currentCeil;
+  const rawPotential = Math.max(currentCeil, nextThreshold);
+
+  if (currentScore >= FACE_PROGRESS_PREVIEW_POTENTIAL_MAX) {
+    return Math.min(FACE_PROGRESS_SCORE_MAX, rawPotential);
+  }
+
+  return Math.min(
+    FACE_PROGRESS_PREVIEW_POTENTIAL_MAX,
+    Math.max(FACE_PROGRESS_PREVIEW_POTENTIAL_MIN, rawPotential),
+  );
+}
+
 /**
  * Spotlight metric — biggest opportunity = (room to grow) × (current momentum,
  * normalized). Falls back to lowest current score when no positive momentum
@@ -363,13 +387,7 @@ const METRIC_IMAGES: Record<string, any> = {
   sexual_dimorphism: require("@/assets/analysis-image-new/fullface-vector.png"),
 };
 
-const TRACKING_MASCOT_IMAGES = {
-  improved: require("@/assets/images-for-initial-tracking-screen/progress.png"),
-  same: require("@/assets/images-for-initial-tracking-screen/no-progress.png"),
-  declined: require("@/assets/images-for-initial-tracking-screen/no-progress.png"),
-} as const;
-
-const TRACKING_NEXT_SCREEN_SIGN = require("@/assets/images-for-initial-tracking-screen/sign-for-next-screen.png");
+const POTENTIAL_STAGE_IMAGE = require("@/assets/icons/potential-stage.png");
 
 const DASHBOARD_MODULE_ICONS = {
   problems: ProblemsIcon,
@@ -1702,12 +1720,14 @@ const POTENTIAL_FACE_POLL_MS = 5_000;
 function HeroImagePreview({
   uri,
   label,
+  cacheKey,
   visible,
   onClose,
   onImageError,
 }: {
   uri: string | null;
   label: string;
+  cacheKey?: string | null;
   visible: boolean;
   onClose: () => void;
   onImageError?: () => void;
@@ -1715,10 +1735,47 @@ function HeroImagePreview({
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
 
   useEffect(() => {
-    if (visible) setStatus("loading");
-  }, [uri, visible]);
+    if (!visible) return;
+    setStatus("loading");
+    if (!uri) return;
+
+    let cancelled = false;
+    let refreshRequested = false;
+    const requestRefresh = () => {
+      if (refreshRequested) return;
+      refreshRequested = true;
+      setTimeout(() => {
+        if (!cancelled) onImageError?.();
+      }, 0);
+    };
+
+    const timeout = setTimeout(() => {
+      setStatus((current) => {
+        if (current !== "loading") return current;
+        return "error";
+      });
+      requestRefresh();
+    }, 4_000);
+
+    ExpoImage.loadAsync({ uri, cacheKey: cacheKey ?? undefined })
+      .then(() => {
+        if (!cancelled) setStatus("ready");
+      })
+      .catch(() => {
+        if (cancelled) return;
+        requestRefresh();
+        setStatus("error");
+      });
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timeout);
+    };
+  }, [cacheKey, onImageError, uri, visible]);
 
   if (!visible) return null;
+
+  const source = uri ? { uri, cacheKey: cacheKey ?? undefined } : null;
 
   return (
     <Modal
@@ -1738,12 +1795,14 @@ function HeroImagePreview({
         />
         <Animated.View entering={FadeInDown.duration(260)} style={styles.heroPreviewCard}>
           <View style={styles.heroPreviewImageWrap}>
-            {uri && (
+            {source && (
               <ExpoImage
-                source={{ uri }}
+                source={source}
                 style={styles.heroPreviewImage}
                 contentFit="contain"
                 cachePolicy="memory-disk"
+                priority="high"
+                recyclingKey={cacheKey ?? uri ?? null}
                 transition={180}
                 onLoadStart={() => setStatus("loading")}
                 onLoad={() => setStatus("ready")}
@@ -1786,11 +1845,13 @@ function HeroImagePreview({
 function OverviewFaceImage({
   uri,
   accent,
+  cacheKey,
   loading,
   onError,
 }: {
   uri: string | null;
   accent?: boolean;
+  cacheKey?: string | null;
   loading?: boolean;
   onError?: () => void;
 }) {
@@ -1811,10 +1872,12 @@ function OverviewFaceImage({
   return (
     <View style={styles.overviewFaceImageWrap}>
       <ExpoImage
-        source={{ uri }}
+        source={{ uri, cacheKey: cacheKey ?? undefined }}
         style={styles.overviewFaceImage}
         contentFit="cover"
         cachePolicy="memory-disk"
+        priority={accent ? "high" : "normal"}
+        recyclingKey={cacheKey ?? uri}
         transition={180}
         onLoadStart={() => setStatus("loading")}
         onLoad={() => setStatus("ready")}
@@ -1835,6 +1898,50 @@ function OverviewFaceImage({
         </View>
       )}
     </View>
+  );
+}
+
+function GapBadge({ pointsAway }: { pointsAway: number }) {
+  const reveal = useSharedValue(0);
+
+  useEffect(() => {
+    reveal.value = 0;
+    reveal.value = withDelay(260, withTiming(1, { duration: 520, easing: Easing.out(Easing.cubic) }));
+  }, [pointsAway, reveal]);
+
+  const badgeStyle = useAnimatedStyle(() => ({
+    opacity: reveal.value,
+    transform: [
+      { translateY: (1 - reveal.value) * 6 },
+      { scale: 0.94 + reveal.value * 0.06 },
+    ],
+  }));
+  const arcProps = useAnimatedProps(() => ({
+    strokeDashoffset: 54 * (1 - reveal.value),
+  } as any));
+  const textStyle = useAnimatedStyle(() => ({
+    opacity: reveal.value,
+    transform: [{ translateY: (1 - reveal.value) * 3 }],
+  }));
+
+  return (
+    <Animated.View style={[styles.gapBadge, badgeStyle]}>
+      <Svg width={46} height={20} style={styles.gapBadgeArc}>
+        <AnimatedSvgPath
+          d="M7 18 A16 16 0 0 1 39 18"
+          stroke={COLORS.warning}
+          strokeWidth={2.6}
+          strokeLinecap="round"
+          strokeDasharray="44"
+          animatedProps={arcProps}
+          fill="none"
+        />
+      </Svg>
+      <Animated.View style={[styles.gapBadgeCopy, textStyle]}>
+        <Text style={styles.gapBadgeLabel}>GAP</Text>
+        <Text style={styles.gapBadgeValue}>+{pointsAway}</Text>
+      </Animated.View>
+    </Animated.View>
   );
 }
 
@@ -2160,18 +2267,16 @@ function UnifiedProgressHero({
 function ProgressOverview({
   overall,
   currentImageUri,
-  latestAdvanced,
-  verdict,
   latestScanId,
   onSeeProgress,
 }: {
   overall: DashboardOverall;
   currentImageUri: string | null;
-  latestAdvanced: LatestAdvanced | null;
-  verdict: "improved" | "same" | "declined";
   latestScanId: string | null;
   onSeeProgress: () => void;
 }) {
+  const router = useRouter();
+  const { width: viewportWidth } = useWindowDimensions();
   const [preview, setPreview] = useState<null | { target: "current" | "potential"; label: string }>(null);
   const [remoteCurrentImageUri, setRemoteCurrentImageUri] = useState<string | null>(null);
   const [remoteCurrentLoading, setRemoteCurrentLoading] = useState(false);
@@ -2180,17 +2285,47 @@ function ProgressOverview({
   const potentialImageRetryRef = useRef(0);
   const scoreVal = useSharedValue(0);
   const potentialScoreVal = useSharedValue(0);
+  const summaryProgress = useSharedValue(0);
+  const summaryMarkerProgress = useSharedValue(0);
   const potentialFace = usePotentialFace((s) => s.data);
   const potentialLoading = usePotentialFace((s) => s.loading);
   const loadPotentialFace = usePotentialFace((s) => s.load);
   const retryPotentialFace = usePotentialFace((s) => s.retryGeneration);
+  const currentStreak = useTasksStore((s) => s.currentStreak);
+  const contentWidth = Math.max(280, viewportWidth - SP[5] * 2);
+  const compareInnerWidth = Math.max(260, contentWidth - SP[3] * 2);
+  const faceConnectorWidth = Math.max(60, Math.min(88, compareInnerWidth * 0.22));
+  const faceImageWidth = Math.max(116, Math.min(158, (compareInnerWidth - faceConnectorWidth) / 2 - SP[2]));
+  const faceImageHeight = faceImageWidth * 1.68;
+  const faceImageRadius = faceImageWidth * 0.18;
+  const faceConnectorHeight = faceImageHeight * 0.58;
+  const faceConnectorTop = faceImageHeight * 0.52;
+  const faceCompareBottomRoom = Math.max(SP[5], faceImageHeight * 0.08);
+  const faceCompareRowMinHeight = faceImageHeight + SP[12] + SP[1] + faceCompareBottomRoom;
+  const faceCompareCardMinHeight = faceCompareRowMinHeight + SP[8] + faceCompareBottomRoom;
+  const stageImageWidth = contentWidth * 0.36;
+  const stageImageHeight = stageImageWidth * 0.95;
+  const summaryCardMinHeight = Math.max(148, stageImageHeight + SP[7]);
+  const trackCardMinHeight = Math.max(82, contentWidth * 0.25);
 
-  const next = nextTier(overall.current);
-  const potentialScore = next?.threshold ?? Math.ceil(overall.current);
+  const potentialScore = getProgressPreviewPotentialScore(overall.current);
+  const currentRounded = Math.round(overall.current);
+  const potentialRounded = Math.max(Math.round(potentialScore), currentRounded);
+  const pointsAway = Math.max(0, potentialRounded - currentRounded);
+  const progressPct = Math.max(FACE_PROGRESS_SCORE_MIN, Math.min(FACE_PROGRESS_SCORE_MAX, currentRounded));
+  const potentialMarkerPct = Math.max(FACE_PROGRESS_SCORE_MIN, Math.min(FACE_PROGRESS_SCORE_MAX, potentialRounded));
+  const visualPotentialMarkerPct = Math.min(
+    FACE_PROGRESS_MARKER_VISUAL_MAX,
+    Math.max(potentialMarkerPct, progressPct + FACE_PROGRESS_MARKER_MIN_GAP),
+  );
   const potentialReady = potentialFace?.status === "ready";
   const potentialPending = potentialFace?.status === "pending" || potentialLoading;
   const potentialFailed = potentialFace?.status === "failed";
   const potentialUri = potentialReady ? potentialFace?.primaryImageUrl ?? null : null;
+  const potentialCacheKey =
+    potentialReady && potentialFace?.primaryImageUrl
+      ? `potential-face:${potentialFace.id}:primary:${potentialFace.generatedAt ?? potentialFace.updatedAt}`
+      : null;
   const displayCurrentImageUri = currentImageUri ?? remoteCurrentImageUri;
 
   useEffect(() => {
@@ -2231,10 +2366,18 @@ function ProgressOverview({
   }, [currentImageUri, latestScanId, currentImageRetryTick]);
 
   useEffect(() => {
-    const urls = [displayCurrentImageUri, potentialUri].filter((u): u is string => !!u);
-    if (!urls.length) return;
-    ExpoImage.prefetch(urls, "memory-disk").catch(() => {});
-  }, [displayCurrentImageUri, potentialUri]);
+    if (displayCurrentImageUri) {
+      ExpoImage.prefetch(displayCurrentImageUri, "memory-disk").catch(() => {});
+    }
+    if (potentialUri) {
+      ExpoImage.loadAsync({
+        uri: potentialUri,
+        cacheKey: potentialCacheKey ?? undefined,
+      }).catch(() => {
+        if (potentialReady) void loadPotentialFace();
+      });
+    }
+  }, [displayCurrentImageUri, loadPotentialFace, potentialCacheKey, potentialReady, potentialUri]);
 
   useEffect(() => {
     if (potentialFace?.status !== "pending") return;
@@ -2246,9 +2389,13 @@ function ProgressOverview({
     const cfg = { duration: 1250, easing: Easing.out(Easing.cubic) };
     scoreVal.value = 0;
     potentialScoreVal.value = 0;
+    summaryProgress.value = 0;
+    summaryMarkerProgress.value = 0;
     scoreVal.value = withTiming(overall.current, cfg);
     potentialScoreVal.value = withDelay(120, withTiming(potentialScore, cfg));
-  }, [overall.current, potentialScore]);
+    summaryProgress.value = withDelay(180, withTiming(progressPct, { duration: 900, easing: Easing.out(Easing.cubic) }));
+    summaryMarkerProgress.value = withDelay(260, withTiming(visualPotentialMarkerPct, { duration: 900, easing: Easing.out(Easing.cubic) }));
+  }, [overall.current, potentialScore, progressPct, summaryMarkerProgress, summaryProgress, visualPotentialMarkerPct]);
 
   const scoreProps = useAnimatedProps(() => ({
     text: String(Math.round(scoreVal.value)),
@@ -2258,20 +2405,25 @@ function ProgressOverview({
     text: String(Math.round(potentialScoreVal.value)),
     defaultValue: "",
   } as any));
-
-  const message =
-    verdict === "improved"
-      ? "Keep going. You're getting closer to your potential."
-      : verdict === "declined"
-        ? "A dip is useful signal. Re-center your routine and compare again."
-        : "You're holding steady. Consistency is what moves this forward.";
+  const summaryFillStyle = useAnimatedStyle(() => ({
+    width: `${summaryProgress.value}%`,
+  } as any));
+  const summaryPotentialSegmentStyle = useAnimatedStyle(() => ({
+    left: `${summaryProgress.value}%`,
+    width: `${Math.max(0, summaryMarkerProgress.value - summaryProgress.value)}%`,
+  } as any));
+  const summaryCurrentLabelStyle = useAnimatedStyle(() => ({
+    left: `${summaryProgress.value}%`,
+  } as any));
+  const summaryMarkerStyle = useAnimatedStyle(() => ({
+    left: `${summaryMarkerProgress.value}%`,
+  } as any));
 
   const missingPotentialCopy = potentialPending
     ? "Generating your potential face..."
     : potentialFailed
       ? "Potential face needs a retry"
       : "Generate potential";
-  const mascotImage = TRACKING_MASCOT_IMAGES[verdict];
 
   const handleGeneratePotential = async () => {
     if (!latestScanId || potentialPending) return;
@@ -2302,7 +2454,12 @@ function ProgressOverview({
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setPreview({ target, label });
     if (target === "potential") {
-      void loadPotentialFace();
+      ExpoImage.loadAsync({
+        uri,
+        cacheKey: potentialCacheKey ?? undefined,
+      }).catch(() => {
+        void loadPotentialFace();
+      });
     }
   };
 
@@ -2326,74 +2483,218 @@ function ProgressOverview({
   const closePreview = () => {
     setPreview(null);
   };
+  const handleBack = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (router.canGoBack()) router.back();
+  };
 
   return (
     <>
       <Animated.View entering={FadeInDown.duration(420)} style={styles.overviewWrap}>
-        <View style={styles.overviewHeader}>
-          <Text style={styles.overviewTitle}>Overall rating</Text>
-          <Text style={styles.overviewSubtitle}>
-            See how your current face compares to your potential.
+        <View style={styles.faceProgressHeader}>
+          <Pressable
+            onPress={handleBack}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
+            hitSlop={8}
+            style={({ pressed }) => [styles.faceProgressBack, pressed && styles.overviewPressed]}
+          >
+            <ArrowLeft size={20} color={COLORS.lightText} strokeWidth={2.4} />
+          </Pressable>
+
+          <Text style={styles.faceProgressTitle}>Face Progress</Text>
+
+          <View style={styles.faceProgressStreakPill}>
+            <Text style={styles.faceProgressStreakIcon}>🔥</Text>
+            <Text style={styles.faceProgressStreakText}>{currentStreak}</Text>
+          </View>
+        </View>
+
+        <View style={styles.faceProgressIntro}>
+          <Text style={styles.faceProgressEyebrow}>YOUR PROGRESS</Text>
+          <Text style={styles.faceProgressHeadline}>See your gap</Text>
+          <Text style={styles.faceProgressIntroCopy}>
+            Track the difference between where you are{"\n"}and your best self.
           </Text>
         </View>
 
-        <View style={styles.overviewCard}>
-          <View style={styles.overviewCompareRow}>
-            <View style={styles.overviewFaceCol}>
-              <Text style={styles.overviewFaceLabel}>Current</Text>
+        <View style={[styles.potentialSummaryCard, { minHeight: summaryCardMinHeight }]}>
+          <Image
+            source={POTENTIAL_STAGE_IMAGE}
+            style={[styles.potentialStageImage, { width: stageImageWidth, height: stageImageHeight }]}
+            resizeMode="contain"
+          />
+          <View style={[styles.potentialSummaryCopy, { paddingRight: stageImageWidth * 0.86 }]}>
+            <Text style={styles.potentialSummaryTitle}>
+              You're <Text style={styles.potentialSummaryAccent}>{pointsAway} points</Text> away{"\n"}
+              from your potential
+            </Text>
+            <View style={styles.potentialProgressWrap}>
+              <View style={styles.potentialProgressTrack}>
+                <Animated.View style={[styles.potentialProgressFill, summaryFillStyle]} />
+                <Animated.View style={[styles.potentialProgressPotentialSegment, summaryPotentialSegmentStyle]} />
+                <Animated.View style={[styles.potentialProgressMarker, styles.potentialMarker, summaryMarkerStyle]}>
+                  <Text style={[styles.potentialProgressMarkerText, styles.potentialMarkerText]}>{potentialRounded}</Text>
+                </Animated.View>
+                <Animated.View style={[styles.potentialProgressMarker, styles.currentMarker, summaryCurrentLabelStyle]}>
+                  <Text style={[styles.potentialProgressMarkerText, styles.currentMarkerText]}>{currentRounded}</Text>
+                </Animated.View>
+              </View>
+              <Text style={styles.potentialTargetScore}>{FACE_PROGRESS_SCORE_MAX}</Text>
+            </View>
+            <Text style={styles.potentialSummarySub}>Keep going. Small steps, big change.</Text>
+          </View>
+        </View>
+
+        <View style={[styles.faceCompareCard, { minHeight: faceCompareCardMinHeight, paddingBottom: faceCompareBottomRoom }]}>
+          <View style={[styles.faceCompareRow, { minHeight: faceCompareRowMinHeight }]}>
+            <View style={styles.faceCompareCol}>
+              <Text style={styles.faceCompareLabel}>Current</Text>
+              <View style={styles.faceScoreRow}>
+                <AnimatedTextInput
+                  animatedProps={scoreProps}
+                  editable={false}
+                  pointerEvents="none"
+                  style={[styles.faceCompareScore, styles.faceCompareCurrentScore, { padding: 0 }]}
+                />
+                <Text style={styles.faceCompareScoreUnit}>/{FACE_PROGRESS_SCORE_MAX}</Text>
+              </View>
               <Pressable
                 disabled={!displayCurrentImageUri}
                 onPress={() => openPreview("current", "Current face")}
                 style={({ pressed }) => [
-                  styles.overviewFaceRing,
-                  styles.overviewCurrentRing,
+                  styles.faceCompareImageShadow,
+                  {
+                    width: faceImageWidth,
+                    height: faceImageHeight,
+                    borderRadius: faceImageRadius,
+                  },
                   pressed && displayCurrentImageUri && styles.overviewPressed,
                 ]}
-              >
-                <OverviewFaceImage
-                  uri={displayCurrentImageUri}
-                  loading={remoteCurrentLoading}
-                  onError={handleCurrentImageError}
-                />
+                >
+                <View
+                  style={[
+                    styles.faceCompareImage,
+                    {
+                      width: faceImageWidth,
+                      height: faceImageHeight,
+                      borderRadius: faceImageRadius,
+                    },
+                  ]}
+                >
+                  <OverviewFaceImage
+                    uri={displayCurrentImageUri}
+                    loading={remoteCurrentLoading}
+                    onError={handleCurrentImageError}
+                  />
+                  <LinearGradient
+                    colors={["rgba(255,255,255,0.00)", "rgba(255,255,255,0.82)", "#FFFFFF"]}
+                    locations={[0, 0.62, 1]}
+                    start={{ x: 0.5, y: 0 }}
+                    end={{ x: 0.5, y: 1 }}
+                    style={styles.faceCompareImageBaseFade}
+                    pointerEvents="none"
+                  />
+                </View>
               </Pressable>
-              <AnimatedTextInput
-                animatedProps={scoreProps}
-                editable={false}
-                style={[styles.overviewScore, styles.overviewCurrentScore, { padding: 0 }]}
-              />
             </View>
 
-            <View style={styles.overviewDivider} />
+            <View
+              style={[
+                styles.faceCompareConnector,
+                {
+                  width: faceConnectorWidth,
+                  height: faceConnectorHeight,
+                  marginTop: faceConnectorTop,
+                },
+              ]}
+            >
+              <View style={[styles.faceCompareDotRail, { top: faceConnectorHeight / 2 }]}>
+                {Array.from({ length: FACE_COMPARE_RAIL_DOT_COUNT }).map((_, dot) => (
+                  <View key={`gap-rail-dot-${dot}`} style={styles.faceCompareDot} />
+                ))}
+              </View>
+              <View style={styles.faceCompareTrendCircle}>
+                <GapBadge pointsAway={pointsAway} />
+              </View>
+            </View>
 
-            <View style={styles.overviewFaceCol}>
-              <Text style={[styles.overviewFaceLabel, styles.overviewPotentialLabel]}>Potential</Text>
+            <View style={styles.faceCompareCol}>
+              <Text style={styles.faceCompareLabel}>Potential</Text>
+              <View style={styles.faceScoreRow}>
+                <AnimatedTextInput
+                  animatedProps={potentialScoreProps}
+                  editable={false}
+                  pointerEvents="none"
+                  style={[styles.faceCompareScore, { padding: 0 }]}
+                />
+                <Text style={styles.faceCompareScoreUnit}>/{FACE_PROGRESS_SCORE_MAX}</Text>
+              </View>
               <Pressable
                 disabled={!potentialUri}
                 onPress={() => openPreview("potential", "Potential face")}
                 style={({ pressed }) => [
-                  styles.overviewFaceRing,
-                  styles.overviewPotentialRing,
+                  styles.faceCompareImageShadow,
+                  {
+                    width: faceImageWidth,
+                    height: faceImageHeight,
+                    borderRadius: faceImageRadius,
+                  },
                   pressed && potentialUri && styles.overviewPressed,
                 ]}
-              >
-                {potentialUri ? (
-                  <OverviewFaceImage uri={potentialUri} accent onError={handlePotentialImageError} />
-                ) : (
-                  <View style={styles.overviewPotentialFallback}>
-                    {potentialPending ? (
-                      <RefreshCw size={22} color={COLORS.accentDepth} strokeWidth={2.4} />
-                    ) : (
-                      <Sparkles size={24} color={COLORS.accentDepth} strokeWidth={2.4} />
-                    )}
-                    <Text style={styles.overviewFallbackText}>{missingPotentialCopy}</Text>
-                  </View>
-                )}
+                >
+                <View
+                  style={[
+                    styles.faceCompareImage,
+                    {
+                      width: faceImageWidth,
+                      height: faceImageHeight,
+                      borderRadius: faceImageRadius,
+                    },
+                  ]}
+                >
+                  {potentialUri ? (
+                    <OverviewFaceImage
+                      uri={potentialUri}
+                      accent
+                      cacheKey={potentialCacheKey}
+                      onError={handlePotentialImageError}
+                    />
+                  ) : potentialPending && displayCurrentImageUri ? (
+                    <View style={styles.overviewPotentialDraft}>
+                      <ExpoImage
+                        source={{ uri: displayCurrentImageUri }}
+                        style={StyleSheet.absoluteFillObject}
+                        contentFit="cover"
+                        cachePolicy="memory-disk"
+                        transition={180}
+                      />
+                      <View style={styles.overviewPotentialDraftScrim} />
+                      <View style={styles.overviewPotentialDraftBadge}>
+                        <RefreshCw size={18} color={COLORS.accentDepth} strokeWidth={2.4} />
+                        <Text style={styles.overviewPotentialDraftText}>Generating</Text>
+                      </View>
+                    </View>
+                  ) : (
+                    <View style={styles.overviewPotentialFallback}>
+                      {potentialPending ? (
+                        <RefreshCw size={22} color={COLORS.accentDepth} strokeWidth={2.4} />
+                      ) : (
+                        <Sparkles size={24} color={COLORS.accentDepth} strokeWidth={2.4} />
+                      )}
+                      <Text style={styles.overviewFallbackText}>{missingPotentialCopy}</Text>
+                    </View>
+                  )}
+                  <LinearGradient
+                    colors={["rgba(255,255,255,0.00)", "rgba(255,255,255,0.82)", "#FFFFFF"]}
+                    locations={[0, 0.62, 1]}
+                    start={{ x: 0.5, y: 0 }}
+                    end={{ x: 0.5, y: 1 }}
+                    style={styles.faceCompareImageBaseFade}
+                    pointerEvents="none"
+                  />
+                </View>
               </Pressable>
-              <AnimatedTextInput
-                animatedProps={potentialScoreProps}
-                editable={false}
-                style={[styles.overviewScore, styles.overviewPotentialScore, { padding: 0 }]}
-              />
               {!potentialUri && !potentialPending && (
                 <Pressable onPress={handleGeneratePotential} style={styles.overviewRetryBtn}>
                   <Text style={styles.overviewRetryText}>Generate</Text>
@@ -2401,32 +2702,30 @@ function ProgressOverview({
               )}
             </View>
           </View>
-
-          <View style={styles.overviewMascotCallout}>
-            <View style={styles.overviewMascotSlot}>
-              <Image source={mascotImage} style={styles.overviewMascotImage} resizeMode="contain" />
-            </View>
-            <Text style={styles.overviewMascotText}>{message}</Text>
-          </View>
-
         </View>
 
-        <Pressable onPress={onSeeProgress} style={({ pressed }) => [styles.overviewTrackCard, pressed && styles.overviewPressed]}>
+        <Pressable
+          onPress={onSeeProgress}
+          style={({ pressed }) => [
+            styles.overviewTrackCard,
+            { minHeight: trackCardMinHeight },
+            pressed && styles.overviewPressed,
+          ]}
+        >
           <View style={styles.overviewTrackIcon}>
-            <Image source={TRACKING_NEXT_SCREEN_SIGN} style={styles.overviewTrackImage} resizeMode="contain" />
+            <DashboardSvgIcon icon={ProgressIcon} width={48} height={48} />
           </View>
           <View style={styles.overviewTrackCopy}>
             <Text style={styles.overviewTrackTitle}>Track your progress</Text>
-            <Text style={styles.overviewTrackSub}>Keep improving and unlock your best version.</Text>
           </View>
           <ChevronRight size={26} color={COLORS.lightSub} strokeWidth={2.4} />
         </Pressable>
 
-        <LimeButton3D label="See Your Progress" onPress={onSeeProgress} />
       </Animated.View>
       <HeroImagePreview
         uri={previewUri}
         label={preview?.label ?? ""}
+        cacheKey={preview?.target === "potential" ? potentialCacheKey : null}
         visible={preview !== null}
         onClose={closePreview}
         onImageError={handlePreviewImageError}
@@ -3387,8 +3686,6 @@ export default function DashboardScreen() {
         <ProgressOverview
           overall={overall!}
           currentImageUri={scanImageUri ?? null}
-          latestAdvanced={latestAdvanced}
-          verdict={verdict}
           latestScanId={latestScanId}
           onSeeProgress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -3497,7 +3794,342 @@ const styles = StyleSheet.create({
 
   /* Unified top card — score + potential */
   overviewWrap: {
-    gap: SP[5],
+    position: "relative",
+    gap: SP[4],
+  },
+  faceProgressHeader: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: SP[1],
+    zIndex: 2,
+  },
+  faceProgressIntro: {
+    paddingHorizontal: SP[1],
+    paddingTop: SP[1],
+    paddingBottom: SP[1],
+    zIndex: 2,
+  },
+  faceProgressEyebrow: {
+    fontFamily: DETAIL_FONT,
+    fontSize: 11,
+    lineHeight: 14,
+    color: COLORS.warning,
+    letterSpacing: 2.8,
+  },
+  faceProgressHeadline: {
+    marginTop: 4,
+    fontFamily: DETAIL_FONT,
+    fontSize: 34,
+    lineHeight: 38,
+    color: COLORS.lightText,
+    letterSpacing: -0.8,
+  },
+  faceProgressIntroCopy: {
+    marginTop: 6,
+    fontFamily: DETAIL_FONT,
+    fontSize: 15,
+    lineHeight: 21,
+    color: COLORS.lightSub,
+  },
+  faceProgressBack: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.76)",
+    borderWidth: 1,
+    borderColor: "rgba(17,17,17,0.06)",
+  },
+  faceProgressTitle: {
+    position: "absolute",
+    left: 58,
+    right: 58,
+    textAlign: "center",
+    fontFamily: DETAIL_FONT,
+    fontSize: 20,
+    lineHeight: 24,
+    color: COLORS.lightText,
+    letterSpacing: -0.3,
+  },
+  faceProgressStreakPill: {
+    minHeight: 34,
+    borderRadius: 12,
+    paddingHorizontal: SP[3],
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "rgba(255,255,255,0.72)",
+    borderWidth: 1,
+    borderColor: "rgba(17,17,17,0.06)",
+  },
+  faceProgressStreakIcon: {
+    fontSize: 15,
+    lineHeight: 18,
+  },
+  faceProgressStreakText: {
+    fontFamily: DETAIL_FONT,
+    fontSize: 13,
+    color: "#F06A19",
+  },
+  potentialSummaryCard: {
+    borderRadius: 18,
+    overflow: "hidden",
+    backgroundColor: "#F7FBEF",
+    borderWidth: 1,
+    borderColor: "rgba(91,142,38,0.10)",
+    padding: SP[4],
+    shadowColor: "#2F6B19",
+    shadowOpacity: 0.13,
+    shadowRadius: 30,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 7,
+    zIndex: 2,
+  },
+  potentialSummaryCopy: {
+    flex: 1,
+  },
+  potentialSummaryTitle: {
+    fontFamily: DETAIL_FONT,
+    fontSize: 20,
+    lineHeight: 25,
+    color: COLORS.lightText,
+    letterSpacing: -0.25,
+  },
+  potentialSummaryAccent: {
+    color: FACE_PROGRESS_GREEN,
+  },
+  potentialStageImage: {
+    position: "absolute",
+    right: 0,
+    top: 16,
+  },
+  potentialProgressWrap: {
+    marginTop: SP[7],
+    width: "84%",
+    paddingRight: SP[2],
+  },
+  potentialProgressTrack: {
+    height: 10,
+    borderRadius: 999,
+    backgroundColor: "rgba(17,17,17,0.08)",
+    overflow: "visible",
+  },
+  potentialProgressFill: {
+    height: "100%",
+    borderRadius: 999,
+    backgroundColor: FACE_PROGRESS_GREEN,
+    zIndex: 2,
+  },
+  potentialProgressPotentialSegment: {
+    position: "absolute",
+    top: 0,
+    height: "100%",
+    borderRadius: 999,
+    backgroundColor: COLORS.warning,
+    zIndex: 2,
+  },
+  potentialProgressMarker: {
+    position: "absolute",
+    top: -12,
+    width: 30,
+    height: 30,
+    minWidth: 30,
+    maxWidth: 30,
+    marginLeft: -15,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FFFFFF",
+    shadowColor: "#000000",
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 3,
+    zIndex: 3,
+  },
+  potentialProgressMarkerText: {
+    fontFamily: DETAIL_FONT,
+    fontSize: 12,
+    color: FACE_PROGRESS_GREEN,
+  },
+  currentMarker: {
+    backgroundColor: "#FFFFFF",
+    top: -8,
+    zIndex: 4,
+  },
+  currentMarkerText: {
+    color: COLORS.warning,
+  },
+  potentialMarker: {
+    backgroundColor: FACE_PROGRESS_GREEN,
+    top: -32,
+    zIndex: 3,
+  },
+  potentialMarkerText: {
+    color: "#FFFFFF",
+  },
+  potentialTargetScore: {
+    position: "absolute",
+    right: -2,
+    top: 13,
+    fontFamily: DETAIL_FONT,
+    fontSize: 12,
+    color: COLORS.lightSub,
+  },
+  potentialSummarySub: {
+    marginTop: SP[4],
+    fontFamily: DETAIL_FONT,
+    fontSize: 12,
+    lineHeight: 16,
+    color: COLORS.lightMuted,
+  },
+  faceCompareCard: {
+    borderRadius: 18,
+    overflow: "hidden",
+    backgroundColor: "#FFFBF4",
+    borderWidth: 1,
+    borderColor: "rgba(120,84,35,0.08)",
+    paddingTop: SP[5],
+    paddingHorizontal: SP[3],
+    ...SOFT_SHADOW,
+    shadowColor: "#8A5A1F",
+    shadowOpacity: 0.09,
+    zIndex: 2,
+  },
+  faceCompareRow: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "flex-start",
+  },
+  faceCompareCol: {
+    flex: 1,
+    alignItems: "center",
+  },
+  faceCompareLabel: {
+    fontFamily: DETAIL_FONT,
+    fontSize: 14,
+    lineHeight: 18,
+    color: COLORS.lightMuted,
+  },
+  faceScoreRow: {
+    minHeight: 42,
+    flexDirection: "row",
+    alignItems: "baseline",
+    justifyContent: "center",
+    marginTop: 2,
+    marginBottom: SP[3],
+  },
+  faceCompareScore: {
+    fontFamily: DETAIL_FONT,
+    fontSize: 34,
+    lineHeight: 40,
+    minWidth: 42,
+    textAlign: "right",
+    color: COLORS.accentDepth,
+    letterSpacing: -1,
+  },
+  faceCompareCurrentScore: {
+    color: COLORS.warning,
+  },
+  faceCompareScoreUnit: {
+    marginLeft: 3,
+    fontFamily: DETAIL_FONT,
+    fontSize: 13,
+    lineHeight: 18,
+    color: COLORS.lightSub,
+  },
+  faceCompareImage: {
+    overflow: "hidden",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#F5F6F3",
+  },
+  faceCompareImageBaseFade: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: "18%",
+  },
+  faceCompareImageShadow: {
+    shadowColor: "#7A4C16",
+    shadowOpacity: 0.16,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 7,
+    backgroundColor: "transparent",
+  },
+  faceCompareConnector: {
+    alignItems: "center",
+    justifyContent: "center",
+    position: "relative",
+  },
+  faceCompareDotRail: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    zIndex: 1,
+  },
+  faceCompareDot: {
+    width: 3,
+    height: 3,
+    borderRadius: 1.5,
+    backgroundColor: COLORS.warning,
+    opacity: 0.42,
+  },
+  faceCompareTrendCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "rgba(17,17,17,0.06)",
+    shadowColor: "#000000",
+    shadowOpacity: 0.08,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 3,
+    zIndex: 4,
+  },
+  gapBadge: {
+    width: 60,
+    height: 60,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  gapBadgeArc: {
+    position: "absolute",
+    top: 6,
+    left: 7,
+  },
+  gapBadgeCopy: {
+    position: "absolute",
+    top: 20,
+    left: 0,
+    right: 0,
+    alignItems: "center",
+  },
+  gapBadgeLabel: {
+    fontFamily: DETAIL_FONT,
+    fontSize: 9,
+    lineHeight: 11,
+    color: COLORS.lightMuted,
+    textAlign: "center",
+  },
+  gapBadgeValue: {
+    marginTop: 1,
+    fontFamily: DETAIL_FONT,
+    fontSize: 19,
+    lineHeight: 21,
+    color: COLORS.warning,
+    textAlign: "center",
   },
   overviewHeader: {
     alignItems: "center",
@@ -3595,6 +4227,31 @@ const styles = StyleSheet.create({
     paddingHorizontal: SP[3],
     backgroundColor: "#F4FAEA",
   },
+  overviewPotentialDraft: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#F4FAEA",
+  },
+  overviewPotentialDraftScrim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(244,250,234,0.50)",
+  },
+  overviewPotentialDraftBadge: {
+    minHeight: 30,
+    borderRadius: 999,
+    paddingHorizontal: SP[3],
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SP[1],
+    backgroundColor: "rgba(255,255,255,0.88)",
+  },
+  overviewPotentialDraftText: {
+    fontFamily: DETAIL_FONT,
+    fontSize: 10,
+    color: COLORS.accentDepth,
+    letterSpacing: 0.2,
+  },
   overviewFallbackText: {
     fontFamily: DETAIL_FONT,
     fontSize: 11,
@@ -3666,19 +4323,22 @@ const styles = StyleSheet.create({
     color: "#27581D",
   },
   overviewTrackCard: {
-    minHeight: 118,
     borderRadius: RADII.card,
-    backgroundColor: COLORS.lightCard,
+    backgroundColor: "#FFF8EC",
     flexDirection: "row",
     alignItems: "center",
-    padding: SP[5],
+    paddingHorizontal: SP[5],
+    paddingVertical: SP[4],
     gap: SP[4],
     ...SOFT_SHADOW,
+    shadowColor: "#8A5A1F",
+    shadowOpacity: 0.09,
+    zIndex: 2,
   },
   overviewTrackIcon: {
-    width: 66,
-    height: 66,
-    borderRadius: 33,
+    width: 58,
+    height: 58,
+    borderRadius: 29,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 2,
@@ -3694,8 +4354,9 @@ const styles = StyleSheet.create({
     gap: 3,
   },
   overviewTrackTitle: {
-    fontFamily: "ProximaNova-Bold",
+    fontFamily: DETAIL_FONT,
     fontSize: 21,
+    lineHeight: 25,
     color: COLORS.lightText,
     letterSpacing: -0.2,
   },

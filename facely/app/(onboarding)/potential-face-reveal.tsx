@@ -46,7 +46,7 @@ const CHIP = {
 };
 
 const REVEAL_POLL_TIMEOUT_MS = 180_000;
-const SLOW_WAIT_HINT_MS = 45_000;
+const SLOW_WAIT_HINT_MS = 8_000;
 
 export default function PotentialFaceRevealScreen() {
   const insets = useSafeAreaInsets();
@@ -165,6 +165,7 @@ export default function PotentialFaceRevealScreen() {
       <PolishingView
         insetsTop={insets.top}
         insetsBottom={insets.bottom}
+        currentImageUri={currentImageUri}
         polling={isPolling}
         error={error}
         slow={slowWait || pollExhausted}
@@ -194,6 +195,7 @@ export default function PotentialFaceRevealScreen() {
 function PolishingView({
   insetsTop,
   insetsBottom,
+  currentImageUri,
   polling,
   error,
   slow,
@@ -202,6 +204,7 @@ function PolishingView({
 }: {
   insetsTop: number;
   insetsBottom: number;
+  currentImageUri: string | null | undefined;
   polling: boolean;
   error: string | null;
   slow: boolean;
@@ -222,7 +225,18 @@ function PolishingView({
       showsVerticalScrollIndicator={false}
     >
       <View style={styles.centerColumn}>
-        <ActivityIndicator color={COLORS.lightText} size="large" />
+        <View style={styles.polishingPreview}>
+          {currentImageUri ? (
+            <Image source={{ uri: currentImageUri }} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
+          ) : (
+            <View style={[StyleSheet.absoluteFillObject, styles.imagePlaceholder]} />
+          )}
+          <View style={styles.polishingPreviewScrim} />
+          <View style={styles.polishingPreviewBadge}>
+            <ActivityIndicator color="#FFFFFF" size="small" />
+            <T style={styles.polishingPreviewText}>BUILDING</T>
+          </View>
+        </View>
         <Animated.View entering={FadeIn.duration(360).delay(120)}>
           <T style={styles.polishingTitle}>Polishing your potential face</T>
         </Animated.View>
@@ -748,6 +762,43 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: sh(16),
+  },
+  polishingPreview: {
+    width: ms(178),
+    height: ms(222),
+    borderRadius: RADII.lg,
+    overflow: "hidden",
+    backgroundColor: COLORS.lightSurfaceAlt,
+    borderWidth: 1,
+    borderColor: COLORS.lightBorder,
+    shadowColor: "#000000",
+    shadowOpacity: 0.12,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 5,
+  },
+  polishingPreviewScrim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.22)",
+  },
+  polishingPreviewBadge: {
+    position: "absolute",
+    left: SP[3],
+    right: SP[3],
+    bottom: SP[3],
+    minHeight: sh(34),
+    borderRadius: 999,
+    backgroundColor: "rgba(0,0,0,0.58)",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: sw(7),
+  },
+  polishingPreviewText: {
+    fontFamily: FONT,
+    fontSize: ms(10),
+    color: "#FFFFFF",
+    letterSpacing: 1.2,
   },
   polishingTitle: {
     fontFamily: FONT,

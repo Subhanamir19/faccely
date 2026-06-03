@@ -43,6 +43,14 @@ const createInitialRequests = (): RequestStatusMap => ({
 let requestCounter = 0;
 const nextRequestId = () => ++requestCounter;
 
+let pairAnalyzeInFlight:
+  | {
+      frontUri: string;
+      sideUri: string;
+      promise: Promise<Scores>;
+    }
+  | null = null;
+
 const computeAnalyzeLoading = (r: RequestStatusMap) =>
   r.analyzeSingle.loading || r.analyzePair.loading;
 
@@ -115,6 +123,13 @@ type Actions = {
 
   /** Analyze a frontal + side image pair. Accepts strings or objects. */
   analyzePair: (front: InputFile, side: InputFile) => Promise<Scores>;
+
+  /**
+   * Analyze this exact pair once and share the in-flight promise across
+   * onboarding screens. Used to pre-score after scan capture, then reuse the
+   * saved scanId after purchase before paid image generation starts.
+   */
+  ensurePairAnalyzed: (front: InputFile, side: InputFile) => Promise<Scores>;
 
   /** Explain metrics with single image. */
   explain: (uri: string, scores: Scores) => Promise<boolean>;
@@ -304,6 +319,43 @@ export const useScores = create<State & Actions>((set, get) => ({
     }
   },
 
+  ensurePairAnalyzed: async (front: InputFile, side: InputFile) => {
+    const frontUri = getUri(front);
+    const sideUri = getUri(side);
+    const state = get();
+
+    if (
+      state.scanId &&
+      state.scores &&
+      state.imageUri === frontUri &&
+      state.sideImageUri === sideUri
+    ) {
+      return state.scores;
+    }
+
+    if (
+      pairAnalyzeInFlight &&
+      pairAnalyzeInFlight.frontUri === frontUri &&
+      pairAnalyzeInFlight.sideUri === sideUri
+    ) {
+      return pairAnalyzeInFlight.promise;
+    }
+
+    const promise = get()
+      .analyzePair(front, side)
+      .finally(() => {
+        if (
+          pairAnalyzeInFlight?.frontUri === frontUri &&
+          pairAnalyzeInFlight?.sideUri === sideUri
+        ) {
+          pairAnalyzeInFlight = null;
+        }
+      });
+
+    pairAnalyzeInFlight = { frontUri, sideUri, promise };
+    return promise;
+  },
+
   explain: async (uri: string, scores: Scores): Promise<boolean> => {
     if (get().requests.explainSingle.loading) return false;
     const scanId = get().scanId;
@@ -424,6 +476,7 @@ export const useScores = create<State & Actions>((set, get) => ({
 
   reset: () =>
     set(() => {
+      pairAnalyzeInFlight = null;
       const requests = createInitialRequests();
       return {
         imageUri: null,

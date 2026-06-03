@@ -19,7 +19,7 @@ import {
 import { Image as ExpoImage, type ImageContentPosition } from "expo-image";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Video, ResizeMode } from "expo-av";
+import { Video, ResizeMode, type AVPlaybackStatus } from "expo-av";
 import LottieView from "lottie-react-native";
 import Svg, { Circle, Path, Rect } from "react-native-svg";
 import Animated, {
@@ -41,7 +41,20 @@ import Animated, {
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
-import { BookOpen, ChevronLeft, Info, Pause, Play, SkipBack, SkipForward, X } from "lucide-react-native";
+import {
+  BookOpen,
+  ChevronLeft,
+  Clock3,
+  Info,
+  Lightbulb,
+  ListChecks,
+  Pause,
+  Play,
+  PlayCircle,
+  SkipBack,
+  SkipForward,
+  X,
+} from "lucide-react-native";
 import { COLORS, RADII, SP } from "@/lib/tokens";
 import { useExerciseSettings } from "@/store/exerciseSettings";
 import { getExerciseMedia } from "@/lib/exerciseVideos";
@@ -49,13 +62,17 @@ import { getExerciseDetail } from "@/lib/exerciseDetails";
 import {
   getNewExerciseGuideId,
   getNewExerciseInstruction,
+  getNewExercisePoseLabels,
   getNewExerciseTimingLabel,
   getNewExerciseTitle,
   resolveExerciseId,
 } from "@/lib/newExerciseCatalog";
 import { getExerciseGuide } from "@/lib/exerciseGuideData";
+import { getExerciseIcon } from "@/lib/exerciseIcons";
 import { useTasksStore, type DailyTask } from "@/store/tasks";
 import { EXERCISE_CATALOG } from "@/lib/taskSelection";
+
+const GUIDE_FONT = "DINNextRounded-Regular";
 
 // ---------------------------------------------------------------------------
 // Exercises that use image pair animation instead of video
@@ -471,6 +488,15 @@ function CircleFrame({
 // HowTo bottom sheet
 // ---------------------------------------------------------------------------
 
+function guideTargetLabel(target: string): string {
+  if (target === "all") return "Full Face";
+  return target
+    .split(/[-_\s]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
 function HowToSheet({
   visible,
   exerciseId,
@@ -480,13 +506,21 @@ function HowToSheet({
   exerciseId: string;
   onClose: () => void;
 }) {
+  const insets = useSafeAreaInsets();
   const detail = getExerciseDetail(exerciseId);
   const guide = getExerciseGuide(getNewExerciseGuideId(exerciseId));
   const instruction = getNewExerciseInstruction(exerciseId);
   const timingLabel = getNewExerciseTimingLabel(exerciseId);
+  const title = getNewExerciseTitle(exerciseId) || detail?.name || guide?.name || "Exercise guide";
+  const resolvedExerciseId = resolveExerciseId(exerciseId);
+  const entry = EXERCISE_CATALOG.find((item) => resolveExerciseId(item.id) === resolvedExerciseId);
+  const targetCopy = entry?.targets?.length
+    ? entry.targets.map(guideTargetLabel).join(" - ")
+    : null;
   const steps = detail?.steps?.length ? detail.steps : guide?.howTo ?? [];
   const durationCopy = detail?.reps ?? guide?.holdTime ?? guide?.reps ?? timingLabel;
   const tipCopy = detail?.tip ?? guide?.tips?.[0];
+  const metaCopy = [targetCopy, durationCopy].filter(Boolean).join(" - ");
   return (
     <Modal
       transparent
@@ -496,27 +530,54 @@ function HowToSheet({
       onRequestClose={onClose}
     >
       <Pressable style={styles.howToBackdrop} onPress={onClose}>
-        <View style={styles.howToSheet}>
-          <Pressable onPress={() => {}} style={{ width: "100%" }}>
+        <View style={[styles.howToSheet, { paddingBottom: Math.max(insets.bottom, SP[4]) }]}>
+          <Pressable onPress={() => {}} style={styles.howToSheetInner}>
             <View style={styles.howToHandle} />
             <View style={styles.howToHeader}>
-              <Text style={styles.howToTitle}>How to Perform</Text>
+              <View style={styles.howToHeaderCopy}>
+                <Text style={styles.howToEyebrow}>How to perform</Text>
+                <Text style={styles.howToTitle} numberOfLines={1}>{title}</Text>
+              </View>
               <Pressable onPress={onClose} style={styles.howToCloseBtn}>
-                <Text style={styles.howToCloseText}>✕</Text>
+                <X size={18} color="rgba(255,255,255,0.72)" strokeWidth={2.4} />
               </Pressable>
             </View>
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.howToScroll}>
+            <ScrollView
+              style={styles.howToScrollFrame}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.howToScroll}
+            >
               {instruction || detail ? (
                 <>
-                  <Text style={styles.howToSectionLabel}>START HERE</Text>
-                  <View style={styles.benefitBox}>
-                    <Text style={styles.benefitText}>
-                      {instruction || detail?.steps[0]}
-                    </Text>
+                  <View style={styles.guideIdentityCard}>
+                    <View style={styles.guideIconTile}>
+                      <Image source={getExerciseIcon(exerciseId)} style={styles.guideIconImage} />
+                    </View>
+                    <View style={styles.guideIdentityCopy}>
+                      <Text style={styles.guideIdentityName} numberOfLines={1}>{title}</Text>
+                      {metaCopy ? (
+                        <Text style={styles.guideIdentityMeta} numberOfLines={1}>{metaCopy}</Text>
+                      ) : null}
+                    </View>
+                  </View>
+
+                  <View style={styles.guideCueCard}>
+                    <View style={styles.guideSectionHeader}>
+                      <View style={styles.guideSectionIcon}>
+                        <PlayCircle size={16} color="#B4F34D" strokeWidth={2.4} />
+                      </View>
+                      <Text style={styles.howToSectionLabel}>Start here</Text>
+                    </View>
+                    <Text style={styles.benefitText}>{instruction || detail?.steps[0]}</Text>
                   </View>
                   {steps.length ? (
                     <>
-                      <Text style={[styles.howToSectionLabel, { marginTop: SP[5] }]}>STEPS</Text>
+                      <View style={[styles.guideSectionHeader, { marginTop: SP[5] }]}>
+                        <View style={styles.guideSectionIcon}>
+                          <ListChecks size={16} color="#B4F34D" strokeWidth={2.4} />
+                        </View>
+                        <Text style={styles.howToSectionLabel}>Steps</Text>
+                      </View>
                       {steps.map((step, i) => (
                         <View key={i} style={styles.stepRow}>
                           <View style={styles.stepNum}>
@@ -529,14 +590,26 @@ function HowToSheet({
                   ) : null}
                   {durationCopy ? (
                     <>
-                      <Text style={[styles.howToSectionLabel, { marginTop: SP[5] }]}>REPS / DURATION</Text>
-                      <Text style={styles.repsText}>{durationCopy}</Text>
+                      <View style={[styles.guideSectionHeader, { marginTop: SP[5] }]}>
+                        <View style={styles.guideSectionIcon}>
+                          <Clock3 size={16} color="#B4F34D" strokeWidth={2.4} />
+                        </View>
+                        <Text style={styles.howToSectionLabel}>Reps / duration</Text>
+                      </View>
+                      <View style={styles.repsPill}>
+                        <Text style={styles.repsText}>{durationCopy}</Text>
+                      </View>
                     </>
                   ) : null}
                   {tipCopy ? (
                     <>
-                      <Text style={[styles.howToSectionLabel, { marginTop: SP[5] }]}>PRO TIP</Text>
                       <View style={styles.tipBox}>
+                        <View style={styles.guideSectionHeader}>
+                          <View style={styles.tipIcon}>
+                            <Lightbulb size={16} color="#FBBF24" strokeWidth={2.4} />
+                          </View>
+                          <Text style={styles.tipLabel}>Pro tip</Text>
+                        </View>
                         <Text style={styles.tipText}>{tipCopy}</Text>
                       </View>
                     </>
@@ -546,6 +619,14 @@ function HowToSheet({
                 <Text style={styles.repsText}>No details available.</Text>
               )}
             </ScrollView>
+            <Pressable
+              onPress={onClose}
+              style={({ pressed }) => [styles.howToGotItBtn, pressed && styles.howToGotItBtnPressed]}
+              accessibilityRole="button"
+              accessibilityLabel="Close exercise guide"
+            >
+              <Text style={styles.howToGotItText}>Got it</Text>
+            </Pressable>
           </Pressable>
         </View>
       </Pressable>
@@ -593,6 +674,7 @@ export default function SessionScreen() {
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [sequenceFrameIndex, setSequenceFrameIndex] = useState(0);
+  const sequenceVideoRefs = useRef<Array<Video | null>>([]);
   // Initialize with the real duration of the first exercise so timeLeft is never
   // 0 on mount. The auto-complete effect fires when timeLeft === 0, so starting
   // at 0 would incorrectly credit the first exercise before the user does anything.
@@ -661,6 +743,7 @@ export default function SessionScreen() {
   const duration   = current ? getEffectiveDuration(current.exerciseId) : 30;
   const exerciseMedia = current ? getExerciseMedia(current.exerciseId) : null;
   const videoSrc   = exerciseMedia?.mediaType === "video" ? exerciseMedia.source : null;
+  const isVideoSequence = exerciseMedia?.mediaType === "videoSequence";
   const imagePair         = current ? (EXERCISE_IMAGE_PAIRS[current.exerciseId] ?? undefined) : undefined;
   const imagePairPosition = current ? (EXERCISE_IMAGE_POSITION[current.exerciseId] ?? "center") : "center";
   const zoomImage         = current ? (EXERCISE_ZOOM_IMAGES[current.exerciseId] ?? undefined) : undefined;
@@ -668,7 +751,14 @@ export default function SessionScreen() {
   const videoOffset       = current ? (EXERCISE_VIDEO_OFFSET[current.exerciseId] ?? undefined) : undefined;
   const isImageMedia = exerciseMedia?.mediaType === "image" || exerciseMedia?.mediaType === "imageSequence";
   const sequenceSources = Array.isArray(exerciseMedia?.source) ? exerciseMedia.source : exerciseMedia?.source ? [exerciseMedia.source] : [];
+  const currentVideoSequenceSource = isVideoSequence
+    ? sequenceSources[sequenceFrameIndex % Math.max(1, sequenceSources.length)]
+    : null;
   const currentImageSource = sequenceSources[sequenceFrameIndex % Math.max(1, sequenceSources.length)];
+  const poseLabels = current ? getNewExercisePoseLabels(current.exerciseId) : [];
+  const currentPoseLabel = isVideoSequence
+    ? poseLabels[sequenceFrameIndex % Math.max(1, sequenceSources.length)] ?? `Pose ${sequenceFrameIndex + 1}`
+    : "";
   const mediaFrame = resolvedExerciseId ? VIDEO_MEDIA_FRAMES[resolvedExerciseId] : undefined;
   const timerLayout = useMemo(
     () =>
@@ -712,6 +802,15 @@ export default function SessionScreen() {
     }, 760);
     return () => clearInterval(id);
   }, [exerciseMedia?.mediaType, isPaused, prepCountdown, sequenceSources.length, currentIndex]);
+
+  const handleVideoSequenceStatus = useCallback((status: AVPlaybackStatus) => {
+    if (!status.isLoaded || !status.didJustFinish || !isVideoSequence || sequenceSources.length < 2) return;
+    setSequenceFrameIndex((index) => {
+      const nextIndex = (index + 1) % sequenceSources.length;
+      sequenceVideoRefs.current[nextIndex]?.setPositionAsync(0).catch(() => {});
+      return nextIndex;
+    });
+  }, [isVideoSequence, sequenceSources.length]);
 
   // ---------------------------------------------------------------------------
   // Pause on screen blur
@@ -1059,7 +1158,29 @@ export default function SessionScreen() {
                 : null,
             ]}
           >
-            {videoSrc ? (
+            {currentVideoSequenceSource ? (
+              <>
+                {sequenceSources.map((source, index) => {
+                  const isActivePose = index === sequenceFrameIndex % Math.max(1, sequenceSources.length);
+                  return (
+                    <Video
+                      key={`${current?.exerciseId}-pose-${index}`}
+                      ref={(ref) => {
+                        sequenceVideoRefs.current[index] = ref;
+                      }}
+                      source={source}
+                      style={[styles.videoMedia, !isActivePose && styles.videoMediaHidden]}
+                      resizeMode={ResizeMode.CONTAIN}
+                      shouldPlay={prepCountdown <= 0 && !isPaused && isActivePose}
+                      isLooping={false}
+                      isMuted
+                      progressUpdateIntervalMillis={16}
+                      onPlaybackStatusUpdate={isActivePose ? handleVideoSequenceStatus : undefined}
+                    />
+                  );
+                })}
+              </>
+            ) : videoSrc ? (
               <Video
                 key={current?.exerciseId}
                 source={videoSrc}
@@ -1081,6 +1202,11 @@ export default function SessionScreen() {
                 <ActivityIndicator color={VIDEO_TEXT} />
               </View>
             )}
+            {currentPoseLabel ? (
+              <View style={styles.videoPoseLabelPill}>
+                <Text style={styles.videoPoseLabelText}>{currentPoseLabel}</Text>
+              </View>
+            ) : null}
           </View>
           {prepCountdown > 0 && (
             <View style={styles.videoPrepOverlay}>
@@ -1634,6 +1760,26 @@ const styles = StyleSheet.create({
     height: "100%",
     backgroundColor: "#FFFFFF",
   },
+  videoMediaHidden: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0,
+  },
+  videoPoseLabelPill: {
+    position: "absolute",
+    left: 20,
+    bottom: 18,
+    maxWidth: "86%",
+    borderRadius: 999,
+    backgroundColor: "rgba(0,0,0,0.70)",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  videoPoseLabelText: {
+    fontFamily: "ProximaNova-Bold",
+    color: "#FFFFFF",
+    fontSize: 13,
+    lineHeight: 16,
+  },
   videoFallbackMedia: {
     flex: 1,
     alignSelf: "stretch",
@@ -2048,15 +2194,19 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
   },
   howToSheet: {
-    backgroundColor: "#141414",
+    backgroundColor: "#151515",
     borderTopLeftRadius: RADII.xl,
     borderTopRightRadius: RADII.xl,
     borderWidth: 1,
     borderBottomWidth: 0,
-    borderColor: COLORS.cardBorder,
-    maxHeight: "78%",
+    borderColor: "rgba(255,255,255,0.08)",
+    maxHeight: "84%",
     paddingHorizontal: SP[5],
-    paddingBottom: SP[6],
+    paddingBottom: SP[4],
+  },
+  howToSheetInner: {
+    width: "100%",
+    maxHeight: "100%",
   },
   howToHandle: {
     width: 36,
@@ -2071,20 +2221,34 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingVertical: SP[3],
+    paddingTop: SP[2],
+    paddingBottom: SP[3],
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.divider,
-    marginBottom: SP[4],
+    borderBottomColor: "rgba(255,255,255,0.07)",
+    marginBottom: SP[3],
+  },
+  howToHeaderCopy: {
+    flex: 1,
+    minWidth: 0,
+    paddingRight: SP[3],
+  },
+  howToEyebrow: {
+    color: "rgba(255,255,255,0.48)",
+    fontSize: 12,
+    fontFamily: GUIDE_FONT,
+    lineHeight: 16,
+    marginBottom: 2,
   },
   howToTitle: {
     color: COLORS.text,
-    fontSize: 18,
-    fontFamily: "Poppins-SemiBold",
+    fontSize: 20,
+    lineHeight: 24,
+    fontFamily: GUIDE_FONT,
   },
   howToCloseBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: "rgba(255,255,255,0.08)",
     alignItems: "center",
     justifyContent: "center",
@@ -2092,36 +2256,97 @@ const styles = StyleSheet.create({
   howToCloseText: {
     color: COLORS.sub,
     fontSize: 14,
-    fontFamily: "Poppins-SemiBold",
+    fontFamily: GUIDE_FONT,
+  },
+  howToScrollFrame: {
+    maxHeight: "78%",
   },
   howToScroll: {
-    paddingBottom: SP[4],
+    paddingBottom: SP[5],
   },
   howToSectionLabel: {
-    color: COLORS.sub,
-    fontSize: 11,
-    fontFamily: "Poppins-SemiBold",
-    letterSpacing: 1.2,
-    marginBottom: SP[2],
+    color: "rgba(255,255,255,0.78)",
+    fontSize: 13,
+    fontFamily: GUIDE_FONT,
+    lineHeight: 17,
   },
-  benefitBox: {
-    backgroundColor: "rgba(180,243,77,0.08)",
+  guideIdentityCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SP[3],
+    backgroundColor: "#1D1D1D",
     borderRadius: RADII.md,
     borderWidth: 1,
-    borderColor: "rgba(180,243,77,0.20)",
+    borderColor: "rgba(255,255,255,0.08)",
+    padding: SP[3],
+    marginBottom: SP[4],
+  },
+  guideIconTile: {
+    width: 48,
+    height: 48,
+    borderRadius: 13,
+    overflow: "hidden",
+    backgroundColor: "rgba(255,255,255,0.08)",
+  },
+  guideIconImage: {
+    width: "100%",
+    height: "100%",
+    resizeMode: "cover",
+  },
+  guideIdentityCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  guideIdentityName: {
+    color: COLORS.text,
+    fontSize: 16,
+    lineHeight: 20,
+    fontFamily: GUIDE_FONT,
+    marginBottom: 2,
+  },
+  guideIdentityMeta: {
+    color: "rgba(255,255,255,0.48)",
+    fontSize: 12,
+    lineHeight: 16,
+    fontFamily: GUIDE_FONT,
+  },
+  guideCueCard: {
+    backgroundColor: "rgba(180,243,77,0.10)",
+    borderRadius: RADII.md,
+    borderWidth: 1,
+    borderColor: "rgba(180,243,77,0.24)",
     padding: SP[4],
+  },
+  guideSectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SP[2],
+    marginBottom: SP[2],
+  },
+  guideSectionIcon: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: "rgba(180,243,77,0.10)",
+    alignItems: "center",
+    justifyContent: "center",
   },
   benefitText: {
     color: COLORS.textHigh,
-    fontSize: 14,
-    fontFamily: "Poppins-SemiBold",
+    fontSize: 15,
+    fontFamily: GUIDE_FONT,
     lineHeight: 22,
   },
   stepRow: {
     flexDirection: "row",
     alignItems: "flex-start",
     gap: SP[3],
-    marginBottom: SP[3],
+    backgroundColor: "#1D1D1D",
+    borderRadius: RADII.md,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.07)",
+    padding: SP[3],
+    marginBottom: SP[2],
   },
   stepNum: {
     width: 26,
@@ -2136,19 +2361,28 @@ const styles = StyleSheet.create({
   stepNumText: {
     color: "#0B0B0B",
     fontSize: 12,
-    fontFamily: "Poppins-SemiBold",
+    fontFamily: GUIDE_FONT,
   },
   stepText: {
     flex: 1,
     color: COLORS.textHigh,
     fontSize: 14,
-    fontFamily: "Poppins-SemiBold",
+    fontFamily: GUIDE_FONT,
     lineHeight: 22,
+  },
+  repsPill: {
+    alignSelf: "flex-start",
+    backgroundColor: "#1D1D1D",
+    borderRadius: RADII.pill,
+    borderWidth: 1,
+    borderColor: "rgba(180,243,77,0.20)",
+    paddingHorizontal: SP[4],
+    paddingVertical: SP[2],
   },
   repsText: {
     color: COLORS.textHigh,
     fontSize: 15,
-    fontFamily: "Poppins-SemiBold",
+    fontFamily: GUIDE_FONT,
     lineHeight: 22,
   },
   tipBox: {
@@ -2157,11 +2391,43 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(245,158,11,0.25)",
     padding: SP[4],
+    marginTop: SP[5],
+  },
+  tipIcon: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: "rgba(245,158,11,0.12)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  tipLabel: {
+    color: "#FBBF24",
+    fontSize: 13,
+    lineHeight: 17,
+    fontFamily: GUIDE_FONT,
   },
   tipText: {
     color: COLORS.textHigh,
     fontSize: 14,
-    fontFamily: "Poppins-SemiBold",
+    fontFamily: GUIDE_FONT,
     lineHeight: 22,
+  },
+  howToGotItBtn: {
+    minHeight: 52,
+    borderRadius: RADII.pill,
+    backgroundColor: COLORS.accent,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  howToGotItBtnPressed: {
+    opacity: 0.82,
+    transform: [{ translateY: 1 }],
+  },
+  howToGotItText: {
+    color: "#0B0B0B",
+    fontSize: 16,
+    lineHeight: 20,
+    fontFamily: GUIDE_FONT,
   },
 });

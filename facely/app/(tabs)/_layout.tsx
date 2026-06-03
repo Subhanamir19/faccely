@@ -20,7 +20,6 @@ const ACTIVE_BG     = "#0B0B0B";              // active black chip
 const PILL_HEIGHT    = 72; // tab 56 + paddingVertical 8×2
 const PILL_MARGIN_H  = 20; // left/right inset
 const PILL_GAP_BOTTOM = 10; // gap between pill bottom and safe area top
-
 function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const safeBottom = Math.max(insets.bottom, 8);

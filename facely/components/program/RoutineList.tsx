@@ -1,7 +1,7 @@
 // components/program/RoutineList.tsx
 // Light-themed routine preview screen — shown after WorkoutPreview when the
 // user taps Start. Lists today's exercises with per-row duration steppers and
-// a sticky START ROUTINE CTA.
+// a sticky start routine CTA.
 
 import React, { useEffect, useMemo, useState } from "react";
 import {
@@ -14,6 +14,13 @@ import {
   View,
 } from "react-native";
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
+import {
+  useAnimatedStyle,
+  useSharedValue,
+  withSequence,
+  withSpring,
+  withTiming,
+} from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
 import { ChevronLeft, SquareCheckBig } from "lucide-react-native";
 
@@ -22,12 +29,16 @@ import { sw, sh, ms } from "@/lib/responsive";
 import { CARD_FACE_LABELS } from "@/lib/faceTargets";
 import { getExerciseIcon } from "@/lib/exerciseIcons";
 import type { TargetArea } from "@/lib/taskSelection";
-import type { DailyTask } from "@/store/tasks";
+import type { DailyTask, ProtocolTask } from "@/store/tasks";
 import { useTasksStore } from "@/store/tasks";
 import { useExerciseSettings } from "@/store/exerciseSettings";
 import { useRoutineStore } from "@/store/routineStore";
 import TargetAreasSheet from "./TargetAreasSheet";
 import EditExercisesSheet from "./EditExercisesSheet";
+import ProtocolPlanCard from "./ProtocolPlanCard";
+
+const DIN_FONT = "DINNextRounded-Regular";
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 // ── helpers ─────────────────────────────────────────────────────────────
 function formatSecs(secs: number): string {
@@ -46,13 +57,40 @@ function StepperLight({ exerciseId }: { exerciseId: string }) {
   const secs  = getDuration(exerciseId);
   const atMin = secs <= 15;
   const atMax = secs >= 90;
+  const minusScale = useSharedValue(1);
+  const plusScale = useSharedValue(1);
+  const timeScale = useSharedValue(1);
+
+  const minusStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: minusScale.value }],
+  }));
+  const plusStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: plusScale.value }],
+  }));
+  const timeStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: timeScale.value }],
+  }));
+
+  const popTime = () => {
+    timeScale.value = withSequence(
+      withTiming(1.06, { duration: 90 }),
+      withSpring(1, { damping: 13, stiffness: 260 }),
+    );
+  };
 
   return (
     <View style={s.stepperRow}>
-      <Pressable
+      <AnimatedPressable
         onPress={() => {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
           decrementDuration(exerciseId);
+          popTime();
+        }}
+        onPressIn={() => {
+          minusScale.value = withTiming(0.92, { duration: 80 });
+        }}
+        onPressOut={() => {
+          minusScale.value = withSpring(1, { damping: 14, stiffness: 260 });
         }}
         disabled={atMin}
         hitSlop={8}
@@ -60,17 +98,25 @@ function StepperLight({ exerciseId }: { exerciseId: string }) {
           s.stepperBtn,
           atMin && s.stepperBtnDisabled,
           pressed && !atMin && s.stepperBtnPressed,
+          minusStyle,
         ]}
       >
         <Text style={s.stepperGlyph}>−</Text>
-      </Pressable>
+      </AnimatedPressable>
 
-      <Text style={s.stepperTime}>{formatSecs(secs)}</Text>
+      <Animated.Text style={[s.stepperTime, timeStyle]}>{formatSecs(secs)}</Animated.Text>
 
-      <Pressable
+      <AnimatedPressable
         onPress={() => {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
           incrementDuration(exerciseId);
+          popTime();
+        }}
+        onPressIn={() => {
+          plusScale.value = withTiming(0.92, { duration: 80 });
+        }}
+        onPressOut={() => {
+          plusScale.value = withSpring(1, { damping: 14, stiffness: 260 });
         }}
         disabled={atMax}
         hitSlop={8}
@@ -78,11 +124,49 @@ function StepperLight({ exerciseId }: { exerciseId: string }) {
           s.stepperBtn,
           atMax && s.stepperBtnDisabled,
           pressed && !atMax && s.stepperBtnPressed,
+          plusStyle,
         ]}
       >
         <Text style={s.stepperGlyph}>+</Text>
-      </Pressable>
+      </AnimatedPressable>
     </View>
+  );
+}
+
+function TactilePill({
+  children,
+  onPress,
+  style,
+  pressedStyle,
+  accessibilityLabel,
+}: {
+  children: React.ReactNode;
+  onPress: () => void;
+  style: object;
+  pressedStyle: object;
+  accessibilityLabel: string;
+}) {
+  const scale = useSharedValue(1);
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  return (
+    <AnimatedPressable
+      onPress={onPress}
+      onPressIn={() => {
+        scale.value = withTiming(0.96, { duration: 80 });
+      }}
+      onPressOut={() => {
+        scale.value = withSpring(1, { damping: 14, stiffness: 260 });
+      }}
+      hitSlop={6}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      style={({ pressed }) => [style, pressed && pressedStyle, animatedStyle]}
+    >
+      {children}
+    </AnimatedPressable>
   );
 }
 
@@ -98,7 +182,7 @@ function ExerciseRowLight({ task }: { task: DailyTask }) {
 
       <View style={s.rowText}>
         <Text style={s.rowTitle} numberOfLines={2}>
-          {task.name.toUpperCase()}
+          {task.name}
         </Text>
         <Text style={s.rowSub} numberOfLines={1}>
           {targetLabels}
@@ -113,11 +197,13 @@ function ExerciseRowLight({ task }: { task: DailyTask }) {
 // ── main screen ─────────────────────────────────────────────────────────
 export default function RoutineList({
   tasks,
+  protocols,
   onStart,
   onBack,
   initialEditOpen = false,
 }: {
   tasks: DailyTask[];
+  protocols: ProtocolTask[];
   onStart: () => void;
   onBack: () => void;
   initialEditOpen?: boolean;
@@ -126,10 +212,17 @@ export default function RoutineList({
   const todayIndex = useRoutineStore((st) => st.todayIndex);
   const setTodayTasksByAreas = useTasksStore((st) => st.setTodayTasksByAreas);
   const setTodayTasksByIds   = useTasksStore((st) => st.setTodayTasksByIds);
+  const completeProtocol     = useTasksStore((st) => st.completeProtocol);
+  const shuffleProtocols     = useTasksStore((st) => st.shuffleProtocols);
   const selectedAreas        = useTasksStore((st) => st.today?.selectedAreas ?? null);
 
   const [areasOpen, setAreasOpen] = useState(false);
   const [editOpen,  setEditOpen]  = useState(false);
+  const ctaScale = useSharedValue(1);
+  const ctaShift = useSharedValue(0);
+  const ctaStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: ctaShift.value }, { scale: ctaScale.value }],
+  }));
 
   useEffect(() => {
     if (initialEditOpen) setEditOpen(true);
@@ -140,6 +233,7 @@ export default function RoutineList({
     [tasks, getDuration],
   );
   const allResolved = tasks.length > 0 && tasks.every((task) => task.status !== "pending");
+  const allProtocolsDone = protocols.length === 0 || protocols.every((p) => p.status === "done");
   // Chip row: prefer the user's explicit selection (pinned by the Select sheet)
   // over the derived union of every exercise's tags — the union surfaces stray
   // chips like "Nose" when the user only picked "Midface".
@@ -153,7 +247,7 @@ export default function RoutineList({
   const dayLabel    = `Day ${todayIndex + 1}`;
   const exerciseCnt = tasks.length;
   const durationStr = formatSecs(totalSecs);
-  const categoryCnt = uniqueTargets.length;
+  const protocolDoneCnt = protocols.filter((p) => p.status === "done").length;
 
   const handleBack = () => {
     Haptics.selectionAsync();
@@ -171,6 +265,11 @@ export default function RoutineList({
     Haptics.selectionAsync();
     setEditOpen(true);
   };
+  const ctaLabel = allResolved
+    ? allProtocolsDone
+      ? "Done for today"
+      : "Finish diet below"
+    : "Start routine";
 
   const currentAreas = useMemo<TargetArea[]>(() => {
     if (selectedAreas && selectedAreas.length > 0) return selectedAreas;
@@ -217,8 +316,8 @@ export default function RoutineList({
           </View>
           <View style={s.statDivider} />
           <View style={s.statCell}>
-            <Text style={s.statNum}>{categoryCnt}</Text>
-            <Text style={s.statLabel}>Categories</Text>
+            <Text style={s.statNum}>{`${protocolDoneCnt}/${protocols.length}`}</Text>
+            <Text style={s.statLabel}>Diet</Text>
           </View>
         </Animated.View>
 
@@ -226,14 +325,15 @@ export default function RoutineList({
         <Animated.View entering={FadeInDown.delay(120).duration(360)} style={s.targetsCard}>
           <View style={s.targetsHeader}>
             <Text style={s.sectionTitle}>Targeted Areas</Text>
-            <Pressable
+            <TactilePill
               onPress={handleSelect}
-              hitSlop={6}
-              style={({ pressed }) => [s.selectPill, pressed && s.selectPillPressed]}
+              style={s.selectPill}
+              pressedStyle={s.selectPillPressed}
+              accessibilityLabel="Select targeted areas"
             >
-              <SquareCheckBig size={ms(16)} color="#FFFFFF" strokeWidth={2.2} />
+              <SquareCheckBig size={ms(16)} color={COLORS.lightText} strokeWidth={2.2} />
               <Text style={s.selectPillText}>Select</Text>
-            </Pressable>
+            </TactilePill>
           </View>
 
           <View style={s.chipsWrap}>
@@ -254,13 +354,14 @@ export default function RoutineList({
         {/* ── Exercises header ── */}
         <Animated.View entering={FadeInDown.delay(180).duration(360)} style={s.exercisesHeader}>
           <Text style={s.sectionTitle}>{`Exercises (${exerciseCnt})`}</Text>
-          <Pressable
+          <TactilePill
             onPress={handleEdit}
-            hitSlop={6}
-            style={({ pressed }) => [s.editPill, pressed && s.editPillPressed]}
+            style={s.editPill}
+            pressedStyle={s.editPillPressed}
+            accessibilityLabel="Edit exercises"
           >
             <Text style={s.editPillText}>Edit</Text>
-          </Pressable>
+          </TactilePill>
         </Animated.View>
 
         {/* ── Exercise rows ── */}
@@ -274,6 +375,19 @@ export default function RoutineList({
             </Animated.View>
           ))}
         </View>
+
+        {protocols.length > 0 ? (
+          <Animated.View entering={FadeInDown.delay(250 + tasks.length * 45).duration(360)} style={s.dietHeader}>
+            <Text style={s.sectionTitle}>{`Diet (${protocols.length})`}</Text>
+          </Animated.View>
+        ) : null}
+
+        <ProtocolPlanCard
+          protocols={protocols}
+          onToggle={completeProtocol}
+          onShuffle={shuffleProtocols}
+          startDelay={260 + tasks.length * 45}
+        />
       </ScrollView>
 
       {/* ── Sticky CTA ── */}
@@ -281,19 +395,34 @@ export default function RoutineList({
         <View style={s.ctaDivider} />
         <Pressable
           onPress={allResolved ? undefined : handleStart}
+          onPressIn={() => {
+            if (allResolved) return;
+            ctaScale.value = withTiming(0.985, { duration: 90 });
+            ctaShift.value = withTiming(1, { duration: 90 });
+          }}
+          onPressOut={() => {
+            ctaScale.value = withSpring(1, { damping: 15, stiffness: 240 });
+            ctaShift.value = withSpring(0, { damping: 15, stiffness: 240 });
+          }}
           disabled={allResolved}
-          style={({ pressed }) => [
-            s.ctaBtn,
-            allResolved && s.ctaBtnDisabled,
-            pressed && !allResolved && s.ctaBtnPressed,
-          ]}
           accessibilityRole="button"
-          accessibilityLabel={allResolved ? "Routine completed for today" : "Start routine"}
+          accessibilityLabel={ctaLabel}
           accessibilityState={allResolved ? { disabled: true } : undefined}
         >
-          <Text style={[s.ctaText, allResolved && s.ctaTextDisabled]}>
-            {allResolved ? "DONE FOR TODAY" : "START ROUTINE"}
-          </Text>
+          {({ pressed }) => (
+            <Animated.View
+              style={[
+                s.ctaBtn,
+                allResolved && s.ctaBtnDisabled,
+                pressed && !allResolved && s.ctaBtnPressed,
+                ctaStyle,
+              ]}
+            >
+              <Text style={[s.ctaText, allResolved && s.ctaTextDisabled]}>
+                {ctaLabel}
+              </Text>
+            </Animated.View>
+          )}
         </Pressable>
       </View>
 
@@ -329,7 +458,7 @@ const s = StyleSheet.create({
 
   // Header
   header: {
-    height: sh(56),
+    height: sh(64),
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -349,12 +478,13 @@ const s = StyleSheet.create({
   },
   headerTitle: {
     ...TYPE.proximaScreenTitle,
-    fontSize: ms(28),
+    fontFamily: DIN_FONT,
+    fontSize: ms(26),
     color: COLORS.lightText,
     textAlign: "center",
   },
   headerSubtitle: {
-    fontFamily: "ProximaNova-Bold",
+    fontFamily: DIN_FONT,
     fontSize: ms(13),
     lineHeight: ms(16),
     color: COLORS.lightSub,
@@ -365,7 +495,7 @@ const s = StyleSheet.create({
   // Scroll
   scrollContent: {
     paddingHorizontal: SP[5],
-    paddingTop: SP[4],
+    paddingTop: SP[2],
     paddingBottom: sh(140),
   },
 
@@ -373,16 +503,18 @@ const s = StyleSheet.create({
   statsCard: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#FEF5E4",
-    borderRadius: RADII.lg,
-    paddingVertical: SP[4],
+    backgroundColor: "#FFFDF8",
+    borderRadius: sw(20),
+    borderWidth: 1,
+    borderColor: "rgba(17,17,17,0.06)",
+    paddingVertical: SP[3],
     paddingHorizontal: SP[3],
-    minHeight: sh(88),
+    minHeight: sh(78),
     shadowColor: "#000000",
-    shadowOpacity: 0.06,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 3,
+    shadowOpacity: 0.04,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
   },
   statCell: {
     flex: 1,
@@ -397,22 +529,24 @@ const s = StyleSheet.create({
   },
   statNum: {
     ...TYPE.proximaStatNum,
-    fontSize: ms(24),
+    fontFamily: DIN_FONT,
+    fontSize: ms(23),
     color: COLORS.lightText,
   },
   statLabel: {
-    fontFamily: "ProximaNova-Bold",
-    fontSize: ms(13),
-    lineHeight: ms(16),
-    color: COLORS.lightSub,
+    fontFamily: DIN_FONT,
+    fontSize: ms(12),
+    lineHeight: ms(15),
+    color: COLORS.lightMuted,
   },
 
   // Targeted Areas card
   targetsCard: {
-    marginTop: SP[4],
-    backgroundColor: COLORS.lightSurface,
-    borderRadius: RADII.lg,
-    padding: SP[5],
+    marginTop: SP[3],
+    backgroundColor: "#F3F4F1",
+    borderRadius: sw(18),
+    paddingHorizontal: SP[4],
+    paddingVertical: SP[4],
   },
   targetsHeader: {
     flexDirection: "row",
@@ -422,25 +556,29 @@ const s = StyleSheet.create({
   },
   sectionTitle: {
     ...TYPE.proximaSection,
-    fontSize: ms(22),
+    fontFamily: DIN_FONT,
+    fontSize: ms(20),
     color: COLORS.lightText,
   },
   selectPill: {
     flexDirection: "row",
     alignItems: "center",
     gap: sw(6),
-    backgroundColor: COLORS.ctaBlack,
-    paddingHorizontal: sw(16),
-    paddingVertical: sh(10),
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "rgba(17,17,17,0.1)",
+    paddingHorizontal: sw(14),
+    paddingVertical: sh(9),
     borderRadius: RADII.circle,
   },
   selectPillPressed: {
-    backgroundColor: COLORS.ctaBlackPressed,
+    backgroundColor: "#ECEDEA",
   },
   selectPillText: {
     ...TYPE.proximaPill,
-    fontSize: ms(14),
-    color: "#FFFFFF",
+    fontFamily: DIN_FONT,
+    fontSize: ms(13),
+    color: COLORS.lightText,
   },
   chipsWrap: {
     flexDirection: "row",
@@ -451,13 +589,14 @@ const s = StyleSheet.create({
     backgroundColor: COLORS.lightChipBg,
     borderWidth: 1,
     borderColor: COLORS.lightBorder,
-    borderRadius: RADII.sm,
-    paddingHorizontal: sw(16),
-    paddingVertical: sh(10),
+    borderRadius: sw(12),
+    paddingHorizontal: sw(14),
+    paddingVertical: sh(8),
   },
   chipText: {
     ...TYPE.proximaPill,
-    fontSize: ms(14),
+    fontFamily: DIN_FONT,
+    fontSize: ms(13),
     color: COLORS.lightText,
   },
 
@@ -466,7 +605,7 @@ const s = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginTop: SP[6],
+    marginTop: SP[5],
     marginBottom: SP[3],
   },
   editPill: {
@@ -480,32 +619,52 @@ const s = StyleSheet.create({
   },
   editPillText: {
     ...TYPE.proximaPill,
+    fontFamily: DIN_FONT,
     fontSize: ms(14),
     color: COLORS.lightText,
+  },
+  dietHeader: {
+    marginTop: SP[5],
+    marginBottom: SP[3],
   },
 
   // Rows
   list: {
-    gap: sh(20),
+    gap: sh(2),
+    backgroundColor: "#FFFDF8",
+    borderRadius: sw(22),
+    borderWidth: 1,
+    borderColor: "rgba(17,17,17,0.06)",
+    paddingHorizontal: SP[3],
+    paddingVertical: SP[2],
+    shadowColor: "#000000",
+    shadowOpacity: 0.025,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 1,
   },
   row: {
     flexDirection: "row",
     alignItems: "center",
-    gap: sw(14),
-    paddingVertical: sh(4),
+    gap: sw(12),
+    minHeight: sh(70),
+    paddingVertical: sh(6),
   },
   iconTile: {
-    width: ms(56),
-    height: ms(56),
-    borderRadius: RADII.md,
-    backgroundColor: COLORS.iconTileLavender,
+    width: ms(52),
+    height: ms(52),
+    borderRadius: sw(13),
+    backgroundColor: "#F7F8F4",
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "rgba(17,17,17,0.08)",
   },
   iconImg: {
-    width: "100%",
-    height: "100%",
+    width: "92%",
+    height: "92%",
+    borderRadius: RADII.sm,
     resizeMode: "cover",
   },
   rowText: {
@@ -515,27 +674,28 @@ const s = StyleSheet.create({
   },
   rowTitle: {
     ...TYPE.proximaExerciseTitle,
-    fontSize: ms(16),
+    fontFamily: DIN_FONT,
+    fontSize: ms(15),
     color: COLORS.lightText,
   },
   rowSub: {
-    fontFamily: "ProximaNova-Bold",
+    fontFamily: DIN_FONT,
     fontSize: ms(13),
     lineHeight: ms(16),
-    color: COLORS.lightSub,
+    color: COLORS.lightMuted,
   },
 
   // Stepper
   stepperRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: sw(8),
+    gap: sw(6),
   },
   stepperBtn: {
-    width: ms(34),
-    height: ms(34),
-    borderRadius: ms(17),
-    backgroundColor: COLORS.lightSurfaceAlt,
+    width: ms(32),
+    height: ms(32),
+    borderRadius: ms(16),
+    backgroundColor: "#F1F2F4",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -546,17 +706,18 @@ const s = StyleSheet.create({
     opacity: 0.4,
   },
   stepperGlyph: {
-    fontFamily: "ProximaNova-Bold",
-    fontSize: ms(20),
-    lineHeight: ms(22),
+    fontFamily: DIN_FONT,
+    fontSize: ms(18),
+    lineHeight: ms(20),
     color: COLORS.lightText,
     marginTop: -1,
   },
   stepperTime: {
     ...TYPE.proximaStepper,
-    fontSize: ms(15),
+    fontFamily: DIN_FONT,
+    fontSize: ms(14),
     color: COLORS.lightText,
-    minWidth: sw(46),
+    minWidth: sw(42),
     textAlign: "center",
   },
 
@@ -595,7 +756,7 @@ const s = StyleSheet.create({
     backgroundColor: COLORS.lightSurfaceAlt,
   },
   ctaText: {
-    fontFamily: "ProximaNova-Bold",
+    fontFamily: DIN_FONT,
     fontSize: ms(17),
     letterSpacing: 0.6,
     color: "#FFFFFF",

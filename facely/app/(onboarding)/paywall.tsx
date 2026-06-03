@@ -11,6 +11,11 @@ import {
   View,
   Platform,
   Alert,
+  ActivityIndicator,
+  Image,
+  ImageSourcePropType,
+  StyleProp,
+  ViewStyle,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import Animated, {
@@ -21,11 +26,18 @@ import Animated, {
   useSharedValue,
   withDelay,
   withTiming,
-  withSequence,
 } from "react-native-reanimated";
 import { CommonActions, useNavigation } from "@react-navigation/native";
 import { router } from "expo-router";
-import { Check, Gift } from "lucide-react-native";
+import {
+  Dumbbell,
+  KeyRound,
+  RefreshCw,
+  ScanLine,
+  Sparkles,
+  Tag,
+  TrendingUp,
+} from "lucide-react-native";
 import { useOnboarding } from "@/store/onboarding";
 import { useAuthStore } from "@/store/auth";
 import { useSubscriptionStore } from "@/store/subscription";
@@ -36,9 +48,7 @@ import {
   restorePurchases,
   checkSubscriptionStatus,
 } from "@/lib/revenuecat";
-import { COLORS, RADII, SP, TYPE } from "@/lib/tokens";
-import { hapticLight } from "@/lib/haptics";
-import LimeButton from "@/components/ui/LimeButton";
+import { SP } from "@/lib/tokens";
 import { PurchasesPackage } from "react-native-purchases";
 import { logger } from '@/lib/logger';
 import * as WebBrowser from "expo-web-browser";
@@ -49,25 +59,124 @@ const { width } = Dimensions.get("window");
 
 
 const CONTENT_WIDTH = Math.round(width * 0.86);
+const FONT_DIN = "DINNextRounded-Regular";
+const PLAN_ICONS = {
+  yearly: require("../../assets/paywall-icons/yearly.png"),
+  monthly: require("../../assets/paywall-icons/monthly.png"),
+  weekly: require("../../assets/paywall-icons/weekly.png"),
+} as const;
+const SOCIAL_AVATARS = [
+  require("../../assets/paywall-social/selfie-1.jpg"),
+  require("../../assets/paywall-social/selfie-2.jpg"),
+  require("../../assets/paywall-social/selfie-3.jpg"),
+] as const;
+const PLAN_ACCENTS = {
+  yearly: {
+    main: "#1296B8",
+    soft: "#DDF7FF",
+    badgeBg: "#DDF7FF",
+    badgeText: "#086A83",
+  },
+  monthly: {
+    main: "#C47A00",
+    soft: "#FFF0CF",
+    badgeBg: "#FFF0CF",
+    badgeText: "#8A5300",
+  },
+  weekly: {
+    main: "#66717C",
+    soft: "#EEF1F4",
+    badgeBg: "#EEF1F4",
+    badgeText: "#44505A",
+  },
+} as const;
+
+type PlanAccent = (typeof PLAN_ACCENTS)[PlanKey];
 
 const FEATURE_ITEMS = [
-  "AI aesthetics scoring & analysis",
-  "Personalized improvement recommendations",
-  "Facial symmetry & structure insights",
-  "Progress tracking & history",
-  "Unlimited scans",
+  {
+    title: "Potential face generation",
+    subtitle: "See your optimized face after executing your protocol.",
+    icon: Sparkles,
+  },
+  {
+    title: "Know your weakest points",
+    subtitle: "Facial symmetry scoring, structure analysis, and ranked fixes.",
+    icon: ScanLine,
+  },
+  {
+    title: "Progress tracking",
+    subtitle: "Scan history, rank progression, and measurable improvements.",
+    icon: TrendingUp,
+  },
+  {
+    title: "Daily routine",
+    subtitle: "Exercises and diet protocols built around your scan results.",
+    icon: Dumbbell,
+  },
 ] as const;
 
 type PlanKey = "weekly" | "monthly" | "yearly";
 
-const AnimatedLinearGradient = Animated.createAnimatedComponent(LinearGradient);
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 const AnimatedText = Animated.createAnimatedComponent(Text);
 
-const FeatureRow: React.FC<{ label: string; delay: number; isLast?: boolean }> = ({
-  label,
+const RevealView: React.FC<{
+  children: React.ReactNode;
+  delay?: number;
+  style?: StyleProp<ViewStyle>;
+}> = ({ children, delay = 0, style }) => {
+  const opacity = useSharedValue(0);
+  const translateY = useSharedValue(18);
+  const scale = useSharedValue(0.985);
+
+  useEffect(() => {
+    opacity.value = withDelay(
+      delay,
+      withTiming(1, {
+        duration: 460,
+        easing: Easing.out(Easing.cubic),
+      }),
+    );
+    translateY.value = withDelay(
+      delay,
+      withTiming(0, {
+        duration: 520,
+        easing: Easing.out(Easing.cubic),
+      }),
+    );
+    scale.value = withDelay(
+      delay,
+      withTiming(1, {
+        duration: 520,
+        easing: Easing.out(Easing.cubic),
+      }),
+    );
+  }, [delay, opacity, scale, translateY]);
+
+  const revealStyle = useAnimatedStyle(() => ({
+    opacity: opacity.value,
+    transform: [
+      { translateY: translateY.value },
+      { scale: scale.value },
+    ],
+  }));
+
+  return <Animated.View style={[style, revealStyle]}>{children}</Animated.View>;
+};
+
+const FeatureRow: React.FC<{
+  title: string;
+  subtitle: string;
+  icon: React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
+  delay: number;
+  accent: PlanAccent;
+}> = ({
+  title,
+  subtitle,
+  icon: Icon,
   delay,
-  isLast,
+  accent,
 }) => {
   const opacity = useSharedValue(0);
   const translateY = useSharedValue(16);
@@ -97,97 +206,151 @@ const FeatureRow: React.FC<{ label: string; delay: number; isLast?: boolean }> =
 
   return (
     <Animated.View
-      style={[styles.featureRow, !isLast && styles.featureRowSpacing, rowStyle]}
+      style={[styles.featureRow, rowStyle]}
     >
-      <View style={styles.featureIconWrap}>
-        <Check size={18} color="#111" strokeWidth={3} />
+      <View style={[styles.featureIconWrap, { backgroundColor: accent.soft }]}>
+        <Icon size={16} color={accent.main} strokeWidth={2.4} />
       </View>
-      <Text style={styles.featureLabel}>{label}</Text>
+      <View style={styles.featureCopy}>
+        <Text style={styles.featureTitle}>{title}</Text>
+        <Text style={styles.featureSubtitle}>{subtitle}</Text>
+      </View>
     </Animated.View>
   );
 };
 
 const PlanCard: React.FC<{
   label: string;
+  tagline: string;
   price: string;
   period: string;
+  iconSource: ImageSourcePropType;
+  accent: PlanAccent;
   badge?: string;
-  badgeType?: "popular" | "best";
   savings?: string;
   selected: boolean;
   onPress: () => void;
+  entranceDelay: number;
   animation: {
     scale: Animated.SharedValue<number>;
     progress: Animated.SharedValue<number>;
   };
-}> = ({ label, price, period, badge, badgeType = "popular", savings, selected, onPress, animation }) => {
+}> = ({ label, tagline, price, period, iconSource, accent, badge, savings, selected, onPress, entranceDelay, animation }) => {
+  const entranceOpacity = useSharedValue(0);
+  const entranceY = useSharedValue(20);
+  const entranceScale = useSharedValue(0.985);
+
+  useEffect(() => {
+    entranceOpacity.value = withDelay(
+      entranceDelay,
+      withTiming(1, {
+        duration: 420,
+        easing: Easing.out(Easing.cubic),
+      }),
+    );
+    entranceY.value = withDelay(
+      entranceDelay,
+      withTiming(0, {
+        duration: 520,
+        easing: Easing.out(Easing.cubic),
+      }),
+    );
+    entranceScale.value = withDelay(
+      entranceDelay,
+      withTiming(1, {
+        duration: 520,
+        easing: Easing.out(Easing.cubic),
+      }),
+    );
+  }, [entranceDelay, entranceOpacity, entranceScale, entranceY]);
+
   const cardStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: animation.scale.value }],
+    opacity: entranceOpacity.value,
+    transform: [
+      { translateY: entranceY.value },
+      { scale: animation.scale.value * entranceScale.value },
+    ],
     borderColor: interpolateColor(
       animation.progress.value,
       [0, 1],
-      [COLORS.cardBorder, COLORS.accent],
+      ["#E8E8E8", accent.main],
     ),
-    shadowOpacity: interpolate(animation.progress.value, [0, 1], [0, 0.35]),
+    shadowOpacity: interpolate(animation.progress.value, [0, 1], [0, 0.08]),
   }));
 
-  const labelStyle = useAnimatedStyle(() => ({
-    color: interpolateColor(
-      animation.progress.value,
-      [0, 1],
-      ["rgba(200,200,200,0.85)", "#111111"],
-    ),
-  }));
-
-  const priceStyle = useAnimatedStyle(() => ({
-    color: interpolateColor(
-      animation.progress.value,
-      [0, 1],
-      [COLORS.text, "#111111"],
-    ),
-  }));
-
-  const gradientStyle = useAnimatedStyle(() => ({
+  const bodyStyle = useAnimatedStyle(() => ({
     opacity: animation.progress.value,
+    transform: [
+      {
+        translateY: interpolate(animation.progress.value, [0, 1], [-8, 0]),
+      },
+    ],
   }));
 
   return (
     <AnimatedPressable
-      style={[styles.planCard, cardStyle]}
+      style={[styles.planCard, selected && styles.planCardSelected, cardStyle]}
       onPress={onPress}
+      accessibilityRole="button"
+      accessibilityState={{ selected, expanded: selected }}
     >
-      <Animated.View pointerEvents="none" style={[styles.planGradient, gradientStyle]}>
-        <LinearGradient
-          colors={[COLORS.accent, "#A6F02F"]}
-          start={{ x: 0, y: 0.5 }}
-          end={{ x: 1, y: 0.5 }}
-          style={StyleSheet.absoluteFill}
-          pointerEvents="none"
-        />
-      </Animated.View>
-      {badge && (
-        <View style={styles.badgeContainer}>
-          <View style={[
-            styles.badge,
-            badgeType === "best" ? styles.badgeBest : styles.badgePopular
-          ]}>
-            <Text style={[
-              styles.badgeText,
-              badgeType === "best" && styles.badgeTextBest
-            ]}>{badge}</Text>
+      <View style={styles.planHeader}>
+        <View style={[styles.planIcon, selected && { backgroundColor: accent.soft }]}>
+          <Image source={iconSource} style={styles.planIconImage} resizeMode="contain" />
+        </View>
+        <View style={styles.planMeta}>
+          <Text style={styles.planLabel}>{label}</Text>
+          <Text style={styles.planTagline}>{tagline}</Text>
+          <View style={styles.planBadgeRow}>
+            {badge && (
+              <View style={[
+                styles.planBadge,
+                { backgroundColor: accent.badgeBg },
+              ]}>
+                <Text style={[
+                  styles.planBadgeText,
+                  { color: accent.badgeText },
+                ]}>{badge}</Text>
+              </View>
+            )}
+            {savings && (
+              <View style={[styles.savingsBadge, { backgroundColor: accent.badgeBg }]}>
+                <Text style={[styles.savingsText, { color: accent.badgeText }]}>{savings}</Text>
+              </View>
+            )}
           </View>
         </View>
-      )}
-      <View style={styles.planContent}>
-        <AnimatedText style={[styles.planLabel, labelStyle]}>{label}</AnimatedText>
-        <AnimatedText style={[styles.planPrice, priceStyle]}>{price}</AnimatedText>
-        <AnimatedText style={[styles.planPeriod, labelStyle]}>{period}</AnimatedText>
-        {savings && (
-          <View style={styles.savingsBadge}>
-            <Text style={styles.savingsText}>{savings}</Text>
+        <View style={styles.planPriceColumn}>
+          <AnimatedText style={styles.planPrice}>{price}</AnimatedText>
+          <Text style={styles.planPeriod}>{period}</Text>
+          <View style={[
+            styles.radioDot,
+            selected && {
+              borderColor: accent.main,
+              backgroundColor: accent.main,
+            },
+          ]}>
+            {selected && <View style={styles.radioDotInner} />}
           </View>
-        )}
+        </View>
       </View>
+      {selected && (
+        <Animated.View style={[styles.planBody, bodyStyle]}>
+          <View style={styles.planDivider} />
+          <View style={styles.expandedFeatureList}>
+            {FEATURE_ITEMS.map((item, index) => (
+              <FeatureRow
+                key={item.title}
+                title={item.title}
+                subtitle={item.subtitle}
+                icon={item.icon}
+                delay={index * 45}
+                accent={accent}
+              />
+            ))}
+          </View>
+        </Animated.View>
+      )}
     </AnimatedPressable>
   );
 };
@@ -515,7 +678,7 @@ const PaywallScreen: React.FC = () => {
   return (
     <SafeAreaView style={styles.safeArea}>
       <LinearGradient
-        colors={[COLORS.bgTop, COLORS.bgBottom]}
+        colors={["#FFFFFF", "#FFFFFF"]}
         start={{ x: 0.5, y: 0 }}
         end={{ x: 0.5, y: 1 }}
         style={StyleSheet.absoluteFill}
@@ -532,137 +695,221 @@ const PaywallScreen: React.FC = () => {
         >
           <View style={styles.inner}>
             {/* HEADER */}
-            <View style={styles.header}>
-              <Text style={styles.title}>Unlock Your Full Potential</Text>
-              <Text style={styles.subtitle}>
-                Get AI-powered aesthetics insights, personalized recommendations, and unlimited access to all features.
+            <RevealView style={styles.header} delay={80}>
+              <View style={styles.socialProofRow}>
+                <View style={styles.avatarStack}>
+                  {SOCIAL_AVATARS.map((source, index) => (
+                    <View
+                      key={index}
+                      style={[
+                        styles.avatarBubble,
+                        index === 0 && styles.avatarFirst,
+                      ]}
+                    >
+                      <Image source={source} style={styles.avatarImage} resizeMode="cover" />
+                    </View>
+                  ))}
+                  <View style={[styles.avatarBubble, styles.avatarMore]}>
+                    <Text style={styles.avatarTextMuted}>+</Text>
+                  </View>
+                </View>
+                <Text style={styles.socialProofText}>
+                  <Text style={styles.socialProofStrong}>2,800+</Text> men already leveling up
+                </Text>
+              </View>
+              <Text style={styles.title}>
+                Your best face is{"\n"}
+                <Text style={styles.titleAccent}>already possible.</Text>
               </Text>
-            </View>
+              <Text style={styles.subtitle}>
+                Know your weaknesses. Fix them with precision. Track every win.
+              </Text>
+            </RevealView>
 
             {/* PRICING */}
             <View style={styles.pricingColumn}>
               <PlanCard
-                label="Weekly"
-                price="$3.99"
-                period="per week"
-                selected={selected === "weekly"}
-                onPress={() => onSelectPlan("weekly")}
-                animation={{ scale: weeklyScale, progress: weeklyProgress }}
+                label="Yearly"
+                tagline="Best value - commit to the mission"
+                price="$49.99"
+                period="per year - $0.14/day"
+                iconSource={PLAN_ICONS.yearly}
+                accent={PLAN_ACCENTS.yearly}
+                savings="Save $57 vs monthly"
+                selected={selected === "yearly"}
+                onPress={() => onSelectPlan("yearly")}
+                entranceDelay={190}
+                animation={{ scale: yearlyScale, progress: yearlyProgress }}
               />
               <PlanCard
                 label="Monthly"
+                tagline="Start this month, cancel anytime"
                 price="$8.99"
                 period="per month"
+                iconSource={PLAN_ICONS.monthly}
+                accent={PLAN_ACCENTS.monthly}
                 badge="Most Popular"
-                badgeType="popular"
                 selected={selected === "monthly"}
                 onPress={() => onSelectPlan("monthly")}
+                entranceDelay={280}
                 animation={{ scale: monthlyScale, progress: monthlyProgress }}
               />
               <PlanCard
-                label="Yearly"
-                price="$49.99"
-                period="per year"
-                badge="Best Value"
-                badgeType="best"
-                savings="Save 76%"
-                selected={selected === "yearly"}
-                onPress={() => onSelectPlan("yearly")}
-                animation={{ scale: yearlyScale, progress: yearlyProgress }}
+                label="Weekly"
+                tagline="Try it for a week"
+                price="$3.99"
+                period="per week - $16/mo"
+                iconSource={PLAN_ICONS.weekly}
+                accent={PLAN_ACCENTS.weekly}
+                selected={selected === "weekly"}
+                onPress={() => onSelectPlan("weekly")}
+                entranceDelay={370}
+                animation={{ scale: weeklyScale, progress: weeklyProgress }}
               />
-            </View>
-
-            {/* FEATURES */}
-            <View style={styles.featureCard}>
-              <Text style={styles.featureHeader}>What's Included:</Text>
-              {FEATURE_ITEMS.map((item, index) => (
-                <FeatureRow
-                  key={item}
-                  label={item}
-                  delay={index * 80}
-                  isLast={index === FEATURE_ITEMS.length - 1}
-                />
-              ))}
             </View>
 
             {/* PRIMARY BUTTON */}
-            <View style={styles.primaryButtonWrap}>
-              <LimeButton
-                label="Start Subscription"
-                onPress={onContinue}
-                loading={isLoading}
-                disabled={isLoading}
-              />
-            </View>
-
-            {/* RESTORE PURCHASES */}
-            <Pressable style={styles.restoreButton} onPress={onRestorePurchases} disabled={isLoading}>
-              <Text style={styles.restoreText}>Restore Purchases</Text>
-            </Pressable>
-
-            {/* RESTORE WITH RECOVERY CODE */}
-            <Pressable
-              style={styles.promoToggle}
-              onPress={() => setShowRecoveryInput(!showRecoveryInput)}
-            >
-              <Text style={styles.promoToggleText}>Reinstalled? Restore with recovery code</Text>
-            </Pressable>
-
-            {showRecoveryInput && (
-              <View style={styles.promoSection}>
-                <View style={styles.promoInputWrapper}>
-                  <TextInput
-                    style={styles.promoInput}
-                    placeholder="XXXX-XXXX-XXXX"
-                    placeholderTextColor="rgba(200,200,200,0.5)"
-                    value={recoveryCode}
-                    onChangeText={setRecoveryCode}
-                    autoCapitalize="characters"
-                    autoCorrect={false}
-                  />
-                  <Pressable
-                    style={styles.promoApplyButton}
-                    onPress={onRestoreWithCode}
-                    disabled={restoringWithCode}
+            <RevealView style={styles.primaryButtonWrap} delay={500}>
+              <View style={[styles.ctaDepth, isLoading && styles.ctaDepthDisabled]}>
+                <Pressable
+                  onPress={onContinue}
+                  disabled={isLoading}
+                  accessibilityRole="button"
+                  accessibilityState={{ disabled: isLoading }}
+                  style={({ pressed }) => [
+                    styles.ctaButton,
+                    pressed && !isLoading && styles.ctaButtonPressed,
+                    isLoading && styles.ctaButtonDisabled,
+                  ]}
+                >
+                  <LinearGradient
+                    colors={isLoading ? ["#2A2A2A", "#2A2A2A"] : ["#CCFF6B", "#B4F34D"]}
+                    locations={[0, 1]}
+                    start={{ x: 0.5, y: 0 }}
+                    end={{ x: 0.5, y: 1 }}
+                    style={styles.ctaGradient}
                   >
-                    <Text style={styles.promoApplyText}>
-                      {restoringWithCode ? "..." : "Restore"}
-                    </Text>
-                  </Pressable>
-                </View>
+                    {isLoading ? (
+                      <ActivityIndicator size="small" color="#7A7A7A" />
+                    ) : (
+                      <Text style={styles.ctaText}>Start Subscription</Text>
+                    )}
+                  </LinearGradient>
+                </Pressable>
               </View>
-            )}
+              <Text style={styles.ctaSubcopy}>Cancel anytime - secure checkout</Text>
+            </RevealView>
 
-            {/* PROMO CODE */}
-            <Pressable
-              style={styles.promoToggle}
-              onPress={() => setShowPromoInput(!showPromoInput)}
-            >
-              <Gift size={16} color={COLORS.accent} strokeWidth={2} />
-              <Text style={styles.promoToggleText}>Have a promo code?</Text>
-            </Pressable>
+            <RevealView style={styles.secondaryActions} delay={590}>
+              {/* PROMO CODE */}
+              <Pressable
+                style={({ pressed }) => [
+                  styles.fullSecondaryButton,
+                  showPromoInput && styles.secondaryButtonActive,
+                  pressed && styles.secondaryButtonPressed,
+                ]}
+                onPress={() => setShowPromoInput(!showPromoInput)}
+                accessibilityRole="button"
+                accessibilityState={{ expanded: showPromoInput }}
+              >
+                <Tag size={16} color={showPromoInput ? "#3B6D11" : "#8A8A8E"} strokeWidth={2.2} />
+                <Text style={[styles.secondaryButtonText, showPromoInput && styles.secondaryButtonTextActive]}>
+                  Apply promo code
+                </Text>
+              </Pressable>
 
-            {showPromoInput && (
-              <View style={styles.promoSection}>
-                <View style={styles.promoInputWrapper}>
-                  <TextInput
-                    style={styles.promoInput}
-                    placeholder="Enter code"
-                    placeholderTextColor="rgba(200,200,200,0.5)"
-                    value={promoCode}
-                    onChangeText={setPromoCode}
-                    autoCapitalize="characters"
-                    autoCorrect={false}
-                  />
-                  <Pressable style={styles.promoApplyButton} onPress={onApplyPromoCode}>
-                    <Text style={styles.promoApplyText}>Apply</Text>
-                  </Pressable>
+              {showPromoInput && (
+                <View style={styles.promoSection}>
+                  <Text style={styles.inputLabel}>Promo code</Text>
+                  <View style={styles.promoInputWrapper}>
+                    <TextInput
+                      style={styles.promoInput}
+                      placeholder="Enter code"
+                      placeholderTextColor="#A9A9A9"
+                      value={promoCode}
+                      onChangeText={setPromoCode}
+                      autoCapitalize="characters"
+                      autoCorrect={false}
+                    />
+                    <Pressable
+                      style={({ pressed }) => [
+                        styles.promoApplyButton,
+                        pressed && styles.applyButtonPressed,
+                        isLoading && styles.applyButtonDisabled,
+                      ]}
+                      onPress={onApplyPromoCode}
+                      disabled={isLoading}
+                    >
+                      <Text style={styles.promoApplyText}>Apply</Text>
+                    </Pressable>
+                  </View>
                 </View>
+              )}
+
+              <View style={styles.secondaryRow}>
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.secondaryButton,
+                    pressed && styles.secondaryButtonPressed,
+                    isLoading && styles.secondaryButtonDisabled,
+                  ]}
+                  onPress={onRestorePurchases}
+                  disabled={isLoading}
+                  accessibilityRole="button"
+                >
+                  <RefreshCw size={15} color="#8A8A8E" strokeWidth={2.2} />
+                  <Text style={styles.secondaryButtonText}>Restore purchases</Text>
+                </Pressable>
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.secondaryButton,
+                    showRecoveryInput && styles.secondaryButtonActive,
+                    pressed && styles.secondaryButtonPressed,
+                  ]}
+                  onPress={() => setShowRecoveryInput(!showRecoveryInput)}
+                  accessibilityRole="button"
+                  accessibilityState={{ expanded: showRecoveryInput }}
+                >
+                  <KeyRound size={15} color={showRecoveryInput ? "#3B6D11" : "#8A8A8E"} strokeWidth={2.2} />
+                  <Text style={[styles.secondaryButtonText, showRecoveryInput && styles.secondaryButtonTextActive]}>
+                    Recovery code
+                  </Text>
+                </Pressable>
               </View>
-            )}
+
+              {showRecoveryInput && (
+                <View style={styles.promoSection}>
+                  <Text style={styles.inputLabel}>Recovery code</Text>
+                  <View style={styles.promoInputWrapper}>
+                    <TextInput
+                      style={styles.promoInput}
+                      placeholder="XXXX-XXXX-XXXX"
+                      placeholderTextColor="#A9A9A9"
+                      value={recoveryCode}
+                      onChangeText={setRecoveryCode}
+                      autoCapitalize="characters"
+                      autoCorrect={false}
+                    />
+                    <Pressable
+                      style={({ pressed }) => [
+                        styles.promoApplyButton,
+                        pressed && styles.applyButtonPressed,
+                        restoringWithCode && styles.applyButtonDisabled,
+                      ]}
+                      onPress={onRestoreWithCode}
+                      disabled={restoringWithCode}
+                    >
+                      <Text style={styles.promoApplyText}>
+                        {restoringWithCode ? "..." : "Restore"}
+                      </Text>
+                    </Pressable>
+                  </View>
+                </View>
+              )}
+            </RevealView>
 
             {/* LEGAL */}
-            <View style={styles.legal}>
+            <RevealView style={styles.legal} delay={680}>
               <Text style={styles.legalText}>
                 Subscription automatically renews unless auto-renew is turned off at least 24 hours before the end of the current period.
               </Text>
@@ -673,7 +920,7 @@ const PaywallScreen: React.FC = () => {
                   <Text style={styles.legalLink}>Privacy Policy</Text>
                 </Pressable>
               </View>
-            </View>
+            </RevealView>
           </View>
         </ScrollView>
         </KeyboardAvoidingView>
@@ -687,254 +934,437 @@ export default PaywallScreen;
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: "transparent",
+    backgroundColor: "#FFFFFF",
   },
   flex: {
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: 40,
+    paddingBottom: 34,
   },
   inner: {
     alignItems: "center",
-    paddingTop: SP[10] + 4,
-    paddingHorizontal: SP[5],
+    paddingTop: SP[6],
+    paddingHorizontal: SP[4],
   },
   header: {
     width: CONTENT_WIDTH,
     alignItems: "center",
-    marginBottom: SP[6],
+    marginBottom: SP[5],
+  },
+  socialProofRow: {
+    minHeight: 28,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    marginBottom: SP[4],
+  },
+  avatarStack: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  avatarBubble: {
+    width: 24,
+    height: 24,
+    marginLeft: -7,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+    backgroundColor: "#F0F0F0",
+  },
+  avatarFirst: {
+    marginLeft: 0,
+  },
+  avatarMore: {
+    backgroundColor: "#F0F0F0",
+  },
+  avatarImage: {
+    width: "100%",
+    height: "100%",
+  },
+  avatarTextMuted: {
+    fontFamily: FONT_DIN,
+    fontSize: 9,
+    lineHeight: 12,
+    color: "#8A8A8E",
+  },
+  socialProofText: {
+    fontFamily: FONT_DIN,
+    fontSize: 12,
+    lineHeight: 16,
+    color: "#888888",
+  },
+  socialProofStrong: {
+    fontFamily: FONT_DIN,
+    color: "#3B6D11",
   },
   title: {
-    ...TYPE.h2,
-    color: COLORS.text,
+    fontFamily: FONT_DIN,
+    fontSize: 24,
+    lineHeight: 30,
+    color: "#111111",
     textAlign: "center",
+  },
+  titleAccent: {
+    color: "#639922",
   },
   subtitle: {
-    ...TYPE.caption,
+    fontFamily: FONT_DIN,
+    fontSize: 13,
+    lineHeight: 20,
     marginTop: SP[2],
-    color: "rgba(200,200,200,0.85)",
+    color: "#888888",
     textAlign: "center",
-    maxWidth: Math.round(width * 0.8),
+    maxWidth: 282,
   },
   pricingColumn: {
-    width: CONTENT_WIDTH,
-    gap: SP[4],
+    width: "100%",
+    gap: 10,
   },
   planCard: {
     width: "100%",
-    minHeight: 100,
-    borderRadius: RADII.lg,
+    minHeight: 106,
+    borderRadius: 16,
     borderWidth: 1.5,
-    paddingHorizontal: SP[5],
-    paddingVertical: SP[4] + 2,
-    backgroundColor: COLORS.card,
-    overflow: "visible",
-    shadowColor: COLORS.accent,
-    shadowOpacity: 0,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 4 },
-  },
-  planGradient: {
-    ...StyleSheet.absoluteFillObject,
-    borderRadius: RADII.lg,
+    backgroundColor: "#FFFFFF",
     overflow: "hidden",
+    shadowColor: "#000000",
+    shadowOpacity: 0,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 5 },
   },
-  planContent: {
+  planCardSelected: {
+    borderWidth: 2,
+  },
+  planHeader: {
+    minHeight: 92,
+    flexDirection: "row",
     alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  planIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 11,
+    backgroundColor: "#F4F4F4",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  planIconImage: {
+    width: 31,
+    height: 31,
+  },
+  planMeta: {
+    flex: 1,
+    minWidth: 0,
+  },
+  planBadgeRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 5,
   },
   planLabel: {
-    ...TYPE.h4,
-    color: COLORS.text,
-    textAlign: "center",
-  },
-  planPrice: {
-    ...TYPE.h1,
-    color: COLORS.text,
-    textAlign: "center",
-    marginTop: SP[1],
-  },
-  planPeriod: {
-    ...TYPE.caption,
-    color: "rgba(200,200,200,0.7)",
-    textAlign: "center",
-    marginTop: 2,
-  },
-  badgeContainer: {
-    position: "absolute",
-    top: -SP[3],
-    right: SP[4],
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 10,
-  },
-  badge: {
-    paddingHorizontal: SP[3],
-    paddingVertical: 5,
-    borderRadius: RADII.sm,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  badgePopular: {
-    backgroundColor: COLORS.accent,
-    ...(Platform.OS === "ios"
-      ? {
-          shadowColor: COLORS.accent,
-          shadowOpacity: 0.6,
-          shadowRadius: 8,
-          shadowOffset: { width: 0, height: 2 },
-        }
-      : { elevation: 8 }),
-  },
-  badgeBest: {
-    backgroundColor: "#FFD700",
-    ...(Platform.OS === "ios"
-      ? {
-          shadowColor: "#FFD700",
-          shadowOpacity: 0.7,
-          shadowRadius: 10,
-          shadowOffset: { width: 0, height: 2 },
-        }
-      : { elevation: 10 }),
-  },
-  badgeText: {
-    fontFamily: "Poppins-SemiBold",
-    fontSize: 11,
-    lineHeight: 14,
+    fontFamily: FONT_DIN,
+    fontSize: 16,
+    lineHeight: 19,
     color: "#111111",
   },
-  badgeTextBest: {
-    color: "#1a1a00",
+  planTagline: {
+    fontFamily: FONT_DIN,
+    fontSize: 12,
+    lineHeight: 15,
+    color: "#9B9B9B",
+  },
+  planPrice: {
+    fontFamily: FONT_DIN,
+    fontSize: 23,
+    lineHeight: 26,
+    color: "#111111",
+    textAlign: "right",
+  },
+  planPeriod: {
+    fontFamily: FONT_DIN,
+    fontSize: 11,
+    lineHeight: 14,
+    color: "#9B9B9B",
+    textAlign: "right",
+  },
+  planPriceColumn: {
+    alignItems: "center",
+    minWidth: 80,
+  },
+  planBadge: {
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+    borderRadius: 20,
+  },
+  planBadgeText: {
+    fontFamily: FONT_DIN,
+    fontSize: 10,
+    lineHeight: 13,
+    color: "#27500A",
+    textTransform: "uppercase",
+  },
+  radioDot: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: "#DDDDDD",
+    marginTop: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  radioDotInner: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#FFFFFF",
   },
   savingsBadge: {
-    marginTop: SP[2],
-    paddingHorizontal: SP[2],
-    paddingVertical: SP[1],
-    borderRadius: RADII.sm,
-    backgroundColor: "rgba(180,243,77,0.15)",
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+    borderRadius: 20,
+    backgroundColor: "#EAF3DE",
   },
   savingsText: {
-    ...TYPE.smallSemiBold,
-    color: COLORS.accent,
+    fontFamily: FONT_DIN,
+    fontSize: 10,
+    lineHeight: 13,
+    color: "#27500A",
   },
-  featureCard: {
-    width: CONTENT_WIDTH,
-    marginTop: SP[8],
-    backgroundColor: COLORS.card,
-    borderRadius: RADII.lg,
-    paddingVertical: SP[5],
-    paddingHorizontal: SP[5],
-    borderWidth: 1,
-    borderColor: COLORS.cardBorder,
+  planBody: {
+    paddingHorizontal: 16,
+    paddingBottom: 14,
   },
-  featureHeader: {
-    ...TYPE.bodySemiBold,
-    color: COLORS.text,
-    marginBottom: SP[4],
+  planDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: "#EDEDED",
+    marginBottom: 12,
+  },
+  expandedFeatureList: {
+    gap: 8,
   },
   featureRow: {
+    minHeight: 42,
     flexDirection: "row",
-    alignItems: "center",
-  },
-  featureRowSpacing: {
-    marginBottom: SP[3] + 2,
+    alignItems: "flex-start",
+    gap: 10,
   },
   featureIconWrap: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 30,
+    height: 30,
+    borderRadius: 9,
+    backgroundColor: "#F7F7F7",
     justifyContent: "center",
     alignItems: "center",
-    marginRight: SP[3],
-    backgroundColor: COLORS.accent,
+    marginTop: 1,
   },
-  featureLabel: {
-    ...TYPE.caption,
+  featureCopy: {
     flex: 1,
-    color: COLORS.text,
+  },
+  featureTitle: {
+    fontFamily: FONT_DIN,
+    fontSize: 13,
+    lineHeight: 16,
+    color: "#111111",
+  },
+  featureSubtitle: {
+    fontFamily: FONT_DIN,
+    fontSize: 11,
+    lineHeight: 13,
+    color: "#9B9B9B",
+    marginTop: 1,
   },
   primaryButtonWrap: {
-    width: CONTENT_WIDTH,
-    marginTop: SP[8],
+    width: "100%",
+    marginTop: 18,
   },
-  restoreButton: {
-    marginTop: SP[4],
-    paddingVertical: SP[2],
+  ctaDepth: {
+    width: "100%",
+    borderRadius: 28,
+    backgroundColor: "#6B9A1E",
+    paddingBottom: 5,
+    shadowColor: "#B4F34D",
+    shadowOpacity: 0.35,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 10,
   },
-  restoreText: {
-    ...TYPE.caption,
-    color: "rgba(200,200,200,0.7)",
-    textDecorationLine: "underline",
+  ctaDepthDisabled: {
+    backgroundColor: "#2A2A2A",
+    shadowOpacity: 0,
+    elevation: 0,
   },
-  promoToggle: {
+  ctaButton: {
+    height: 56,
+    borderRadius: 28,
+    overflow: "hidden",
+  },
+  ctaButtonPressed: {
+    transform: [{ translateY: 4 }],
+  },
+  ctaButtonDisabled: {
+    transform: [{ translateY: 0 }],
+  },
+  ctaGradient: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 28,
+  },
+  ctaText: {
+    fontFamily: FONT_DIN,
+    fontSize: 18,
+    lineHeight: 22,
+    color: "#0B0B0B",
+  },
+  ctaSubcopy: {
+    fontFamily: FONT_DIN,
+    fontSize: 11,
+    lineHeight: 16,
+    color: "#B5B5B5",
+    textAlign: "center",
+    marginTop: 8,
+  },
+  secondaryActions: {
+    width: "100%",
+    marginTop: 14,
+    gap: 8,
+  },
+  fullSecondaryButton: {
+    minHeight: 46,
     flexDirection: "row",
     alignItems: "center",
-    gap: SP[2],
-    marginTop: SP[4],
-    paddingVertical: SP[2],
+    justifyContent: "center",
+    gap: 7,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    borderRadius: 12,
+    borderWidth: 0.5,
+    borderColor: "#E8E8E8",
+    backgroundColor: "#FAFAFA",
   },
-  promoToggleText: {
-    ...TYPE.caption,
-    color: COLORS.accent,
+  secondaryRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  secondaryButton: {
+    flex: 1,
+    minHeight: 46,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 11,
+    borderRadius: 12,
+    borderWidth: 0.5,
+    borderColor: "#E8E8E8",
+    backgroundColor: "#FAFAFA",
+  },
+  secondaryButtonActive: {
+    borderColor: "#D8E8C9",
+    backgroundColor: "#F5FAEF",
+  },
+  secondaryButtonPressed: {
+    opacity: 0.75,
+  },
+  secondaryButtonDisabled: {
+    opacity: 0.55,
+  },
+  secondaryButtonText: {
+    fontFamily: FONT_DIN,
+    fontSize: 12,
+    lineHeight: 16,
+    color: "#555555",
+    textAlign: "center",
+  },
+  secondaryButtonTextActive: {
+    color: "#3B6D11",
+  },
+  inputLabel: {
+    fontFamily: FONT_DIN,
+    fontSize: 12,
+    lineHeight: 16,
+    color: "#555555",
+    marginBottom: 6,
   },
   promoSection: {
-    width: CONTENT_WIDTH,
-    marginTop: SP[3],
+    width: "100%",
   },
   promoInputWrapper: {
     flexDirection: "row",
     alignItems: "center",
-    gap: SP[3],
+    gap: 8,
   },
   promoInput: {
-    ...TYPE.caption,
+    fontFamily: FONT_DIN,
+    fontSize: 13,
+    lineHeight: 18,
     flex: 1,
-    height: 48,
-    backgroundColor: COLORS.inputBg,
-    borderRadius: RADII.md,
+    minHeight: 46,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 10,
     borderWidth: 1,
-    borderColor: COLORS.cardBorder,
-    paddingHorizontal: SP[4],
-    color: COLORS.text,
+    borderColor: "#E8E8E8",
+    paddingHorizontal: 12,
+    color: "#111111",
   },
   promoApplyButton: {
-    height: 48,
-    paddingHorizontal: SP[6],
-    backgroundColor: COLORS.accent,
-    borderRadius: RADII.md,
+    minHeight: 46,
+    paddingHorizontal: 16,
+    backgroundColor: "#639922",
+    borderRadius: 10,
     justifyContent: "center",
     alignItems: "center",
   },
+  applyButtonPressed: {
+    opacity: 0.82,
+  },
+  applyButtonDisabled: {
+    opacity: 0.55,
+  },
   promoApplyText: {
-    ...TYPE.captionSemiBold,
-    color: COLORS.bgBottom,
+    fontFamily: FONT_DIN,
+    fontSize: 13,
+    lineHeight: 18,
+    color: "#FFFFFF",
   },
   legal: {
-    width: CONTENT_WIDTH,
-    marginTop: SP[8],
+    width: "100%",
+    marginTop: SP[6],
     alignItems: "center",
   },
   legalText: {
-    fontFamily: "Poppins-Regular",
+    fontFamily: FONT_DIN,
     fontSize: 11,
     lineHeight: 16,
-    color: "rgba(200,200,200,0.5)",
+    color: "#A0A0A0",
     textAlign: "center",
-    marginBottom: SP[2],
+    marginBottom: 8,
   },
   legalLinks: {
     flexDirection: "row",
     alignItems: "center",
-    gap: SP[2],
+    gap: 8,
   },
   legalLink: {
-    fontFamily: "Poppins-Regular",
+    fontFamily: FONT_DIN,
     fontSize: 11,
-    color: "rgba(200,200,200,0.6)",
+    color: "#7A7A7A",
     textDecorationLine: "underline",
   },
   legalSeparator: {
     fontSize: 11,
-    color: "rgba(200,200,200,0.4)",
+    color: "#C7C7C7",
   },
 });

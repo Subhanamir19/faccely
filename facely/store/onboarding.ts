@@ -37,6 +37,12 @@ type State = {
 
 const KEY = "onboarding_state_v1";
 const DONE = "onboarding_done_v1";
+const SCAN_PHOTOS = "onboarding_scan_photos_v1";
+
+type ScanPhotos = {
+  frontal: string | null;
+  side: string | null;
+};
 
 export const useOnboarding = create<State>((set, get) => ({
   data: {},
@@ -44,13 +50,26 @@ export const useOnboarding = create<State>((set, get) => ({
   done: false,
   scanFrontalUri: null,
   scanSideUri: null,
-  setScanPhotos: (frontal, side) => set({ scanFrontalUri: frontal, scanSideUri: side }),
-  clearScanPhotos: () => set({ scanFrontalUri: null, scanSideUri: null }),
+  setScanPhotos: (frontal, side) => {
+    set({ scanFrontalUri: frontal, scanSideUri: side });
+    void setJSON<ScanPhotos>(SCAN_PHOTOS, { frontal, side });
+  },
+  clearScanPhotos: () => {
+    set({ scanFrontalUri: null, scanSideUri: null });
+    void setJSON<ScanPhotos>(SCAN_PHOTOS, { frontal: null, side: null });
+  },
 
   hydrate: async () => {
     const d = await getJSON<OnboardingData>(KEY, {});
     const done = await getJSON<boolean>(DONE, false);
-    set({ data: d, completed: done, done });
+    const scanPhotos = await getJSON<ScanPhotos>(SCAN_PHOTOS, { frontal: null, side: null });
+    set({
+      data: d,
+      completed: done,
+      done,
+      scanFrontalUri: scanPhotos.frontal ?? null,
+      scanSideUri: scanPhotos.side ?? null,
+    });
   },
 
   setField: (k, v) => {
@@ -68,7 +87,14 @@ export const useOnboarding = create<State>((set, get) => ({
   reset: async () => {
     await setJSON(KEY, {});
     await setJSON(DONE, false);
-    set({ data: {}, completed: false, done: false });
+    await setJSON<ScanPhotos>(SCAN_PHOTOS, { frontal: null, side: null });
+    set({
+      data: {},
+      completed: false,
+      done: false,
+      scanFrontalUri: null,
+      scanSideUri: null,
+    });
   },
 }));
 

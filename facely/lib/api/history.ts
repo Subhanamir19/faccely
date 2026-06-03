@@ -29,6 +29,9 @@ export interface ScanDetail {
   analysisCreatedAt: string | null;
 }
 
+const scanDetailCache = new Map<string, ScanDetail>();
+const scanDetailInFlight = new Map<string, Promise<ScanDetail>>();
+
 /** Extract a user-facing message from a non-ok response body. */
 async function extractErrorMessage(res: Response): Promise<string> {
   // Railway-level 404 ("Application not found") means the service is down —
@@ -79,31 +82,49 @@ export async function fetchScanDetail(scanId: string): Promise<ScanDetail> {
   const { uid, deviceId } = getAuthState();
   if (!uid) throw new Error("Not authenticated");
 
-  const authHeaders = await buildAuthHeadersAsync({ includeLegacy: true });
-  const headers: Record<string, string> = {
-    Accept: "application/json",
-    ...authHeaders,
-  };
+  const cacheKey = `${uid}:${scanId}`;
+  const cached = scanDetailCache.get(cacheKey);
+  if (cached) return cached;
 
-  const url = `${API_BASE}/history/scans/${encodeURIComponent(scanId)}`;
-  const res = await fetchWithRetry(url, { method: "GET", headers });
+  const inFlight = scanDetailInFlight.get(cacheKey);
+  if (inFlight) return inFlight;
 
-  if (!res.ok) {
-    const message = await extractErrorMessage(res);
-    throw new Error(message);
+  const request = (async () => {
+    const authHeaders = await buildAuthHeadersAsync({ includeLegacy: true });
+    const headers: Record<string, string> = {
+      Accept: "application/json",
+      ...authHeaders,
+    };
+
+    const url = `${API_BASE}/history/scans/${encodeURIComponent(scanId)}`;
+    const res = await fetchWithRetry(url, { method: "GET", headers });
+
+    if (!res.ok) {
+      const message = await extractErrorMessage(res);
+      throw new Error(message);
+    }
+
+    const payload = await res.json().catch(() => null);
+    if (
+      !payload ||
+      typeof payload.id !== "string" ||
+      !payload.scores ||
+      !payload.images ||
+      !payload.images.front ||
+      typeof payload.images.front.url !== "string"
+    ) {
+      throw new Error("Invalid history detail response");
+    }
+
+    const detail = payload as ScanDetail;
+    scanDetailCache.set(cacheKey, detail);
+    return detail;
+  })();
+
+  scanDetailInFlight.set(cacheKey, request);
+  try {
+    return await request;
+  } finally {
+    scanDetailInFlight.delete(cacheKey);
   }
-
-  const payload = await res.json().catch(() => null);
-  if (
-    !payload ||
-    typeof payload.id !== "string" ||
-    !payload.scores ||
-    !payload.images ||
-    !payload.images.front ||
-    typeof payload.images.front.url !== "string"
-  ) {
-    throw new Error("Invalid history detail response");
-  }
-
-  return payload as ScanDetail;
 }

@@ -122,6 +122,7 @@ let lastIntroDate: string | null = null;
 let lastStreakNavDate: string | null = null;
 
 const DAILY_FLOW_KEY = "daily_flow_shown_date";
+const ROUTINE_PREVIEW_COMPLETED_KEY = "daily_routine_preview_completed_date";
 
 /** Returns true only if the daily flow hasn't been shown today (checks storage). */
 async function shouldShowDailyFlow(todayStr: string): Promise<boolean> {
@@ -134,6 +135,20 @@ async function shouldShowDailyFlow(todayStr: string): Promise<boolean> {
 async function markDailyFlowShown(todayStr: string): Promise<void> {
   lastStreakNavDate = todayStr;
   await setJSON(DAILY_FLOW_KEY, todayStr);
+}
+
+let lastRoutinePreviewCompletedDate: string | null = null;
+
+async function hasCompletedRoutinePreview(todayStr: string): Promise<boolean> {
+  if (lastRoutinePreviewCompletedDate === todayStr) return true;
+  const stored = await getJSON<string | null>(ROUTINE_PREVIEW_COMPLETED_KEY, null);
+  lastRoutinePreviewCompletedDate = stored;
+  return stored === todayStr;
+}
+
+async function markRoutinePreviewCompleted(todayStr: string): Promise<void> {
+  lastRoutinePreviewCompletedDate = todayStr;
+  await setJSON(ROUTINE_PREVIEW_COMPLETED_KEY, todayStr);
 }
 
 // Module-level: life modal session flags (same pattern as lastIntroDate)
@@ -1196,19 +1211,32 @@ export default function TasksScreen() {
     completionModalShownDate,
   } = useTasksStore();
   const { displayName } = useProfile();
+  const todayDateStr = getLocalDateString();
 
   const [showMoodCheck, setShowMoodCheck]         = useState(false);
   const [markDoneTask, setMarkDoneTask]           = useState<DailyTask | null>(null);
   const [confirmProtocol, setConfirmProtocol]     = useState<ProtocolTask | null>(null);
-  // Tab presents an intro flow first; its actions reveal the list or chooser.
-  // Reset to preview every time the tab gains focus so returning users always see it.
+  // Tab presents the intro flow until the user reaches the final "routine ready"
+  // preview and presses Continue. After that, the list becomes today's default.
+  // This intentionally does not read the old list-reached key because that key
+  // can be set by legacy/direct list routes before the preview was completed.
   const [phase, setPhase] = useState<"preview" | "list">("preview");
   const [openEditorOnList, setOpenEditorOnList] = useState(false);
   useFocusEffect(
     useCallback(() => {
+      let alive = true;
       setOpenEditorOnList(false);
-      setPhase(params.openList === "1" ? "list" : "preview");
-    }, [params.openList]),
+      const forceList = params.openList === "1";
+
+      hasCompletedRoutinePreview(todayDateStr).then((completed) => {
+        if (!alive) return;
+        setPhase(forceList || completed ? "list" : "preview");
+      });
+
+      return () => {
+        alive = false;
+      };
+    }, [params.openList, todayDateStr]),
   );
 
   // Life modals
@@ -1312,7 +1340,6 @@ export default function TasksScreen() {
   }, [currentStreak]);
 
   // Intro splash — once per day
-  const todayDateStr = getLocalDateString();
   const [introVisible, setIntroVisible] = useState(lastIntroDate !== todayDateStr);
   // Ref so event callbacks (showLifeModal, useFocusEffect) can read intro state without stale closures
   const introVisibleRef = useRef(introVisible);
@@ -1424,6 +1451,7 @@ export default function TasksScreen() {
         currentStreak={currentStreak}
         onReviewRoutine={() => {
           setOpenEditorOnList(false);
+          void markRoutinePreviewCompleted(todayDateStr);
           setPhase("list");
         }}
         onChooseMyself={() => {
@@ -1438,7 +1466,10 @@ export default function TasksScreen() {
     <View style={styles.safe}>
       <RoutineList
         tasks={tasks}
-        onBack={() => setPhase("preview")}
+        protocols={today.protocols}
+        onBack={() => {
+          setPhase("preview");
+        }}
         initialEditOpen={openEditorOnList || params.openEdit === "1"}
         onStart={() => {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
