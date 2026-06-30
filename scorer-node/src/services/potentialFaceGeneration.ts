@@ -15,6 +15,7 @@ import OpenAI, { toFile } from "openai";
 import sharp from "sharp";
 
 import { PROVIDERS } from "../config/index.js";
+import { getAnalysisForScan } from "../supabase/analyses.js";
 import { getScanById } from "../supabase/scans.js";
 import { downloadScanImage } from "../supabase/storage.js";
 import {
@@ -35,6 +36,7 @@ import { enqueuePotentialFace } from "../queue/jobs.js";
 type PotentialFaceGenerationDeps = {
   getPotentialFaceById: typeof getPotentialFaceById;
   getScanById: typeof getScanById;
+  getAnalysisForScan: typeof getAnalysisForScan;
   hasWeeklyGenerationCapacity: typeof hasWeeklyGenerationCapacity;
   downloadScanImage: typeof downloadScanImage;
   uploadPotentialFaceImage: typeof uploadPotentialFaceImage;
@@ -46,6 +48,7 @@ type PotentialFaceGenerationDeps = {
 const defaultDeps: PotentialFaceGenerationDeps = {
   getPotentialFaceById,
   getScanById,
+  getAnalysisForScan,
   hasWeeklyGenerationCapacity,
   downloadScanImage,
   uploadPotentialFaceImage,
@@ -84,11 +87,9 @@ const TARGET_CEILING = 85;
 
 /**
  * Whitelist of sub-metric keys we will target in the image. Keys NOT in this
- * map are skipped at picker time (e.g. `fwhr_score`, `canthal_tilt_score`,
- * `eye_type_score`, `symmetry_score`, `ramus_score`) because they are either
- * structural ratios or anatomical features that no realistic short-term
- * transformation can move. The string values here are the v1 prompt phrasings
- * used by `buildPromptV1`. Phase 7 owns the real prompt copy.
+ * map are skipped at picker time when they are hard to represent safely from a
+ * frontal image. The string values here are prompt phrasings used by
+ * `buildPromptV1`.
  */
 const SUB_METRIC_VISUAL_HINT: Record<string, string> = {
   // cheekbones
@@ -96,15 +97,23 @@ const SUB_METRIC_VISUAL_HINT: Record<string, string> = {
   "cheekbones.maxilla_score": "stronger forward maxillary projection in the midface",
   "cheekbones.bone_structure_score": "more sculpted cheekbone definition with clearer underlying contour",
   "cheekbones.face_fat_score": "leaner submalar/buccal area for cleaner cheek hollows",
+  "cheekbones.fwhr_score": "a more balanced perceived facial width-to-height ratio while preserving identity",
   // jawline
   "jawline.development_score": "sharper jawline definition along the mandibular border",
   "jawline.gonial_angle_score": "crisper gonial angle where the jaw meets the ramus",
   "jawline.projection_score": "stronger anterior chin and jaw projection",
   // eyes
+  "eyes.canthal_tilt_score": "cleaner eye framing with a subtly more positive outer-corner lift",
+  "eyes.eye_type_score": "more compact, focused eye shape with reduced upper-lid exposure",
   "eyes.brow_volume_score": "fuller, better-groomed eyebrows",
+  "eyes.symmetry_score": "better left-right balance in the eye area without changing eye identity",
   // skin
   "skin.color_score": "more even skin tone, reduced redness and discoloration",
   "skin.quality_score": "clearer, smoother skin with reduced blemishes and a healthy texture",
+  // haircut
+  "haircut.density_score": "a fuller, cleaner hair frame while preserving the person's natural hairline and identity",
+  "haircut.styling_score": "a neater haircut shape that better suits the person's face proportions",
+  "haircut.facial_hair_score": "cleaner, more intentional facial-hair grooming that supports the jaw and cheek structure",
 };
 
 /* -------------------------------------------------------------------------- */
@@ -152,9 +161,26 @@ export async function generatePotentialFace(
   let responseCandidateCount = 0;
 
   try {
-    const scan = await deps.getScanById(row.user_id, row.baseline_scan_id);
+    const [scan, analysis] = await Promise.all([
+      deps.getScanById(row.user_id, row.baseline_scan_id),
+      deps.getAnalysisForScan(row.baseline_scan_id),
+    ]);
     if (!scan) {
       throw makeFailure("baseline_scan_missing", "Baseline scan not found.");
+    }
+    const advancedResult = getUsableAdvancedResult(analysis?.advanced_result);
+    if (!advancedResult) {
+      throw makeFailure(
+        "advanced_analysis_missing",
+        "Advanced analysis must be saved before potential face generation."
+      );
+    }
+    const targetedMetrics = pickTargetedMetrics(advancedResult);
+    if (targetedMetrics.length === 0) {
+      throw makeFailure(
+        "target_metrics_missing",
+        "Advanced analysis did not include any supported visual target metrics."
+      );
     }
 
     const hasCapacity = await deps.hasWeeklyGenerationCapacity(row.user_id);
@@ -172,7 +198,7 @@ export async function generatePotentialFace(
     sourceImageWidth = sourceMeta.width;
     sourceImageHeight = sourceMeta.height;
 
-    const prompt = buildPromptV1();
+    const prompt = buildPromptV1(targetedMetrics);
 
     response = await openai.images.edit(
       {
@@ -238,7 +264,7 @@ export async function generatePotentialFace(
       id: row.id,
       primaryImagePath: primaryPath,
       alternateImagePath: alternatePath,
-      targetedMetrics: [],
+      targetedMetrics,
       promptVersion: PROMPT_VERSION,
     });
 
@@ -451,7 +477,7 @@ function buildPromptLegacyV1(targeted: TargetedMetric[]): string {
 
   return (
     `Photorealistic edit of the same person in this photo. ` +
-    `Identity is locked: keep their bone structure, eye color, eye shape, eye spacing, nose, ethnicity, skin tone, hair color, hair pattern, age, and gender presentation EXACTLY as in the original. ` +
+    `Identity is locked: keep their bone structure, eye color, eye shape, eye spacing, nose, ethnicity, skin tone, natural hair color/texture, age, and gender presentation consistent with the original. ` +
     `This must look unmistakably like the same individual — not a different person who resembles them. ` +
     `Apply the following subtle, realistic improvements only: ${improvements}. ` +
     `Preserve the original photo's lighting, color temperature, neutral expression, head angle, framing, and background — do not add studio lighting, warm color grading, or stylization. ` +
@@ -460,51 +486,47 @@ function buildPromptLegacyV1(targeted: TargetedMetric[]): string {
   );
 }
 
-export function buildPromptV1(): string {
-  return buildPotentialFacePrompt();
+export function buildPromptV1(targetedMetrics: TargetedMetric[] = []): string {
+  return buildPotentialFacePrompt({ targetedMetrics });
 }
 
 export function buildPotentialFacePrompt(opts?: {
   improvements?: string;
   mode?: PotentialFacePromptMode;
+  targetedMetrics?: TargetedMetric[];
 }): string {
   const mode = opts?.mode ?? "aggressive";
+  const targeted = opts?.targetedMetrics ?? [];
+  const targetLines = targeted.map((m, i) => {
+    const key = `${m.group}.${m.sub_metric}`;
+    const hint = SUB_METRIC_VISUAL_HINT[key] ?? `${m.group} ${m.sub_metric.replace(/_score$/, "")}`;
+    return `${i + 1}. ${hint}; baseline score ${m.baseline_score}, target ${m.target_score}.`;
+  });
+  const transformationStrength =
+    mode === "conservative"
+      ? "Use a conservative transformation: subtle, realistic changes only."
+      : mode === "balanced"
+        ? "Use a balanced transformation: visible improvement without identity drift."
+        : "Use a strong but believable transformation: clear improvement while preserving identity.";
 
-  const common =
-    `Create the image with these changes: ` +
-    `Make the cheekbones height appropriate and have the ideal projection. ` +
-    `Get rid of asymmetry. ` +
-    `Reduce the face fat to ideal value. ` +
-    `Sharpen the gonial angle to increase the angularity of the face. ` +
-    `Make the dimorphism of the face appropriate. ` +
-    `Make maxilla projection forward. ` +
-    `Make the eyes hunter, reduce the upper eye lid exposure. ` +
-    `Make the FWHR ideal. ` +
-    `Make bone mass ideal. ` +
-    `Make him have brow flow hair. ` +
-    `Negatives: Preserve identity 100 percent with no change in eye color, ethnicity, or facial identity markers. ` +
-    `No artificial or plastic skin; maintain real human texture. ` +
-    `Output quality: ultra high fidelity DSLR portrait, natural dynamic range, realistic skin texture with no smoothing artifacts, no AI plasticity. ` +
-    `Imaging conditions are critical: 85mm portrait lens equivalent, camera distance 1 to 1.5 meters, eye-level, perfectly centered, soft diffused frontal lighting with slight top shadow to emphasize cheekbones, neutral studio background. `;
+  const customDirection = opts?.improvements?.trim();
 
-  if (mode === "aggressive") {
-    return (
-      common +
-      `Use the full requested transformation strength while preserving identity and photorealistic skin texture.`
-    );
-  }
-
-  if (mode === "balanced") {
-    return (
-      common +
-      `Use a moderate transformation level. Prioritize identity preservation, realistic skin texture, and the specified imaging conditions.`
-    );
-  }
-
-  return (
-    common +
-    `Use a conservative transformation level. Apply the requested improvements subtly while preserving identity and realistic skin texture.`
-  );
+  return [
+    "Task: create a photorealistic image edit of the same person as an aspirational potential-face result.",
+    "Identity lock: preserve the person's ethnicity, age range, gender presentation, eye color, eye spacing, nose identity, mouth identity, facial moles/marks, natural hair color/texture, and recognizable facial identity. Do not replace the face with a different attractive person.",
+    transformationStrength,
+    targetLines.length > 0
+      ? `Highest-leverage aesthetic targets from the face analysis:\n${targetLines.join("\n")}`
+      : "Use general facial-harmony improvements only when no metric targets are provided.",
+    customDirection ? `Additional direction: ${customDirection}` : null,
+    "Global aesthetic direction: improve facial harmony, feature contrast, perceived forward growth, cheekbone support, jaw definition, eye compactness, and perceived facial width-to-height balance. Keep the result anatomically plausible and coherent with the source face.",
+    "Styling: black fitted crew-neck shirt and clean Qoves-style final-result portrait. Keep hair color and natural texture consistent with the source; only improve haircut shape, density appearance, or facial-hair grooming when those targets are listed.",
+    "Skin realism: preserve realistic human skin texture from the input, including pores, fine lines, natural unevenness, and micro-imperfections. Reduce obvious blemishes and redness only enough to look healthy. No waxy, plastic, airbrushed, over-smoothed, or synthetic skin.",
+    "Composition: eye-level 85mm portrait feel, centered head and shoulders, neutral studio background, soft diffused frontal light with slight top shadow to emphasize structure, natural dynamic range, ultra high fidelity DSLR realism.",
+    "Hard negatives: no eye-color change, no ethnicity change, no age jump, no exaggerated surgery look, no cartoon/anime look, no beauty-filter blur, no warped teeth, no distorted ears, no asymmetrical artifacts.",
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 /* -------------------------------------------------------------------------- */
@@ -596,4 +618,11 @@ function makeFailure(code: string, message: string): Error & { code: string } {
   const err = new Error(message) as Error & { code: string };
   err.code = code;
   return err;
+}
+
+function getUsableAdvancedResult(
+  advanced: Record<string, unknown> | null | undefined
+): Record<string, unknown> | null {
+  if (!advanced || typeof advanced !== "object" || Array.isArray(advanced)) return null;
+  return Object.keys(advanced).length > 0 ? advanced : null;
 }

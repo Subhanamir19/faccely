@@ -38,6 +38,31 @@ const baseScan = {
   scores: {},
 } as const;
 
+const baseAdvancedResult = {
+  cheekbones: {
+    width_score: 62,
+    maxilla_score: 35,
+    bone_structure_score: 58,
+    face_fat_score: 45,
+    fwhr_score: 30,
+  },
+  jawline: {
+    development_score: 40,
+    gonial_angle_score: 52,
+    projection_score: 47,
+  },
+  eyes: {
+    canthal_tilt_score: 44,
+    eye_type_score: 25,
+    brow_volume_score: 55,
+    symmetry_score: 60,
+  },
+  skin: {
+    color_score: 50,
+    quality_score: 22,
+  },
+} as const;
+
 async function makeJpeg() {
   return sharp({
     create: {
@@ -49,11 +74,12 @@ async function makeJpeg() {
   }).jpeg().toBuffer();
 }
 
-function makeOpenAI(response: unknown, calls: { count: number }) {
+function makeOpenAI(response: unknown, calls: { count: number; prompts?: string[] }) {
   return {
     images: {
-      edit: async () => {
+      edit: async (input: { prompt?: string }) => {
         calls.count += 1;
+        if (input.prompt) calls.prompts?.push(input.prompt);
         return response;
       },
     },
@@ -73,16 +99,30 @@ function makeDeps(overrides: Record<string, unknown> = {}) {
     deps: {
       getPotentialFaceById: async () => row,
       getScanById: async () => baseScan,
+      getAnalysisForScan: async () => ({
+        id: "analysis-1",
+        scan_id: baseScan.id,
+        created_at: new Date(0).toISOString(),
+        explanations: {},
+        advanced_result: baseAdvancedResult,
+      }),
       hasWeeklyGenerationCapacity: async () => true,
       downloadScanImage: async () => makeJpeg(),
       uploadPotentialFaceImage: async (input: { variant: string }) =>
         `${baseRow.user_id}/${baseRow.stage}/${input.variant}-test.jpg`,
-      markReady: async (input: { primaryImagePath: string; alternateImagePath: string | null }) => {
+      markReady: async (input: {
+        primaryImagePath: string;
+        alternateImagePath: string | null;
+        targetedMetrics: unknown[];
+        promptVersion: string;
+      }) => {
         const ready = {
           ...row,
           status: "ready",
           primary_image_path: input.primaryImagePath,
           alternate_image_path: input.alternateImagePath,
+          prompt_version: input.promptVersion,
+          targeted_metrics: input.targetedMetrics,
           generated_at: new Date().toISOString(),
         };
         readyRows.push(ready);
@@ -111,7 +151,7 @@ test.afterEach(() => {
 
 test("records generation telemetry on successful potential-face generation", async () => {
   const imageB64 = Buffer.from("fake-image").toString("base64");
-  const calls = { count: 0 };
+  const calls = { count: 0, prompts: [] as string[] };
   const openai = makeOpenAI(
     {
       _request_id: "req_success",
@@ -135,6 +175,21 @@ test("records generation telemetry on successful potential-face generation", asy
   assert.equal(calls.count, 1);
   assert.equal(result?.status, "ready");
   assert.equal(harness.attempts.length, 1);
+  assert.equal(harness.readyRows.length, 1);
+  assert.equal(calls.prompts.length, 1);
+  assert.match(calls.prompts[0], /Highest-leverage aesthetic targets/);
+  assert.match(calls.prompts[0], /baseline score 22, target 47/);
+  assert.match(calls.prompts[0], /only improve haircut shape, density appearance, or facial-hair grooming when those targets are listed/);
+  assert.match(calls.prompts[0], /No waxy, plastic, airbrushed/);
+
+  const ready = harness.readyRows[0] as { targeted_metrics: Array<Record<string, unknown>> };
+  assert.equal(ready.targeted_metrics.length, 5);
+  assert.deepEqual(ready.targeted_metrics[0], {
+    group: "skin",
+    sub_metric: "quality_score",
+    baseline_score: 22,
+    target_score: 47,
+  });
 
   const attempt = harness.attempts[0] as Record<string, unknown>;
   assert.equal(attempt.success, true);
@@ -195,4 +250,33 @@ test("does not throw for BullMQ retry after OpenAI succeeds but upload fails", a
   assert.equal(attempt.providerRequestId, "req_paid_then_upload_failed");
   assert.equal(attempt.generationPhase, "uploading_primary");
   assert.match(String(attempt.error), /simulated storage outage/);
+});
+
+test("does not call OpenAI when advanced analysis is missing", async () => {
+  const calls = { count: 0 };
+  const openai = makeOpenAI({ data: [] }, calls);
+  const harness = makeDeps({
+    getAnalysisForScan: async () => null,
+  });
+  service.setPotentialFaceGenerationDepsForTest(harness.deps as any);
+
+  await assert.rejects(
+    () =>
+      service.generatePotentialFace(openai as any, {
+        potentialFaceId: baseRow.id,
+        isFinalAttempt: false,
+      }),
+    /Advanced analysis must be saved/
+  );
+
+  assert.equal(calls.count, 0);
+  assert.equal(harness.readyRows.length, 0);
+  assert.equal(harness.failedRows.length, 0);
+  assert.equal(harness.attempts.length, 1);
+
+  const attempt = harness.attempts[0] as Record<string, unknown>;
+  assert.equal(attempt.success, false);
+  assert.equal(attempt.candidateCount, 0);
+  assert.equal(attempt.generationPhase, "pre_openai");
+  assert.match(String(attempt.error), /advanced_analysis_missing/);
 });

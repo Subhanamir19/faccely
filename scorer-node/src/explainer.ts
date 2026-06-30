@@ -747,12 +747,13 @@ function normalizeResponse(raw: string | null | undefined): Record<MetricKey, st
  *   { cheekbones:{width,maxilla,bone_structure,face_fat},
  *     jawline:{development,gonial_angle,projection},
  *     eyes:{canthal_tilt,eye_type,brow_volume,symmetry},
- *     skin:{color,quality} }
+ *     skin:{color,quality},
+ *     haircut:{density,styling,facial_hair} }
  * ─────────────────────────────────────────────────────────────────────────── */
 
 // Bump this string whenever the advanced prompt or JSON shape changes — it
 // busts any in-process cached responses that were built under the old schema.
-const PROMPT_VERSION_ADVANCED = "adv.v3.1";
+const PROMPT_VERSION_ADVANCED = "adv.v3.2";
 
 const ADVANCED_VERDICT_OPTIONS = `
 VERDICT LABELS — for each sub-metric also return a "verdict" field as described below.
@@ -773,6 +774,9 @@ eyes.brow_volume_verdict:          Full | Well Defined | Adequate | Moderate | S
 eyes.symmetry_verdict:             Symmetrical | Well Balanced | Minimal Asymmetry | Slight Asymmetry | Noticeable
 skin.color_verdict:                Even Tone | Clear | Mostly Even | Slight Uneven | Uneven | Discolored
 skin.quality_verdict:              Flawless | Very Smooth | Smooth | Moderate | Rough | Damaged
+haircut.density_verdict:           Full | Good Coverage | Thin | Sparse | Obscured
+haircut.styling_verdict:           Well Styled | Good Fit | Needs Shape | Poor Fit | Obscured
+haircut.facial_hair_verdict:       Well Groomed | Balanced | Patchy | Overgrown | Poor Fit | Clean Shaven | Obscured
 
 NUMERICAL sub-metrics: return an estimated value, not a label.
 
@@ -795,6 +799,7 @@ You are a calibrated facial-aesthetics analyst. Score and describe each sub-metr
 - Scores are 0–100. Population distribution: most people 35–65, above average 66–74, strong 75–84, exceptional 85+.
 - Do NOT inflate. An average feature scores 45–55. A feature must be visibly pronounced to exceed 70.
 - Sub-metric scores within each category MUST average close to the provided category score. If category score is 55, sub-metrics must average near 55 — not 65+.
+- Haircut has no provided category score. Score it independently from visible grooming, hairstyle fit, hair density, and facial-hair grooming.
 - When uncertain, score lower. Optimism is a calibration error.
 
 ━━━ COMMENTARY RULES ━━━
@@ -850,6 +855,19 @@ jawline.ramus — assess ramus height and verticality from the SIDE IMAGE if pro
 - Score >75 if ramus appears tall and near-vertical. Score 40–55 if short or steeply angled.
 - If NO side image was provided: return "" for commentary, 50 for score, "" for verdict. Do NOT fabricate an assessment from a frontal view.
 
+━━━ HAIRCUT INSTRUCTIONS ━━━
+haircut.density — assess visible scalp coverage, fullness, hairline density, and whether thinning or recession weakens the frame of the face.
+- Judge shaved or bald looks as a valid style: score high only if it is intentional, clean, and suits the face; score lower if it looks uneven, patchy, or weakens facial balance.
+- If hair is hidden by a hat, hood, crop, low light, or heavy obstruction: state that visibility is limited and score low.
+
+haircut.styling — assess haircut quality, grooming, shape, and how well the hairstyle fits the face shape.
+- Focus on balance: whether the cut adds structure, keeps proportions clean, and frames the jaw/cheek/forehead area well.
+- Score high only when the style looks intentional, clean, and face-flattering. Score lower for messy, shapeless, awkward, or poorly balanced styling.
+
+haircut.facial_hair — assess beard/mustache/shave grooming and whether it supports the face shape.
+- Clean-shaven is valid: score high if it looks intentional and balanced with the face.
+- Score lower for patchiness, overgrowth, uneven edges, neckbeard, or facial hair that hides structure instead of sharpening it.
+
 ${ADVANCED_VERDICT_OPTIONS}
 
 ━━━ RETURN FORMAT ━━━
@@ -878,6 +896,11 @@ Return STRICT JSON with this exact shape and no other text:
   "skin": {
     "color":                "<sentence>", "color_score":          <integer 0-100>, "color_verdict":          "<label>",
     "quality":              "<sentence>", "quality_score":        <integer 0-100>, "quality_verdict":        "<label>"
+  },
+  "haircut": {
+    "density":              "<sentence>", "density_score":        <integer 0-100>, "density_verdict":        "<label>",
+    "styling":              "<sentence>", "styling_score":        <integer 0-100>, "styling_verdict":        "<label>",
+    "facial_hair":          "<sentence>", "facial_hair_score":    <integer 0-100>, "facial_hair_verdict":    "<label>"
   }
 }
 `.trim();
@@ -907,6 +930,11 @@ export type AdvancedExplainResult = {
     color: string; color_score: number; color_verdict: string;
     quality: string; quality_score: number; quality_verdict: string;
   };
+  haircut: {
+    density: string; density_score: number; density_verdict: string;
+    styling: string; styling_score: number; styling_verdict: string;
+    facial_hair: string; facial_hair_score: number; facial_hair_verdict: string;
+  };
 };
 
 export async function explainAdvancedBytes(
@@ -933,6 +961,7 @@ Category scores (0–100) — your sub-metric scores MUST average close to these
 - jawline:    ${scores.jawline ?? "?"}
 - eyes:       ${scores.eyes_symmetry ?? "?"}
 - skin:       ${scores.skin_quality ?? "?"}
+- haircut:    no base score; judge independently from frontal image visibility
 
 Analyze the image(s). Return a score (integer 0–100), one sentence, and a verdict for every sub-metric.
 Most people score 35–65. Do not inflate. JSON only — no surrounding text.
@@ -967,7 +996,7 @@ Most people score 35–65. Do not inflate. JSON only — no surrounding text.
         model: MODEL,
         temperature: 0.2,
         top_p: 0.85,
-        max_tokens: 1800,
+        max_tokens: 2200,
         response_format: { type: "json_object" },
         messages: [
           { role: "system", content: ADVANCED_SYSTEM_PROMPT },
@@ -1062,6 +1091,17 @@ Most people score 35–65. Do not inflate. JSON only — no surrounding text.
         quality:         str(data?.skin?.quality,       ""),
         quality_score:   num(data?.skin?.quality_score),
         quality_verdict: vrd(data?.skin?.quality_verdict),
+      },
+      haircut: {
+        density:             str(data?.haircut?.density,          ""),
+        density_score:       num(data?.haircut?.density_score),
+        density_verdict:     vrd(data?.haircut?.density_verdict),
+        styling:             str(data?.haircut?.styling,          ""),
+        styling_score:       num(data?.haircut?.styling_score),
+        styling_verdict:     vrd(data?.haircut?.styling_verdict),
+        facial_hair:         str(data?.haircut?.facial_hair,      ""),
+        facial_hair_score:   num(data?.haircut?.facial_hair_score),
+        facial_hair_verdict: vrd(data?.haircut?.facial_hair_verdict),
       },
     };
 
