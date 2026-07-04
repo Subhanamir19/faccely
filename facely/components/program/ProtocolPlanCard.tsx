@@ -25,6 +25,7 @@ import { ms, sh, sw } from "@/lib/responsive";
 import type { ProtocolTask } from "@/store/tasks";
 
 const FONT_DIN = "DINNextRounded-Regular";
+const FONT_DIN_BOLD = "DINNextRounded-Bold";
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 function ProtocolCheck({
@@ -369,7 +370,7 @@ const s = StyleSheet.create({
     justifyContent: "center",
   },
   name: {
-    fontFamily: FONT_DIN,
+    fontFamily: FONT_DIN_BOLD,
     fontSize: ms(18),
     lineHeight: ms(23),
     color: COLORS.lightText,
@@ -491,7 +492,7 @@ const s = StyleSheet.create({
     minWidth: 0,
   },
   detailName: {
-    fontFamily: FONT_DIN,
+    fontFamily: FONT_DIN_BOLD,
     fontSize: ms(22),
     lineHeight: ms(27),
     color: COLORS.lightText,

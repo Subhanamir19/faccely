@@ -23,6 +23,10 @@ import {
   METRIC_TOP_EXERCISES,
   EXERCISE_DISPLAY_NAMES,
 } from "@/lib/analysisInsights";
+import {
+  ADVANCED_ANALYSIS_FONT,
+  ADVANCED_ANALYSIS_FONT_BOLD,
+} from "@/lib/advancedAnalysisIcons";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -262,7 +266,7 @@ const styles = StyleSheet.create({
   },
   overallScore: {
     fontSize: ms(26, 0.4),
-    fontFamily: "Poppins-SemiBold",
+    fontFamily: ADVANCED_ANALYSIS_FONT_BOLD,
   },
   archetype: {
     marginTop: sh(2),
@@ -283,7 +287,7 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   scoreRingText: {
-    fontFamily: "Poppins-SemiBold",
+    fontFamily: ADVANCED_ANALYSIS_FONT_BOLD,
     fontSize: ms(18, 0.4),
   },
 
@@ -332,11 +336,11 @@ const styles = StyleSheet.create({
     paddingVertical: sh(2),
   },
   bandText: {
-    fontFamily: "Poppins-Medium",
+    fontFamily: ADVANCED_ANALYSIS_FONT_BOLD,
     fontSize: ms(10, 0.3),
   },
   findingScore: {
-    fontFamily: "Poppins-SemiBold",
+    fontFamily: ADVANCED_ANALYSIS_FONT_BOLD,
     fontSize: ms(18, 0.4),
     minWidth: sw(32),
     textAlign: "right",
@@ -376,7 +380,7 @@ const styles = StyleSheet.create({
     paddingVertical: sh(4),
   },
   exercisePillText: {
-    fontFamily: "Poppins-Medium",
+    fontFamily: ADVANCED_ANALYSIS_FONT_BOLD,
     fontSize: ms(11, 0.3),
     color: COLORS.accent,
   },
@@ -403,6 +407,6 @@ const styles = StyleSheet.create({
   breakdownArrow: {
     color: COLORS.sub,
     fontSize: ms(13, 0.3),
-    fontFamily: "Poppins-Regular",
+    fontFamily: ADVANCED_ANALYSIS_FONT,
   },
 });

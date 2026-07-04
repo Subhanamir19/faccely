@@ -6,7 +6,6 @@ import React, { useCallback, useEffect, useMemo } from "react";
 import {
   Image,
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -31,6 +30,12 @@ import Text from "@/components/ui/T";
 import { COLORS } from "@/lib/tokens";
 import { ms, sh, sw } from "@/lib/responsive";
 import type { AdvancedAnalysis } from "@/lib/api/advancedAnalysis";
+import {
+  ADVANCED_ANALYSIS_FONT,
+  ADVANCED_ANALYSIS_FONT_BOLD,
+  getAdvancedAnalysisIcon,
+  getAdvancedAnalysisIconStyle,
+} from "@/lib/advancedAnalysisIcons";
 
 // ─── Trait data ───────────────────────────────────────────────────────────────
 
@@ -60,6 +65,9 @@ const TRAIT_LABELS: Record<string, string> = {
   "jawline.gonial_angle":      "Gonial Angle",
   "skin.quality":              "Skin Quality",
   "skin.color":                "Skin Tone",
+  "haircut.density":           "Hair Density",
+  "haircut.styling":           "Hair Styling",
+  "haircut.facial_hair":       "Facial Hair",
 };
 
 const TRAIT_DESC: Record<string, string> = {
@@ -76,6 +84,9 @@ const TRAIT_DESC: Record<string, string> = {
   "jawline.gonial_angle":      "Jaw angle is off ideal — affecting your lower face silhouette",
   "skin.quality":              "Skin texture is below average — surface quality needs work",
   "skin.color":                "Skin tone is uneven — complexion lacks consistency",
+  "haircut.density":           "Hair density is limiting the frame around your face",
+  "haircut.styling":           "Hair styling does not suit your face shape strongly enough",
+  "haircut.facial_hair":       "Facial hair grooming is weakening your face shape",
 };
 
 function resolveSeverity(score: number): { label: string; color: string; depthColor: string; textColor: string } {
@@ -105,6 +116,9 @@ function computeTargets(data: AdvancedAnalysis): TraitItem[] {
     { id: "jawline.gonial_angle",      score: data.jawline.gonial_angle_score      },
     { id: "skin.quality",              score: data.skin.quality_score              },
     { id: "skin.color",                score: data.skin.color_score                },
+    { id: "haircut.density",           score: data.haircut.density_score           },
+    { id: "haircut.styling",           score: data.haircut.styling_score           },
+    { id: "haircut.facial_hair",       score: data.haircut.facial_hair_score       },
   ];
 
   const sorted = [...raw].sort((a, b) => a.score - b.score);
@@ -165,22 +179,6 @@ const barSx = StyleSheet.create({
 
 // ─── Trait icons ──────────────────────────────────────────────────────────────
 
-const TRAIT_ICONS: Record<string, ReturnType<typeof require>> = {
-  "jawline.projection":        require("../../advanced-analysis-icons/advanced-analysis-icons-new/chin--projection.jpeg"),
-  "cheekbones.face_fat":       require("../../advanced-analysis-icons/advanced-analysis-icons-new/face--fat.jpeg"),
-  "jawline.development":       require("../../advanced-analysis-icons/advanced-analysis-icons-new/jawline--development.jpeg"),
-  "cheekbones.bone_structure": require("../../advanced-analysis-icons/advanced-analysis-icons-new/BONE-STRUCTURE.jpeg"),
-  "cheekbones.maxilla":        require("../../advanced-analysis-icons/advanced-analysis-icons-new/maxilla--.jpeg"),
-  "cheekbones.width":          require("../../advanced-analysis-icons/advanced-analysis-icons-new/cheekbones--width.jpeg"),
-  "eyes.canthal_tilt":         require("../../advanced-analysis-icons/advanced-analysis-icons-new/canthal--tilt.jpeg"),
-  "eyes.symmetry":             require("../../advanced-analysis-icons/advanced-analysis-icons-new/eyes--symmetry.jpeg"),
-  "eyes.eye_type":             require("../../advanced-analysis-icons/advanced-analysis-icons-new/eye--type.jpeg"),
-  "eyes.brow_volume":          require("../../advanced-analysis-icons/advanced-analysis-icons-new/eyebrows--densiy.jpeg"),
-  "jawline.gonial_angle":      require("../../advanced-analysis-icons/advanced-analysis-icons-new/gonial--angle.jpeg"),
-  "skin.quality":              require("../../advanced-analysis-icons/advanced-analysis-icons-new/skin--quality.jpeg"),
-  "skin.color":                require("../../advanced-analysis-icons/advanced-analysis-icons-new/SKIN--COLOR.jpeg"),
-};
-
 // ─── Trait card ───────────────────────────────────────────────────────────────
 
 const ICON_SIZE = ms(44);
@@ -193,7 +191,7 @@ function TraitCard({ item, rank, enterDelay }: { item: TraitItem; rank: number; 
     transform: [{ scale: scale.value }],
   }));
 
-  const iconSource = TRAIT_ICONS[item.id];
+  const iconSource = getAdvancedAnalysisIcon(item.id);
 
   return (
     <Animated.View entering={FadeInDown.duration(320).delay(enterDelay)}>
@@ -223,10 +221,12 @@ function TraitCard({ item, rank, enterDelay }: { item: TraitItem; rank: number; 
             {iconSource ? (
               <Image
                 source={iconSource}
-                style={cardSx.iconImg}
-                resizeMode="cover"
+                style={[cardSx.iconImg, getAdvancedAnalysisIconStyle(item.id)]}
+                resizeMode="contain"
               />
-            ) : null}
+            ) : (
+              <Text style={cardSx.iconFallback}>✂️</Text>
+            )}
           </View>
 
           {/* Body */}
@@ -290,6 +290,10 @@ const cardSx = StyleSheet.create({
     width:  "100%",
     height: "100%",
   },
+  iconFallback: {
+    fontSize:   ms(22),
+    lineHeight: ms(26),
+  },
   topRow: {
     flexDirection:  "row",
     alignItems:     "center",
@@ -297,9 +301,11 @@ const cardSx = StyleSheet.create({
   },
   label: {
     fontSize:      ms(14, 0.3),
-    fontFamily:    Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
+    fontFamily:    ADVANCED_ANALYSIS_FONT_BOLD,
     color:         "#111111",
     letterSpacing: -0.2,
+    lineHeight:    ms(18),
+    includeFontPadding: false,
   },
   // 3D severity button
   sevDepth: {
@@ -315,12 +321,12 @@ const cardSx = StyleSheet.create({
   },
   sevText: {
     fontSize:      ms(9, 0.3),
-    fontFamily:    Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
+    fontFamily:    ADVANCED_ANALYSIS_FONT_BOLD,
     letterSpacing: 0.8,
   },
   descriptor: {
     fontSize:   ms(12, 0.3),
-    fontFamily: Platform.select({ ios: "Poppins-Regular", android: "Poppins-Regular", default: "Poppins-Regular" }),
+    fontFamily: ADVANCED_ANALYSIS_FONT,
     color:      "#888888",
     lineHeight: ms(17),
   },
@@ -471,7 +477,7 @@ export function BlueprintModal({ data, imageUri, visible, onDismiss }: Blueprint
                 end={{ x: 0.5, y: 1 }}
                 style={StyleSheet.absoluteFill}
               />
-              <Text style={m.ctaText}>Got it</Text>
+              <Text style={m.ctaText} numberOfLines={1}>Got it</Text>
             </Pressable>
           </View>
         </Animated.View>
@@ -548,18 +554,18 @@ const m = StyleSheet.create({
   },
   headlineCount: {
     fontSize:      ms(18, 0.3),
-    fontFamily:    Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
+    fontFamily:    ADVANCED_ANALYSIS_FONT_BOLD,
     color:         "#111111",
     letterSpacing: -0.4,
     lineHeight:    ms(24),
   },
   headlineWord: {
-    fontFamily: Platform.select({ ios: "Poppins-Regular", android: "Poppins-Regular", default: "Poppins-Regular" }),
+    fontFamily: ADVANCED_ANALYSIS_FONT,
     color:      "rgba(0,0,0,0.50)",
   },
   headlineSub: {
     fontSize:   ms(11.5, 0.3),
-    fontFamily: Platform.select({ ios: "Poppins-Regular", android: "Poppins-Regular", default: "Poppins-Regular" }),
+    fontFamily: ADVANCED_ANALYSIS_FONT,
     color:      "#AAAAAA",
     marginTop:  sh(2),
   },
@@ -583,7 +589,7 @@ const m = StyleSheet.create({
   },
   liveText: {
     fontSize:      ms(9, 0.3),
-    fontFamily:    Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
+    fontFamily:    ADVANCED_ANALYSIS_FONT_BOLD,
     color:         "#6B9A1E",
     letterSpacing: 1.2,
   },
@@ -619,11 +625,15 @@ const m = StyleSheet.create({
     alignItems:      "center",
     justifyContent:  "center",
     overflow:        "hidden",
+    paddingHorizontal: sw(20),
   },
   ctaText: {
-    fontSize:     ms(16, 0.3),
-    fontFamily:   Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
-    color:        "#0B1A00",
-    letterSpacing: -0.2,
+    fontSize:           ms(16, 0.2),
+    lineHeight:         ms(20),
+    fontFamily:         ADVANCED_ANALYSIS_FONT_BOLD,
+    color:              "#0B1A00",
+    letterSpacing:      -0.2,
+    textAlign:          "center",
+    includeFontPadding: false,
   },
 });

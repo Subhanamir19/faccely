@@ -20,8 +20,9 @@ import Text from "@/components/ui/T";
 import { COLORS, SP } from "@/lib/tokens";
 import { ms, sh, sw } from "@/lib/responsive";
 import { fetchScanDetail, type ScanDetail } from "@/lib/api/history";
+import { ADVANCED_ANALYSIS_FONT_BOLD } from "@/lib/advancedAnalysisIcons";
 
-const FONT = "ProximaNova-Bold";
+const FONT = ADVANCED_ANALYSIS_FONT_BOLD;
 
 // ─── Metric definitions — kept in sync with (tabs)/score.tsx ───────────────
 

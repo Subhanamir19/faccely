@@ -25,8 +25,9 @@ import { ms, sh, sw } from "@/lib/responsive";
 import { useScores } from "../../store/scores";
 import { hapticSuccess } from "@/lib/haptics";
 import { useAdvancedAnalysisConsent } from "@/hooks/useAdvancedAnalysisConsent";
+import { ADVANCED_ANALYSIS_FONT_BOLD } from "@/lib/advancedAnalysisIcons";
 
-const FONT = "ProximaNova-Bold";
+const FONT = ADVANCED_ANALYSIS_FONT_BOLD;
 
 // ─── Metric definitions — identical to (tabs)/score.tsx ──────────────────────
 const METRIC_DEFS = [

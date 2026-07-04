@@ -1,6 +1,10 @@
 // store/advancedAnalysis.ts
 import { create } from "zustand";
-import { fetchAdvancedAnalysis, type AdvancedAnalysis } from "@/lib/api/advancedAnalysis";
+import {
+  fetchAdvancedAnalysis,
+  hasAssessedHaircut,
+  type AdvancedAnalysis,
+} from "@/lib/api/advancedAnalysis";
 import { useScores } from "./scores";
 import { useInsights } from "./insights";
 import { mapBackendErrorToUserMessage } from "@/lib/api/client";
@@ -19,8 +23,12 @@ type EnsureFetchedResult = {
   error: string | null;
 };
 
+type FetchOptions = {
+  force?: boolean;
+};
+
 type Actions = {
-  fetch: () => Promise<void>;
+  fetch: (options?: FetchOptions) => Promise<void>;
   /**
    * Resolve advanced-analysis data for the current scan without starting a
    * duplicate request. Three cases:
@@ -46,7 +54,7 @@ export const useAdvancedAnalysis = create<State & Actions>((set, get) => ({
   error: null,
   cachedScanId: null,
 
-  fetch: async () => {
+  fetch: async (options = {}) => {
     const { imageUri, sideImageUri, scores, scanId } = useScores.getState();
 
     logger.log(
@@ -66,9 +74,12 @@ export const useAdvancedAnalysis = create<State & Actions>((set, get) => ({
     const { data, cachedScanId, loading } = get();
     logger.log("[advancedAnalysis] cache check — loading:", loading, "cachedScanId:", cachedScanId, "scanId:", scanId, "hasData:", !!data);
     if (loading) { logger.log("[advancedAnalysis] skipped — already loading"); return; }
-    if (data && cachedScanId === scanId && scanId !== null) {
+    if (data && cachedScanId === scanId && scanId !== null && !options.force) {
       logger.log("[advancedAnalysis] skipped — cache hit (scanId matches)");
       return;
+    }
+    if (options.force && data && cachedScanId === scanId && scanId !== null && !hasAssessedHaircut(data)) {
+      logger.log("[advancedAnalysis] cached data missing assessed haircut - refreshing current scan");
     }
 
     set({ loading: true, error: null });

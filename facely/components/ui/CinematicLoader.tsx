@@ -26,12 +26,14 @@ export type CinematicLoaderProps = {
   messages?: string[];
   brandLabel?: string;
   photoUri?: string;
+  appearance?: "default" | "onboarding";
 };
 
 const CinematicLoader: React.FC<CinematicLoaderProps> = ({
   loading = true,
   messages,
   photoUri,
+  appearance = "default",
 }) => {
   const isScan = !!photoUri;
   const stages = messages ?? (isScan ? SCAN_STAGES : STARTUP_STAGES);
@@ -54,6 +56,7 @@ const CinematicLoader: React.FC<CinematicLoaderProps> = ({
       photoUri={photoUri}
       title={isScan ? "Analyzing your face" : "Preparing SigmaMax"}
       subtitle={stages[stageIdx]}
+      appearance={appearance}
     />
   );
 };

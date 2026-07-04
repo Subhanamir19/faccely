@@ -28,8 +28,11 @@ import { ms, sh, sw } from "@/lib/responsive";
 import { useScores } from "../../store/scores";
 import { useInsights } from "../../store/insights";
 import { useAdvancedAnalysisConsent } from "@/hooks/useAdvancedAnalysisConsent";
+import { ADVANCED_ANALYSIS_FONT_BOLD } from "@/lib/advancedAnalysisIcons";
+import { AppGradientBackground } from "@/components/layout/AppGradientBackground";
+import { FLOATING_TAB_BAR } from "@/components/layout/floatingTabBar";
 
-const FONT = "ProximaNova-Bold";
+const FONT = ADVANCED_ANALYSIS_FONT_BOLD;
 const SCREEN_BG = "#FEF5E4";
 
 // ─── Metric definitions ───────────────────────────────────────────────────────
@@ -164,7 +167,7 @@ export default function ScoreScreen() {
   };
 
   return (
-    <View style={styles.screen}>
+    <AppGradientBackground style={styles.screen}>
       <ConsentModal />
 
       <View
@@ -172,14 +175,14 @@ export default function ScoreScreen() {
           styles.content,
           {
             paddingTop:    insets.top    + SP[5],
-            paddingBottom: insets.bottom + SP[5],
+            paddingBottom: Math.max(insets.bottom + SP[5], FLOATING_TAB_BAR.contentClearance + SP[3]),
           },
         ]}
       >
         {/* Header + deck scroll if short screens need extra vertical space. */}
         <ScrollView
           style={styles.scroll}
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: sh(24) }]}
           showsVerticalScrollIndicator={false}
           bounces={false}
         >
@@ -260,7 +263,7 @@ export default function ScoreScreen() {
           />
         </Animated.View>
       </View>
-    </View>
+    </AppGradientBackground>
   );
 }
 

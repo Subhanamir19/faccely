@@ -5,12 +5,13 @@
 
 import type { AdvancedAnalysis } from "./api/advancedAnalysis";
 import type { LatestAdvanced } from "./api/insights";
+import { getAdvancedAnalysisIcon } from "./advancedAnalysisIcons";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-export type SubCategory = "CHEEKS" | "JAW" | "EYES" | "SKIN";
+export type SubCategory = "CHEEKS" | "JAW" | "EYES" | "SKIN" | "HAIR";
 export type SubStatus   = "fine" | "neutral" | "alarming";
 export type SubSection  = "working" | "okay" | "needs_work";
 
@@ -56,56 +57,74 @@ export const TRAINABLE_SUBMETRICS: TrainableSubDef[] = [
   {
     id: "skin.quality", group: "skin", key: "quality",
     label: "Skin Quality", category: "SKIN", emoji: "✨",
-    icon: require("../advanced-analysis-icons/advanced-analysis-icons-new/skin--quality.jpeg"),
+    icon: getAdvancedAnalysisIcon("skin.quality"),
     idealRange: "Skin should be smooth with small, tight pores and no active breakouts. When light hits it, it should reflect evenly rather than scatter across a rough surface.",
   },
   {
     id: "skin.color", group: "skin", key: "color",
     label: "Skin Color", category: "SKIN", emoji: "🎨",
-    icon: require("../advanced-analysis-icons/advanced-analysis-icons-new/SKIN--COLOR.jpeg"),
+    icon: getAdvancedAnalysisIcon("skin.color"),
     idealRange: "Skin tone should be even and consistent with no dark spots, redness, or patchy areas. A clear, uniform complexion across the entire face.",
   },
   {
     id: "cheekbones.face_fat", group: "cheekbones", key: "face_fat",
     label: "Face Fat", category: "CHEEKS", emoji: "🫦",
-    icon: require("../advanced-analysis-icons/advanced-analysis-icons-new/face--fat.jpeg"),
+    icon: getAdvancedAnalysisIcon("cheekbones.face_fat"),
     idealRange: "Low enough body fat (~10–14%) for the cheeks to appear hollow under the cheekbones, creating a chiseled shadow beneath them.",
   },
   {
     id: "cheekbones.maxilla", group: "cheekbones", key: "maxilla",
     label: "Maxilla", category: "CHEEKS", emoji: "🦷",
-    icon: require("../advanced-analysis-icons/advanced-analysis-icons-new/maxilla--.jpeg"),
+    icon: getAdvancedAnalysisIcon("cheekbones.maxilla"),
     idealRange: "The upper jaw bone should sit forward, giving the cheek area a lifted, full appearance from both the front and side view.",
   },
   {
     id: "jawline.development", group: "jawline", key: "development",
     label: "Jaw Development", category: "JAW", emoji: "💪",
-    icon: require("../advanced-analysis-icons/advanced-analysis-icons-new/jawline--development.jpeg"),
+    icon: getAdvancedAnalysisIcon("jawline.development"),
     idealRange: "The jaw edge should be clearly visible from the front as a sharp, defined line running from ear to chin — visible even at a distance.",
   },
   {
     id: "jawline.gonial_angle", group: "jawline", key: "gonial_angle",
     label: "Gonial Angle", category: "JAW", emoji: "📐",
-    icon: require("../advanced-analysis-icons/advanced-analysis-icons-new/gonial--angle.jpeg"),
+    icon: getAdvancedAnalysisIcon("jawline.gonial_angle"),
     idealRange: "The sharpness of your jaw corner. Ideal is 95–115°. Tighter corners look stronger and more chiseled. Above 125°, the corner blends away and the jaw looks round.",
   },
   {
     id: "jawline.projection", group: "jawline", key: "projection",
     label: "Chin Projection", category: "JAW", emoji: "👤",
-    icon: require("../advanced-analysis-icons/advanced-analysis-icons-new/chin--projection.jpeg"),
+    icon: getAdvancedAnalysisIcon("jawline.projection"),
     idealRange: "The chin should stick out to roughly the same level as the nose tip from a side view. More projection means a stronger, more defined profile.",
   },
   {
     id: "eyes.brow_volume", group: "eyes", key: "brow_volume",
     label: "Brow Volume", category: "EYES", emoji: "🤨",
-    icon: require("../advanced-analysis-icons/advanced-analysis-icons-new/eyebrows--densiy.jpeg"),
+    icon: getAdvancedAnalysisIcon("eyes.brow_volume"),
     idealRange: "Thick, well-groomed brows with a clear arch. The tail should extend past the outer corner of the eye. Full brows frame the face and make the eye area look stronger.",
   },
   {
     id: "eyes.symmetry", group: "eyes", key: "symmetry",
     label: "Eye Symmetry", category: "EYES", emoji: "👁️",
-    icon: require("../advanced-analysis-icons/advanced-analysis-icons-new/eyes--symmetry.jpeg"),
+    icon: getAdvancedAnalysisIcon("eyes.symmetry"),
     idealRange: "Both eyes should look the same size and height. A difference under 2mm is barely noticeable. Over 3mm becomes clearly visible in normal face-to-face conversation.",
+  },
+  {
+    id: "haircut.density", group: "haircut", key: "density",
+    label: "Hair Density", category: "HAIR", emoji: "âœ‚ï¸",
+    icon: getAdvancedAnalysisIcon("haircut.density"),
+    idealRange: "Choose a haircut that suits your face shape, keeps the hairline and scalp coverage looking intentional, and gives the face clean balance.",
+  },
+  {
+    id: "haircut.styling", group: "haircut", key: "styling",
+    label: "Hair Styling", category: "HAIR", emoji: "âœ‚ï¸",
+    icon: getAdvancedAnalysisIcon("haircut.styling"),
+    idealRange: "Choose a hairstyle that fits your face shape, frames the forehead and jaw cleanly, and adds balance instead of making the face look messy or shapeless.",
+  },
+  {
+    id: "haircut.facial_hair", group: "haircut", key: "facial_hair",
+    label: "Facial Hair", category: "HAIR", emoji: "âœ‚ï¸",
+    icon: getAdvancedAnalysisIcon("haircut.facial_hair"),
+    idealRange: "Keep facial hair intentional and face-shaping: clean edges, balanced length, and a style that supports your jaw and cheek structure.",
   },
 ];
 

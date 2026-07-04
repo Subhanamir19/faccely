@@ -6,7 +6,6 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Image,
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -27,6 +26,11 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import Text from "@/components/ui/T";
 import { ms, sh, sw } from "@/lib/responsive";
+import {
+  ADVANCED_ANALYSIS_FONT,
+  ADVANCED_ANALYSIS_FONT_BOLD,
+  getAdvancedAnalysisIconStyle,
+} from "@/lib/advancedAnalysisIcons";
 
 // ---------------------------------------------------------------------------
 // Public type — callers pass a FlatMetric-compatible object
@@ -93,6 +97,7 @@ const CATEGORY_COLORS: Record<string, { bg: string; text: string; border: string
   JAW:    { bg: "#001C14", text: "#10B981", border: "#003024" },
   EYES:   { bg: "#00121C", text: "#38BDF8", border: "#001E30" },
   SKIN:   { bg: "#1C001C", text: "#E879F9", border: "#300030" },
+  HAIR:   { bg: "#1C1200", text: "#F59E0B", border: "#302000" },
 };
 
 const CARD_BG      = "#111111";
@@ -268,7 +273,7 @@ export function MetricDetailCard({ metric, onDismiss }: Props) {
             {metric.icon ? (
               <Image
                 source={metric.icon}
-                style={sx.heroImage}
+                style={[sx.heroImage, getAdvancedAnalysisIconStyle(metric.id)]}
                 resizeMode="contain"
               />
             ) : (
@@ -505,7 +510,7 @@ const sx = StyleSheet.create({
   metricLabel: {
     flex: 1,
     fontSize: ms(19, 0.3),
-    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
+    fontFamily: ADVANCED_ANALYSIS_FONT_BOLD,
     color: TEXT_PRIMARY,
     letterSpacing: -0.3,
     lineHeight: ms(24),
@@ -519,7 +524,7 @@ const sx = StyleSheet.create({
   },
   catChipText: {
     fontSize: ms(10, 0.3),
-    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
+    fontFamily: ADVANCED_ANALYSIS_FONT_BOLD,
     letterSpacing: 1.1,
   },
 
@@ -543,12 +548,12 @@ const sx = StyleSheet.create({
   },
   verdictText: {
     fontSize: ms(13, 0.3),
-    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
+    fontFamily: ADVANCED_ANALYSIS_FONT_BOLD,
     letterSpacing: 0.1,
   },
   verdictCaption: {
     fontSize: ms(11.5, 0.3),
-    fontFamily: Platform.select({ ios: "Poppins-Regular", android: "Poppins-Regular", default: "Poppins-Regular" }),
+    fontFamily: ADVANCED_ANALYSIS_FONT,
     color: TEXT_MUTED,
   },
 
@@ -563,18 +568,18 @@ const sx = StyleSheet.create({
   },
   scoreLabel: {
     fontSize: ms(9.5, 0.3),
-    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
+    fontFamily: ADVANCED_ANALYSIS_FONT_BOLD,
     color: TEXT_MUTED,
     letterSpacing: 1.4,
   },
   scoreValue: {
     fontSize: ms(15, 0.3),
-    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
+    fontFamily: ADVANCED_ANALYSIS_FONT_BOLD,
     letterSpacing: -0.3,
   },
   scoreMax: {
     fontSize: ms(11, 0.3),
-    fontFamily: Platform.select({ ios: "Poppins-Regular", android: "Poppins-Regular", default: "Poppins-Regular" }),
+    fontFamily: ADVANCED_ANALYSIS_FONT,
     color: TEXT_MUTED,
   },
   barTrack: {
@@ -624,14 +629,14 @@ const sx = StyleSheet.create({
   },
   idealLabel: {
     fontSize: ms(9.5, 0.3),
-    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
+    fontFamily: ADVANCED_ANALYSIS_FONT_BOLD,
     letterSpacing: 1.4,
     opacity: 0.85,
   },
   idealBody: {},
   idealText: {
     fontSize: ms(12.5, 0.3),
-    fontFamily: Platform.select({ ios: "Poppins-Regular", android: "Poppins-Regular", default: "Poppins-Regular" }),
+    fontFamily: ADVANCED_ANALYSIS_FONT,
     color: "rgba(255,255,255,0.58)",
     lineHeight: ms(19),
   },
@@ -649,18 +654,18 @@ const sx = StyleSheet.create({
   },
   commentaryLabel: {
     fontSize: ms(9.5, 0.3),
-    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
+    fontFamily: ADVANCED_ANALYSIS_FONT_BOLD,
     color: TEXT_MUTED,
     letterSpacing: 1.4,
   },
   commentaryText: {
     fontSize: ms(13.5, 0.3),
-    fontFamily: Platform.select({ ios: "Poppins-Regular", android: "Poppins-Regular", default: "Poppins-Regular" }),
+    fontFamily: ADVANCED_ANALYSIS_FONT,
     color: TEXT_BODY,
     lineHeight: ms(21),
   },
   cursor: {
-    fontFamily: Platform.select({ ios: "Poppins-SemiBold", android: "Poppins-SemiBold", default: "Poppins-SemiBold" }),
+    fontFamily: ADVANCED_ANALYSIS_FONT_BOLD,
   },
 
   // ── Shimmer (commentary loading) ──

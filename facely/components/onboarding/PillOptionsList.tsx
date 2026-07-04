@@ -24,9 +24,9 @@ import { COLORS, RADII, SP } from "@/lib/tokens";
 import { ms, sh } from "@/lib/responsive";
 import { hapticSelection } from "@/lib/haptics";
 
-const LIME = "#B4F34D";        // bright fill — active border, check chip bg
-const SAGE = "#3F7A2A";        // dark readable variant — icon stroke on lime-soft
-const SAGE_SOFT = "#ECFCCB";   // pale lime — active pill background
+const ORANGE = "#F26A13";
+const ORANGE_DARK = "#D85609";
+const ORANGE_SOFT = "#FFF1E7";
 const SOFT_SHADOW = {
   shadowColor: "#000000",
   shadowOpacity: 0.06,
@@ -133,12 +133,12 @@ function PillRow({
     const bg = interpolateColor(
       active.value,
       [0, 1],
-      [COLORS.lightCard, SAGE_SOFT],
+      [COLORS.lightCard, ORANGE_SOFT],
     );
     const border = interpolateColor(
       active.value,
       [0, 1],
-      [COLORS.lightHairline, LIME],
+      [COLORS.lightHairline, ORANGE],
     );
     const scale = 1 - press.value * 0.02;
     return {
@@ -183,7 +183,7 @@ function PillRow({
         <Animated.View style={[styles.iconWrap, iconStyle]}>
           <Icon
             size={ms(22)}
-            color={isActive ? SAGE : COLORS.lightSub}
+            color={isActive ? ORANGE_DARK : COLORS.lightSub}
             strokeWidth={2}
           />
         </Animated.View>
@@ -204,7 +204,7 @@ function PillRow({
         </View>
 
         <Animated.View style={[styles.check, checkStyle]}>
-          <Check size={ms(14)} color={COLORS.lightText} strokeWidth={3.5} />
+          <Check size={ms(14)} color="#FFFFFF" strokeWidth={3.5} />
         </Animated.View>
       </Animated.View>
     </Pressable>
@@ -234,10 +234,12 @@ const styles = StyleSheet.create({
     width: ms(22),
     height: ms(22),
     borderRadius: ms(11),
-    backgroundColor: LIME,
+    backgroundColor: ORANGE,
     alignItems: "center",
     justifyContent: "center",
   },
 });
 
 export { PillOptionsList };
+
+

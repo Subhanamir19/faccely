@@ -7,7 +7,7 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 import { API_BASE } from "@/lib/api/config";
 import { buildAuthHeadersAsync } from "@/lib/api/authHeaders";
 import { fetchWithRetry, LONG_REQUEST_TIMEOUT_MS } from "@/lib/api/client";

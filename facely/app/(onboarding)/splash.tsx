@@ -1,16 +1,14 @@
 // app/(onboarding)/splash.tsx
-// First impression — cinematic top-half video bleeds into a clean white shelf
-// that holds the headline and primary CTA. The contrast (dark video → light
-// surface) does the visual heavy-lifting; copy stays in the bold, restrained
-// typography of the rest of the app.
+// First impression: cinematic top-half video bleeds into a clean white shelf
+// that holds the headline and primary CTA. The contrast does the visual work;
+// copy stays in the bold, restrained typography of the rest of the app.
 
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import {
   View,
   StyleSheet,
   StatusBar,
-  Pressable,
-  useWindowDimensions,
+  ScrollView,
 } from "react-native";
 import { Video, ResizeMode } from "expo-av";
 import { LinearGradient } from "expo-linear-gradient";
@@ -25,20 +23,69 @@ import Animated, {
 } from "react-native-reanimated";
 
 import T from "@/components/ui/T";
-import { COLORS, RADII, SP } from "@/lib/tokens";
-import { ms, sh } from "@/lib/responsive";
+import { OrangePrimaryButton } from "@/components/onboarding/OrangeOnboardingLayout";
+import { hapticSelection } from "@/lib/haptics";
+import { COLORS, SP } from "@/lib/tokens";
+import { ms, sh, useResponsiveScale } from "@/lib/responsive";
 
-const FONT_BOLD = "ProximaNova-Bold";
-const SAGE = "#3F7A2A";
+const FONT_BOLD = "DINNextRounded-Bold";
+const ORANGE = "#FF7900";
+const HEADLINE = "There's a face\nunder your face.";
+const HAPTIC_EVERY_CHARS = 3;
 
 const VIDEO = require("../../assets/first screen onboarding.mp4");
 
+function useTypedText(value: string, delayMs: number) {
+  const [typed, setTyped] = useState("");
+
+  useEffect(() => {
+    setTyped("");
+
+    let frame: number | null = null;
+    let startedAt = 0;
+    let lastLength = 0;
+    const duration = Math.max(520, value.length * 34);
+
+    const tick = (timestamp: number) => {
+      if (!startedAt) startedAt = timestamp;
+      const progress = Math.min(1, (timestamp - startedAt) / duration);
+      const nextLength = Math.min(value.length, Math.floor(progress * value.length));
+
+      if (nextLength !== lastLength) {
+        lastLength = nextLength;
+        if (value[nextLength - 1]?.trim() && nextLength % HAPTIC_EVERY_CHARS === 0) {
+          hapticSelection();
+        }
+        setTyped(value.slice(0, nextLength));
+      }
+
+      if (progress < 1) {
+        frame = requestAnimationFrame(tick);
+      } else {
+        setTyped(value);
+      }
+    };
+
+    const timeout = setTimeout(() => {
+      frame = requestAnimationFrame(tick);
+    }, delayMs);
+
+    return () => {
+      clearTimeout(timeout);
+      if (frame !== null) cancelAnimationFrame(frame);
+    };
+  }, [delayMs, value]);
+
+  return typed;
+}
+
 export default function SplashScreen() {
   const insets = useSafeAreaInsets();
-  const { height: winH } = useWindowDimensions();
+  const responsive = useResponsiveScale();
+  const typedHeadline = useTypedText(HEADLINE, 300);
 
   // Video occupies top ~52 % so the shelf has room for headline + CTA.
-  const videoHeight = Math.round(winH * 0.52);
+  const videoHeight = responsive.clampHeight(0.52, 180, 460);
 
   // Shelf slides up + fades in, then copy cascades.
   const shelfY       = useSharedValue(40);
@@ -82,7 +129,7 @@ export default function SplashScreen() {
     <View style={styles.root}>
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
-      {/* ── Video zone ───────────────────────────────────────────── */}
+      {/* Video zone */}
       <View style={[styles.videoZone, { height: videoHeight + insets.top }]}>
         <Video
           source={VIDEO}
@@ -92,15 +139,13 @@ export default function SplashScreen() {
           isMuted
           shouldPlay
         />
-        {/* Feather the bottom edge into the white shelf for a clean seam. */}
         <LinearGradient
           colors={["transparent", "rgba(255,255,255,0.4)", COLORS.lightBg]}
           locations={[0.55, 0.85, 1]}
           style={StyleSheet.absoluteFill}
         />
       </View>
-
-      {/* ── Light shelf — overlaps the video edge with a rounded top ── */}
+      {/* Light shelf overlaps the video edge with a rounded top. */}
       <Animated.View
         style={[
           styles.shelf,
@@ -108,31 +153,38 @@ export default function SplashScreen() {
           { paddingBottom: Math.max(insets.bottom, sh(24)) },
         ]}
       >
+        <ScrollView
+          style={styles.shelfScroll}
+          contentContainerStyle={styles.shelfContent}
+          showsVerticalScrollIndicator={false}
+          bounces={false}
+        >
         {/* Drag pill */}
         <View style={styles.pill} />
 
         {/* Headline */}
-        <Animated.Text style={[styles.headline, headStyle]}>
-          {"There's a face\nunder your face."}
-        </Animated.Text>
+        <Animated.View style={[styles.headlineFrame, headStyle]}>
+          <Animated.Text style={[styles.headline, styles.headlineMeasure]} accessible={false}>
+            {HEADLINE}
+          </Animated.Text>
+          <Animated.Text style={[styles.headline, styles.headlineTyped]}>
+            {typedHeadline}
+          </Animated.Text>
+        </Animated.View>
 
-        {/* Sub-copy — sage accents the brand promise without shouting */}
+        {/* Sub-copy accents the brand promise without shouting. */}
         <Animated.Text style={[styles.sub, subStyle]}>
           <T style={styles.subBrand}>SigmaMax</T> helps you unlock it.
         </Animated.Text>
 
         {/* CTA */}
         <Animated.View style={[styles.btnWrap, btnStyle]}>
-          <Pressable
-            onPress={() => router.replace("/(onboarding)/warmup")}
-            style={({ pressed }) => [
-              styles.cta,
-              pressed && { backgroundColor: COLORS.ctaBlackPressed },
-            ]}
-          >
-            <T style={styles.ctaText}>CONTINUE</T>
-          </Pressable>
+          <OrangePrimaryButton
+            label="Continue"
+            onPress={() => router.replace("/(onboarding)/random-glowup")}
+          />
         </Animated.View>
+        </ScrollView>
       </Animated.View>
     </View>
   );
@@ -152,11 +204,17 @@ const styles = StyleSheet.create({
   shelf: {
     flex: 1,
     backgroundColor: COLORS.lightBg,
-    borderTopLeftRadius: RADII.xl,
-    borderTopRightRadius: RADII.xl,
-    marginTop: -RADII.xl, // overlap video edge
-    paddingTop: SP[3],
-    paddingHorizontal: SP[6],
+    borderTopLeftRadius: 34,
+    borderTopRightRadius: 34,
+    marginTop: -24,
+    paddingTop: SP[4],
+    paddingHorizontal: SP[5],
+  },
+  shelfScroll: {
+    flex: 1,
+  },
+  shelfContent: {
+    flexGrow: 1,
   },
 
   // Subtle handle at the top of the shelf
@@ -173,13 +231,25 @@ const styles = StyleSheet.create({
     fontFamily: FONT_BOLD,
     fontSize: ms(36),
     lineHeight: ms(42),
-    letterSpacing: -1.0,
+    letterSpacing: 0,
     color: COLORS.lightText,
+  },
+  headlineFrame: {
+    position: "relative",
     marginBottom: SP[3],
+  },
+  headlineMeasure: {
+    opacity: 0,
+  },
+  headlineTyped: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 0,
   },
 
   sub: {
-    fontFamily: "Poppins-Regular",
+    fontFamily: FONT_BOLD,
     fontSize: ms(15),
     lineHeight: ms(22),
     color: COLORS.lightSub,
@@ -187,25 +257,11 @@ const styles = StyleSheet.create({
   },
   subBrand: {
     fontFamily: FONT_BOLD,
-    color: SAGE,
+    color: ORANGE,
   },
 
   btnWrap: {
     width: "100%",
     marginTop: "auto",
-  },
-  cta: {
-    minHeight: sh(54),
-    borderRadius: 999,
-    backgroundColor: COLORS.ctaBlack,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: sh(14),
-  },
-  ctaText: {
-    fontFamily: FONT_BOLD,
-    fontSize: ms(14),
-    color: "#FFFFFF",
-    letterSpacing: 1.0,
   },
 });

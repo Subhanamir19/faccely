@@ -34,11 +34,15 @@ import T from "@/components/ui/T";
 import { COLORS, SP, RADII, getProgressForStep } from "@/lib/tokens";
 import { ms, sh, sw } from "@/lib/responsive";
 import { hapticLight, hapticSuccess } from "@/lib/haptics";
+import OrangeOnboardingLayout, {
+  OrangePrimaryButton,
+  ORANGE_ONBOARDING,
+} from "@/components/onboarding/OrangeOnboardingLayout";
 
-const FONT_BOLD = "ProximaNova-Bold";
-const LIME = "#B4F34D";        // bright fill — progress bar
-const SAGE = "#3F7A2A";        // dark readable — text on light/lime-soft surfaces
-const SAGE_SOFT = "#ECFCCB";   // pale lime — eyebrow pill, feature-1 chip bg
+const FONT_BOLD = ORANGE_ONBOARDING.font;
+const LIME = ORANGE_ONBOARDING.orange;
+const SAGE = ORANGE_ONBOARDING.orangeDark;
+const SAGE_SOFT = ORANGE_ONBOARDING.orangeSoft;
 const SOFT_SHADOW = {
   shadowColor: "#000000",
   shadowOpacity: 0.06,
@@ -83,8 +87,8 @@ const FEATURES: Feature[] = [
     title: "Know your weakest points",
     desc: "See exactly what's holding your score back.",
     image: require("@/assets/onbaording-images/weakest-points.png"),
-    accent: "#B5891A",
-    accentSoft: "#FBE9C2",
+    accent: ORANGE_ONBOARDING.orangeDark,
+    accentSoft: ORANGE_ONBOARDING.orangeSoft,
     tilt: "4deg",
     chipLabel: "NEEDS WORK",
     chipRows: [
@@ -98,8 +102,8 @@ const FEATURES: Feature[] = [
     title: "Get a daily routine",
     desc: "Simple habits, built around your weak points.",
     image: require("@/assets/onbaording-images/routine.png"),
-    accent: "#2563EB",
-    accentSoft: "#E0EAFF",
+    accent: ORANGE_ONBOARDING.orangeDark,
+    accentSoft: ORANGE_ONBOARDING.orangeSoft,
     tilt: "-5deg",
     chipLabel: "TODAY'S PLAN",
     chipRows: [
@@ -125,8 +129,11 @@ export default function FeaturesScreen() {
   }, []);
 
   return (
-    <View style={styles.screen}>
-      <StatusBar barStyle="dark-content" />
+    <OrangeOnboardingLayout
+      showHeader={false}
+      scrollable={false}
+      footer={<OrangePrimaryButton label="Continue" onPress={handleContinue} />}
+    >
 
       <View style={[styles.topRow, { paddingTop: insets.top + SP[2] }]}>
         <Pressable
@@ -187,7 +194,7 @@ export default function FeaturesScreen() {
           <T style={styles.ctaText}>CONTINUE</T>
         </Pressable>
       </View>
-    </View>
+    </OrangeOnboardingLayout>
   );
 }
 
@@ -311,6 +318,7 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: COLORS.lightBg },
 
   topRow: {
+    display: "none",
     flexDirection: "row",
     alignItems: "center",
     gap: SP[3],
@@ -369,7 +377,7 @@ const styles = StyleSheet.create({
   },
   subhead: {
     textAlign: "center",
-    fontFamily: "Poppins-Regular",
+    fontFamily: ORANGE_ONBOARDING.font,
     fontSize: ms(14),
     lineHeight: ms(20),
     color: COLORS.lightSub,
@@ -429,7 +437,7 @@ const styles = StyleSheet.create({
   },
   chipSub: {
     color: COLORS.lightSub,
-    fontFamily: "Poppins-Regular",
+    fontFamily: ORANGE_ONBOARDING.font,
     fontSize: ms(12),
     lineHeight: ms(16),
     marginTop: 2,
@@ -443,7 +451,7 @@ const styles = StyleSheet.create({
   chipRowText: {
     flex: 1,
     color: COLORS.lightText,
-    fontFamily: "Poppins-SemiBold",
+    fontFamily: ORANGE_ONBOARDING.font,
     fontSize: ms(13),
     lineHeight: ms(18),
   },
@@ -469,7 +477,7 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   cardDesc: {
-    fontFamily: "Poppins-Regular",
+    fontFamily: ORANGE_ONBOARDING.font,
     fontSize: ms(13),
     lineHeight: ms(18),
     color: COLORS.lightSub,
@@ -477,13 +485,14 @@ const styles = StyleSheet.create({
 
   closingLine: {
     textAlign: "center",
-    fontFamily: "Poppins-Regular",
+    fontFamily: ORANGE_ONBOARDING.font,
     fontSize: ms(13),
     color: COLORS.lightSub,
     marginTop: SP[6],
   },
 
   footer: {
+    display: "none",
     position: "absolute",
     left: 0,
     right: 0,

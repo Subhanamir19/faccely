@@ -14,7 +14,7 @@ import {
   Text,
   View,
 } from "react-native";
-import Animated, { FadeIn, SlideInDown, SlideOutDown } from "react-native-reanimated";
+import Animated, { Easing, FadeIn, SlideInDown, SlideOutDown } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
 import { Check } from "lucide-react-native";
 
@@ -106,11 +106,11 @@ export default function EditExercisesSheet({
       animationType="none"
       onRequestClose={onDismiss}
     >
-      <Animated.View entering={FadeIn.duration(180)} style={s.backdrop}>
+      <Animated.View entering={FadeIn.duration(160).easing(Easing.out(Easing.quad))} style={s.backdrop}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onDismiss} />
         <Animated.View
-          entering={SlideInDown.duration(280).springify().damping(20)}
-          exiting={SlideOutDown.duration(220)}
+          entering={SlideInDown.duration(280).easing(Easing.out(Easing.cubic))}
+          exiting={SlideOutDown.duration(200).easing(Easing.in(Easing.cubic))}
           style={s.sheet}
         >
           <View style={s.handle} />

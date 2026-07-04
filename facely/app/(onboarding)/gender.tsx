@@ -1,52 +1,53 @@
-// app/(onboarding)/gender.tsx
-// Gender selection — redesigned full-bleed layout with hero illustration
-// and flat pill-style options including "Prefer not to say".
 import React, { useCallback } from "react";
 import { router } from "expo-router";
-import { User, PersonStanding, Users, HelpCircle } from "lucide-react-native";
 
-import {
-  OnboardingScreenV2,
-  PillOptionsList,
-} from "@/components/onboarding";
-import type { PillOption } from "@/components/onboarding";
+import OrangeQuestionScreen, {
+  OrangeOption,
+  OrangeOptionRow,
+} from "@/components/onboarding/OrangeQuestionScreen";
+import { hapticSelection } from "@/lib/haptics";
 import { useOnboarding } from "@/store/onboarding";
 
-const OPTIONS: PillOption[] = [
-  { key: "Male", label: "Male", Icon: User },
-  { key: "Female", label: "Female", Icon: PersonStanding },
-  { key: "Other", label: "Other", Icon: Users },
-  { key: "Prefer not to say", label: "Prefer not to say", Icon: HelpCircle },
+const OPTIONS: OrangeOption[] = [
+  { key: "Male", label: "Male", emoji: "👨" },
+  { key: "Female", label: "Female", emoji: "👩" },
+  { key: "Other", label: "Other", emoji: "✨" },
+  { key: "Prefer not to say", label: "Prefer not to say", emoji: "🤐" },
 ];
 
 export default function GenderScreen() {
   const { data, setField } = useOnboarding();
-  const selected = data.gender ?? null;
+  const selected = data.gender ?? "Male";
 
   const handleSelect = useCallback(
-    (key: string) => setField("gender", key),
+    (key: string) => {
+      hapticSelection();
+      setField("gender", key);
+    },
     [setField],
   );
 
   const handleNext = useCallback(() => {
-    if (!selected) return;
+    setField("gender", selected);
     router.push("/(onboarding)/age");
-  }, [selected]);
+  }, [selected, setField]);
 
   return (
-    <OnboardingScreenV2
+    <OrangeQuestionScreen
       stepKey="gender"
+      heroImage={require("@/assets/bg-assets-for-onbaording-screens/gender.png")}
       title="What's your gender?"
-      subtitle="This helps us provide more accurate analysis results"
-      centered
-      onPrimary={handleNext}
-      primaryDisabled={!selected}
+      subtitle="This helps us provide more accurate analysis results."
+      onContinue={handleNext}
     >
-      <PillOptionsList
-        options={OPTIONS}
-        selected={selected}
-        onSelect={handleSelect}
-      />
-    </OnboardingScreenV2>
+      {OPTIONS.map((option) => (
+        <OrangeOptionRow
+          key={option.key}
+          option={option}
+          selected={selected === option.key}
+          onPress={() => handleSelect(option.key)}
+        />
+      ))}
+    </OrangeQuestionScreen>
   );
 }

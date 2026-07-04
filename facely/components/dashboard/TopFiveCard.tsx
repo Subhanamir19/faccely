@@ -15,6 +15,10 @@ import { MetricDetailCard, type DetailMetric } from "@/components/analysis/Metri
 import type { SubCategory, SubMetricRow, TopFiveResult } from "@/lib/submetrics";
 import { COLORS, RADII, SP, TYPE } from "@/lib/tokens";
 import PriorityStackIcon from "@/assets/icons/priority-stack.svg";
+import {
+  ADVANCED_ANALYSIS_FONT_BOLD,
+  getAdvancedAnalysisIconStyle,
+} from "@/lib/advancedAnalysisIcons";
 
 const C = {
   bg: "#FFF8F4",
@@ -44,9 +48,10 @@ const CATEGORY_LABELS: Record<SubCategory, string> = {
   CHEEKS: "Cheeks",
   JAW: "Jaw",
   EYES: "Eyes",
+  HAIR: "Hair",
 };
 
-const FONT_BOLD = "ProximaNova-Bold";
+const FONT_BOLD = ADVANCED_ANALYSIS_FONT_BOLD;
 const CARD_RADIUS = ms(26);
 const ICON_SIZE = ms(56);
 
@@ -92,6 +97,10 @@ function categoryLabel(category: SubCategory): string {
   return CATEGORY_LABELS[category] ?? category;
 }
 
+function metricEmoji(item: Pick<SubMetricRow, "id" | "emoji">): string {
+  return item.id.startsWith("haircut.") ? "✂️" : item.emoji;
+}
+
 function Row({
   item,
   index,
@@ -125,9 +134,13 @@ function Row({
 
         <View style={rowStyles.iconTile}>
           {item.icon ? (
-            <Image source={item.icon} style={rowStyles.iconImage} />
+            <Image
+              source={item.icon}
+              style={[rowStyles.iconImage, getAdvancedAnalysisIconStyle(item.id)]}
+              resizeMode="contain"
+            />
           ) : (
-            <Text style={rowStyles.metricEmoji}>{item.emoji}</Text>
+            <Text style={rowStyles.metricEmoji}>{metricEmoji(item)}</Text>
           )}
         </View>
 
@@ -220,7 +233,7 @@ export function TopFiveCard({ result }: { result: TopFiveResult }) {
         status: selected.status,
         section: selected.section,
         icon: selected.icon,
-        emoji: selected.emoji,
+        emoji: metricEmoji(selected),
       }
     : null;
 
@@ -366,6 +379,7 @@ const styles = StyleSheet.create({
   },
   title: {
     ...TYPE.proximaSection,
+    fontFamily: FONT_BOLD,
     fontSize: ms(24, 0.25),
     lineHeight: ms(28),
     color: C.ink,
@@ -422,6 +436,7 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     ...TYPE.proximaSection,
+    fontFamily: FONT_BOLD,
     fontSize: ms(21, 0.25),
     color: C.ink,
   },
@@ -554,7 +569,6 @@ const rowStyles = StyleSheet.create({
   iconImage: {
     width: "100%",
     height: "100%",
-    resizeMode: "cover",
   },
   metricEmoji: {
     fontSize: ms(22),

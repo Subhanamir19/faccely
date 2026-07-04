@@ -24,8 +24,9 @@ import { getTierLabel } from "./ScoringGrid";
 import { getScoreColor } from "./MetricGridCard";
 import type { DashboardMetric } from "@/lib/api/insights";
 import { useOnboarding } from "@/store/onboarding";
+import { ADVANCED_ANALYSIS_FONT_BOLD } from "@/lib/advancedAnalysisIcons";
 
-const FONT = "ProximaNova-Bold";
+const FONT = ADVANCED_ANALYSIS_FONT_BOLD;
 const SOFT_SHADOW = {
   shadowColor: "#000000",
   shadowOpacity: 0.08,

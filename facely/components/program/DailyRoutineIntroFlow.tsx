@@ -24,6 +24,8 @@ import { COLORS, RADII, SP } from "@/lib/tokens";
 import { getRoutineFocusContent } from "@/lib/routineFocus";
 import type { DailyTask } from "@/store/tasks";
 import type { TargetArea } from "@/lib/taskSelection";
+import { AppGradientBackground } from "@/components/layout/AppGradientBackground";
+import { FLOATING_TAB_BAR } from "@/components/layout/floatingTabBar";
 
 const STREAK_PREVIEW_ICON = require("../../assets/icons/streak-icon.png");
 const DUMBBELL_EXERCISE_ICON = require("../../assets/icons/dumbell-exercise.png");
@@ -34,6 +36,13 @@ const ATTR_ICON_SKIN_QUALITY = require("../../assets/attractiveness-icons/skin-q
 
 const ROUTINE_BUILD_SEQUENCE_MS = 6380;
 type IntroStep = "focus" | "benefits" | "choice" | "choosing";
+
+function getTabAwareBottomPadding(bottomInset: number) {
+  return Math.max(bottomInset, 8) +
+    FLOATING_TAB_BAR.pillHeight +
+    FLOATING_TAB_BAR.gapBottom +
+    FLOATING_TAB_BAR.raisedControlGap;
+}
 
 function splitHighlight(text: string, phrase: string) {
   const start = text.toLowerCase().indexOf(phrase.toLowerCase());
@@ -143,7 +152,8 @@ function FocusScreen({
   }));
 
   return (
-    <SafeAreaView style={styles.screen}>
+    <AppGradientBackground>
+      <SafeAreaView style={styles.screen}>
       <TopRail title="TODAY'S FOCUS" currentStreak={currentStreak} />
       <View style={styles.focusContent}>
         <View style={styles.stickerStage}>
@@ -166,7 +176,8 @@ function FocusScreen({
         <HighlightedLine text={typedPrompt} phrase={phrase} style={styles.prompt} />
       </View>
       <BottomButton label="CONTINUE" onPress={onContinue} />
-    </SafeAreaView>
+      </SafeAreaView>
+    </AppGradientBackground>
   );
 }
 
@@ -213,14 +224,16 @@ function BenefitsScreen({
   }, [body, headline]);
 
   return (
-    <SafeAreaView style={styles.screen}>
+    <AppGradientBackground>
+      <SafeAreaView style={styles.screen}>
       <TopRail title="WHY TODAY HELPS" currentStreak={currentStreak} />
       <View style={styles.benefitsContent}>
         <HighlightedLine text={typedLineOne} phrase={phrase} style={styles.benefitsHeadline} />
         <Text style={styles.benefitsBody}>{typedLineTwo}</Text>
       </View>
       <BottomButton label="CONTINUE" onPress={onContinue} />
-    </SafeAreaView>
+      </SafeAreaView>
+    </AppGradientBackground>
   );
 }
 
@@ -233,6 +246,7 @@ function ChoiceScreen({
   onChooseForMe: () => void;
   onChooseMyself: () => void;
 }) {
+  const choiceInsets = useSafeAreaInsets();
   const float = useSharedValue(0);
   const tilt = useSharedValue(-9);
 
@@ -260,7 +274,8 @@ function ChoiceScreen({
   }));
 
   return (
-    <SafeAreaView style={styles.screen}>
+    <AppGradientBackground>
+      <SafeAreaView style={styles.screen}>
       <TopRail title="TODAY'S ROUTINE" currentStreak={currentStreak} />
       <View style={styles.choiceContent}>
         <View style={styles.choiceIconStage}>
@@ -276,7 +291,7 @@ function ChoiceScreen({
         </View>
         <Text style={styles.choiceQuestion}>Do you want us to choose today's exercises?</Text>
       </View>
-      <View style={styles.choiceBottomRail}>
+      <View style={[styles.choiceBottomRail, { paddingBottom: getTabAwareBottomPadding(choiceInsets.bottom) }]}>
         <Pressable
           onPress={onChooseForMe}
           accessibilityRole="button"
@@ -294,7 +309,8 @@ function ChoiceScreen({
           <Text style={styles.secondaryChoiceText}>I'LL CHOOSE</Text>
         </Pressable>
       </View>
-    </SafeAreaView>
+      </SafeAreaView>
+    </AppGradientBackground>
   );
 }
 
@@ -389,7 +405,8 @@ function ChoosingScreen({
   }, [fillFour, fillOne, fillThree, fillTwo, revealFour, revealOne, revealThree, revealTwo]);
 
   return (
-    <SafeAreaView style={styles.screen}>
+    <AppGradientBackground>
+      <SafeAreaView style={styles.screen}>
       <TopRail title="BUILDING ROUTINE" currentStreak={currentStreak} />
       <View style={styles.choosingContent}>
         <View style={[styles.routineListStage, { width: tileWidth }]}>
@@ -419,10 +436,11 @@ function ChoosingScreen({
           <HighlightedLine text={building} phrase={phrase} style={styles.choosingText} />
         )}
       </View>
-      <View style={[styles.bottomRail, { paddingBottom: Math.max(insets.bottom + 12, 26) }]}>
+      <View style={[styles.bottomRail, { paddingBottom: getTabAwareBottomPadding(insets.bottom) }]}>
         {isComplete ? <BottomButton label="CONTINUE" onPress={onContinue} noOuterRail /> : <View style={styles.exerciseCtaPlaceholder} />}
       </View>
-    </SafeAreaView>
+      </SafeAreaView>
+    </AppGradientBackground>
   );
 }
 
@@ -435,6 +453,7 @@ function BottomButton({
   onPress: () => void;
   noOuterRail?: boolean;
 }) {
+  const buttonInsets = useSafeAreaInsets();
   const button = (
     <Pressable
       onPress={onPress}
@@ -446,7 +465,7 @@ function BottomButton({
     </Pressable>
   );
   if (noOuterRail) return button;
-  return <View style={styles.bottomRail}>{button}</View>;
+  return <View style={[styles.bottomRail, { paddingBottom: getTabAwareBottomPadding(buttonInsets.bottom) }]}>{button}</View>;
 }
 
 export default function DailyRoutineIntroFlow({
@@ -513,7 +532,7 @@ export default function DailyRoutineIntroFlow({
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: "#FEF5E4",
+    backgroundColor: "transparent",
   },
   topRail: {
     minHeight: 88,
@@ -777,21 +796,23 @@ const styles = StyleSheet.create({
   },
   exerciseCtaButton: {
     minHeight: 58,
-    borderRadius: RADII.circle,
-    backgroundColor: "#58CC02",
+    borderRadius: 16,
+    backgroundColor: "#0B0B0B",
+    borderBottomWidth: 6,
+    borderBottomColor: "#000000",
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: SP[6],
-    paddingVertical: 18,
-    shadowColor: "#58CC02",
-    shadowOpacity: 0.24,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 6,
+    paddingVertical: 16,
+    shadowColor: "#000000",
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 7,
   },
   exerciseCtaButtonPressed: {
-    backgroundColor: "#46A302",
-    transform: [{ translateY: 1 }],
+    transform: [{ translateY: 4 }],
+    borderBottomWidth: 3,
   },
   exerciseCtaText: {
     color: "#FFFFFF",
@@ -803,7 +824,7 @@ const styles = StyleSheet.create({
   },
   secondaryChoiceButton: {
     minHeight: 58,
-    borderRadius: RADII.circle,
+    borderRadius: 16,
     borderWidth: 2,
     borderColor: "#E5E7EB",
     backgroundColor: "transparent",

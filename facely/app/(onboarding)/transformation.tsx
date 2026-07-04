@@ -22,11 +22,15 @@ import { LinearGradient } from "expo-linear-gradient";
 import T from "@/components/ui/T";
 import { COLORS, RADII, SP } from "@/lib/tokens";
 import { ms, sh, sw } from "@/lib/responsive";
+import OrangeOnboardingLayout, {
+  OrangePrimaryButton,
+  ORANGE_ONBOARDING,
+} from "@/components/onboarding/OrangeOnboardingLayout";
 
-const FONT_BOLD = "ProximaNova-Bold";
-const LIME = "#B4F34D";        // bright fill — progress bar
-const SAGE = "#3F7A2A";        // dark readable — icon strokes & text on white/lime-soft
-const SAGE_SOFT = "#ECFCCB";   // pale lime — metric icon chip bg, AFTER badge label tone
+const FONT_BOLD = ORANGE_ONBOARDING.font;
+const LIME = ORANGE_ONBOARDING.orange;
+const SAGE = ORANGE_ONBOARDING.orangeDark;
+const SAGE_SOFT = ORANGE_ONBOARDING.orangeSoft;
 
 const SOFT_SHADOW = {
   shadowColor: "#000000",
@@ -97,7 +101,7 @@ export default function TransformationScreen() {
   const { width: W } = useWindowDimensions();
   const H_PAD   = SP[5];
   const CARD_W  = W - H_PAD * 2;
-  const IMG_H   = Math.round(CARD_W * 1.0);
+  const IMG_H   = Math.round(CARD_W * 0.76);
   const HANDLE_R = ms(20);
 
   const initX = CARD_W / 2;
@@ -123,9 +127,22 @@ export default function TransformationScreen() {
   const metricCardWidth = (CARD_W - sw(12)) / 2;
 
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="dark-content" />
-      <SafeAreaView style={[styles.safeArea, { paddingHorizontal: H_PAD }]}>
+    <OrangeOnboardingLayout
+      headerContent={
+        <View style={styles.headerHero}>
+          <T style={styles.headerEyebrow}>YOUR 90-DAY CHANGE</T>
+          <T style={styles.headerStatement}>Consistency compounds.</T>
+        </View>
+      }
+      scrollable={false}
+      footer={
+        <OrangePrimaryButton
+          label="Build my plan"
+          onPress={() => router.push("/(onboarding)/paywall")}
+        />
+      }
+    >
+      <SafeAreaView style={styles.safeArea}>
 
         {/* Progress */}
         <View style={styles.progressTrack}>
@@ -229,17 +246,38 @@ export default function TransformationScreen() {
         </View>
 
       </SafeAreaView>
-    </View>
+    </OrangeOnboardingLayout>
   );
 }
 
 /* ─── styles ─────────────────────────────────────────────────────── */
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.lightBg },
+  headerHero: {
+    alignItems: "center",
+    maxWidth: "78%",
+  },
+  headerEyebrow: {
+    fontFamily: ORANGE_ONBOARDING.font,
+    fontSize: ms(11),
+    lineHeight: ms(15),
+    color: "rgba(255,255,255,0.86)",
+    letterSpacing: 0.8,
+  },
+  headerStatement: {
+    fontFamily: ORANGE_ONBOARDING.font,
+    fontSize: ms(25),
+    lineHeight: ms(30),
+    color: "#FFFFFF",
+    letterSpacing: 0,
+    marginTop: SP[1],
+    textAlign: "center",
+  },
   safeArea:  { flex: 1 },
 
   // Progress — slim, sage fill
   progressTrack: {
+    display: "none",
     height: sh(5),
     width: "100%",
     borderRadius: 999,
@@ -255,19 +293,19 @@ const styles = StyleSheet.create({
   },
 
   // Header
-  header: { marginBottom: SP[3] },
+  header: { marginBottom: SP[2] },
   title: {
     fontFamily: FONT_BOLD,
-    fontSize: ms(28),
-    lineHeight: ms(34),
+    fontSize: ms(25),
+    lineHeight: ms(30),
     color: COLORS.lightText,
-    letterSpacing: -0.5,
-    marginBottom: SP[2],
+    letterSpacing: 0,
+    marginBottom: SP[1],
   },
   subtitle: {
-    fontFamily: "Poppins-Regular",
-    fontSize: ms(14),
-    lineHeight: ms(20),
+    fontFamily: ORANGE_ONBOARDING.font,
+    fontSize: ms(13),
+    lineHeight: ms(18),
     color: COLORS.lightSub,
   },
 
@@ -276,7 +314,7 @@ const styles = StyleSheet.create({
 
   // Slider — dark photos sit inside a soft-shadow rounded container
   sliderContainer: {
-    borderRadius: RADII.lg,
+    borderRadius: ms(14),
     overflow: "hidden",
     backgroundColor: "#111",
     alignSelf: "center",
@@ -347,27 +385,27 @@ const styles = StyleSheet.create({
 
   // Testimonial — white card, soft shadow
   testimonialCard: {
-    marginTop: SP[4],
+    marginTop: SP[3],
     alignSelf: "center",
     borderRadius: RADII.lg,
     backgroundColor: COLORS.lightCard,
-    paddingHorizontal: SP[5],
-    paddingTop: SP[4],
-    paddingBottom: SP[4],
+    paddingHorizontal: SP[4],
+    paddingTop: SP[3],
+    paddingBottom: SP[3],
     overflow: "hidden",
     ...SOFT_SHADOW,
   },
   quote: {
-    fontFamily: "Poppins-Regular",
-    fontSize: ms(14),
-    lineHeight: ms(21),
+    fontFamily: ORANGE_ONBOARDING.font,
+    fontSize: ms(13),
+    lineHeight: ms(19),
     color: COLORS.lightText,
-    marginBottom: SP[3],
+    marginBottom: SP[2],
   },
   dividerLine: {
     height: StyleSheet.hairlineWidth,
     backgroundColor: COLORS.lightHairline,
-    marginBottom: SP[3],
+    marginBottom: SP[2],
   },
   testimonialFooter: {
     flexDirection: "row",
@@ -383,7 +421,7 @@ const styles = StyleSheet.create({
   stars: { flexDirection: "row", gap: 2 },
 
   // Metrics section
-  metricsSection: { marginTop: SP[5] },
+  metricsSection: { marginTop: SP[4] },
   metricsTitle: {
     fontFamily: FONT_BOLD,
     fontSize: ms(18),
@@ -392,7 +430,7 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   metricsSub: {
-    fontFamily: "Poppins-Regular",
+    fontFamily: ORANGE_ONBOARDING.font,
     fontSize: ms(13),
     color: COLORS.lightSub,
     marginBottom: SP[3],
@@ -446,7 +484,7 @@ const styles = StyleSheet.create({
   },
 
   // Footer
-  footer: { paddingTop: SP[3], paddingBottom: SP[2] },
+  footer: { display: "none" },
   cta: {
     minHeight: sh(54),
     borderRadius: 999,

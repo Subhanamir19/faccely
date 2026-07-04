@@ -11,12 +11,19 @@ const SUB_METRIC_LABEL: Record<string, string> = {
   "cheekbones.maxilla_score": "Maxillary projection",
   "cheekbones.bone_structure_score": "Cheekbone definition",
   "cheekbones.face_fat_score": "Cheek hollows",
+  "cheekbones.fwhr_score": "Facial width-height balance",
   "jawline.development_score": "Jawline definition",
   "jawline.gonial_angle_score": "Gonial angle",
   "jawline.projection_score": "Chin projection",
+  "eyes.canthal_tilt_score": "Canthal tilt",
+  "eyes.eye_type_score": "Eye shape",
   "eyes.brow_volume_score": "Brow fullness",
+  "eyes.symmetry_score": "Eye symmetry",
   "skin.color_score": "Even skin tone",
   "skin.quality_score": "Skin clarity",
+  "haircut.density_score": "Hair density",
+  "haircut.styling_score": "Hair styling",
+  "haircut.facial_hair_score": "Facial hair",
 };
 
 export function labelForMetric(m: TargetedMetric): string {

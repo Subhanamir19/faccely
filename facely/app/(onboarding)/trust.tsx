@@ -1,19 +1,13 @@
 // app/(onboarding)/trust.tsx
-// Trust / accuracy reveal — counts a hero accuracy figure up to 98.5% to land
-// the brand promise after the scan, then lets the user continue. Light system,
-// sage hero number, black-pill CTA. Photos are stored locally and analysed
-// post-purchase; nothing is sent here.
+// Trust / accuracy reveal after scan capture. Keep the proof compact and calm:
+// one metric panel, a short explanation, and a single primary CTA.
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AccessibilityInfo,
-  Pressable,
   StyleSheet,
-  StatusBar,
   View,
 } from "react-native";
 import { router } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { ChevronLeft } from "lucide-react-native";
 import Animated, {
   Easing,
   runOnJS,
@@ -25,16 +19,23 @@ import Animated, {
 } from "react-native-reanimated";
 
 import T from "@/components/ui/T";
-import { COLORS, SP, getProgressForStep } from "@/lib/tokens";
-import { ms, sh, sw } from "@/lib/responsive";
-import { hapticLight, hapticSuccess } from "@/lib/haptics";
+import { SP } from "@/lib/tokens";
+import { ms, sh } from "@/lib/responsive";
+import { hapticSuccess } from "@/lib/haptics";
+import OrangeOnboardingLayout, {
+  OrangePrimaryButton,
+  ORANGE_ONBOARDING,
+} from "@/components/onboarding/OrangeOnboardingLayout";
 
-const FONT_BOLD = "ProximaNova-Bold";
-const LIME = "#B4F34D";        // bright fill — progress bar
-const SAGE = "#3F7A2A";        // dark readable — hero number on white
-
+const FONT = ORANGE_ONBOARDING.font;
+const FONT_BOLD = ORANGE_ONBOARDING.fontBold;
+const SAGE = "#34752A";
+const SAGE_SOFT = "#EEF8EA";
+const SAGE_BORDER = "#CFE7C8";
 const RAW_TARGET_ACCURACY = 98.5;
 const ANIMATION_DURATION = 1400;
+
+const PROOF_ITEMS = ["Symmetry", "Contours", "Ratios"];
 
 const clampToRange = (value: number, min: number, max: number) => {
   "worklet";
@@ -53,29 +54,21 @@ const sanitizeAccuracy = (value: unknown) => {
 };
 
 export default function TrustAccuracyScreen() {
-  const insets = useSafeAreaInsets();
   const prefersReducedMotion = useReducedMotion();
-  const progress = getProgressForStep("trust");
-
   const [animDone, setAnimDone] = useState(false);
   const navigated = useRef(false);
 
-  const targetAccuracy = useMemo(
-    () => sanitizeAccuracy(RAW_TARGET_ACCURACY),
-    []
-  );
-  const finalAccuracyText = useMemo(
-    () => formatAccuracy(targetAccuracy),
-    [targetAccuracy]
-  );
+  const targetAccuracy = useMemo(() => sanitizeAccuracy(RAW_TARGET_ACCURACY), []);
+  const finalAccuracyText = useMemo(() => formatAccuracy(targetAccuracy), [targetAccuracy]);
 
   const animatedAccuracy = useSharedValue(0);
+  const progressWidth = useSharedValue(0);
   const [metricText, setMetricText] = useState(formatAccuracy(0));
 
   const announceAccuracy = useCallback(() => {
     hapticSuccess();
     AccessibilityInfo.announceForAccessibility(
-      `Accuracy ${targetAccuracy.toFixed(1)} percent.`
+      `Accuracy ${targetAccuracy.toFixed(1)} percent.`,
     );
   }, [targetAccuracy]);
 
@@ -85,23 +78,35 @@ export default function TrustAccuracyScreen() {
   }, [announceAccuracy]);
 
   useEffect(() => {
+    setAnimDone(false);
+
     if (prefersReducedMotion) {
       animatedAccuracy.value = targetAccuracy;
+      progressWidth.value = targetAccuracy;
       setMetricText(finalAccuracyText);
       handleAnimationComplete();
-      return;
+      return undefined;
     }
 
     animatedAccuracy.value = 0;
+    progressWidth.value = 0;
     setMetricText(formatAccuracy(0));
+
     animatedAccuracy.value = withTiming(
       targetAccuracy,
       { duration: ANIMATION_DURATION, easing: Easing.out(Easing.cubic) },
-      (finished) => { if (finished) runOnJS(handleAnimationComplete)(); }
+      (finished) => {
+        if (finished) runOnJS(handleAnimationComplete)();
+      },
     );
+    progressWidth.value = withTiming(targetAccuracy, {
+      duration: ANIMATION_DURATION,
+      easing: Easing.out(Easing.cubic),
+    });
 
     return () => {
       animatedAccuracy.value = targetAccuracy;
+      progressWidth.value = targetAccuracy;
       setMetricText(finalAccuracyText);
     };
   }, [
@@ -109,6 +114,7 @@ export default function TrustAccuracyScreen() {
     finalAccuracyText,
     handleAnimationComplete,
     prefersReducedMotion,
+    progressWidth,
     targetAccuracy,
   ]);
 
@@ -126,185 +132,209 @@ export default function TrustAccuracyScreen() {
       const prevRounded = Math.round(prevClamped * 10) / 10;
       if (rounded !== prevRounded) runOnJS(setMetricText)(nextText);
     },
-    [setMetricText]
+    [setMetricText],
   );
 
+  const progressFillStyle = useAnimatedStyle(() => ({
+    width: `${progressWidth.value}%`,
+  }));
+
   const handleContinue = useCallback(() => {
-    if (navigated.current) return;
+    if (navigated.current || !animDone) return;
     hapticSuccess();
     navigated.current = true;
     router.push("/(onboarding)/time-dedication");
-  }, []);
-
-  const handleBack = useCallback(() => {
-    hapticLight();
-    router.back();
-  }, []);
-
-  // Progress bar fill width animates in
-  const progressW = useSharedValue(0);
-  useEffect(() => {
-    progressW.value = withTiming(progress * 100, {
-      duration: 600,
-      easing: Easing.out(Easing.cubic),
-    });
-  }, [progress, progressW]);
-  const progressFillStyle = useAnimatedStyle(() => ({
-    width: `${progressW.value}%`,
-  }));
+  }, [animDone]);
 
   return (
-    <View style={styles.screen}>
-      <StatusBar barStyle="dark-content" />
-
-      <View
-        style={[
-          styles.content,
-          {
-            paddingTop:    insets.top    + SP[3],
-            paddingBottom: insets.bottom + SP[3],
-          },
-        ]}
-      >
-        {/* Top — back chevron above progress bar */}
-        <Pressable
-          onPress={handleBack}
-          accessibilityRole="button"
-          accessibilityLabel="Go back"
-          hitSlop={12}
-          style={({ pressed }) => [styles.backBtn, pressed && { opacity: 0.65 }]}
-        >
-          <ChevronLeft size={ms(22)} color={COLORS.lightText} strokeWidth={2.5} />
-        </Pressable>
-
-        <View style={styles.progressTrack}>
-          <Animated.View style={[styles.progressFill, progressFillStyle]} />
+    <OrangeOnboardingLayout
+      showHeader={false}
+      scrollable={false}
+      sheetContentStyle={styles.content}
+      footer={
+        <OrangePrimaryButton
+          label={animDone ? "Continue" : "..."}
+          onPress={handleContinue}
+          disabled={!animDone}
+          uppercase={false}
+        />
+      }
+    >
+      <View style={styles.body}>
+        <View style={styles.copyBlock}>
+          <T style={styles.eyebrow}>SCAN PRECISION</T>
+          <T style={styles.title} accessibilityRole="header">
+            How precise is SigmaMax?
+          </T>
+          <T style={styles.subtitle}>
+            Every symmetry, contour, and ratio is checked against calibrated facial benchmarks.
+          </T>
         </View>
 
-        {/* Body — copy stack pinned to vertical center */}
-        <View style={styles.body}>
+        <View style={styles.metricPanel}>
+          <View style={styles.metricTopRow}>
+            <T style={styles.metricKicker}>Accuracy model</T>
+            <View style={styles.livePill}>
+              <T style={styles.livePillText}>Calibrated</T>
+            </View>
+          </View>
+
           <T
-            style={styles.title}
-            accessibilityRole="header"
-            accessibilityLabel="How precise is SigmaMax?"
+            style={styles.metric}
+            accessibilityLabel={`Accuracy ${metricText.replace("%", " percent")}`}
           >
-            {"How precise is\nSigmaMax?"}
+            {metricText}
           </T>
+          <T style={styles.metricLabel}>analysis accuracy</T>
 
-          <T style={styles.subtitle}>
-            Every symmetry, contour, and ratio analysed with near-perfect precision.
-          </T>
-
-          <View style={styles.metricBlock}>
-            <T
-              style={styles.metric}
-              accessibilityLabel={`Accuracy ${metricText.replace("%", " percent")}`}
-            >
-              {metricText}
-            </T>
-            <T style={styles.metricLabel}>ACCURACY</T>
+          <View style={styles.progressTrack}>
+            <Animated.View style={[styles.progressFill, progressFillStyle]} />
           </View>
         </View>
 
-        {/* Footer */}
-        <Pressable
-          onPress={handleContinue}
-          disabled={!animDone}
-          style={({ pressed }) => [
-            styles.cta,
-            !animDone && styles.ctaDisabled,
-            animDone && pressed && { backgroundColor: COLORS.ctaBlackPressed },
-          ]}
-        >
-          <T style={[styles.ctaText, !animDone && { color: COLORS.lightSub }]}>
-            {animDone ? "CONTINUE" : "…"}
-          </T>
-        </Pressable>
+        <View style={styles.proofRow}>
+          {PROOF_ITEMS.map((item) => (
+            <View key={item} style={styles.proofChip}>
+              <T style={styles.proofText}>{item}</T>
+            </View>
+          ))}
+        </View>
       </View>
-    </View>
+    </OrangeOnboardingLayout>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: COLORS.lightBg },
   content: {
     flex: 1,
-    paddingHorizontal: SP[5],
   },
-
-  backBtn: {
-    width: ms(36),
-    height: ms(36),
-    alignItems: "flex-start",
-    justifyContent: "center",
-    marginBottom: SP[2],
-  },
-  progressTrack: {
-    height: sh(6),
-    width: "100%",
-    borderRadius: 999,
-    backgroundColor: COLORS.lightHairline,
-    overflow: "hidden",
-    marginBottom: SP[5],
-  },
-  progressFill: {
-    height: "100%",
-    backgroundColor: LIME,
-    borderRadius: 999,
-  },
-
   body: {
     flex: 1,
     justifyContent: "center",
+    gap: SP[4],
+    paddingHorizontal: SP[1],
+    paddingBottom: SP[2],
+  },
+  copyBlock: {
+    alignItems: "center",
+    gap: sh(8),
+  },
+  eyebrow: {
+    fontFamily: FONT_BOLD,
+    fontSize: ms(12, 0.14),
+    lineHeight: ms(16, 0.14),
+    color: SAGE,
+    letterSpacing: 1.1,
   },
   title: {
     fontFamily: FONT_BOLD,
-    color: COLORS.lightText,
-    fontSize: ms(32),
-    lineHeight: ms(38),
-    letterSpacing: -0.6,
+    color: ORANGE_ONBOARDING.text,
+    fontSize: ms(31, 0.12),
+    lineHeight: ms(37, 0.12),
+    letterSpacing: 0,
+    textAlign: "center",
   },
   subtitle: {
-    fontFamily: "Poppins-Regular",
-    color: COLORS.lightSub,
-    fontSize: ms(15),
-    lineHeight: ms(22),
-    marginTop: SP[3],
+    maxWidth: ms(320),
+    fontFamily: FONT,
+    color: ORANGE_ONBOARDING.muted,
+    fontSize: ms(15, 0.18),
+    lineHeight: ms(22, 0.18),
+    letterSpacing: 0,
+    textAlign: "center",
   },
-  metricBlock: {
-    marginTop: sh(48),
+  metricPanel: {
+    width: "100%",
+    borderRadius: ms(22),
+    borderWidth: 1,
+    borderColor: SAGE_BORDER,
+    backgroundColor: "#FFFFFF",
+    paddingHorizontal: SP[4],
+    paddingTop: SP[4],
+    paddingBottom: SP[4],
+    shadowColor: "#2A1A10",
+    shadowOpacity: 0.07,
+    shadowRadius: ms(18),
+    shadowOffset: { width: 0, height: ms(8) },
+    elevation: 4,
+  },
+  metricTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: SP[2],
+  },
+  metricKicker: {
+    fontFamily: FONT_BOLD,
+    fontSize: ms(13, 0.16),
+    lineHeight: ms(18, 0.16),
+    color: ORANGE_ONBOARDING.text,
+  },
+  livePill: {
+    borderRadius: 999,
+    backgroundColor: SAGE_SOFT,
+    paddingHorizontal: SP[3],
+    paddingVertical: sh(5),
+  },
+  livePillText: {
+    fontFamily: FONT_BOLD,
+    fontSize: ms(12, 0.14),
+    lineHeight: ms(15, 0.14),
+    color: SAGE,
   },
   metric: {
+    marginTop: sh(22),
     color: SAGE,
     fontFamily: FONT_BOLD,
-    fontSize: ms(86),
-    lineHeight: ms(92),
-    letterSpacing: -2,
+    fontSize: ms(74, 0.08),
+    lineHeight: ms(80, 0.08),
+    letterSpacing: 0,
+    textAlign: "center",
     includeFontPadding: false,
   },
   metricLabel: {
     fontFamily: FONT_BOLD,
     color: SAGE,
-    fontSize: ms(13),
-    letterSpacing: 1.4,
+    fontSize: ms(13, 0.14),
+    lineHeight: ms(17, 0.14),
+    letterSpacing: 0.8,
     marginTop: sh(4),
+    textAlign: "center",
+    textTransform: "uppercase",
   },
-
-  cta: {
-    minHeight: sh(54),
+  progressTrack: {
+    height: sh(8),
     borderRadius: 999,
-    backgroundColor: COLORS.ctaBlack,
+    backgroundColor: "#EEF0EC",
+    overflow: "hidden",
+    marginTop: sh(22),
+  },
+  progressFill: {
+    height: "100%",
+    borderRadius: 999,
+    backgroundColor: SAGE,
+  },
+  proofRow: {
+    flexDirection: "row",
+    gap: SP[2],
+  },
+  proofChip: {
+    flex: 1,
+    minHeight: sh(42),
+    borderRadius: ms(14),
+    borderWidth: 1,
+    borderColor: ORANGE_ONBOARDING.border,
+    backgroundColor: "#FFFFFF",
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: sh(14),
+    paddingHorizontal: SP[2],
   },
-  ctaDisabled: {
-    backgroundColor: COLORS.lightSurfaceAlt,
-  },
-  ctaText: {
+  proofText: {
     fontFamily: FONT_BOLD,
-    fontSize: ms(14),
-    color: "#FFFFFF",
-    letterSpacing: 1.0,
+    fontSize: ms(13, 0.16),
+    lineHeight: ms(17, 0.16),
+    color: ORANGE_ONBOARDING.muted,
+    letterSpacing: 0,
+    textAlign: "center",
   },
 });

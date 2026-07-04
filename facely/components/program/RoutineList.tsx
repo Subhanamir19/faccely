@@ -14,6 +14,7 @@ import {
   View,
 } from "react-native";
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
+import { LinearGradient } from "expo-linear-gradient";
 import {
   useAnimatedStyle,
   useSharedValue,
@@ -23,6 +24,7 @@ import {
 } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
 import { ChevronLeft, SquareCheckBig } from "lucide-react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { COLORS, RADII, SP, TYPE } from "@/lib/tokens";
 import { sw, sh, ms } from "@/lib/responsive";
@@ -36,8 +38,14 @@ import { useRoutineStore } from "@/store/routineStore";
 import TargetAreasSheet from "./TargetAreasSheet";
 import EditExercisesSheet from "./EditExercisesSheet";
 import ProtocolPlanCard from "./ProtocolPlanCard";
+import {
+  AppGradientBackground,
+  APP_SCREEN_GRADIENT_BOTTOM,
+} from "@/components/layout/AppGradientBackground";
+import { FLOATING_TAB_BAR } from "@/components/layout/floatingTabBar";
 
 const DIN_FONT = "DINNextRounded-Regular";
+const DIN_FONT_BOLD = "DINNextRounded-Bold";
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 // ── helpers ─────────────────────────────────────────────────────────────
@@ -209,6 +217,7 @@ export default function RoutineList({
   initialEditOpen?: boolean;
 }) {
   const { getDuration } = useExerciseSettings();
+  const insets = useSafeAreaInsets();
   const todayIndex = useRoutineStore((st) => st.todayIndex);
   const setTodayTasksByAreas = useTasksStore((st) => st.setTodayTasksByAreas);
   const setTodayTasksByIds   = useTasksStore((st) => st.setTodayTasksByIds);
@@ -281,7 +290,8 @@ export default function RoutineList({
   const currentIds = useMemo(() => tasks.map((t) => t.exerciseId), [tasks]);
 
   return (
-    <SafeAreaView style={s.safe}>
+    <AppGradientBackground>
+      <SafeAreaView style={s.safe}>
       {/* ── Header ── */}
       <Animated.View entering={FadeIn.duration(300)} style={s.header}>
         <Pressable
@@ -300,7 +310,7 @@ export default function RoutineList({
       </Animated.View>
 
       <ScrollView
-        contentContainerStyle={s.scrollContent}
+        contentContainerStyle={[s.scrollContent, { paddingBottom: Math.max(sh(140), FLOATING_TAB_BAR.contentClearance + sh(88)) }]}
         showsVerticalScrollIndicator={false}
       >
         {/* ── Stats card ── */}
@@ -391,7 +401,14 @@ export default function RoutineList({
       </ScrollView>
 
       {/* ── Sticky CTA ── */}
-      <View style={s.ctaDock}>
+      <View style={[s.ctaDock, { bottom: Math.max(insets.bottom, 8) + FLOATING_TAB_BAR.pillHeight + FLOATING_TAB_BAR.gapBottom + FLOATING_TAB_BAR.raisedControlGap }]}>
+        <LinearGradient
+          pointerEvents="none"
+          colors={["rgba(254,245,228,0)", APP_SCREEN_GRADIENT_BOTTOM]}
+          start={{ x: 0.5, y: 0 }}
+          end={{ x: 0.5, y: 1 }}
+          style={s.ctaFade}
+        />
         <View style={s.ctaDivider} />
         <Pressable
           onPress={allResolved ? undefined : handleStart}
@@ -445,7 +462,8 @@ export default function RoutineList({
         }}
         onDismiss={() => setEditOpen(false)}
       />
-    </SafeAreaView>
+      </SafeAreaView>
+    </AppGradientBackground>
   );
 }
 
@@ -453,7 +471,7 @@ export default function RoutineList({
 const s = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: "#FEF5E4",
+    backgroundColor: "transparent",
   },
 
   // Header
@@ -556,7 +574,7 @@ const s = StyleSheet.create({
   },
   sectionTitle: {
     ...TYPE.proximaSection,
-    fontFamily: DIN_FONT,
+    fontFamily: DIN_FONT_BOLD,
     fontSize: ms(20),
     color: COLORS.lightText,
   },
@@ -674,7 +692,7 @@ const s = StyleSheet.create({
   },
   rowTitle: {
     ...TYPE.proximaExerciseTitle,
-    fontFamily: DIN_FONT,
+    fontFamily: DIN_FONT_BOLD,
     fontSize: ms(15),
     color: COLORS.lightText,
   },
@@ -730,15 +748,17 @@ const s = StyleSheet.create({
     paddingTop: SP[3],
     paddingBottom: SP[4],
     paddingHorizontal: SP[5],
-    backgroundColor: "#FEF5E4",
+    backgroundColor: "transparent",
   },
-  ctaDivider: {
+  ctaFade: {
     position: "absolute",
-    top: 0,
     left: 0,
     right: 0,
-    height: 1,
-    backgroundColor: COLORS.lightDivider,
+    top: -48,
+    bottom: 0,
+  },
+  ctaDivider: {
+    display: "none",
   },
   ctaBtn: {
     minHeight: sh(58),

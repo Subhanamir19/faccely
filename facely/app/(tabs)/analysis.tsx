@@ -39,7 +39,18 @@ import { useAdvancedAnalysis } from "@/store/advancedAnalysis";
 import { useTasksStore } from "@/store/tasks";
 import { useAdvancedAnalysisConsent } from "@/hooks/useAdvancedAnalysisConsent";
 import { BlueprintModal } from "@/components/analysis/BlueprintModal";
-import type { AdvancedAnalysis } from "@/lib/api/advancedAnalysis";
+import {
+  hasAssessedHaircut,
+  type AdvancedAnalysis,
+} from "@/lib/api/advancedAnalysis";
+import { ORANGE_ONBOARDING } from "@/components/onboarding/OrangeOnboardingLayout";
+import {
+  ADVANCED_ANALYSIS_FONT_BOLD,
+  getAdvancedAnalysisIcon,
+  getAdvancedAnalysisIconStyle,
+} from "@/lib/advancedAnalysisIcons";
+import { AppGradientBackground } from "@/components/layout/AppGradientBackground";
+import { FLOATING_TAB_BAR } from "@/components/layout/floatingTabBar";
 
 // ---------------------------------------------------------------------------
 // Design constants — matched to reference
@@ -50,6 +61,10 @@ import type { AdvancedAnalysis } from "@/lib/api/advancedAnalysis";
 // score screens. Semantic keys preserved so STATUS_CONFIG / ZONE_CONFIG still
 // work without restructuring.
 const SCREEN_BG = "#FEF5E4";
+const PARROT_GREEN = COLORS.accent;
+const PARROT_GREEN_DARK = COLORS.accentDepth;
+const PARROT_GREEN_SOFT = "rgba(180,243,77,0.22)";
+const PARROT_GREEN_BORDER = "rgba(180,243,77,0.50)";
 
 const C = {
   bg:          SCREEN_BG,
@@ -64,10 +79,10 @@ const C = {
   textBody:    COLORS.lightMuted,
 
   // working (fine) — sage tint
-  fineText:    "#1F3D1F",
-  fineBg:      "#E2F1D8",
-  fineBorder:  "#C7E2B4",
-  fineIcon:    "#3F7A2A",
+  fineText:    PARROT_GREEN_DARK,
+  fineBg:      PARROT_GREEN_SOFT,
+  fineBorder:  PARROT_GREEN_BORDER,
+  fineIcon:    PARROT_GREEN,
 
   // okay (neutral) — light gray
   neutralText: COLORS.lightText,
@@ -105,7 +120,7 @@ const SOFT_SHADOW = {
   elevation: 4,
 } as const;
 
-const FONT = "ProximaNova-Bold";
+const FONT = ADVANCED_ANALYSIS_FONT_BOLD;
 
 // ---------------------------------------------------------------------------
 // Section thresholds
@@ -119,7 +134,7 @@ const T_OKAY_LOW = 55; // score 55–71  → Just Okay
 // Sub-metric definitions — source of truth, maps to AdvancedAnalysis shape
 // ---------------------------------------------------------------------------
 
-type CategoryChip = "CHEEKS" | "JAW" | "EYES" | "SKIN";
+type CategoryChip = "CHEEKS" | "JAW" | "EYES" | "SKIN" | "HAIR";
 type StatusKind   = "fine" | "neutral" | "alarming";
 type SectionKey   = "working" | "okay" | "needs_work";
 
@@ -137,78 +152,93 @@ type SubDef = {
 const SUBMETRIC_DEFS: SubDef[] = [
   {
     id: "cheekbones.width", group: "cheekbones", key: "width", label: "Cheekbones Width", category: "CHEEKS", emoji: "😊",
-    icon: require("../../advanced-analysis-icons/advanced-analysis-icons-new/cheekbones--width.jpeg"),
+    icon: getAdvancedAnalysisIcon("cheekbones.width"),
     idealRange: "Cheekbones should be wider than the forehead is tall, giving the face a strong, broad midface. Wide but still proportional — not exaggerated.",
   },
   {
     id: "cheekbones.maxilla", group: "cheekbones", key: "maxilla", label: "Maxilla", category: "CHEEKS", emoji: "🦷",
-    icon: require("../../advanced-analysis-icons/advanced-analysis-icons-new/maxilla--.jpeg"),
+    icon: getAdvancedAnalysisIcon("cheekbones.maxilla"),
     idealRange: "The upper jaw bone should sit forward, giving the cheek area a lifted, full appearance from both the front and side view.",
   },
   {
     id: "cheekbones.bone_structure", group: "cheekbones", key: "bone_structure", label: "Bone Structure", category: "CHEEKS", emoji: "🦴",
-    icon: require("../../advanced-analysis-icons/advanced-analysis-icons-new/BONE-STRUCTURE.jpeg"),
+    icon: getAdvancedAnalysisIcon("cheekbones.bone_structure"),
     idealRange: "High, defined cheekbones that cast a subtle shadow below them. The high point should sit level with or above the ears.",
   },
   {
     id: "cheekbones.face_fat", group: "cheekbones", key: "face_fat", label: "Face Fat", category: "CHEEKS", emoji: "🫦",
-    icon: require("../../advanced-analysis-icons/advanced-analysis-icons-new/face--fat.jpeg"),
+    icon: getAdvancedAnalysisIcon("cheekbones.face_fat"),
     idealRange: "Low enough body fat (~10–14%) for the cheeks to appear hollow under the cheekbones, creating a chiseled shadow beneath them.",
   },
   {
     id: "cheekbones.fwhr", group: "cheekbones", key: "fwhr", label: "Face Width Ratio", category: "CHEEKS", emoji: "📏",
-    icon: require("../../advanced-analysis-icons/advanced-analysis-icons-new/FWHR--.jpeg"),
+    icon: getAdvancedAnalysisIcon("cheekbones.fwhr"),
     idealRange: "How wide your face is compared to its height between the brows and upper lip. Wider reads as more masculine (~1.9–2.0), narrower as more feminine (~1.6–1.8).",
   },
   {
     id: "jawline.development", group: "jawline", key: "development", label: "Jaw Development", category: "JAW", emoji: "💪",
-    icon: require("../../advanced-analysis-icons/advanced-analysis-icons-new/jawline--development.jpeg"),
+    icon: getAdvancedAnalysisIcon("jawline.development"),
     idealRange: "The jaw edge should be clearly visible from the front as a sharp, defined line running from ear to chin — visible even at a distance.",
   },
   {
     id: "jawline.gonial_angle", group: "jawline", key: "gonial_angle", label: "Gonial Angle", category: "JAW", emoji: "📐",
-    icon: require("../../advanced-analysis-icons/advanced-analysis-icons-new/gonial--angle.jpeg"),
+    icon: getAdvancedAnalysisIcon("jawline.gonial_angle"),
     idealRange: "The sharpness of your jaw corner. Ideal is 95–115°. Tighter corners look stronger and more chiseled. Above 125°, the corner blends away and the jaw looks round.",
   },
   {
     id: "jawline.projection", group: "jawline", key: "projection", label: "Chin Projection", category: "JAW", emoji: "👤",
-    icon: require("../../advanced-analysis-icons/advanced-analysis-icons-new/chin--projection.jpeg"),
+    icon: getAdvancedAnalysisIcon("jawline.projection"),
     idealRange: "The chin should stick out to roughly the same level as the nose tip from a side view. More projection means a stronger, more defined profile.",
   },
   {
     id: "jawline.ramus", group: "jawline", key: "ramus", label: "Ramus Height", category: "JAW", emoji: "📐",
-    icon: require("../../advanced-analysis-icons/advanced-analysis-icons-new/ramus--height.jpeg"),
+    icon: getAdvancedAnalysisIcon("jawline.ramus"),
     idealRange: "The vertical part of the jaw (from the ear down to the jaw corner) should be tall and nearly straight up-and-down. Taller and more vertical = stronger-looking jaw corners.",
   },
   {
     id: "eyes.canthal_tilt", group: "eyes", key: "canthal_tilt", label: "Canthal Tilt", category: "EYES", emoji: "👁️",
-    icon: require("../../advanced-analysis-icons/advanced-analysis-icons-new/canthal--tilt.jpeg"),
+    icon: getAdvancedAnalysisIcon("eyes.canthal_tilt"),
     idealRange: "The outer corner of the eye should sit slightly higher (+3° to +5°) than the inner corner. This upward tilt gives a focused, intense look. Downward-tilted eyes appear softer and more passive.",
   },
   {
     id: "eyes.eye_type", group: "eyes", key: "eye_type", label: "Eye Type", category: "EYES", emoji: "👀",
-    icon: require("../../advanced-analysis-icons/advanced-analysis-icons-new/eye--type.jpeg"),
+    icon: getAdvancedAnalysisIcon("eyes.eye_type"),
     idealRange: "Almond or 'hunter' shaped eyes with tight lids and no white visible below the iris. This shape gives a sharp, focused appearance rather than a wide or sleepy look.",
   },
   {
     id: "eyes.brow_volume", group: "eyes", key: "brow_volume", label: "Brow Volume", category: "EYES", emoji: "🤨",
-    icon: require("../../advanced-analysis-icons/advanced-analysis-icons-new/eyebrows--densiy.jpeg"),
+    icon: getAdvancedAnalysisIcon("eyes.brow_volume"),
     idealRange: "Thick, well-groomed brows with a clear arch. The tail should extend past the outer corner of the eye. Full brows frame the face and make the eye area look stronger.",
   },
   {
     id: "eyes.symmetry", group: "eyes", key: "symmetry", label: "Eye Symmetry", category: "EYES", emoji: "👁️",
-    icon: require("../../advanced-analysis-icons/advanced-analysis-icons-new/eyes--symmetry.jpeg"),
+    icon: getAdvancedAnalysisIcon("eyes.symmetry"),
     idealRange: "Both eyes should look the same size and height. A difference under 2mm is barely noticeable. Over 3mm becomes clearly visible in normal face-to-face conversation.",
   },
   {
     id: "skin.color", group: "skin", key: "color", label: "Skin Color", category: "SKIN", emoji: "🎨",
-    icon: require("../../advanced-analysis-icons/advanced-analysis-icons-new/SKIN--COLOR.jpeg"),
+    icon: getAdvancedAnalysisIcon("skin.color"),
     idealRange: "Skin tone should be even and consistent with no dark spots, redness, or patchy areas. A clear, uniform complexion across the entire face.",
   },
   {
     id: "skin.quality", group: "skin", key: "quality", label: "Skin Quality", category: "SKIN", emoji: "✨",
-    icon: require("../../advanced-analysis-icons/advanced-analysis-icons-new/skin--quality.jpeg"),
+    icon: getAdvancedAnalysisIcon("skin.quality"),
     idealRange: "Skin should be smooth with small, tight pores and no active breakouts. When light hits it, it should reflect evenly rather than scatter across a rough surface.",
+  },
+  {
+    id: "haircut.density", group: "haircut", key: "density", label: "Hair Density", category: "HAIR", emoji: "✂️",
+    icon: getAdvancedAnalysisIcon("haircut.density"),
+    idealRange: "Choose a haircut that suits your face shape, keeps the hairline and scalp coverage looking intentional, and gives the face clean balance.",
+  },
+  {
+    id: "haircut.styling", group: "haircut", key: "styling", label: "Hair Styling", category: "HAIR", emoji: "✂️",
+    icon: getAdvancedAnalysisIcon("haircut.styling"),
+    idealRange: "Choose a hairstyle that fits your face shape, frames the forehead and jaw cleanly, and adds balance instead of making the face look messy or shapeless.",
+  },
+  {
+    id: "haircut.facial_hair", group: "haircut", key: "facial_hair", label: "Facial Hair", category: "HAIR", emoji: "✂️",
+    icon: getAdvancedAnalysisIcon("haircut.facial_hair"),
+    idealRange: "Keep facial hair intentional and face-shaping: clean edges, balanced length, and a style that supports your jaw and cheek structure.",
   },
 ];
 
@@ -261,7 +291,8 @@ function resolveVerdict(def: SubDef, score: number, rawVerdict: string): string 
   return tierLabel(score);
 }
 
-function flattenData(data: AdvancedAnalysis): FlatMetric[] {
+function flattenData(data: AdvancedAnalysis, options: { includeRamus?: boolean } = {}): FlatMetric[] {
+  const includeRamus = options.includeRamus ?? true;
   return SUBMETRIC_DEFS
     .map((def, i) => {
       const group      = data[def.group] as Record<string, any>;
@@ -278,9 +309,10 @@ function flattenData(data: AdvancedAnalysis): FlatMetric[] {
         idealRange: def.idealRange,
       };
     })
-    // Suppress metrics that were not assessed: ramus when no side image was provided.
-    // Signal: score is exactly the Zod default (50) AND both verdict and commentary are empty.
-    .filter((m) => !(m.score === 50 && (m as any).rawVerdict === "" && m.commentary === ""))
+    // Suppress ramus deterministically when the current scan has no side image.
+    // Haircut metrics are assessed from the frontal image, so never hide them
+    // just because the backend returns a neutral 50 with empty text/verdict.
+    .filter((m) => includeRamus || m.id !== "jawline.ramus")
     // Re-index globalIdx after filter so animation delays stay tight.
     .map((m, i) => ({ ...m, globalIdx: i }));
 }
@@ -465,7 +497,11 @@ function MetricCard({ item, onPress }: { item: FlatMetric; onPress: (m: FlatMetr
         {/* Icon box */}
         <View style={[sx.iconBox, { borderBottomColor: C.iconDepth }]}>
           {item.icon ? (
-            <RNImage source={item.icon} style={sx.metricIcon} />
+            <RNImage
+              source={item.icon}
+              style={[sx.metricIcon, getAdvancedAnalysisIconStyle(item.id)]}
+              resizeMode="contain"
+            />
           ) : (
             <Text style={sx.metricEmoji}>{item.emoji}</Text>
           )}
@@ -633,14 +669,16 @@ export function AnalysisContent({
   viewportWidth,
   imageUri,
   onboardingFlow = false,
+  includeRamus = true,
 }: {
   data: AdvancedAnalysis;
   viewportWidth: number;
   imageUri?: string | null;
   onboardingFlow?: boolean;
+  includeRamus?: boolean;
 }) {
   const currentStreak = useTasksStore((s) => s.currentStreak);
-  const metrics   = useMemo(() => flattenData(data), [data]);
+  const metrics   = useMemo(() => flattenData(data, { includeRamus }), [data, includeRamus]);
 
   // Single carousel ordered by section: working → okay → needs_work.
   // Section identity is conveyed via a chip on each card; chip color shifts
@@ -699,6 +737,7 @@ export function AnalysisContent({
           metrics={ordered}
           viewportWidth={viewportWidth}
           showControls={onboardingFlow}
+          onboarding={onboardingFlow}
           onCardPress={(c) => {
             // Carousel emits a slim CarouselMetric — find the full FlatMetric
             // by id so the popup gets commentary + ideal range too.
@@ -749,7 +788,7 @@ function EmptyState() {
       <Animated.View entering={FadeInDown.duration(380)} style={sx.emptyIconFrame}>
         <View style={sx.emptyIconGlow} />
         <View style={sx.emptyIconCore}>
-          <Microscope size={ms(30)} color={COLORS.accent} strokeWidth={1.8} />
+          <Microscope size={ms(30)} color={ORANGE_ONBOARDING.orange} strokeWidth={1.8} />
         </View>
       </Animated.View>
 
@@ -770,7 +809,7 @@ function EmptyState() {
         {benefits.map(({ Icon, label }, i) => (
           <View key={i} style={sx.benefitRow}>
             <View style={sx.benefitIconBox}>
-              <Icon size={ms(14)} color={COLORS.accent} strokeWidth={2.2} />
+              <Icon size={ms(14)} color={ORANGE_ONBOARDING.orange} strokeWidth={2.2} />
             </View>
             <Text style={sx.benefitText}>{label}</Text>
           </View>
@@ -822,11 +861,13 @@ export default function AnalysisScreen() {
   const params = useLocalSearchParams<{ onboardingFlow?: string | string[] }>();
   const onboardingFlow = (Array.isArray(params.onboardingFlow) ? params.onboardingFlow[0] : params.onboardingFlow) === "1";
 
-  const { scores, imageUri }               = useScores();
+  const { scores, imageUri, sideImageUri, scanId } = useScores();
   const { data, loading, error, fetch, cachedScanId } = useAdvancedAnalysis();
   const { checkAndPromptConsent, ConsentModal }        = useAdvancedAnalysisConsent();
 
   const hasScores = !!scores && !!imageUri;
+  const hasCurrentData =
+    !!data && (scanId !== null ? cachedScanId === scanId : cachedScanId === null);
   // Carousel viewport — screen width minus the scroll's horizontal padding
   // (sw(16) on each side, see sx.scrollContent).
   const viewportWidth = SW - sw(16) * 2;
@@ -841,17 +882,27 @@ export default function AnalysisScreen() {
   // hidden underneath until then.
   const [blueprintVisible, setBlueprintVisible] = useState(false);
   const dismissedForScanIdRef = useRef<string | null>(null);
+  const haircutRefreshAttemptedForScanIdRef = useRef<string | null>(null);
+  const currentScanCacheKey = scanId ?? "__local_scan__";
+  const needsHaircutRefresh =
+    hasCurrentData &&
+    !hasAssessedHaircut(data) &&
+    haircutRefreshAttemptedForScanIdRef.current !== currentScanCacheKey;
 
   // Fetch on every focus — consent gate runs once per install (Apple 5.1.1/5.1.2)
   useFocusEffect(
     useCallback(() => {
       setFocusKey((k) => k + 1);
-      if (hasScores && !data && !loading) {
+      if (hasScores && !loading && (!hasCurrentData || needsHaircutRefresh)) {
+        const forceHaircutRefresh = needsHaircutRefresh;
+        if (forceHaircutRefresh) {
+          haircutRefreshAttemptedForScanIdRef.current = currentScanCacheKey;
+        }
         checkAndPromptConsent().then((agreed) => {
-          if (agreed) fetch();
+          if (agreed) fetch(forceHaircutRefresh ? { force: true } : undefined);
         });
       }
-    }, [hasScores, data, loading, checkAndPromptConsent, fetch])
+    }, [hasScores, hasCurrentData, needsHaircutRefresh, currentScanCacheKey, loading, checkAndPromptConsent, fetch])
   );
 
   // Pending = data is ready for a scan the user hasn't dismissed the
@@ -876,12 +927,12 @@ export default function AnalysisScreen() {
   const showContent  = !!data && !needsFirstSurface;
 
   return (
-    <View style={[sx.screen, { backgroundColor: C.bg }]}>
+    <AppGradientBackground style={sx.screen}>
       {/* Safe-area container */}
       <View style={[sx.safeArea, { paddingTop: insets.top }]}>
 
         {/* ── Header — only shown for non-content states ── */}
-        {!showContent && (
+        {!showContent && !onboardingFlow && (
           <Animated.View
             entering={FadeInDown.duration(360)}
             style={sx.header}
@@ -896,8 +947,11 @@ export default function AnalysisScreen() {
           style={sx.scroll}
           contentContainerStyle={[
             sx.scrollContent,
-            { paddingBottom: insets.bottom + SP[8] },
+            { paddingBottom: Math.max(insets.bottom + SP[8], FLOATING_TAB_BAR.contentClearance + SP[3]) },
           ]}
+          directionalLockEnabled
+          nestedScrollEnabled
+          keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
           {showEmpty && <EmptyState />}
@@ -921,6 +975,7 @@ export default function AnalysisScreen() {
               viewportWidth={viewportWidth}
               imageUri={imageUri}
               onboardingFlow={onboardingFlow}
+              includeRamus={!!sideImageUri}
             />
           )}
         </ScrollView>
@@ -939,7 +994,7 @@ export default function AnalysisScreen() {
           onDismiss={handleBlueprintDismiss}
         />
       )}
-    </View>
+    </AppGradientBackground>
   );
 }
 
@@ -1017,7 +1072,7 @@ const sx = StyleSheet.create({
     padding: ms(4),
     backgroundColor: COLORS.lightCard,
     borderWidth: 1,
-    borderColor: COLORS.lightBorder,
+    borderColor: ORANGE_ONBOARDING.border,
     alignItems: "center",
     justifyContent: "center",
     ...SOFT_SHADOW,
@@ -1052,8 +1107,8 @@ const sx = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: sw(6),
-    backgroundColor: COLORS.ctaBlack,
-    borderRadius: 999,
+    backgroundColor: ORANGE_ONBOARDING.orangeSoft,
+    borderRadius: ms(14),
     paddingHorizontal: sw(14),
     paddingVertical: sh(7),
   },
@@ -1064,7 +1119,7 @@ const sx = StyleSheet.create({
   refPillScore: {
     fontSize: ms(14, 0.3),
     fontFamily: FONT,
-    color: "#FFFFFF",
+    color: ORANGE_ONBOARDING.orangeDark,
     letterSpacing: -0.2,
   },
   // "• ANALYSIS RESULTS" label
@@ -1077,7 +1132,7 @@ const sx = StyleSheet.create({
     width: sw(7),
     height: sw(7),
     borderRadius: 999,
-    backgroundColor: C.fineIcon,
+    backgroundColor: ORANGE_ONBOARDING.orange,
   },
   refLabelText: {
     fontSize: ms(10.5, 0.3),
@@ -1365,14 +1420,19 @@ const sx = StyleSheet.create({
   },
   ctaBtn: {
     minHeight: sh(56),
-    borderRadius: 999,
-    backgroundColor: COLORS.ctaBlack,
+    borderRadius: ms(17),
+    backgroundColor: ORANGE_ONBOARDING.orange,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: sw(6),
     paddingVertical: sh(16),
     paddingHorizontal: sw(20),
+    shadowColor: ORANGE_ONBOARDING.orange,
+    shadowOpacity: 0.2,
+    shadowRadius: ms(16),
+    shadowOffset: { width: 0, height: ms(7) },
+    elevation: 4,
   },
   ctaBtnText: {
     fontSize: ms(15, 0.3),
@@ -1402,14 +1462,14 @@ const sx = StyleSheet.create({
     width: ms(84),
     height: ms(84),
     borderRadius: ms(42),
-    backgroundColor: COLORS.iconTileLavender,
+    backgroundColor: ORANGE_ONBOARDING.orangeSoft,
     opacity: 1,
   },
   emptyIconCore: {
     width: ms(64),
     height: ms(64),
     borderRadius: ms(20),
-    backgroundColor: COLORS.lightCard,
+    backgroundColor: ORANGE_ONBOARDING.surface,
     alignItems: "center",
     justifyContent: "center",
     ...SOFT_SHADOW,
@@ -1424,7 +1484,7 @@ const sx = StyleSheet.create({
     width: sw(6),
     height: sw(6),
     borderRadius: 999,
-    backgroundColor: C.fineIcon,
+    backgroundColor: ORANGE_ONBOARDING.orange,
   },
   emptyLabelText: {
     fontSize: ms(10.5, 0.3),
@@ -1464,7 +1524,7 @@ const sx = StyleSheet.create({
     width: ms(28),
     height: ms(28),
     borderRadius: ms(8),
-    backgroundColor: COLORS.iconTileLavender,
+    backgroundColor: ORANGE_ONBOARDING.orangeSoft,
     alignItems: "center",
     justifyContent: "center",
   },

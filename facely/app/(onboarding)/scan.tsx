@@ -13,13 +13,14 @@ import {
   Modal,
   StatusBar,
   SafeAreaView,
+  ScrollView,
   StyleSheet,
   type LayoutChangeEvent,
 } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
@@ -38,9 +39,10 @@ import { ensureJpegCompressed } from "@/lib/api/media";
 import { useOnboarding } from "@/store/onboarding";
 import { logger } from "@/lib/logger";
 import { COLORS, SP, RADII } from "@/lib/tokens";
-import { ms, sh, sw } from "@/lib/responsive";
+import { ms, sh, sw, useResponsiveScale } from "@/lib/responsive";
 
-const FONT_BOLD = "ProximaNova-Bold";
+const FONT_BOLD = "DINNextRounded-Bold";
+const FONT_REGULAR = "DINNextRounded-Regular";
 const SOFT_SCREEN_BG = "#FEF5E4";
 const LIME = "#B4F34D";        // bright fill — scan line, live dot, perm btn, active step dot
 const SAGE = "#3F7A2A";        // dark readable — text on white / lime-soft
@@ -125,15 +127,17 @@ function ScanHeroCard() {
 
 const heroStyles = StyleSheet.create({
   card: {
-    flex: 1,
     width: "100%",
     maxWidth: sw(360),
+    aspectRatio: 0.82,
     alignSelf: "center",
     backgroundColor: COLORS.lightCard,
     borderRadius: ms(28),
-    paddingVertical: SP[5],
-    paddingHorizontal: SP[5],
-    marginVertical: SP[4],
+    paddingTop: SP[4],
+    paddingBottom: SP[3],
+    paddingHorizontal: SP[3],
+    marginTop: SP[4],
+    marginBottom: SP[3],
     overflow: "hidden",
     shadowColor: "#000",
     shadowOpacity: 0.07,
@@ -161,10 +165,10 @@ const heroStyles = StyleSheet.create({
     backgroundColor: "#B4F34D",
   },
   liveText: {
-    fontFamily: "ProximaNova-Bold",
+    fontFamily: FONT_BOLD,
     fontSize: ms(10),
     color: "#3F7A2A",
-    letterSpacing: 1.2,
+    letterSpacing: 0,
   },
   imageWrap: {
     flex: 1,
@@ -175,8 +179,8 @@ const heroStyles = StyleSheet.create({
     overflow: "hidden",
   },
   image: {
-    width: "85%",
-    height: "85%",
+    width: "98%",
+    height: "98%",
   },
   scanLine: {
     position: "absolute",
@@ -231,6 +235,7 @@ async function persistCompressedResult<T extends { uri: string; name: string }>(
 
 /* ───────────────────────── main screen ───────────────────────── */
 export default function OnboardingScanScreen() {
+  const responsive = useResponsiveScale();
   const [perm, requestPerm] = useCameraPermissions();
   const permissionDenied = perm?.granted === false;
 
@@ -365,6 +370,11 @@ export default function OnboardingScanScreen() {
       <View style={camStyles.root}>
         {permissionDenied ? (
           <SafeAreaView style={camStyles.permWrap}>
+            <ScrollView
+              contentContainerStyle={camStyles.permContent}
+              showsVerticalScrollIndicator={false}
+              bounces={false}
+            >
             <T style={camStyles.permText}>
               Camera permission is required to analyze your face.
             </T>
@@ -380,6 +390,7 @@ export default function OnboardingScanScreen() {
             <Pressable onPress={() => setCameraOpen(false)} style={{ marginTop: SP[3] }}>
               <T style={camStyles.permClose}>Close</T>
             </Pressable>
+            </ScrollView>
           </SafeAreaView>
         ) : (
           <>
@@ -467,7 +478,11 @@ export default function OnboardingScanScreen() {
         <StatusBar barStyle="dark-content" />
         {cameraModal}
         <SafeAreaView style={styles.safe}>
-          <View style={styles.introWrap}>
+          <ScrollView
+            contentContainerStyle={styles.introWrap}
+            showsVerticalScrollIndicator={false}
+            bounces={false}
+          >
             {/* Title block — opens the screen with intent */}
             <View style={styles.heroCopy}>
               <T style={styles.heroTitle}>Your scan starts now</T>
@@ -490,6 +505,7 @@ export default function OnboardingScanScreen() {
                 }}
                 style={({ pressed }) => [
                   styles.cta,
+                  { minHeight: responsive.clamp(54, 48, 60) },
                   pressed && { backgroundColor: COLORS.ctaBlackPressed },
                 ]}
               >
@@ -500,7 +516,7 @@ export default function OnboardingScanScreen() {
                 <T style={styles.skipLabel}>Skip for now</T>
               </Pressable>
             </View>
-          </View>
+          </ScrollView>
         </SafeAreaView>
       </View>
     );
@@ -512,6 +528,12 @@ export default function OnboardingScanScreen() {
       <StatusBar barStyle="dark-content" />
       {cameraModal}
       <SafeAreaView style={styles.reviewSafe}>
+        <ScrollView
+          style={styles.reviewScroll}
+          contentContainerStyle={styles.reviewContent}
+          showsVerticalScrollIndicator={false}
+          bounces={false}
+        >
         <T style={styles.reviewTitle}>Review your photos</T>
 
         <View style={styles.thumbRow}>
@@ -543,6 +565,7 @@ export default function OnboardingScanScreen() {
           style={({ pressed }) => [
             styles.cta,
             { marginTop: SP[5] },
+            { minHeight: responsive.clamp(54, 48, 60) },
             submitting && { opacity: 0.7 },
             pressed && { backgroundColor: COLORS.ctaBlackPressed },
           ]}
@@ -551,6 +574,7 @@ export default function OnboardingScanScreen() {
             {submitting ? "PREPARING…" : "ANALYZE MY POTENTIAL"}
           </T>
         </Pressable>
+        </ScrollView>
       </SafeAreaView>
     </View>
   );
@@ -563,7 +587,7 @@ const styles = StyleSheet.create({
 
   // ── intro ──
   introWrap: {
-    flex: 1,
+    flexGrow: 1,
     paddingHorizontal: SP[5],
     paddingTop: SP[6],
     paddingBottom: SP[3],
@@ -578,12 +602,12 @@ const styles = StyleSheet.create({
     fontFamily: FONT_BOLD,
     fontSize: ms(28),
     lineHeight: ms(34),
-    letterSpacing: -0.5,
+    letterSpacing: 0,
     color: COLORS.lightText,
     textAlign: "center",
   },
   heroSub: {
-    fontFamily: "Poppins-Regular",
+    fontFamily: FONT_REGULAR,
     fontSize: ms(14),
     lineHeight: ms(20),
     color: COLORS.lightSub,
@@ -609,7 +633,7 @@ const styles = StyleSheet.create({
     fontFamily: FONT_BOLD,
     fontSize: ms(14),
     color: "#FFFFFF",
-    letterSpacing: 1.0,
+    letterSpacing: 0,
   },
   skipWrap: {
     alignSelf: "center",
@@ -619,21 +643,29 @@ const styles = StyleSheet.create({
     fontFamily: FONT_BOLD,
     fontSize: ms(13),
     color: COLORS.lightSub,
-    letterSpacing: 0.2,
+    letterSpacing: 0,
   },
 
   // ── review ──
   reviewSafe: {
     flex: 1,
+  },
+  reviewScroll: {
+    flex: 1,
+    width: "100%",
+  },
+  reviewContent: {
+    flexGrow: 1,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: SP[5],
+    paddingVertical: SP[5],
   },
   reviewTitle: {
     fontFamily: FONT_BOLD,
     fontSize: ms(22),
     color: COLORS.lightText,
-    letterSpacing: -0.3,
+    letterSpacing: 0,
     marginBottom: SP[4],
   },
   thumbRow: {
@@ -649,7 +681,7 @@ const styles = StyleSheet.create({
     fontFamily: FONT_BOLD,
     fontSize: ms(11),
     color: COLORS.lightSub,
-    letterSpacing: 1.2,
+    letterSpacing: 0,
     marginBottom: sh(6),
   },
   thumb: {
@@ -676,12 +708,15 @@ const camStyles = StyleSheet.create({
 
   permWrap: {
     flex: 1,
+  },
+  permContent: {
+    flexGrow: 1,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: SP[6],
   },
   permText: {
-    fontFamily: "Poppins-Regular",
+    fontFamily: FONT_REGULAR,
     fontSize: ms(15),
     color: "#FFFFFF",
     textAlign: "center",
@@ -701,7 +736,7 @@ const camStyles = StyleSheet.create({
     letterSpacing: 0.6,
   },
   permClose: {
-    fontFamily: "Poppins-Regular",
+    fontFamily: FONT_REGULAR,
     fontSize: ms(13),
     color: "rgba(255,255,255,0.55)",
   },
@@ -718,11 +753,11 @@ const camStyles = StyleSheet.create({
     fontFamily: FONT_BOLD,
     fontSize: ms(18),
     color: "#FFFFFF",
-    letterSpacing: -0.2,
+    letterSpacing: 0,
     marginBottom: 2,
   },
   instructionSub: {
-    fontFamily: "Poppins-Regular",
+    fontFamily: FONT_REGULAR,
     fontSize: ms(12),
     color: "rgba(255,255,255,0.78)",
     textAlign: "center",
@@ -781,7 +816,7 @@ const camStyles = StyleSheet.create({
     letterSpacing: 0.3,
   },
   skipText: {
-    fontFamily: "Poppins-Regular",
+    fontFamily: FONT_REGULAR,
     fontSize: ms(12),
     color: "rgba(255,255,255,0.45)",
   },

@@ -5,7 +5,14 @@ import * as Sharing from "expo-sharing";
 import { captureRef } from "react-native-view-shot";
 import type { RefObject } from "react";
 
-export async function captureAndShare(ref: RefObject<any>): Promise<void> {
+type CaptureAndShareOptions = {
+  dialogTitle?: string;
+};
+
+export async function captureAndShare(
+  ref: RefObject<any>,
+  options?: CaptureAndShareOptions
+): Promise<void> {
   const uri = await captureRef(ref, {
     format: "png",
     quality: 1.0,
@@ -19,7 +26,7 @@ export async function captureAndShare(ref: RefObject<any>): Promise<void> {
 
   await Sharing.shareAsync(uri, {
     mimeType: "image/png",
-    dialogTitle: "Share your Sigma Score",
+    dialogTitle: options?.dialogTitle ?? "Share your Sigma Score",
     UTI: "public.png",
   });
 }

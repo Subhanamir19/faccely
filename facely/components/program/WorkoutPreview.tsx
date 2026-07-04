@@ -44,6 +44,7 @@ import {
 import { getExerciseIcon } from "@/lib/exerciseIcons";
 import { useExerciseSettings } from "@/store/exerciseSettings";
 import { useProfile } from "@/store/profile";
+import { AppGradientBackground } from "@/components/layout/AppGradientBackground";
 import { type DailyTask, useTasksStore } from "@/store/tasks";
 
 const { height: SCREEN_H } = Dimensions.get("window");
@@ -165,7 +166,8 @@ export default function WorkoutPreview({
   };
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <AppGradientBackground>
+      <SafeAreaView style={styles.safe}>
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
@@ -376,14 +378,15 @@ export default function WorkoutPreview({
           </Animated.Text>
         )}
       </ScrollView>
-    </SafeAreaView>
+      </SafeAreaView>
+    </AppGradientBackground>
   );
 }
 
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: "#FEF5E4",
+    backgroundColor: "transparent",
   },
   scrollContent: {
     flexGrow: 1,

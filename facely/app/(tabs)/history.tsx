@@ -20,18 +20,21 @@ import Text from "@/components/ui/T";
 import { COLORS, RADII, SP } from "@/lib/tokens";
 import { ms, sh, sw } from "@/lib/responsive";
 import { fetchHistoryPhotoArchive, type HistoryPhotoItem } from "@/lib/historyArchive";
+import { AppGradientBackground } from "@/components/layout/AppGradientBackground";
+import { FLOATING_TAB_BAR } from "@/components/layout/floatingTabBar";
 
-const FONT = "DINNextRounded-Regular";
-const BG = "#FEF5E4";
+const FONT = "DINNextRounded-Bold";
+const DETAIL_FONT = "DINNextRounded-Regular";
 const SAGE = "#3F7A2A";
 const SAGE_SOFT = "#E2F1D8";
+const CARD_BORDER = "#E1E1DE";
 
 const SOFT_SHADOW = {
   shadowColor: "#000000",
-  shadowOpacity: 0.09,
-  shadowRadius: 22,
-  shadowOffset: { width: 0, height: 10 },
-  elevation: 5,
+  shadowOpacity: 0.11,
+  shadowRadius: 0,
+  shadowOffset: { width: 0, height: 5 },
+  elevation: 4,
 } as const;
 
 function formatDate(value: string): string {
@@ -65,9 +68,9 @@ function ArchiveButton({
       accessibilityRole="button"
       accessibilityLabel={title}
       style={({ pressed }) => [
-        styles.action,
-        primary ? styles.actionPrimary : styles.actionSecondary,
-        pressed && styles.pressed,
+        styles.actionDepth,
+        primary ? styles.actionPrimaryDepth : styles.actionSecondaryDepth,
+        pressed && styles.actionDepthPressed,
       ]}
     >
       <View style={[styles.actionIcon, primary && styles.actionIconPrimary]}>
@@ -149,12 +152,12 @@ export default function HistoryHubScreen() {
   const goToResults = () => router.push("/history/results");
 
   return (
-    <View style={styles.screen}>
+    <AppGradientBackground style={styles.screen}>
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={[
           styles.content,
-          { paddingTop: insets.top + SP[3], paddingBottom: insets.bottom + 120 },
+          { paddingTop: insets.top + SP[3], paddingBottom: Math.max(insets.bottom + 120, FLOATING_TAB_BAR.contentClearance + SP[3]) },
         ]}
         refreshControl={
           <RefreshControl
@@ -278,14 +281,13 @@ export default function HistoryHubScreen() {
           </>
         )}
       </ScrollView>
-    </View>
+    </AppGradientBackground>
   );
 }
 
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: BG,
   },
   scroll: {
     flex: 1,
@@ -322,22 +324,24 @@ const styles = StyleSheet.create({
     letterSpacing: -0.5,
   },
   subtitle: {
-    fontFamily: FONT,
+    fontFamily: DETAIL_FONT,
     fontSize: ms(13),
     lineHeight: ms(18),
     color: COLORS.lightSub,
     marginTop: sh(4),
   },
   latestPanel: {
-    borderRadius: RADII.lg,
+    borderRadius: 20,
     backgroundColor: COLORS.lightCard,
+    borderWidth: 2,
+    borderColor: CARD_BORDER,
     padding: SP[3],
     ...SOFT_SHADOW,
   },
   photoFrame: {
     width: "100%",
-    aspectRatio: 0.82,
-    borderRadius: RADII.md,
+    aspectRatio: 1.02,
+    borderRadius: 16,
     overflow: "hidden",
     backgroundColor: COLORS.lightSurfaceAlt,
   },
@@ -403,7 +407,7 @@ const styles = StyleSheet.create({
     letterSpacing: -0.25,
   },
   latestDate: {
-    fontFamily: FONT,
+    fontFamily: DETAIL_FONT,
     fontSize: ms(13),
     color: COLORS.lightSub,
     marginTop: sh(4),
@@ -442,23 +446,31 @@ const styles = StyleSheet.create({
     gap: SP[3],
     marginTop: SP[5],
   },
-  action: {
-    minHeight: sh(82),
-    borderRadius: RADII.lg,
+  actionDepth: {
+    minHeight: sh(78),
+    borderRadius: 16,
     flexDirection: "row",
     alignItems: "center",
     gap: SP[3],
     paddingHorizontal: SP[4],
-    paddingVertical: SP[4],
+    paddingVertical: SP[3],
+    borderBottomWidth: 5,
   },
-  actionPrimary: {
+  actionPrimaryDepth: {
     backgroundColor: COLORS.ctaBlack,
+    borderBottomColor: "#000000",
   },
-  actionSecondary: {
+  actionSecondaryDepth: {
     backgroundColor: COLORS.lightCard,
-    borderWidth: 1,
-    borderColor: "rgba(11,11,11,0.07)",
+    borderWidth: 2,
+    borderBottomWidth: 5,
+    borderColor: CARD_BORDER,
+    borderBottomColor: "#CFCFCC",
     ...SOFT_SHADOW,
+  },
+  actionDepthPressed: {
+    transform: [{ translateY: 3 }],
+    borderBottomWidth: 2,
   },
   actionIcon: {
     width: sw(42),
@@ -486,7 +498,7 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
   },
   actionSubtitle: {
-    fontFamily: FONT,
+    fontFamily: DETAIL_FONT,
     fontSize: ms(12),
     lineHeight: ms(17),
     color: COLORS.lightSub,
@@ -495,7 +507,7 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.62)",
   },
   pressed: {
-    opacity: 0.88,
+    opacity: 0.86,
     transform: [{ scale: 0.985 }],
   },
   centerState: {
@@ -506,14 +518,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: SP[4],
   },
   stateText: {
-    fontFamily: FONT,
+    fontFamily: DETAIL_FONT,
     fontSize: ms(13),
     color: COLORS.lightSub,
     textAlign: "center",
   },
   retryBtn: {
-    borderRadius: RADII.circle,
+    borderRadius: 16,
     backgroundColor: COLORS.ctaBlack,
+    borderBottomWidth: 5,
+    borderBottomColor: "#000000",
     paddingHorizontal: SP[6],
     paddingVertical: SP[3],
     marginTop: SP[1],
@@ -547,7 +561,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   emptyBody: {
-    fontFamily: FONT,
+    fontFamily: DETAIL_FONT,
     fontSize: ms(13),
     lineHeight: ms(19),
     color: COLORS.lightSub,
@@ -555,9 +569,11 @@ const styles = StyleSheet.create({
     maxWidth: sw(300),
   },
   emptyCta: {
-    minHeight: sh(52),
-    borderRadius: RADII.circle,
+    minHeight: sh(54),
+    borderRadius: 16,
     backgroundColor: COLORS.ctaBlack,
+    borderBottomWidth: 5,
+    borderBottomColor: "#000000",
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: SP[7],

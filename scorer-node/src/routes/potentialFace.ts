@@ -16,6 +16,7 @@
 import { Router, type Request, type Response } from "express";
 import { z, ZodError, type ZodIssue } from "zod";
 
+import { getAnalysisForScan } from "../supabase/analyses.js";
 import { getScanById } from "../supabase/scans.js";
 import {
   getActivePotentialFace,
@@ -64,6 +65,10 @@ function mapZod(err: ZodError) {
     path: i.path.join(".") || i.code,
     message: i.message,
   }));
+}
+
+function hasAdvancedResult(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length > 0;
 }
 
 interface SerializedPotentialFace {
@@ -184,6 +189,14 @@ potentialFaceRouter.post("/generate", async (req: Request, res: Response) => {
     if (existing?.status === "ready" && !force) {
       const out = await serialize(existing);
       return res.status(200).json({ enqueued: false, potentialFace: out });
+    }
+
+    const analysis = await getAnalysisForScan(scanId);
+    if (!hasAdvancedResult(analysis?.advanced_result)) {
+      return res.status(409).json({
+        errorCode: "advanced_analysis_required",
+        message: "Run advanced analysis before generating a potential face.",
+      });
     }
 
     const quota = await getWeeklyGenerationQuota(userId);

@@ -30,8 +30,9 @@ import { getScoreColor } from "./MetricGridCard";
 import { getTierLabel } from "./ScoringGrid";
 import type { DashboardMetric } from "@/lib/api/insights";
 import { useOnboarding } from "@/store/onboarding";
+import { ADVANCED_ANALYSIS_FONT_BOLD } from "@/lib/advancedAnalysisIcons";
 
-const FONT = "ProximaNova-Bold";
+const FONT = ADVANCED_ANALYSIS_FONT_BOLD;
 
 const CARD_IMAGES: Record<string, any> = {
   Overall: require("@/assets/scoring-images/fullface-vector.png"),
@@ -384,14 +385,14 @@ export default function StackedScoreDeckPreview({
   const deckWidth = Math.round(Math.min(availableWidth * cardWidthRatio, maxDeckWidth));
   const cardHeight = Math.round(
     Math.min(
-      availableHeight * (embedded ? 0.38 : 0.47),
-      deckWidth * (embedded ? 1.08 : 1.14),
+      availableHeight * (embedded ? 0.31 : 0.47),
+      deckWidth * (embedded ? 0.98 : 1.14),
     ),
   );
   const imageSize = Math.round(
     Math.min(
       deckWidth * (embedded ? 0.58 : 0.56),
-      cardHeight * (embedded ? 0.54 : 0.48),
+      cardHeight * (embedded ? 0.48 : 0.48),
     ),
   );
   const bottomSpacerHeight = Math.round(cardHeight * (embedded ? 0.085 : 0.09));
@@ -407,7 +408,7 @@ export default function StackedScoreDeckPreview({
     cardHeight * 0.04,
     Math.round(cardHeight * (embedded ? 0.07 : 0.08) + imageSize * 0.5 - controlSize * 0.5),
   );
-  const stageHeight = Math.round(cardHeight * (embedded ? 1.14 : 1.15));
+  const stageHeight = Math.round(cardHeight * (embedded ? 1.18 : 1.15));
 
   const resetDrag = () => {
     "worklet";

@@ -66,6 +66,7 @@ import DailyRoutineIntroFlow from "@/components/program/DailyRoutineIntroFlow";
 import RoutineList from "@/components/program/RoutineList";
 import SpeechBubble from "@/components/program/SpeechBubble";
 import ProgramLoadingScreen from "@/components/program/ProgramLoadingScreen";
+import { AppGradientBackground } from "@/components/layout/AppGradientBackground";
 
 // ---------------------------------------------------------------------------
 // Face header images — maps dominant target area to analysis image
@@ -1070,7 +1071,7 @@ function ProtocolConfirmModal({
                   ]}
                 >
                   <LinearGradient
-                    colors={["#CCFF6B", "#B4F34D"]}
+                    colors={["#0B0B0B", "#0B0B0B"]}
                     locations={[0, 1]}
                     start={{ x: 0.5, y: 0 }}
                     end={{ x: 0.5, y: 1 }}
@@ -1133,7 +1134,7 @@ function MarkDoneModal({
                   ]}
                 >
                   <LinearGradient
-                    colors={["#CCFF6B", "#B4F34D"]}
+                    colors={["#0B0B0B", "#0B0B0B"]}
                     locations={[0, 1]}
                     start={{ x: 0.5, y: 0 }}
                     end={{ x: 0.5, y: 1 }}
@@ -1180,13 +1181,13 @@ function StartSessionBtn({ onPress }: { onPress: () => void }) {
         ]}
       >
         <LinearGradient
-          colors={["#CCFF6B", "#B4F34D"]}
+          colors={["#0B0B0B", "#0B0B0B"]}
           locations={[0, 1]}
           start={{ x: 0.5, y: 0 }}
           end={{ x: 0.5, y: 1 }}
           style={styles.startSessionGradient}
         >
-          <Text style={styles.startSessionText}>▶  Start Session</Text>
+          <Text style={styles.startSessionText}>START SESSION</Text>
         </LinearGradient>
       </Pressable>
     </Animated.View>
@@ -1463,7 +1464,7 @@ export default function TasksScreen() {
   }
 
   return (
-    <View style={styles.safe}>
+    <AppGradientBackground style={styles.safe}>
       <RoutineList
         tasks={tasks}
         protocols={today.protocols}
@@ -1547,7 +1548,7 @@ export default function TasksScreen() {
         fact={currentFact}
         onClose={closeLifeModal}
       />
-    </View>
+    </AppGradientBackground>
   );
 }
 
@@ -1557,7 +1558,7 @@ export default function TasksScreen() {
 
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#FEF5E4" },
+  safe: { flex: 1 },
 
   // Layout — unified scroll
   scrollContent: {
@@ -1579,19 +1580,19 @@ const styles = StyleSheet.create({
 
   // Start Session button
   startSessionDepth: {
-    borderRadius: sw(RADII.pill),
-    backgroundColor: COLORS.accentDepth,
-    paddingBottom: sh(4),
+    borderRadius: 16,
+    backgroundColor: "#000000",
+    paddingBottom: sh(6),
     marginBottom: sh(SP[3]),
-    shadowColor: COLORS.accent,
-    shadowOpacity: 0.35,
-    shadowRadius: sw(16),
-    shadowOffset: { width: 0, height: sh(6) },
-    elevation: 10,
+    shadowColor: "#000000",
+    shadowOpacity: 0.18,
+    shadowRadius: sw(10),
+    shadowOffset: { width: 0, height: sh(8) },
+    elevation: 7,
   },
   startSessionBtn: {
-    height: sh(48),
-    borderRadius: sw(RADII.pill),
+    height: sh(56),
+    borderRadius: 16,
     overflow: "hidden",
   },
   startSessionGradient: {
@@ -1599,13 +1600,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: sw(28),
-    borderRadius: sw(RADII.pill),
+    borderRadius: 16,
   },
   startSessionText: {
-    color: "#0B0B0B",
-    fontSize: ms(15),
+    color: "#FFFFFF",
+    fontSize: ms(16),
     fontFamily: "Poppins-SemiBold",
-    letterSpacing: 0.2,
+    letterSpacing: 0.6,
   },
 
   // ── Face target card ────────────────────────────────────────────────────────
@@ -1663,7 +1664,7 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: ms(11),
     fontFamily: "Poppins-SemiBold",
-    letterSpacing: 0.2,
+    letterSpacing: 0.6,
   },
 
   allDoneImgOverlay: {
@@ -1938,7 +1939,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     flex: 1,
     color: COLORS.text,
-    fontSize: ms(15),
+    fontSize: ms(16),
     fontFamily: "Poppins-SemiBold",
   },
   sectionHint: {
@@ -2134,7 +2135,7 @@ const styles = StyleSheet.create({
   },
   confirmBtnPrimaryText: {
     color: COLORS.text,
-    fontSize: ms(15),
+    fontSize: ms(16),
     fontFamily: "Poppins-SemiBold",
   },
   confirmBtnLime: {
@@ -2146,7 +2147,7 @@ const styles = StyleSheet.create({
   },
   confirmBtnLimeText: {
     color: "#0A1A00",
-    fontSize: ms(15),
+    fontSize: ms(16),
     fontFamily: "Poppins-SemiBold",
   },
   confirmBtnGhost: {
@@ -2345,7 +2346,7 @@ const styles = StyleSheet.create({
   },
   modalBtnGhostText: {
     color: COLORS.sub,
-    fontSize: ms(15),
+    fontSize: ms(16),
     fontFamily: "Poppins-SemiBold",
   },
   modalBtnDepth: {
@@ -2372,7 +2373,7 @@ const styles = StyleSheet.create({
   },
   modalBtnPrimaryText: {
     color: "#0B0B0B",
-    fontSize: ms(15),
+    fontSize: ms(16),
     fontFamily: "Poppins-SemiBold",
   },
 });

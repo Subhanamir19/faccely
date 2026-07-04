@@ -3,7 +3,7 @@
 // Forces any image (HEIC/PNG/JPEG/whatever) to a ~1–2MB JPEG.
 
 import * as ImageManipulator from "expo-image-manipulator";
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 
 export type UploadInput = string | { uri: string; name?: string; mime?: string };
 

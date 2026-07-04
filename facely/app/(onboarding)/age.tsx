@@ -1,47 +1,38 @@
 // app/(onboarding)/age.tsx
-// Horizontal age picker — minimal layout per design mockup.
-// Top: back chevron + thin progress bar.
-// Center: "How old are you?" title above a snap-scrolling age wheel. The
-// centered age is rendered large and bold; neighbours fade and shrink
-// continuously based on scroll distance, with a vertical tick that grows
-// as it nears the centerline.
-// Bottom: black-pill Next CTA.
-//
-// Stores `age` directly. Also derives a Jan-1 `dob` ISO date so any code
-// that still reads `data.dob` keeps working without ripple.
+// Horizontal age picker inside the shared sequence-style onboarding shell.
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
-  View,
+  ScrollView,
   StyleSheet,
-  Pressable,
-  StatusBar,
+  View,
   useWindowDimensions,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from "react-native";
 import { router } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { ChevronLeft } from "lucide-react-native";
 import Animated, {
-  Easing,
-  FadeInDown,
+  type SharedValue,
   interpolate,
   useAnimatedScrollHandler,
   useAnimatedStyle,
+  useReducedMotion,
   useSharedValue,
+  withSpring,
   withTiming,
 } from "react-native-reanimated";
 
-import T from "@/components/ui/T";
-import { COLORS, SP, getProgressForStep } from "@/lib/tokens";
+import { SP } from "@/lib/tokens";
+import { hapticSelection } from "@/lib/haptics";
 import { ms, sh, sw } from "@/lib/responsive";
-import { hapticLight, hapticSelection } from "@/lib/haptics";
 import { useOnboarding } from "@/store/onboarding";
+import OrangeOnboardingLayout, {
+  OrangePrimaryButton,
+  OrangeScreenTitle,
+  ORANGE_ONBOARDING,
+} from "@/components/onboarding/OrangeOnboardingLayout";
 
-const FONT_BOLD = "ProximaNova-Bold";
-const LIME = "#B4F34D";
-
+const PAPER = ORANGE_ONBOARDING.paper;
 const MIN_AGE = 13;
 const MAX_AGE = 80;
 const DEFAULT_AGE = 18;
@@ -51,8 +42,8 @@ const AGES: number[] = Array.from(
 );
 
 export default function AgeScreen() {
-  const insets = useSafeAreaInsets();
   const { width: winW } = useWindowDimensions();
+  const reduceMotion = useReducedMotion();
 
   const savedAge = useOnboarding((s) => s.data.age);
   const setField = useOnboarding((s) => s.setField);
@@ -64,42 +55,50 @@ export default function AgeScreen() {
 
   const [age, setAge] = useState<number>(initialAge);
 
-  // Card width — five visible at once on a typical 360-wide phone.
-  const ITEM_W   = sw(80);
-  const sidePad  = (winW - ITEM_W) / 2;
-  const initialOffset = (initialAge - MIN_AGE) * ITEM_W;
+  const itemWidth = sw(80);
+  const sidePad = (winW - itemWidth) / 2;
+  const initialOffset = (initialAge - MIN_AGE) * itemWidth;
 
   const scrollX = useSharedValue<number>(initialOffset);
+  const settledIndex = useSharedValue<number>(initialAge - MIN_AGE);
+  const settleScale = useSharedValue<number>(1);
+  const isSettled = useSharedValue<number>(1);
   const lastIdx = useRef<number>(initialAge - MIN_AGE);
 
   const onScroll = useAnimatedScrollHandler({
-    onScroll: (e) => {
-      scrollX.value = e.contentOffset.x;
+    onScroll: (event) => {
+      scrollX.value = event.contentOffset.x;
     },
   });
 
   const onMomentumEnd = useCallback(
-    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-      const x = e.nativeEvent.contentOffset.x;
-      const idx = Math.round(x / ITEM_W);
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const x = event.nativeEvent.contentOffset.x;
+      const idx = Math.round(x / itemWidth);
       const clamped = Math.max(0, Math.min(AGES.length - 1, idx));
+
       if (clamped !== lastIdx.current) {
         lastIdx.current = clamped;
         hapticSelection();
         setAge(AGES[clamped]);
       }
-    },
-    [ITEM_W],
-  );
 
-  const handleBack = useCallback(() => {
-    hapticLight();
-    router.back();
-  }, []);
+      settledIndex.value = clamped;
+      isSettled.value = reduceMotion ? 1 : withTiming(1, { duration: 150 });
+      settleScale.value = reduceMotion ? 1 : 0.94;
+      if (!reduceMotion) {
+        settleScale.value = withSpring(1, {
+          damping: 14,
+          stiffness: 260,
+          mass: 0.5,
+        });
+      }
+    },
+    [isSettled, itemWidth, reduceMotion, settleScale, settledIndex],
+  );
 
   const handleNext = useCallback(() => {
     setField("age", age);
-    // Derive a Jan-1 dob for callers still reading data.dob.
     const dobIso = new Date(new Date().getFullYear() - age, 0, 1)
       .toISOString()
       .slice(0, 10);
@@ -107,113 +106,109 @@ export default function AgeScreen() {
     router.push("/(onboarding)/ethnicity");
   }, [age, setField]);
 
-  const progress = getProgressForStep("age");
-
   return (
     <View style={styles.screen}>
-      <StatusBar barStyle="dark-content" />
-
-      {/* Top — back chevron above a full-width progress bar */}
-      <View style={[styles.topBar, { paddingTop: insets.top + SP[2] }]}>
-        <Pressable
-          onPress={handleBack}
-          accessibilityRole="button"
-          accessibilityLabel="Go back"
-          hitSlop={12}
-          style={({ pressed }) => [
-            styles.backBtn,
-            pressed && { opacity: 0.65 },
-          ]}
-        >
-          <ChevronLeft size={ms(22)} color={COLORS.lightText} strokeWidth={2.5} />
-        </Pressable>
-        <View style={styles.progressRow}>
-          <ProgressBar progress={progress} />
-        </View>
-      </View>
-
-      {/* Center — title + picker, vertically centered in remaining space */}
-      <View style={styles.center}>
-        <Animated.Text
-          entering={FadeInDown.duration(360).easing(Easing.out(Easing.cubic))}
-          style={styles.title}
-        >
-          How old are you?
-        </Animated.Text>
-
-        <View style={styles.pickerWrap}>
-          <Animated.FlatList
-            data={AGES}
-            keyExtractor={(a) => String(a)}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            snapToInterval={ITEM_W}
-            disableIntervalMomentum
-            decelerationRate="fast"
-            contentContainerStyle={{ paddingHorizontal: sidePad }}
-            onScroll={onScroll}
-            onMomentumScrollEnd={onMomentumEnd}
-            scrollEventThrottle={16}
-            getItemLayout={(_, i) => ({
-              length: ITEM_W,
-              offset: ITEM_W * i,
-              index: i,
-            })}
-            initialScrollIndex={initialAge - MIN_AGE}
-            renderItem={({ item, index }) => (
-              <AgeItem
-                age={item}
-                index={index}
-                itemWidth={ITEM_W}
-                scrollX={scrollX}
-              />
-            )}
+      <OrangeOnboardingLayout
+        presentation="sequence"
+        stepKey="age"
+        scrollable={false}
+        footer={
+          <OrangePrimaryButton
+            label="Continue"
+            onPress={handleNext}
+            tone="ink"
+            uppercase={false}
           />
-        </View>
-      </View>
-
-      {/* Footer */}
-      <View style={[styles.footer, { paddingBottom: insets.bottom + SP[3] }]}>
-        <Pressable
-          onPress={handleNext}
-          style={({ pressed }) => [
-            styles.cta,
-            pressed && { backgroundColor: COLORS.ctaBlackPressed },
-          ]}
+        }
+      >
+        <ScrollView
+          style={styles.verticalScroll}
+          contentContainerStyle={styles.center}
+          showsVerticalScrollIndicator={false}
+          bounces={false}
         >
-          <T style={styles.ctaText}>NEXT</T>
-        </Pressable>
-      </View>
+          <OrangeScreenTitle
+            title="How old are you?"
+            subtitle="Choose the age that matches you today."
+          />
+
+          <View style={styles.pickerWrap}>
+            <Animated.FlatList
+              style={styles.ageList}
+              data={AGES}
+              keyExtractor={(value) => String(value)}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              snapToInterval={itemWidth}
+              disableIntervalMomentum
+              decelerationRate="fast"
+              contentContainerStyle={{ paddingHorizontal: sidePad }}
+              onScroll={onScroll}
+              onScrollBeginDrag={() => {
+                isSettled.value = reduceMotion ? 1 : withTiming(0, { duration: 90 });
+              }}
+              onMomentumScrollEnd={onMomentumEnd}
+              scrollEventThrottle={16}
+              getItemLayout={(_, index) => ({
+                length: itemWidth,
+                offset: itemWidth * index,
+                index,
+              })}
+              initialScrollIndex={initialAge - MIN_AGE}
+              renderItem={({ item, index }) => (
+                <AgeItem
+                  age={item}
+                  index={index}
+                  itemWidth={itemWidth}
+                  scrollX={scrollX}
+                  settledIndex={settledIndex}
+                  settleScale={settleScale}
+                  isSettled={isSettled}
+                />
+              )}
+            />
+          </View>
+        </ScrollView>
+      </OrangeOnboardingLayout>
     </View>
   );
 }
-
-// ─── Single age item — animates by distance from the center indicator ──────
 
 function AgeItem({
   age,
   index,
   itemWidth,
   scrollX,
+  settledIndex,
+  settleScale,
+  isSettled,
 }: {
   age: number;
   index: number;
   itemWidth: number;
-  scrollX: Animated.SharedValue<number>;
+  scrollX: SharedValue<number>;
+  settledIndex: SharedValue<number>;
+  settleScale: SharedValue<number>;
+  isSettled: SharedValue<number>;
 }) {
   const labelStyle = useAnimatedStyle(() => {
-    const t = Math.abs(scrollX.value / itemWidth - index);
-    const scale   = interpolate(t, [0, 1, 2], [1.0, 0.55, 0.45], "clamp");
-    const opacity = interpolate(t, [0, 1, 2], [1.0, 0.32, 0.14], "clamp");
-    return { opacity, transform: [{ scale }] };
+    const distance = Math.abs(scrollX.value / itemWidth - index);
+    const scale = interpolate(distance, [0, 1, 2], [1, 0.55, 0.45], "clamp");
+    const opacity = interpolate(distance, [0, 1, 2], [1, 0.32, 0.14], "clamp");
+    const settle = settledIndex.value === index ? settleScale.value : 1;
+    return { opacity, transform: [{ scale: scale * settle }] };
   });
 
   const tickStyle = useAnimatedStyle(() => {
-    const t = Math.abs(scrollX.value / itemWidth - index);
+    const distance = Math.abs(scrollX.value / itemWidth - index);
+    const lockScale = settledIndex.value === index
+      ? interpolate(isSettled.value, [0, 1], [0.72, 1], "clamp")
+      : 0.72;
+
     return {
-      opacity: interpolate(t, [0, 0.6, 1], [1, 0.3, 0], "clamp"),
+      opacity: interpolate(distance, [0, 0.6, 1], [1, 0.3, 0], "clamp"),
       transform: [
-        { scaleY: interpolate(t, [0, 1], [1.6, 0.7], "clamp") },
+        { scaleY: interpolate(distance, [0, 1], [1.6, 0.7], "clamp") * lockScale },
       ],
     };
   });
@@ -226,76 +221,30 @@ function AgeItem({
   );
 }
 
-// ─── Progress bar — same vocabulary as OnboardingScreenV2 ──────────────────
-
-function ProgressBar({ progress }: { progress: number }) {
-  const w = useSharedValue<number>(0);
-  useEffect(() => {
-    w.value = withTiming(progress * 100, {
-      duration: 600,
-      easing: Easing.out(Easing.cubic),
-    });
-  }, [progress, w]);
-  const fillStyle = useAnimatedStyle(() => ({ width: `${w.value}%` }));
-  return (
-    <View style={styles.progressTrack}>
-      <Animated.View style={[styles.progressFill, fillStyle]} />
-    </View>
-  );
-}
-
 const TICK_HEIGHT = ms(20);
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: COLORS.lightBg },
-
-  topBar: {
-    paddingHorizontal: SP[5],
-    paddingBottom: SP[3],
-    gap: SP[2],
-  },
-  backBtn: {
-    width: ms(36),
-    height: ms(36),
-    alignItems: "flex-start",
-    justifyContent: "center",
-  },
-  progressRow: {
-    width: "100%",
-  },
-  progressTrack: {
-    width: "100%",
-    height: sh(6),
-    borderRadius: 999,
-    backgroundColor: COLORS.lightHairline,
-    overflow: "hidden",
-  },
-  progressFill: {
-    height: "100%",
-    backgroundColor: LIME,
-    borderRadius: 999,
-  },
-
-  center: {
+  screen: {
     flex: 1,
+    backgroundColor: PAPER,
+  },
+  verticalScroll: {
+    flex: 1,
+  },
+  center: {
+    flexGrow: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: SP[5],
+    paddingBottom: SP[3],
   },
-  title: {
-    fontFamily: FONT_BOLD,
-    fontSize: ms(28),
-    lineHeight: ms(34),
-    letterSpacing: -0.5,
-    color: COLORS.lightText,
-    textAlign: "center",
-    marginBottom: sh(48),
-  },
-
   pickerWrap: {
     width: "100%",
     alignItems: "center",
     justifyContent: "center",
+  },
+  ageList: {
+    flexGrow: 0,
+    maxHeight: sh(112),
   },
   ageItem: {
     alignItems: "center",
@@ -303,11 +252,11 @@ const styles = StyleSheet.create({
     paddingVertical: sh(8),
   },
   ageText: {
-    fontFamily: FONT_BOLD,
+    fontFamily: ORANGE_ONBOARDING.font,
     fontSize: ms(48),
     lineHeight: ms(56),
-    letterSpacing: -1.0,
-    color: COLORS.lightText,
+    letterSpacing: 0,
+    color: ORANGE_ONBOARDING.text,
     includeFontPadding: false,
   },
   tick: {
@@ -315,25 +264,6 @@ const styles = StyleSheet.create({
     width: 2,
     height: TICK_HEIGHT,
     borderRadius: 1,
-    backgroundColor: COLORS.lightText,
-  },
-
-  footer: {
-    paddingHorizontal: SP[5],
-    paddingTop: SP[3],
-  },
-  cta: {
-    minHeight: sh(54),
-    borderRadius: 999,
-    backgroundColor: COLORS.ctaBlack,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: sh(14),
-  },
-  ctaText: {
-    fontFamily: FONT_BOLD,
-    fontSize: ms(15),
-    color: "#FFFFFF",
-    letterSpacing: 1.0,
+    backgroundColor: ORANGE_ONBOARDING.orange,
   },
 });

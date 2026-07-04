@@ -2,7 +2,6 @@
 import React, { useCallback, useEffect, useRef } from "react";
 import {
   AccessibilityInfo,
-  Image,
   Platform,
   StyleSheet,
   Text,
@@ -30,8 +29,6 @@ const ACCENT = COLORS.accent;
 const TAGLINE = "rgba(255,255,255,0.92)";
 const SUBTEXT = COLORS.sub;
 const CTA_OFFSET = 12;
-
-const FACE = require("@/assets/loading/face-loader.jpg");
 
 const globalTrack =
   typeof globalThis !== "undefined" &&
@@ -206,12 +203,28 @@ export default function WelcomeIntroScreen() {
               end={{ x: 0.8, y: 1 }}
               style={StyleSheet.absoluteFill}
             />
-            <Image
-              source={FACE}
-              style={styles.face}
-              resizeMode="cover"
-              accessible={false}
+            <LinearGradient
+              colors={["rgba(180,243,77,0.18)", "transparent", "rgba(180,243,77,0.08)"]}
+              locations={[0, 0.55, 1]}
+              start={{ x: 0.1, y: 0 }}
+              end={{ x: 0.9, y: 1 }}
+              style={StyleSheet.absoluteFill}
             />
+            <View pointerEvents="none" style={styles.faceMark} accessible={false}>
+              <View style={styles.faceOval}>
+                <View style={styles.browRow}>
+                  <View style={styles.brow} />
+                  <View style={styles.brow} />
+                </View>
+                <View style={styles.eyeRow}>
+                  <View style={styles.eye} />
+                  <View style={styles.eye} />
+                </View>
+                <View style={styles.nose} />
+                <View style={styles.mouth} />
+              </View>
+              <View style={styles.scanBand} />
+            </View>
           </View>
         </Animated.View>
 
@@ -311,9 +324,74 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  face: {
+  faceMark: {
     width: "100%",
     height: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  faceOval: {
+    width: 96,
+    height: 124,
+    borderRadius: 48,
+    borderWidth: 1.5,
+    borderColor: "rgba(180,243,77,0.48)",
+    backgroundColor: "rgba(255,255,255,0.04)",
+    alignItems: "center",
+    paddingTop: 32,
+  },
+  browRow: {
+    width: 58,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 7,
+  },
+  brow: {
+    width: 19,
+    height: 3,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.52)",
+  },
+  eyeRow: {
+    width: 56,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 14,
+  },
+  eye: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: ACCENT,
+    shadowColor: ACCENT,
+    shadowOpacity: 0.55,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 0 },
+  },
+  nose: {
+    width: 3,
+    height: 22,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.38)",
+    marginBottom: 14,
+  },
+  mouth: {
+    width: 32,
+    height: 3,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.48)",
+  },
+  scanBand: {
+    position: "absolute",
+    left: 26,
+    right: 26,
+    top: 92,
+    height: 1,
+    backgroundColor: "rgba(180,243,77,0.72)",
+    shadowColor: ACCENT,
+    shadowOpacity: 0.8,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 0 },
   },
   textStack: {
     marginTop: 36,

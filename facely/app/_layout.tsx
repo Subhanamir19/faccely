@@ -41,6 +41,8 @@ export default function RootLayout() {
     "ProximaNova-Bold": require("../assets/fonts/ProximaNova-Bold.otf"),
     "DuolingoFeather-Bold": require("../assets/fonts/Duolingo Feather Bold.ttf"),
     "DINNextRounded-Regular": require("../assets/fonts/DIN Next Rounded LT W01 Regular.ttf"),
+    "DINNextRounded-Bold": require("../assets/fonts/DIN Next Rounded LT W01 Bold.ttf"),
+    "Baskerville-Italic": require("../assets/fonts/Baskerville Italic.ttf"),
     ...MaterialCommunityIcons.font,
     ...Ionicons.font,
   });

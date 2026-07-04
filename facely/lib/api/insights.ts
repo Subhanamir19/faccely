@@ -70,6 +70,7 @@ export type LatestAdvanced = {
   jawline: { development: string; development_score: number; gonial_angle: string; gonial_angle_score: number; projection: string; projection_score: number } | null;
   eyes: { canthal_tilt: string; canthal_tilt_score: number; eye_type: string; eye_type_score: number; brow_volume: string; brow_volume_score: number; symmetry: string; symmetry_score: number } | null;
   skin: { color: string; color_score: number; quality: string; quality_score: number } | null;
+  haircut: { density: string; density_score: number; styling: string; styling_score: number; facial_hair: string; facial_hair_score: number } | null;
 };
 
 export type InsightData = {

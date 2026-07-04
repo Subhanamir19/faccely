@@ -2,7 +2,7 @@
 // Stable, concurrency-safe upload helpers for facial scoring.
 
 import { API_BASE } from "./config";
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 import {
   fetchWithRetry,
   DEFAULT_UPLOAD_TIMEOUT_MS,

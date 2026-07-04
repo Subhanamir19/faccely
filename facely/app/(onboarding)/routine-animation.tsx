@@ -26,13 +26,14 @@ import Reanimated, {
 } from "react-native-reanimated";
 
 import { useOnboarding } from "@/store/onboarding";
-import { COLORS, SP, RADII, getProgressForStep } from "@/lib/tokens";
+import { SP, RADII } from "@/lib/tokens";
 import { ms, sh, sw } from "@/lib/responsive";
 import { hapticSuccess } from "@/lib/haptics";
+import { ORANGE_ONBOARDING } from "@/components/onboarding/OrangeOnboardingLayout";
 
-const FONT_BOLD = "ProximaNova-Bold";
-const LIME = "#B4F34D";        // bright fill — progress, arcs, tint, check chip
-const LIME_BORDER_RGBA = "180,243,77"; // matches LIME, used in animated border interpolations
+const FONT_BOLD = ORANGE_ONBOARDING.font;
+const LIME = ORANGE_ONBOARDING.orange;
+const LIME_BORDER_RGBA = "255,121,0";
 
 /* ── Hand-drawn SVG icons ────────────────────────────────────
    Same illustrated style as building-plan.tsx for visual
@@ -124,10 +125,10 @@ function ProtocolStackIcon({ color }: { color: string }) {
 
 function CheckIcon() {
   return (
-    <Svg width={15} height={15} viewBox="0 0 15 15">
+    <Svg width={16} height={16} viewBox="0 0 16 16">
       <Path
-        d="M 2.5 7.5 L 6 11 L 12.5 4"
-        fill="none" stroke="#0B0B0B" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"
+        d="M 3.25 8.1 L 6.65 11.35 L 12.85 4.85"
+        fill="none" stroke="#11875D" strokeWidth="2.15" strokeLinecap="round" strokeLinejoin="round"
       />
     </Svg>
   );
@@ -191,7 +192,7 @@ function RoutineItemRow({
   // Reanimated handles all visual state: glow, tint, checkmark
   const glowValue  = useSharedValue(0); // 0 = idle, 1 = scanning, 0.12 = done
   const tintValue  = useSharedValue(0); // opacity multiplier for lime tint overlay
-  const checkScale = useSharedValue(0);
+  const checkProgress = useSharedValue(0);
 
   const cardDelay = 400 + index * ITEM_DELAY;
 
@@ -209,7 +210,7 @@ function RoutineItemRow({
         useNativeDriver: false,
       }).start(() => {
         // Arc complete → spring checkmark in, soften glow
-        checkScale.value = withSpring(1, { damping: 8, stiffness: 200 });
+        checkProgress.value = withSpring(1, { damping: 17, stiffness: 180, mass: 0.72 });
         glowValue.value  = withTiming(0.12, { duration: 600 });
         tintValue.value  = withTiming(0.28, { duration: 600 });
         onDone();
@@ -231,8 +232,16 @@ function RoutineItemRow({
   }));
 
   const checkStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: checkScale.value }],
-    opacity: checkScale.value,
+    transform: [
+      { translateY: interpolate(checkProgress.value, [0, 1], [5, 0]) },
+      { scale: interpolate(checkProgress.value, [0, 1], [0.76, 1]) },
+    ],
+    opacity: checkProgress.value,
+  }));
+
+  const checkHaloStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: interpolate(checkProgress.value, [0, 0.62, 1], [0.55, 1.22, 1.36]) }],
+    opacity: interpolate(checkProgress.value, [0, 0.42, 1], [0, 0.48, 0]),
   }));
 
   return (
@@ -284,6 +293,7 @@ function RoutineItemRow({
 
       {/* Checkmark — springs in once arc completes */}
       <Reanimated.View style={[styles.checkCircle, checkStyle]}>
+        <Reanimated.View style={[styles.checkHalo, checkHaloStyle]} />
         <CheckIcon />
       </Reanimated.View>
     </Reanimated.View>
@@ -294,7 +304,6 @@ function RoutineItemRow({
 export default function RoutineAnimationScreen() {
   const insets = useSafeAreaInsets();
   const { finish } = useOnboarding();
-  const progress = getProgressForStep("routine-animation");
 
   const [doneCount,  setDoneCount]  = useState(0);
   const [ctaReady,   setCtaReady]   = useState(false);
@@ -336,14 +345,12 @@ export default function RoutineAnimationScreen() {
     <View style={styles.screen}>
       <StatusBar barStyle="dark-content" />
 
-      {/* Progress bar */}
-      <View style={[styles.progressTrack, { marginTop: insets.top + SP[3] }]}>
-        <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
-      </View>
-
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingTop: insets.top + SP[6] },
+        ]}
         showsVerticalScrollIndicator={false}
       >
       {/* Header */}
@@ -377,7 +384,7 @@ export default function RoutineAnimationScreen() {
               onPress={handleContinue}
               style={({ pressed }) => [
                 styles.cta,
-                pressed && { backgroundColor: COLORS.ctaBlackPressed },
+                pressed && { backgroundColor: ORANGE_ONBOARDING.orangeDark },
               ]}
             >
               <Text style={styles.ctaText}>VIEW MY CUSTOM ROUTINE</Text>
@@ -391,7 +398,7 @@ export default function RoutineAnimationScreen() {
 
 /* ── Styles ──────────────────────────────────────────────────── */
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: COLORS.lightBg },
+  screen: { flex: 1, backgroundColor: ORANGE_ONBOARDING.surface },
   scroll: {
     flex: 1,
   },
@@ -400,37 +407,26 @@ const styles = StyleSheet.create({
     paddingBottom: SP[3],
   },
 
-  progressTrack: {
-    height: sh(6),
-    marginHorizontal: SP[5],
-    borderRadius: 999,
-    backgroundColor: COLORS.lightHairline,
-    overflow: "hidden",
-    marginBottom: SP[5],
-  },
-  progressFill: {
-    height: "100%",
-    backgroundColor: LIME,
-    borderRadius: 999,
-  },
-
   header: {
     paddingHorizontal: SP[5],
-    marginBottom: SP[4],
+    marginBottom: SP[5],
+    alignItems: "center",
   },
   heading: {
     fontFamily: FONT_BOLD,
     fontSize: ms(28),
     lineHeight: ms(34),
-    color: COLORS.lightText,
-    letterSpacing: -0.5,
+    color: ORANGE_ONBOARDING.text,
+    letterSpacing: 0,
+    textAlign: "center",
   },
   subheading: {
-    fontFamily: "Poppins-Regular",
-    fontSize: ms(14),
-    lineHeight: ms(20),
-    color: COLORS.lightSub,
+    fontFamily: ORANGE_ONBOARDING.font,
+    fontSize: ms(15, 0.18),
+    lineHeight: ms(22, 0.18),
+    color: ORANGE_ONBOARDING.muted,
     marginTop: SP[2],
+    textAlign: "center",
   },
 
   itemList: {
@@ -442,8 +438,8 @@ const styles = StyleSheet.create({
   itemRow: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: COLORS.lightCard,
-    borderRadius: RADII.lg,
+    backgroundColor: ORANGE_ONBOARDING.surface,
+    borderRadius: ms(17),
     borderWidth: 1,
     paddingVertical: SP[3],
     paddingHorizontal: SP[4],
@@ -476,23 +472,38 @@ const styles = StyleSheet.create({
   itemLabel: {
     fontFamily: FONT_BOLD,
     fontSize: ms(14),
-    color: COLORS.lightText,
+    color: ORANGE_ONBOARDING.text,
     letterSpacing: -0.1,
   },
   itemSublabel: {
-    fontFamily: "Poppins-Regular",
+    fontFamily: ORANGE_ONBOARDING.font,
     fontSize: ms(12),
-    color: COLORS.lightSub,
+    color: ORANGE_ONBOARDING.muted,
     marginTop: 2,
   },
 
   checkCircle: {
-    width: ms(28),
-    height: ms(28),
-    borderRadius: ms(14),
-    backgroundColor: LIME,
+    width: ms(30),
+    height: ms(30),
+    borderRadius: ms(15),
+    backgroundColor: "#F8FFFC",
+    borderWidth: 1,
+    borderColor: "rgba(17,135,93,0.24)",
     alignItems: "center",
     justifyContent: "center",
+    flexShrink: 0,
+    shadowColor: "#11875D",
+    shadowOpacity: 0.13,
+    shadowRadius: ms(9),
+    shadowOffset: { width: 0, height: ms(4) },
+    elevation: 2,
+  },
+  checkHalo: {
+    position: "absolute",
+    width: ms(30),
+    height: ms(30),
+    borderRadius: ms(15),
+    backgroundColor: "rgba(17,135,93,0.15)",
   },
 
   statusWrap: {
@@ -504,7 +515,7 @@ const styles = StyleSheet.create({
   statusText: {
     fontFamily: FONT_BOLD,
     fontSize: ms(12),
-    color: COLORS.lightSub,
+    color: ORANGE_ONBOARDING.muted,
     letterSpacing: 0.2,
     textAlign: "center",
   },
@@ -515,11 +526,16 @@ const styles = StyleSheet.create({
   },
   cta: {
     minHeight: sh(54),
-    borderRadius: 999,
-    backgroundColor: COLORS.ctaBlack,
+    borderRadius: ms(17),
+    backgroundColor: ORANGE_ONBOARDING.orange,
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: sh(14),
+    shadowColor: ORANGE_ONBOARDING.orange,
+    shadowOpacity: 0.2,
+    shadowRadius: ms(16),
+    shadowOffset: { width: 0, height: ms(7) },
+    elevation: 4,
   },
   ctaText: {
     fontFamily: FONT_BOLD,

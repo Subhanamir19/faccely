@@ -1,6 +1,6 @@
 // lib/media/avatar.ts
 // Normalize, compress, and persist profile avatar images to a stable directory.
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 
 import { ensureJpegCompressed, resolveExistingPath } from "@/lib/api/media";
 

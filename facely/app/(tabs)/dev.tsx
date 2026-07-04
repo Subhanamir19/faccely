@@ -21,7 +21,7 @@ import StackedScoreDeckPreview from "@/components/scores/StackedScoreDeckPreview
 import DietDevPreview from "@/components/dev/DietDevPreview";
 import DevTopPreview from "@/components/dev/DevTopPreview";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Redirect, router } from "expo-router";
+import { router } from "expo-router";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import LottieView from "lottie-react-native";
 import Animated, {
@@ -124,7 +124,10 @@ type ExercisePreviewStep = "focus" | "benefits" | "choice" | "choosing";
 // Entry is /(onboarding)/splash (see app/index.tsx). Each step's router.push
 // traced to confirm the chain. End: /(tabs)/program.
 const ONBOARDING_FLOW_SCREENS: { label: string; route: string }[] = [
-  { label: "Splash",            route: "/(onboarding)/splash" },           // → warmup
+  { label: "Splash",            route: "/(onboarding)/splash" },           // -> random glowup
+  { label: "Random Glowup",     route: "/(onboarding)/random-glowup" },    // -> sigma choice
+  { label: "SigmaMax Choice",   route: "/(onboarding)/sigma-choice" },     // -> feature sequence
+  { label: "Feature Sequence",  route: "/(onboarding)/feature-sequence" }, // -> warmup
   { label: "Warmup",            route: "/(onboarding)/warmup" },           // → goals
   { label: "Goals",             route: "/(onboarding)/goals" },            // → gender
   { label: "Gender",            route: "/(onboarding)/gender" },           // → age
@@ -192,6 +195,33 @@ function SectionHeader({ title, subtitle }: { title: string; subtitle?: string }
       <T style={styles.sectionTitle}>{title}</T>
       {subtitle ? <T style={styles.sectionSubtitle}>{subtitle}</T> : null}
     </View>
+  );
+}
+
+function LoadingDesignPreviewCard({
+  onPreviewDefault,
+  onPreviewOnboarding,
+}: {
+  onPreviewDefault: () => void;
+  onPreviewOnboarding: () => void;
+}) {
+  return (
+    <GlassCard style={styles.card}>
+      <SectionHeader
+        title="Analysis Loading Design"
+        subtitle="Direct preview of the animated face-analysis loader used after photo submission."
+      />
+      <DevButton
+        label="Preview Analysis Loading"
+        accent
+        onPress={onPreviewDefault}
+      />
+      <View style={{ height: SP[2] }} />
+      <DevButton
+        label="Preview Post-Paywall Variant"
+        onPress={onPreviewOnboarding}
+      />
+    </GlassCard>
   );
 }
 
@@ -1747,38 +1777,30 @@ function ProgressStoryDashboardPreview({
 function ProgressPreviewScreenContent({ onClose }: { onClose: () => void }) {
   const { width } = useWindowDimensions();
   const cardWidth = Math.min(width - SP[8], 430);
-  const float = useSharedValue(0);
-  const glow = useSharedValue(0.35);
+  const [activePreview, setActivePreview] = useState<"current" | "potential">("potential");
+  const reveal = useSharedValue(0);
+  const progress = useSharedValue(0);
 
   useEffect(() => {
-    float.value = withRepeat(
-      withSequence(
-        withTiming(-6, { duration: 1300, easing: Easing.inOut(Easing.sin) }),
-        withTiming(0, { duration: 1300, easing: Easing.inOut(Easing.sin) })
-      ),
-      -1,
-      true
-    );
-    glow.value = withRepeat(
-      withSequence(
-        withTiming(1, { duration: 1150, easing: Easing.inOut(Easing.sin) }),
-        withTiming(0.35, { duration: 1150, easing: Easing.inOut(Easing.sin) })
-      ),
-      -1,
-      true
-    );
-  }, [float, glow]);
+    reveal.value = 0;
+    progress.value = 0;
+    reveal.value = withTiming(1, { duration: 320, easing: Easing.out(Easing.cubic) });
+    progress.value = withTiming(0.38, { duration: 620, easing: Easing.out(Easing.cubic) });
+  }, [progress, reveal]);
 
-  const potentialMotion = useAnimatedStyle(() => ({
-    transform: [{ translateY: float.value }],
-    shadowOpacity: glow.value * 0.32,
+  const heroMotion = useAnimatedStyle(() => ({
+    opacity: reveal.value,
+    transform: [{ translateY: (1 - reveal.value) * 12 }],
   }));
 
-  const statusItems = [
-    { label: "Potential", value: "Unlocked", sub: "stage 1 ready" },
-    { label: "Next view", value: "Progress", sub: "full breakdown" },
-    { label: "Streak", value: "4", sub: "days active" },
-  ];
+  const progressFill = useAnimatedStyle(() => ({
+    width: `${Math.max(0.04, progress.value) * 100}%`,
+  }));
+
+  const previewSource =
+    activePreview === "current"
+      ? require("../../assets/before.jpeg")
+      : require("../../assets/after.jpeg");
 
   return (
     <SafeAreaView style={progressPreviewStyles.screen}>
@@ -1793,100 +1815,79 @@ function ProgressPreviewScreenContent({ onClose }: { onClose: () => void }) {
             >
               <X size={22} color="#111111" strokeWidth={2.7} />
             </Pressable>
-            <View style={progressPreviewStyles.streakChip}>
+            <View style={progressPreviewStyles.streakChip} accessibilityLabel="4 day streak">
               <RNImage source={STREAK_PREVIEW_ICON} style={progressPreviewStyles.streakIcon} resizeMode="contain" />
               <Text style={progressPreviewStyles.streakText}>4 day streak</Text>
-            </View>
-            <View style={progressPreviewStyles.iconButton}>
-              <TrendingUp size={20} color="#111111" strokeWidth={2.6} />
             </View>
           </View>
 
           <View style={progressPreviewStyles.header}>
             <Text style={progressPreviewStyles.kicker}>PROGRESS PREVIEW</Text>
-            <Text style={progressPreviewStyles.title}>Your potential is ready.</Text>
+            <Text style={progressPreviewStyles.title}>Your first milestone is ready.</Text>
             <Text style={progressPreviewStyles.subtitle}>
-              This screen should set the emotional target, then send users forward to see what changed.
+              Compare your current scan with the direction we are tracking.
             </Text>
           </View>
 
-          <View style={progressPreviewStyles.heroCard}>
-            <View style={progressPreviewStyles.heroTopRow}>
-              <View>
-                <Text style={progressPreviewStyles.heroLabel}>CURRENT SNAPSHOT</Text>
-                <Text style={progressPreviewStyles.heroScore}>72</Text>
-                <Text style={progressPreviewStyles.heroTier}>READY TO REVIEW</Text>
-              </View>
-              <View style={progressPreviewStyles.heroBadge}>
-                <Sparkles size={17} color="#58BF19" strokeWidth={2.4} />
-                <Text style={progressPreviewStyles.heroBadgeText}>STAGE 1</Text>
+          <Animated.View style={[progressPreviewStyles.heroPanel, heroMotion]}>
+            <View style={progressPreviewStyles.previewFrame}>
+              <RNImage source={previewSource} style={progressPreviewStyles.previewImage} resizeMode="cover" />
+              <View style={progressPreviewStyles.stageBadge}>
+                <CircleCheck size={14} color="#B4F34D" strokeWidth={2.6} />
+                <Text style={progressPreviewStyles.stageBadgeText}>Stage 1 ready</Text>
               </View>
             </View>
 
-            <View style={progressPreviewStyles.compareRow}>
-              <View style={progressPreviewStyles.faceCol}>
-                <View style={progressPreviewStyles.faceFrame}>
-                  <RNImage source={require("../../assets/before.jpeg")} style={progressPreviewStyles.faceImage} resizeMode="cover" />
-                </View>
-                <Text style={progressPreviewStyles.faceLabel}>Current</Text>
-              </View>
-
-              <View style={progressPreviewStyles.transferColumn}>
-                <View style={progressPreviewStyles.transferLine} />
-                <View style={progressPreviewStyles.transferDot}>
-                  <ChevronRight size={17} color="#111111" strokeWidth={2.8} />
-                </View>
-              </View>
-
-              <View style={progressPreviewStyles.faceCol}>
-                <Animated.View style={[progressPreviewStyles.potentialFrame, potentialMotion]}>
-                  <RNImage source={require("../../assets/after.jpeg")} style={progressPreviewStyles.faceImage} resizeMode="cover" />
-                  <View style={progressPreviewStyles.unlockedBadge}>
-                    <Sparkles size={12} color="#FFFFFF" strokeWidth={2.4} />
-                    <Text style={progressPreviewStyles.unlockedText}>UNLOCKED</Text>
-                  </View>
-                </Animated.View>
-                <Text style={[progressPreviewStyles.faceLabel, progressPreviewStyles.faceLabelActive]}>Potential</Text>
-              </View>
+            <View style={progressPreviewStyles.segmentedControl} accessibilityRole="tablist">
+              {(["current", "potential"] as const).map((item) => {
+                const selected = activePreview === item;
+                return (
+                  <Pressable
+                    key={item}
+                    onPress={() => setActivePreview(item)}
+                    accessibilityRole="tab"
+                    accessibilityState={{ selected }}
+                    accessibilityLabel={item === "current" ? "Show current scan" : "Show potential preview"}
+                    style={({ pressed }) => [
+                      progressPreviewStyles.segmentButton,
+                      selected && progressPreviewStyles.segmentButtonActive,
+                      pressed && progressPreviewStyles.segmentButtonPressed,
+                    ]}
+                  >
+                    <Text style={[progressPreviewStyles.segmentText, selected && progressPreviewStyles.segmentTextActive]}>
+                      {item === "current" ? "Current" : "Potential"}
+                    </Text>
+                  </Pressable>
+                );
+              })}
             </View>
 
-            <View style={progressPreviewStyles.progressBlock}>
-              <View style={progressPreviewStyles.gatewayPanel}>
-                <View style={progressPreviewStyles.gatewayIcon}>
-                  <ChevronRight size={18} color="#58BF19" strokeWidth={2.8} />
+            <View style={progressPreviewStyles.progressSummary}>
+              <View style={progressPreviewStyles.progressHeaderRow}>
+                <View>
+                  <Text style={progressPreviewStyles.progressLabel}>FIRST VISIBLE MILESTONE</Text>
+                  <Text style={progressPreviewStyles.progressTitle}>38% closer to stage 1</Text>
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={progressPreviewStyles.gatewayTitle}>Open the forward screen for improvements</Text>
-                  <Text style={progressPreviewStyles.gatewayBody}>
-                    Metrics, deltas, and what changed live there. This overview only frames the destination.
-                  </Text>
-                </View>
+                <Text style={progressPreviewStyles.progressValue}>38%</Text>
+              </View>
+              <View
+                style={progressPreviewStyles.progressTrack}
+                accessibilityRole="progressbar"
+                accessibilityValue={{ min: 0, max: 100, now: 38 }}
+              >
+                <Animated.View style={[progressPreviewStyles.progressFill, progressFill]} />
               </View>
             </View>
-          </View>
+          </Animated.View>
 
-          <View style={progressPreviewStyles.statsRow}>
-            {statusItems.map((item) => (
-              <View key={item.label} style={progressPreviewStyles.statCard}>
-                <Text style={progressPreviewStyles.statLabel}>{item.label}</Text>
-                <Text style={progressPreviewStyles.statValue}>{item.value}</Text>
-                <Text style={progressPreviewStyles.statSub}>{item.sub}</Text>
-              </View>
-            ))}
-          </View>
-
-          <View style={progressPreviewStyles.coachCard}>
-            <View style={progressPreviewStyles.coachImageWrap}>
-              <RNImage
-                source={require("../../assets/images-for-initial-tracking-screen/progress.png")}
-                style={progressPreviewStyles.coachImage}
-                resizeMode="contain"
-              />
+          <View style={progressPreviewStyles.insightCard}>
+            <View style={progressPreviewStyles.insightIcon}>
+              <Target size={19} color="#111111" strokeWidth={2.5} />
             </View>
-            <View style={progressPreviewStyles.coachBubble}>
-              <Text style={progressPreviewStyles.coachKicker}>COACH CHECK</Text>
-              <Text style={progressPreviewStyles.coachText}>
-                Your comparison is set. Go forward when you want the actual progress readout.
+            <View style={progressPreviewStyles.insightCopy}>
+              <Text style={progressPreviewStyles.insightKicker}>MOST VISIBLE OPPORTUNITY</Text>
+              <Text style={progressPreviewStyles.insightText}>
+                Jawline definition and facial balance are the first areas to track.
               </Text>
             </View>
           </View>
@@ -1894,18 +1895,21 @@ function ProgressPreviewScreenContent({ onClose }: { onClose: () => void }) {
           <Pressable
             onPress={() => {}}
             accessibilityRole="button"
-            accessibilityLabel="Open detailed progress"
+            accessibilityLabel="View full progress"
             style={({ pressed }) => [progressPreviewStyles.cta, pressed && progressPreviewStyles.ctaPressed]}
           >
-            <Text style={progressPreviewStyles.ctaText}>OPEN DETAILED PROGRESS</Text>
+            <Text style={progressPreviewStyles.ctaText}>VIEW FULL PROGRESS</Text>
             <ChevronRight size={18} color="#FFFFFF" strokeWidth={2.8} />
           </Pressable>
+
+          <Text style={progressPreviewStyles.ctaNote}>
+            Includes score changes, photo history, and next focus areas.
+          </Text>
         </View>
       </ScrollView>
     </SafeAreaView>
   );
 }
-
 function ProgressPreviewScreenModal({
   visible,
   onClose,
@@ -2908,10 +2912,6 @@ function ExerciseTimerDesignPreview({
 }
 
 export default function DevScreen() {
-  if (!__DEV__) {
-    return <Redirect href="/(tabs)/program" />;
-  }
-
   const [consentValue, setConsentValue] = useState<string | null | "…">("…");
   const [previewVisible, setPreviewVisible] = useState(false);
   const [lottiePreviewVisible, setLottiePreviewVisible] = useState(false);
@@ -2960,6 +2960,7 @@ export default function DevScreen() {
   const [programLoadingPreviewVisible, setProgramLoadingPreviewVisible] = useState(false);
   const [loaderPreviewVisible, setLoaderPreviewVisible] = useState(false);
   const [loaderKindIdx, setLoaderKindIdx] = useState(0);
+  const [loaderPreviewAppearance, setLoaderPreviewAppearance] = useState<"default" | "onboarding">("default");
   const { data: advancedData } = useAdvancedAnalysis();
   const { imageUri } = useScores();
   const MOCK_ADVANCED: AdvancedAnalysis = {
@@ -2967,6 +2968,7 @@ export default function DevScreen() {
     jawline:    { development: "", development_score: 44, development_verdict: "", gonial_angle: "", gonial_angle_score: 62, gonial_angle_verdict: "", projection: "", projection_score: 35, projection_verdict: "", ramus: "", ramus_score: 50, ramus_verdict: "" },
     eyes:       { canthal_tilt: "", canthal_tilt_score: 57, canthal_tilt_verdict: "", eye_type: "", eye_type_score: 66, eye_type_verdict: "", brow_volume: "", brow_volume_score: 71, brow_volume_verdict: "", symmetry: "", symmetry_score: 49, symmetry_verdict: "" },
     skin:       { color: "", color_score: 73, color_verdict: "", quality: "", quality_score: 60, quality_verdict: "" },
+    haircut:    { density: "", density_score: 52, density_verdict: "", styling: "", styling_score: 46, styling_verdict: "", facial_hair: "", facial_hair_score: 58, facial_hair_verdict: "" },
   };
 
   // Insight Pulse preview
@@ -3502,6 +3504,20 @@ export default function DevScreen() {
           />
         </GlassCard>
 
+        {/* ── Analysis loading design preview ───────────────────────── */}
+        <LoadingDesignPreviewCard
+          onPreviewDefault={() => {
+            setLoaderKindIdx(1);
+            setLoaderPreviewAppearance("default");
+            setLoaderPreviewVisible(true);
+          }}
+          onPreviewOnboarding={() => {
+            setLoaderKindIdx(1);
+            setLoaderPreviewAppearance("onboarding");
+            setLoaderPreviewVisible(true);
+          }}
+        />
+
         {/* ── Loaders Preview ───────────────────────────────────────── */}
         <GlassCard style={styles.card}>
           <SectionHeader
@@ -3519,6 +3535,7 @@ export default function DevScreen() {
             accent
             onPress={() => {
               setLoaderKindIdx(0);
+              setLoaderPreviewAppearance("default");
               setLoaderPreviewVisible(true);
             }}
           />
@@ -4101,9 +4118,7 @@ export default function DevScreen() {
             { kind: "brand",  label: "Brand",      title: "Preparing SigmaMax",     subtitle: "Setting things up" },
           ];
           const current = KINDS[loaderKindIdx];
-          const fallbackPhoto = RNImage.resolveAssetSource(
-            require("../../assets/loading/face-loader.jpg")
-          ).uri;
+          const fallbackPhoto = RNImage.resolveAssetSource(require("../../assets/before.jpeg")).uri;
           const photoUri =
             current.kind === "photo" ? (imageUri ?? fallbackPhoto) : undefined;
           return (
@@ -4113,6 +4128,7 @@ export default function DevScreen() {
                 photoUri={photoUri}
                 title={current.title}
                 subtitle={current.subtitle}
+                appearance={loaderPreviewAppearance}
               />
 
               {/* Floating header — switcher + close */}
@@ -4122,7 +4138,7 @@ export default function DevScreen() {
               >
                 <View style={styles.previewHeader}>
                   <T style={[styles.previewTitle, { color: COLORS.lightText }]}>
-                    Loader · {current.label}
+                    Loader · {current.label}{loaderPreviewAppearance === "onboarding" ? " · Post-paywall" : ""}
                   </T>
                   <View style={styles.previewActions}>
                     <Pressable
@@ -5285,9 +5301,9 @@ const progressPreviewStyles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 16,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "rgba(255,255,255,0.78)",
     borderWidth: 1,
-    borderColor: "#ECEEEC",
+    borderColor: "rgba(17,17,17,0.08)",
     alignItems: "center",
     justifyContent: "center",
     ...DASH_SHADOW,
@@ -5303,9 +5319,9 @@ const progressPreviewStyles = StyleSheet.create({
     gap: 6,
     paddingHorizontal: SP[4],
     borderRadius: RADII.circle,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "rgba(255,255,255,0.78)",
     borderWidth: 1,
-    borderColor: "#ECEEEC",
+    borderColor: "rgba(17,17,17,0.08)",
     ...DASH_SHADOW,
   },
   streakIcon: {
@@ -5324,268 +5340,193 @@ const progressPreviewStyles = StyleSheet.create({
   kicker: {
     fontFamily: FONT,
     fontSize: 11,
-    letterSpacing: 1.4,
+    letterSpacing: 1.3,
     color: "#58BF19",
   },
   title: {
     fontFamily: FONT,
-    fontSize: 34,
-    lineHeight: 38,
-    letterSpacing: -0.8,
+    fontSize: 31,
+    lineHeight: 36,
+    letterSpacing: -0.4,
     color: "#111111",
     marginTop: SP[2],
   },
   subtitle: {
     fontFamily: "DINNextRounded-Regular",
-    fontSize: 16,
-    lineHeight: 23,
+    fontSize: 15,
+    lineHeight: 22,
     color: "#5E625F",
-    marginTop: SP[3],
+    marginTop: SP[2],
+    maxWidth: 330,
   },
-  heroCard: {
-    borderRadius: 32,
-    backgroundColor: "#FFFFFF",
-    padding: SP[5],
-    gap: SP[5],
+  heroPanel: {
+    borderRadius: 30,
+    backgroundColor: "rgba(255,255,255,0.82)",
+    padding: SP[3],
+    gap: SP[3],
     borderWidth: 1,
     borderColor: "rgba(17,17,17,0.07)",
     shadowColor: "#000000",
-    shadowOpacity: 0.10,
-    shadowRadius: 26,
+    shadowOpacity: 0.09,
+    shadowRadius: 24,
     shadowOffset: { width: 0, height: 12 },
-    elevation: 6,
+    elevation: 5,
   },
-  heroTopRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: SP[4],
-  },
-  heroLabel: {
-    fontFamily: FONT,
-    fontSize: 10,
-    letterSpacing: 1.1,
-    color: "#8A8A8E",
-  },
-  heroScore: {
-    fontFamily: FONT,
-    fontSize: 60,
-    lineHeight: 62,
-    letterSpacing: -2.2,
-    color: "#111111",
-    marginTop: SP[1],
-  },
-  heroTier: {
-    fontFamily: FONT,
-    fontSize: 12,
-    letterSpacing: 1.4,
-    color: "#58BF19",
-  },
-  heroBadge: {
-    minHeight: 38,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    borderRadius: RADII.circle,
-    paddingHorizontal: SP[3],
-    backgroundColor: "#EFFAE9",
-    borderWidth: 1,
-    borderColor: "rgba(88,191,25,0.16)",
-  },
-  heroBadgeText: {
-    fontFamily: FONT,
-    fontSize: 11,
-    color: "#58BF19",
-    letterSpacing: 0.4,
-  },
-  compareRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SP[3],
-  },
-  faceCol: {
-    flex: 1,
-    alignItems: "center",
-    gap: SP[2],
-  },
-  faceFrame: {
+  previewFrame: {
     width: "100%",
-    aspectRatio: 0.82,
-    borderRadius: 24,
+    aspectRatio: 0.84,
+    borderRadius: 25,
     overflow: "hidden",
-    backgroundColor: "#EFEAF7",
+    backgroundColor: "#F6EEDC",
     borderWidth: 1,
     borderColor: "rgba(17,17,17,0.08)",
   },
-  potentialFrame: {
-    width: "100%",
-    aspectRatio: 0.82,
-    borderRadius: 24,
-    overflow: "hidden",
-    backgroundColor: "#EFFAE9",
-    borderWidth: 2,
-    borderColor: "#B4F34D",
-    shadowColor: "#58BF19",
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 7,
-  },
-  faceImage: {
+  previewImage: {
     width: "100%",
     height: "100%",
   },
-  faceLabel: {
-    fontFamily: "DINNextRounded-Regular",
-    fontSize: 13,
-    color: "#8A8A8E",
-  },
-  faceLabelActive: {
-    fontFamily: FONT,
-    color: "#58BF19",
-  },
-  transferColumn: {
-    width: 36,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  transferLine: {
-    position: "absolute",
-    width: 1,
-    height: 112,
-    backgroundColor: "rgba(17,17,17,0.08)",
-  },
-  transferDot: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: "#ECEEEC",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  unlockedBadge: {
+  stageBadge: {
     position: "absolute",
     left: SP[3],
     bottom: SP[3],
-    minHeight: 28,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
+    minHeight: 32,
     borderRadius: RADII.circle,
     paddingHorizontal: SP[3],
-    backgroundColor: "#58BF19",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#111111",
+    shadowColor: "#000000",
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 5,
   },
-  unlockedText: {
+  stageBadgeText: {
     fontFamily: FONT,
-    fontSize: 9,
+    fontSize: 11,
     color: "#FFFFFF",
-    letterSpacing: 0.8,
+    letterSpacing: 0.2,
   },
-  progressBlock: {
+  segmentedControl: {
+    minHeight: 48,
+    flexDirection: "row",
+    alignItems: "center",
     gap: SP[2],
+    borderRadius: 18,
+    backgroundColor: "#F3F0E8",
+    padding: 4,
   },
-  gatewayPanel: {
-    minHeight: 82,
+  segmentButton: {
+    flex: 1,
+    minHeight: 40,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  segmentButtonActive: {
+    backgroundColor: "#111111",
+    shadowColor: "#000000",
+    shadowOpacity: 0.14,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4,
+  },
+  segmentButtonPressed: {
+    opacity: 0.86,
+  },
+  segmentText: {
+    fontFamily: FONT,
+    fontSize: 13,
+    color: "#686560",
+  },
+  segmentTextActive: {
+    color: "#FFFFFF",
+  },
+  progressSummary: {
     borderRadius: 22,
-    backgroundColor: "#F7F8F4",
+    backgroundColor: "#FFF9EC",
     borderWidth: 1,
     borderColor: "rgba(17,17,17,0.06)",
+    padding: SP[4],
+    gap: SP[3],
+  },
+  progressHeaderRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    justifyContent: "space-between",
+    gap: SP[3],
+  },
+  progressLabel: {
+    fontFamily: FONT,
+    fontSize: 10,
+    letterSpacing: 1,
+    color: "#8A8A8E",
+  },
+  progressTitle: {
+    fontFamily: FONT,
+    fontSize: 17,
+    lineHeight: 22,
+    color: "#111111",
+    marginTop: 3,
+  },
+  progressValue: {
+    fontFamily: FONT,
+    fontSize: 27,
+    lineHeight: 30,
+    color: "#111111",
+  },
+  progressTrack: {
+    height: 8,
+    borderRadius: 999,
+    overflow: "hidden",
+    backgroundColor: "rgba(17,17,17,0.09)",
+  },
+  progressFill: {
+    height: "100%",
+    borderRadius: 999,
+    backgroundColor: "#B4F34D",
+  },
+  insightCard: {
+    minHeight: 94,
+    borderRadius: 24,
+    backgroundColor: "#111111",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
     flexDirection: "row",
     alignItems: "center",
     gap: SP[3],
     paddingHorizontal: SP[4],
-    paddingVertical: SP[3],
+    paddingVertical: SP[4],
+    shadowColor: "#000000",
+    shadowOpacity: 0.16,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 6,
   },
-  gatewayIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: "#EFFAE9",
+  insightIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: "#B4F34D",
     alignItems: "center",
     justifyContent: "center",
   },
-  gatewayTitle: {
-    fontFamily: FONT,
-    fontSize: 15,
-    color: "#111111",
-    letterSpacing: -0.1,
-  },
-  gatewayBody: {
-    fontFamily: "DINNextRounded-Regular",
-    fontSize: 12,
-    lineHeight: 17,
-    color: "#6E6E73",
-    marginTop: 2,
-  },
-  statsRow: {
-    flexDirection: "row",
-    gap: SP[3],
-  },
-  statCard: {
-    flex: 1,
-    minHeight: 86,
-    borderRadius: 22,
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: "rgba(17,17,17,0.07)",
-    alignItems: "center",
-    justifyContent: "center",
-    ...DASH_SHADOW,
-  },
-  statLabel: {
-    fontFamily: "DINNextRounded-Regular",
-    fontSize: 11,
-    color: "#8A8A8E",
-  },
-  statValue: {
-    fontFamily: FONT,
-    fontSize: 22,
-    color: "#111111",
-    marginTop: 3,
-  },
-  statSub: {
-    fontFamily: "DINNextRounded-Regular",
-    fontSize: 11,
-    color: "#6E6E73",
-    marginTop: 1,
-  },
-  coachCard: {
-    minHeight: 112,
-    borderRadius: 28,
-    backgroundColor: "#EFFAE9",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SP[4],
-    paddingHorizontal: SP[5],
-    borderWidth: 1,
-    borderColor: "rgba(88,191,25,0.16)",
-  },
-  coachImageWrap: {
-    width: 78,
-    height: 78,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  coachImage: {
-    width: 92,
-    height: 92,
-  },
-  coachBubble: {
+  insightCopy: {
     flex: 1,
     gap: 3,
   },
-  coachKicker: {
+  insightKicker: {
     fontFamily: FONT,
     fontSize: 10,
-    color: "#58BF19",
     letterSpacing: 1,
+    color: "rgba(255,255,255,0.58)",
   },
-  coachText: {
+  insightText: {
     fontFamily: FONT,
     fontSize: 16,
-    lineHeight: 22,
-    color: "#27581D",
+    lineHeight: 21,
+    color: "#FFFFFF",
   },
   cta: {
     minHeight: 58,
@@ -5612,8 +5553,16 @@ const progressPreviewStyles = StyleSheet.create({
     color: "#FFFFFF",
     letterSpacing: 0.5,
   },
+  ctaNote: {
+    fontFamily: "DINNextRounded-Regular",
+    fontSize: 12,
+    lineHeight: 17,
+    color: "#6E6E73",
+    textAlign: "center",
+    paddingHorizontal: SP[5],
+    marginTop: -SP[2],
+  },
 });
-
 const mockStyles = StyleSheet.create({
   modalRoot: {
     flex: 1,

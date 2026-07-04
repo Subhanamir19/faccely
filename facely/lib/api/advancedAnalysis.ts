@@ -25,7 +25,56 @@ const Score   = z.number().min(0).max(100).default(50);
 // score-tier fallback so the pill always shows something meaningful.
 const Verdict = z.string().max(30).default("");
 
-const AdvancedAnalysisSchema = z.object({
+const HaircutSchema = z.object({
+  density: Line,     density_score: Score,     density_verdict: Verdict,
+  styling: Line,     styling_score: Score,     styling_verdict: Verdict,
+  facial_hair: Line, facial_hair_score: Score, facial_hair_verdict: Verdict,
+}).default({
+  density: "", density_score: 50, density_verdict: "",
+  styling: "", styling_score: 50, styling_verdict: "",
+  facial_hair: "", facial_hair_score: 50, facial_hair_verdict: "",
+});
+
+const HAIRCUT_DEFAULT = HaircutSchema.parse(undefined);
+
+function pickFirst(source: Record<string, unknown>, keys: string[]): unknown {
+  for (const key of keys) {
+    if (source[key] !== undefined) return source[key];
+  }
+  return undefined;
+}
+
+function normalizeHaircutPayload(input: unknown): unknown {
+  if (!input || typeof input !== "object") return input;
+
+  const root = input as Record<string, unknown>;
+  const source =
+    root.haircut ??
+    root.hair ??
+    root.hair_metrics ??
+    root.haircut_metrics ??
+    root.hair_related;
+
+  if (!source || typeof source !== "object") return input;
+
+  const hair = source as Record<string, unknown>;
+  return {
+    ...root,
+    haircut: {
+      density: pickFirst(hair, ["density", "hair_density", "hairline_density"]) ?? HAIRCUT_DEFAULT.density,
+      density_score: pickFirst(hair, ["density_score", "hair_density_score", "hairline_density_score"]) ?? HAIRCUT_DEFAULT.density_score,
+      density_verdict: pickFirst(hair, ["density_verdict", "hair_density_verdict", "hairline_density_verdict"]) ?? HAIRCUT_DEFAULT.density_verdict,
+      styling: pickFirst(hair, ["styling", "hair_styling", "style", "hair_style", "hairstyle"]) ?? HAIRCUT_DEFAULT.styling,
+      styling_score: pickFirst(hair, ["styling_score", "hair_styling_score", "style_score", "hair_style_score", "hairstyle_score"]) ?? HAIRCUT_DEFAULT.styling_score,
+      styling_verdict: pickFirst(hair, ["styling_verdict", "hair_styling_verdict", "style_verdict", "hair_style_verdict", "hairstyle_verdict"]) ?? HAIRCUT_DEFAULT.styling_verdict,
+      facial_hair: pickFirst(hair, ["facial_hair", "facialHair", "beard", "beard_grooming"]) ?? HAIRCUT_DEFAULT.facial_hair,
+      facial_hair_score: pickFirst(hair, ["facial_hair_score", "facialHair_score", "facialHairScore", "beard_score", "beard_grooming_score"]) ?? HAIRCUT_DEFAULT.facial_hair_score,
+      facial_hair_verdict: pickFirst(hair, ["facial_hair_verdict", "facialHair_verdict", "facialHairVerdict", "beard_verdict", "beard_grooming_verdict"]) ?? HAIRCUT_DEFAULT.facial_hair_verdict,
+    },
+  };
+}
+
+const AdvancedAnalysisSchema = z.preprocess(normalizeHaircutPayload, z.object({
   cheekbones: z.object({
     width: Line,          width_score: Score,          width_verdict: Verdict,
     maxilla: Line,        maxilla_score: Score,        maxilla_verdict: Verdict,
@@ -51,9 +100,32 @@ const AdvancedAnalysisSchema = z.object({
     color: Line,   color_score: Score,   color_verdict: Verdict,
     quality: Line, quality_score: Score, quality_verdict: Verdict,
   }),
-});
+  haircut: HaircutSchema,
+}));
 
 export type AdvancedAnalysis = z.infer<typeof AdvancedAnalysisSchema>;
+
+const HAIRCUT_KEYS = ["density", "styling", "facial_hair"] as const;
+
+export function hasAssessedHaircut(data: AdvancedAnalysis | null | undefined): boolean {
+  const haircut = data?.haircut as Record<string, unknown> | null | undefined;
+  if (!haircut) return false;
+
+  return HAIRCUT_KEYS.some((key) => {
+    const score = haircut[`${key}_score`];
+    const commentary = haircut[key];
+    const verdict = haircut[`${key}_verdict`];
+
+    return (
+      typeof score === "number" &&
+      (
+        score !== 50 ||
+        (typeof commentary === "string" && commentary.trim().length > 0) ||
+        (typeof verdict === "string" && verdict.trim().length > 0)
+      )
+    );
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Internal parser

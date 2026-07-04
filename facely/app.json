@@ -2,7 +2,7 @@
   "expo": {
     "name": "Sigma Max",
     "slug": "sigmamax-app",
-    "version": "1.14.0",
+    "version": "1.15.0",
     "orientation": "portrait",
     "icon": "./assets/sigmamax-real-updatred-logo.jpeg",
     "userInterfaceStyle": "light",
@@ -13,7 +13,7 @@
     },
     "ios": {
       "supportsTablet": false,
-      "buildNumber": "22",
+      "buildNumber": "23",
       "bundleIdentifier": "com.sigmamax.app",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
@@ -29,6 +29,9 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
+      "blockedPermissions": [
+        "android.permission.RECORD_AUDIO"
+      ],
       "permissions": [
         "android.permission.CAMERA"
       ]
@@ -42,7 +45,8 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "SigmaMax needs camera access to analyze your facial features and provide personalized recommendations."
+          "cameraPermission": "SigmaMax needs camera access to analyze your facial features and provide personalized recommendations.",
+          "recordAudioAndroid": false
         }
       ],
       [
@@ -60,7 +64,8 @@
         }
       ],
       "expo-web-browser",
-      "./plugins/withExcludeFromBackup"
+      "./plugins/withExcludeFromBackup",
+      "expo-asset"
     ],
     "scheme": "sigmamax",
     "assetBundlePatterns": [

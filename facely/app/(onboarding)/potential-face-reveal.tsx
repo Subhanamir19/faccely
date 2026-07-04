@@ -30,19 +30,20 @@ import Animated, {
 } from "react-native-reanimated";
 
 import T from "@/components/ui/T";
-import { COLORS, RADII, SP } from "@/lib/tokens";
+import { ORANGE_ONBOARDING } from "@/components/onboarding/OrangeOnboardingLayout";
+import { RADII, SP } from "@/lib/tokens";
 import { hapticLight, hapticSuccess } from "@/lib/haptics";
 import { ms, sh, sw } from "@/lib/responsive";
 import { labelForMetric } from "@/lib/potentialFaceLabels";
 import { usePotentialFace, type PotentialFace } from "@/store/potentialFace";
 import { useScores } from "@/store/scores";
 
-const FONT = "ProximaNova-Bold";
+const FONT = ORANGE_ONBOARDING.font;
 
 const CHIP = {
-  bg: "#E2F1D8",
-  border: "#C7E2B4",
-  text: "#1F3D1F",
+  bg: ORANGE_ONBOARDING.orangeSoft,
+  border: "#FFD1A8",
+  text: ORANGE_ONBOARDING.text,
 };
 
 const REVEAL_POLL_TIMEOUT_MS = 180_000;
@@ -400,7 +401,7 @@ function RevealView({
             hitSlop={8}
           >
             {swapping ? (
-              <ActivityIndicator color={COLORS.lightSub} />
+              <ActivityIndicator color={ORANGE_ONBOARDING.muted} />
             ) : (
               <T style={styles.secondaryText}>This doesn't look like me</T>
             )}
@@ -522,22 +523,19 @@ function ImagePreviewModal({
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
       <View style={styles.previewBackdrop}>
         <SafeAreaView style={styles.previewSafe}>
-          <View style={styles.previewHeader}>
-            <T style={styles.previewTitle}>Potential face</T>
-            <Pressable
-              onPress={onClose}
-              accessibilityRole="button"
-              accessibilityLabel="Close full image"
-              hitSlop={12}
-              style={({ pressed }) => [styles.previewClose, pressed && { opacity: 0.72 }]}
-            >
-              <X size={ms(20)} color="#FFFFFF" strokeWidth={2.4} />
-            </Pressable>
-          </View>
           <Pressable onPress={onClose} style={styles.previewImageWrap}>
             {uri ? (
-              <Image source={{ uri }} style={styles.previewImage} resizeMode="contain" />
+              <Image source={{ uri }} style={styles.previewImage} resizeMode="cover" />
             ) : null}
+          </Pressable>
+          <Pressable
+            onPress={onClose}
+            accessibilityRole="button"
+            accessibilityLabel="Close full image"
+            hitSlop={12}
+            style={({ pressed }) => [styles.previewClose, pressed && { opacity: 0.72 }]}
+          >
+            <X size={ms(20)} color="#111111" strokeWidth={2.4} />
           </Pressable>
         </SafeAreaView>
       </View>
@@ -570,7 +568,7 @@ function PrimaryPill({
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: COLORS.lightBg,
+    backgroundColor: ORANGE_ONBOARDING.surface,
   },
   centerScrollContent: {
     flexGrow: 1,
@@ -579,38 +577,42 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   header: {
-    gap: sh(4),
-    marginBottom: SP[3],
+    gap: sh(8),
+    marginBottom: SP[4],
+    alignItems: "center",
+    paddingHorizontal: SP[1],
   },
   eyebrow: {
     fontFamily: FONT,
     fontSize: ms(11),
-    color: COLORS.accentDepth,
+    color: ORANGE_ONBOARDING.orangeDark,
     letterSpacing: 1.6,
   },
   title: {
     fontFamily: FONT,
-    fontSize: ms(25),
-    color: COLORS.lightText,
-    lineHeight: ms(28),
+    fontSize: ms(29, 0.18),
+    color: ORANGE_ONBOARDING.text,
+    lineHeight: ms(35, 0.18),
     letterSpacing: 0,
+    textAlign: "center",
   },
   subtitle: {
     fontFamily: FONT,
-    fontSize: ms(12),
-    color: COLORS.lightSub,
-    lineHeight: ms(16),
+    fontSize: ms(15, 0.18),
+    color: ORANGE_ONBOARDING.muted,
+    lineHeight: ms(22, 0.18),
+    textAlign: "center",
   },
   heroWrap: {
     alignSelf: "center",
     justifyContent: "center",
   },
   heroCard: {
-    borderRadius: RADII.lg,
+    borderRadius: ms(24),
     overflow: "hidden",
-    backgroundColor: COLORS.lightCard,
+    backgroundColor: ORANGE_ONBOARDING.surface,
     borderWidth: 1,
-    borderColor: COLORS.lightBorder,
+    borderColor: ORANGE_ONBOARDING.border,
     shadowColor: "#000000",
     shadowOpacity: 0.14,
     shadowRadius: 26,
@@ -655,7 +657,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     borderWidth: 2,
     borderColor: "#FFFFFF",
-    backgroundColor: COLORS.lightSurfaceAlt,
+    backgroundColor: ORANGE_ONBOARDING.orangeSoft,
     shadowColor: "#000000",
     shadowOpacity: 0.18,
     shadowRadius: 14,
@@ -678,7 +680,7 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
   imagePlaceholder: {
-    backgroundColor: COLORS.lightSurfaceAlt,
+    backgroundColor: ORANGE_ONBOARDING.orangeSoft,
   },
   improvementsBlock: {
     marginTop: SP[4],
@@ -687,7 +689,7 @@ const styles = StyleSheet.create({
   improvementsLabel: {
     fontFamily: FONT,
     fontSize: ms(11),
-    color: COLORS.lightMuted,
+    color: ORANGE_ONBOARDING.muted,
     letterSpacing: 1.4,
   },
   chipRow: {
@@ -713,7 +715,7 @@ const styles = StyleSheet.create({
     width: ms(6),
     height: ms(6),
     borderRadius: 999,
-    backgroundColor: COLORS.accentDepth,
+    backgroundColor: ORANGE_ONBOARDING.orange,
   },
   chipText: {
     fontFamily: FONT,
@@ -727,18 +729,23 @@ const styles = StyleSheet.create({
   },
   primaryPill: {
     minHeight: sh(56),
-    borderRadius: 999,
-    backgroundColor: COLORS.ctaBlack,
+    borderRadius: ms(17),
+    backgroundColor: ORANGE_ONBOARDING.orange,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: sw(6),
     paddingVertical: sh(16),
     paddingHorizontal: sw(20),
+    shadowColor: ORANGE_ONBOARDING.orange,
+    shadowOpacity: 0.2,
+    shadowRadius: ms(16),
+    shadowOffset: { width: 0, height: ms(7) },
+    elevation: 4,
   },
   primaryPillText: {
     fontFamily: FONT,
-    fontSize: ms(15, 0.3),
+    fontSize: ms(17, 0.18),
     color: "#FFFFFF",
     letterSpacing: 0.4,
   },
@@ -751,7 +758,7 @@ const styles = StyleSheet.create({
   secondaryText: {
     fontFamily: FONT,
     fontSize: ms(12),
-    color: COLORS.lightSub,
+    color: ORANGE_ONBOARDING.muted,
     letterSpacing: 0,
   },
   secondaryPlaceholder: {
@@ -766,11 +773,11 @@ const styles = StyleSheet.create({
   polishingPreview: {
     width: ms(178),
     height: ms(222),
-    borderRadius: RADII.lg,
+    borderRadius: ms(24),
     overflow: "hidden",
-    backgroundColor: COLORS.lightSurfaceAlt,
+    backgroundColor: ORANGE_ONBOARDING.orangeSoft,
     borderWidth: 1,
-    borderColor: COLORS.lightBorder,
+    borderColor: ORANGE_ONBOARDING.border,
     shadowColor: "#000000",
     shadowOpacity: 0.12,
     shadowRadius: 18,
@@ -803,13 +810,13 @@ const styles = StyleSheet.create({
   polishingTitle: {
     fontFamily: FONT,
     fontSize: ms(20),
-    color: COLORS.lightText,
+    color: ORANGE_ONBOARDING.text,
     textAlign: "center",
   },
   polishingSubtitle: {
     fontFamily: FONT,
     fontSize: ms(13),
-    color: COLORS.lightSub,
+    color: ORANGE_ONBOARDING.muted,
     textAlign: "center",
     maxWidth: ms(280),
     lineHeight: ms(18),
@@ -831,7 +838,7 @@ const styles = StyleSheet.create({
   fallbackTitle: {
     fontFamily: FONT,
     fontSize: ms(24),
-    color: COLORS.lightText,
+    color: ORANGE_ONBOARDING.text,
     textAlign: "center",
     lineHeight: ms(28),
     letterSpacing: 0,
@@ -839,45 +846,31 @@ const styles = StyleSheet.create({
   fallbackBody: {
     fontFamily: FONT,
     fontSize: ms(13),
-    color: COLORS.lightSub,
+    color: ORANGE_ONBOARDING.muted,
     textAlign: "center",
     lineHeight: ms(18),
     marginTop: sh(4),
   },
   previewBackdrop: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.94)",
+    backgroundColor: "#000000",
   },
   previewSafe: {
     flex: 1,
   },
-  previewHeader: {
-    minHeight: sh(58),
-    paddingHorizontal: SP[4],
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  previewTitle: {
-    fontFamily: FONT,
-    fontSize: ms(14),
-    color: "#FFFFFF",
-    letterSpacing: 0.2,
-  },
   previewClose: {
+    position: "absolute",
+    top: SP[4],
+    right: SP[4],
     width: ms(42),
     height: ms(42),
     borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.12)",
+    backgroundColor: "rgba(255,255,255,0.92)",
     alignItems: "center",
     justifyContent: "center",
   },
   previewImageWrap: {
     flex: 1,
-    paddingHorizontal: SP[3],
-    paddingBottom: SP[5],
-    alignItems: "center",
-    justifyContent: "center",
   },
   previewImage: {
     width: "100%",

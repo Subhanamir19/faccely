@@ -5,7 +5,6 @@
 // (dashed = future/estimate). Counterfactual "no routine" is a muted red curve.
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Dimensions,
   StyleSheet,
   StatusBar,
   Pressable,
@@ -42,38 +41,26 @@ import { ChevronLeft } from "lucide-react-native";
 
 import T from "@/components/ui/T";
 import { COLORS, RADII, SP, getProgressForStep } from "@/lib/tokens";
-import { ms, sh } from "@/lib/responsive";
+import { ms, sh, useResponsiveScale } from "@/lib/responsive";
 import { hapticLight, hapticSuccess } from "@/lib/haptics";
 import { useOnboarding } from "@/store/onboarding";
+import OrangeOnboardingLayout, {
+  OrangePrimaryButton,
+  ORANGE_ONBOARDING,
+} from "@/components/onboarding/OrangeOnboardingLayout";
 
-const FONT_BOLD = "ProximaNova-Bold";
-const LIME = "#B4F34D";        // bright fill — chart line, fills, dots, progress
-const SAGE = "#3F7A2A";        // dark readable — text on white & lime-soft
-const SAGE_SOFT = "#ECFCCB";   // pale lime — waypoint chip bg
+const FONT_BOLD = ORANGE_ONBOARDING.font;
+const LIME = "#35A854";
+const SAGE = "#237A3A";
+const SAGE_SOFT = "#EAF7EE";
 
 // ---------------------------------------------------------------------------
 // Chart geometry — mirrors dashboard MiniGraph
 // ---------------------------------------------------------------------------
 
-const { width: SCREEN_W } = Dimensions.get("window");
 const SIDE_PAD = SP[5];
-const CHART_W = SCREEN_W - SIDE_PAD * 2;
-const CHART_H = 210;
-const HERO_H = 180;
 
 const HERO_IMAGE = require("@/assets/onbaording-images/score-projection.png");
-
-const PAD_LEFT = 34;   // room for Y-axis labels
-const PAD_RIGHT = 30;  // room for end dot + DAY 90 label
-const PAD_TOP = 28;    // room for +delta chips above the line
-const PAD_BOT = 24;    // room for X-axis labels
-const INNER_W = CHART_W - PAD_LEFT - PAD_RIGHT;
-const INNER_H = CHART_H - PAD_TOP - PAD_BOT;
-
-// Fixed 0..100 scale (matches the dashboard Y-axis convention)
-const sy = (score: number) =>
-  PAD_TOP + (1 - Math.max(0, Math.min(100, score)) / 100) * INNER_H;
-const sx = (frac: number) => PAD_LEFT + frac * INNER_W;
 
 const START_SCORE = 63;
 const END_SCORE = 90;
@@ -82,25 +69,54 @@ const NO_ROUTINE_END = 52;
 const WAYPOINT_30 = { frac: 1 / 3, score: 69, delta: 6 };
 const WAYPOINT_60 = { frac: 2 / 3, score: 81, delta: 18 };
 
-const Y0 = sy(START_SCORE);
-const YA = sy(END_SCORE);
-const YB = sy(NO_ROUTINE_END);
-const X0 = sx(0);
-const XN = sx(1);
-
 // Projection curve — single smooth cubic, slow start then accelerating.
 // Control-point y-values tuned so the curve passes ~exactly through the
 // WAYPOINT_30 (score 69) and WAYPOINT_60 (score 81) dots.
-const PATH_SIGMA =
-  `M ${X0},${Y0} ` +
-  `C ${sx(0.33)},${sy(64)} ${sx(0.67)},${sy(85)} ${XN},${YA}`;
-
 // Counterfactual — gentle drift down from 63 to 52, single smooth cubic
-const PATH_NOROUTINE =
-  `M ${X0},${Y0} ` +
-  `C ${sx(0.35)},${sy(62)} ${sx(0.65)},${sy(53)} ${XN},${YB}`;
+function createProjectionGeometry(chartWidth: number) {
+  const chartHeight = Math.min(230, Math.max(180, Math.round(chartWidth * 0.595)));
+  const padLeft = Math.min(40, Math.max(30, chartWidth * 0.096));
+  const padRight = Math.min(36, Math.max(28, chartWidth * 0.085));
+  const padTop = Math.min(32, Math.max(24, chartHeight * 0.133));
+  const padBottom = Math.min(28, Math.max(22, chartHeight * 0.114));
+  const innerWidth = chartWidth - padLeft - padRight;
+  const innerHeight = chartHeight - padTop - padBottom;
+  const sy = (score: number) =>
+    padTop + (1 - Math.max(0, Math.min(100, score)) / 100) * innerHeight;
+  const sx = (fraction: number) => padLeft + fraction * innerWidth;
+  const x0 = sx(0);
+  const xn = sx(1);
+  const y0 = sy(START_SCORE);
+  const ya = sy(END_SCORE);
+  const yb = sy(NO_ROUTINE_END);
+  const sigmaPath =
+    `M ${x0},${y0} ` +
+    `C ${sx(0.33)},${sy(64)} ${sx(0.67)},${sy(85)} ${xn},${ya}`;
+  const noRoutinePath =
+    `M ${x0},${y0} ` +
+    `C ${sx(0.35)},${sy(62)} ${sx(0.65)},${sy(53)} ${xn},${yb}`;
 
-const PATH_SIGMA_FILL = PATH_SIGMA + ` L ${XN},${PAD_TOP + INNER_H} L ${X0},${PAD_TOP + INNER_H} Z`;
+  return {
+    chartWidth,
+    chartHeight,
+    padLeft,
+    padRight,
+    padTop,
+    innerHeight,
+    sx,
+    sy,
+    x0,
+    xn,
+    y0,
+    ya,
+    yb,
+    sigmaPath,
+    noRoutinePath,
+    sigmaFillPath:
+      sigmaPath +
+      ` L ${xn},${padTop + innerHeight} L ${x0},${padTop + innerHeight} Z`,
+  };
+}
 
 // ---------------------------------------------------------------------------
 
@@ -173,6 +189,7 @@ function PulsingEndDot({ cx, cy, delay }: { cx: number; cy: number; delay: numbe
 
 export default function ScoreProjectionScreen() {
   const insets = useSafeAreaInsets();
+  const responsive = useResponsiveScale();
   const improveFocus = useOnboarding((s) => s.data.improveFocus);
   const goals = useOnboarding((s) => s.data.goals);
 
@@ -182,6 +199,28 @@ export default function ScoreProjectionScreen() {
     if (goals && goals.length > 0) return "routine";
     return "daily routine";
   }, [improveFocus, goals]);
+
+  const chartWidth = Math.min(560, Math.max(240, responsive.width - SIDE_PAD * 2));
+  const geometry = useMemo(() => createProjectionGeometry(chartWidth), [chartWidth]);
+  const {
+    chartWidth: CHART_W,
+    chartHeight: CHART_H,
+    padLeft: PAD_LEFT,
+    padRight: PAD_RIGHT,
+    padTop: PAD_TOP,
+    innerHeight: INNER_H,
+    sx,
+    sy,
+    x0: X0,
+    xn: XN,
+    y0: Y0,
+    ya: YA,
+    yb: YB,
+    sigmaPath: PATH_SIGMA,
+    noRoutinePath: PATH_NOROUTINE,
+    sigmaFillPath: PATH_SIGMA_FILL,
+  } = geometry;
+  const axisLabelWidth = Math.min(52, Math.max(40, CHART_W * 0.125));
 
   // Reveal: both lines draw left-to-right via strokeDashoffset.
   const DASH_LEN = Math.ceil(CHART_W * 2.5);
@@ -281,8 +320,12 @@ export default function ScoreProjectionScreen() {
   const wp60Y = sy(WAYPOINT_60.score);
 
   return (
-    <View style={styles.screen}>
-      <StatusBar barStyle="light-content" />
+    <OrangeOnboardingLayout
+      headerImage={HERO_IMAGE}
+      headerImageMode="contain"
+      scrollable={false}
+      footer={<OrangePrimaryButton label="See my plan" onPress={handleContinue} />}
+    >
 
       {/* Top row: circular back + progress */}
       <View style={[styles.topRow, { paddingTop: insets.top + SP[2] }]}>
@@ -322,7 +365,7 @@ export default function ScoreProjectionScreen() {
 
         {/* Chart */}
         <View style={styles.chartCard}>
-          <View style={styles.chart}>
+          <View style={[styles.chart, { width: CHART_W, height: CHART_H }]}>
             <Svg width={CHART_W} height={CHART_H}>
               <Defs>
                 <SvgGradient id="sigmaFill" x1="0" y1="0" x2="0" y2="1">
@@ -438,14 +481,20 @@ export default function ScoreProjectionScreen() {
               { label: "DAY 60", x: sx(WAYPOINT_60.frac) },
               { label: "DAY 90", x: XN },
             ].map((tick) => (
-              <T key={tick.label} style={[styles.axisLabel, { left: tick.x - 22 }]}>
+              <T
+                key={tick.label}
+                style={[
+                  styles.axisLabel,
+                  { left: tick.x - axisLabelWidth / 2, width: axisLabelWidth },
+                ]}
+              >
                 {tick.label}
               </T>
             ))}
           </View>
 
           {/* Legend */}
-          <View style={styles.legend}>
+          <View style={[styles.legend, { paddingHorizontal: PAD_LEFT }]}>
             <View style={styles.legendItem}>
               <View style={[styles.legendLine, { backgroundColor: LIME }]} />
               <T style={styles.legendText}>With SigmaMax</T>
@@ -475,7 +524,7 @@ export default function ScoreProjectionScreen() {
           <T style={styles.ctaText}>SEE MY PLAN</T>
         </Pressable>
       </View>
-    </View>
+    </OrangeOnboardingLayout>
   );
 }
 
@@ -483,6 +532,7 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: COLORS.lightBg },
 
   topRow: {
+    display: "none",
     flexDirection: "row",
     alignItems: "center",
     gap: SP[3],
@@ -514,30 +564,31 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   contentInner: {
-    paddingHorizontal: SIDE_PAD,
+    paddingHorizontal: 0,
     paddingTop: SP[3],
     paddingBottom: SP[4],
   },
 
   heroWrap: {
+    display: "none",
     alignItems: "center",
     marginBottom: SP[3],
   },
   heroImage: {
     width: "100%",
-    height: HERO_H,
+    aspectRatio: 2,
   },
   headline: {
     fontFamily: FONT_BOLD,
     fontSize: ms(28),
     lineHeight: ms(34),
-    letterSpacing: -0.5,
+    letterSpacing: 0,
     color: COLORS.lightText,
     textAlign: "left",
     marginBottom: SP[2],
   },
   subtext: {
-    fontFamily: "Poppins-Regular",
+    fontFamily: ORANGE_ONBOARDING.font,
     fontSize: ms(14),
     lineHeight: ms(20),
     color: COLORS.lightSub,
@@ -552,11 +603,11 @@ const styles = StyleSheet.create({
     borderColor: COLORS.lightHairline,
     paddingVertical: SP[4],
     paddingHorizontal: 0,
+    overflow: "hidden",
   },
   chart: {
     position: "relative",
-    width: CHART_W,
-    height: CHART_H,
+    alignSelf: "center",
   },
   wpLabel: {
     position: "absolute",
@@ -581,7 +632,6 @@ const styles = StyleSheet.create({
   },
   axisLabel: {
     position: "absolute",
-    width: 44,
     textAlign: "center",
     fontFamily: FONT_BOLD,
     fontSize: 10,
@@ -594,7 +644,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: SP[5],
     marginTop: SP[3],
-    paddingHorizontal: PAD_LEFT,
   },
   legendItem: {
     flexDirection: "row",
@@ -607,7 +656,7 @@ const styles = StyleSheet.create({
     borderRadius: 2,
   },
   legendText: {
-    fontFamily: "Poppins-Regular",
+    fontFamily: ORANGE_ONBOARDING.font,
     fontSize: ms(12),
     color: COLORS.lightSub,
   },
@@ -618,7 +667,7 @@ const styles = StyleSheet.create({
     marginBottom: SP[4],
   },
   insightLeadCentered: {
-    fontFamily: "Poppins-Regular",
+    fontFamily: ORANGE_ONBOARDING.font,
     fontSize: ms(13),
     lineHeight: ms(18),
     letterSpacing: 0.2,
@@ -634,6 +683,7 @@ const styles = StyleSheet.create({
     marginTop: SP[1],
   },
   footer: {
+    display: "none",
     paddingTop: SP[3],
     paddingHorizontal: SIDE_PAD,
     backgroundColor: COLORS.lightBg,

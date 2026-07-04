@@ -312,6 +312,9 @@ export const SHADOWS = {
 export const ONBOARDING_FLOW = {
   steps: [
     { key: "splash", label: "Splash" },
+    { key: "random-glowup", label: "Random Glowup" },
+    { key: "sigma-choice", label: "SigmaMax Choice" },
+    { key: "feature-sequence", label: "Feature Sequence" },
     { key: "warmup", label: "Warmup" },
     { key: "goals", label: "Goals" },
     { key: "gender", label: "Gender" },

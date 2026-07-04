@@ -5,6 +5,7 @@
 import React, { useEffect } from "react";
 import { View, Image, StyleSheet, Dimensions } from "react-native";
 import Animated, {
+  type SharedValue,
   useSharedValue,
   useAnimatedStyle,
   withRepeat,
@@ -71,7 +72,7 @@ function Callout({ zone, delay = 0 }: { zone: string; delay?: number }) {
 
 /* ─── Emotion veil (separate component to avoid hook-in-JSX) ─────────────── */
 
-function EmotionVeil({ sharedVal }: { sharedVal: Animated.SharedValue<number> }) {
+function EmotionVeil({ sharedVal }: { sharedVal: SharedValue<number> }) {
   const style = useAnimatedStyle(() => ({
     opacity: sharedVal.value,
   }));

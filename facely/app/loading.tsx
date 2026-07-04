@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Alert } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 
 import CinematicLoader from "@/components/ui/CinematicLoader";
 
@@ -355,8 +355,14 @@ export default function LoadingScreen() {
         if (!scanId) {
           throw new Error("Scan was scored but not saved. Please try again later.");
         }
-        const analyzedFrontUri = scoreState.imageUri ?? frontMeta.uri;
-        const analyzedSideUri = scoreState.sideImageUri ?? sideMeta.uri;
+        const { data: advancedData, error: advancedError } = await useAdvancedAnalysis
+          .getState()
+          .ensureFetched();
+        if (cancelled) return;
+
+        if (!advancedData) {
+          throw new Error(advancedError ?? "Advanced analysis did not return results.");
+        }
 
         let generationStarted = false;
         try {
@@ -369,7 +375,6 @@ export default function LoadingScreen() {
           console.warn("[loading] onboarding potential face generation did not finish:", generationError);
         }
 
-        explainPair(analyzedFrontUri, analyzedSideUri, scores).catch(() => {});
         useOnboarding.getState().clearScanPhotos();
         setIsLoading(false);
         router.replace(generationStarted ? "/(onboarding)/potential-face-reveal" : "/(onboarding)/potential-face-bridge");
@@ -438,5 +443,12 @@ export default function LoadingScreen() {
   const photoUri = front
     ? safeDecode(front)
     : storedImageUri ?? undefined;
-  return <CinematicLoader loading={isLoading} photoUri={photoUri} />;
+  const isPostPaywallLoading = mode === "onboardingPotentialFace" || onboardingFlow;
+  return (
+    <CinematicLoader
+      loading={isLoading}
+      photoUri={photoUri}
+      appearance={isPostPaywallLoading ? "onboarding" : "default"}
+    />
+  );
 }

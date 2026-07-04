@@ -25,6 +25,7 @@ import InputBar from "../../components/sigma/InputBar";
 import { COLORS } from "../../lib/tokens";
 import { type SigmaMessage } from "../../lib/types/sigma";
 import { useSigmaStore } from "../../store/sigma";
+import { FLOATING_TAB_BAR } from "@/components/layout/floatingTabBar";
 
 const SUGGESTIONS = [
   "Do chin tucks work?",
@@ -131,7 +132,8 @@ export default function SigmaScreen() {
   const lastChipRef = useRef<string | null>(null);
 
   const messages = thread?.messages ?? [];
-  const bottomPadding = 60 + 24 + insets.bottom;
+  const tabClearance = Math.max(insets.bottom + 24, FLOATING_TAB_BAR.contentClearance);
+  const bottomPadding = 60 + tabClearance;
 
   useEffect(() => {
     ensureThread().catch(() => {
@@ -298,7 +300,7 @@ export default function SigmaScreen() {
           </View>
         </View>
 
-        <View style={[styles.inputContainer, { paddingBottom: insets.bottom + 24 }]}>
+        <View style={[styles.inputContainer, { paddingBottom: tabClearance }]}>
           <InputBar
             value={inputValue}
             onChange={handleChange}

@@ -2,45 +2,106 @@
 import React from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { Tabs } from "expo-router";
+import { BlurView } from "expo-blur";
+import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import * as Haptics from "expo-haptics";
-import { Scan, CircleCheckBig, UserRound, TrendingUp } from "lucide-react-native";
+import { Scan, CircleCheckBig, UserRound, TrendingUp, Wrench } from "lucide-react-native";
+import { APP_SCREEN_BG } from "@/components/layout/AppGradientBackground";
+import { FLOATING_TAB_BAR } from "@/components/layout/floatingTabBar";
 
-const ACTIVE_ICON   = "#FEF5E4";              // cream icon on active black chip
-const INACTIVE_ICON = "rgba(11,11,11,0.45)";  // muted dark
-const BAR_BG        = "#FEF5E4";              // soft cream pill
-const ACTIVE_BG     = "#0B0B0B";              // active black chip
+const LIGHT_TAB_THEME = {
+  tint: "light" as const,
+  blurIntensity: 42,
+  shell: "rgba(255,248,236,0.82)",
+  border: "rgba(255,255,255,0.72)",
+  activeBg: "#0B0B0B",
+  activeIcon: APP_SCREEN_BG,
+  inactiveIcon: "rgba(11,11,11,0.46)",
+  shadow: "#7A3A10",
+  fadeColors: ["rgba(254,245,228,0)", "rgba(254,245,228,0.20)", "rgba(254,245,228,0.52)"] as const,
+};
 
-// ---------------------------------------------------------------------------
-// Custom floating tab bar
-// ---------------------------------------------------------------------------
+const DARK_TAB_THEME = {
+  tint: "dark" as const,
+  blurIntensity: 36,
+  shell: "rgba(18,18,18,0.78)",
+  border: "rgba(255,255,255,0.10)",
+  activeBg: APP_SCREEN_BG,
+  activeIcon: "#0B0B0B",
+  inactiveIcon: "rgba(255,255,255,0.56)",
+  shadow: "#000000",
+  fadeColors: ["rgba(0,0,0,0)", "rgba(0,0,0,0.18)", "rgba(0,0,0,0.46)"] as const,
+};
 
-// Pill metrics — keep in sync with styles below
-const PILL_HEIGHT    = 72; // tab 56 + paddingVertical 8×2
-const PILL_MARGIN_H  = 20; // left/right inset
-const PILL_GAP_BOTTOM = 10; // gap between pill bottom and safe area top
+const DARK_SURFACE_ROUTES = new Set(["dev"]);
+
+const PILL_HEIGHT = FLOATING_TAB_BAR.pillHeight;
+const PILL_MARGIN_H = FLOATING_TAB_BAR.marginHorizontal;
+const PILL_GAP_BOTTOM = FLOATING_TAB_BAR.gapBottom;
+
+function getTabTheme(routeName?: string) {
+  return routeName && DARK_SURFACE_ROUTES.has(routeName) ? DARK_TAB_THEME : LIGHT_TAB_THEME;
+}
+
 function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const safeBottom = Math.max(insets.bottom, 8);
+  const activeRoute = state.routes[state.index];
+  const activeParams = activeRoute?.params as
+    | { onboardingFlow?: string }
+    | undefined;
 
-  // This View participates in normal layout flow — React Navigation measures
-  // its height and pushes ALL screen content up by exactly this amount.
-  // The pill then floats absolutely inside this reserved space.
-  const reservedHeight = PILL_HEIGHT + PILL_GAP_BOTTOM + safeBottom;
+  if (activeParams?.onboardingFlow === "1") {
+    return null;
+  }
 
+  const theme = getTabTheme(activeRoute?.name);
   const visibleRoutes = state.routes.filter(
-    (route) => !!descriptors[route.key].options.tabBarIcon
+    (route) => !!descriptors[route.key].options.tabBarIcon,
   );
 
+  const floatingHeight = FLOATING_TAB_BAR.backdropFadeHeight + safeBottom;
+
   return (
-    <View style={{ height: reservedHeight, backgroundColor: BAR_BG }}>
-      {/* Absolutely positioned pill floats on top of the reserved space */}
-      <View style={[styles.wrapper, { bottom: safeBottom + PILL_GAP_BOTTOM }]}>
-        <View style={styles.pill}>
+    <View pointerEvents="box-none" style={[styles.floatingRoot, { height: floatingHeight }]}>
+      <LinearGradient
+        pointerEvents="none"
+        colors={theme.fadeColors}
+        locations={[0, 0.48, 1]}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 1 }}
+        style={styles.backdropFade}
+      />
+
+      <View
+        pointerEvents="box-none"
+        style={[
+          styles.wrapper,
+          {
+            bottom: safeBottom + PILL_GAP_BOTTOM,
+            left: PILL_MARGIN_H,
+            right: PILL_MARGIN_H,
+          },
+        ]}
+      >
+        <View
+          style={[
+            styles.pill,
+            {
+              backgroundColor: theme.shell,
+              borderColor: theme.border,
+              shadowColor: theme.shadow,
+            },
+          ]}
+        >
+          <BlurView intensity={theme.blurIntensity} tint={theme.tint} style={StyleSheet.absoluteFill} />
+          <View style={styles.pillTint} />
+
           {visibleRoutes.map((route) => {
             const { options } = descriptors[route.key];
-            const isFocused = state.routes[state.index]?.key === route.key;
+            const isFocused = activeRoute?.key === route.key;
 
             const onPress = () => {
               const event = navigation.emit({
@@ -58,13 +119,18 @@ function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
               <Pressable
                 key={route.key}
                 onPress={onPress}
-                style={[styles.tab, isFocused && styles.tabActive]}
+                style={({ pressed }) => [
+                  styles.tab,
+                  isFocused && { backgroundColor: theme.activeBg },
+                  pressed && styles.tabPressed,
+                ]}
                 accessibilityRole="button"
                 accessibilityState={isFocused ? { selected: true } : {}}
                 accessibilityLabel={options.title}
+                hitSlop={4}
               >
                 {options.tabBarIcon?.({
-                  color: isFocused ? ACTIVE_ICON : INACTIVE_ICON,
+                  color: isFocused ? theme.activeIcon : theme.inactiveIcon,
                   size: 24,
                   focused: isFocused,
                 })}
@@ -78,24 +144,37 @@ function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
 }
 
 const styles = StyleSheet.create({
+  floatingRoot: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "transparent",
+  },
+  backdropFade: {
+    ...StyleSheet.absoluteFillObject,
+  },
   wrapper: {
     position: "absolute",
-    left: PILL_MARGIN_H,
-    right: PILL_MARGIN_H,
   },
   pill: {
+    height: PILL_HEIGHT,
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: BAR_BG,
     borderRadius: 44,
+    borderWidth: 1,
     paddingVertical: 8,
     paddingHorizontal: 8,
     gap: 4,
-    shadowColor: "#000000",
-    shadowOpacity: 0.10,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 8,
+    overflow: "hidden",
+    shadowOpacity: 0.16,
+    shadowRadius: 26,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 10,
+  },
+  pillTint: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(255,255,255,0.04)",
   },
   tab: {
     flex: 1,
@@ -104,14 +183,10 @@ const styles = StyleSheet.create({
     height: 56,
     borderRadius: 32,
   },
-  tabActive: {
-    backgroundColor: ACTIVE_BG,
+  tabPressed: {
+    opacity: 0.76,
   },
 });
-
-// ---------------------------------------------------------------------------
-// Layout
-// ---------------------------------------------------------------------------
 
 export default function TabsLayout() {
   return (
@@ -120,12 +195,11 @@ export default function TabsLayout() {
       tabBar={(props) => <FloatingTabBar {...props} />}
       screenOptions={{
         headerShown: false,
-        tabBarStyle: { backgroundColor: BAR_BG, borderTopWidth: 0, elevation: 0 },
+        tabBarStyle: { position: "absolute", backgroundColor: "transparent", borderTopWidth: 0, elevation: 0 },
         // @ts-expect-error sceneContainerStyle exists at runtime; types lag.
-        sceneContainerStyle: { backgroundColor: "#FFFFFF" },
+        sceneContainerStyle: { backgroundColor: APP_SCREEN_BG },
       }}
     >
-      {/* Tab 1: scan */}
       <Tabs.Screen
         name="take-picture"
         options={{
@@ -134,7 +208,6 @@ export default function TabsLayout() {
         }}
       />
 
-      {/* Tab 2: exercises */}
       <Tabs.Screen
         name="program"
         options={{
@@ -143,11 +216,9 @@ export default function TabsLayout() {
         }}
       />
 
-      {/* hidden screens */}
       <Tabs.Screen name="ten-by-ten" options={{ href: null }} />
       <Tabs.Screen name="new-exercises-preview" options={{ href: null }} />
 
-      {/* Tab 3: progress */}
       <Tabs.Screen
         name="dashboard"
         options={{
@@ -156,7 +227,6 @@ export default function TabsLayout() {
         }}
       />
 
-      {/* Tab 4: profile */}
       <Tabs.Screen
         name="profile"
         options={{
@@ -165,18 +235,23 @@ export default function TabsLayout() {
         }}
       />
 
-      {/* hidden */}
+      <Tabs.Screen
+        name="dev"
+        options={{
+          title: "Dev",
+          tabBarIcon: ({ color, size }) => <Wrench color={color} size={size ?? 24} />,
+          tabBarButton: () => null,
+        }}
+      />
+
       <Tabs.Screen name="sigma" options={{ href: null }} />
-
-      <Tabs.Screen name="dev" options={{ href: null }} />
-
-      {/* Keep routes, hide from bar */}
-      <Tabs.Screen name="history"    options={{ href: null }} />
-      <Tabs.Screen name="protocols"  options={{ href: null }} />
+      <Tabs.Screen name="history" options={{ href: null }} />
+      <Tabs.Screen name="protocols" options={{ href: null }} />
       <Tabs.Screen name="_protocols" options={{ href: null }} />
-      <Tabs.Screen name="routine"    options={{ href: null }} />
-      <Tabs.Screen name="score"      options={{ href: null }} />
-      <Tabs.Screen name="analysis"   options={{ href: null }} />
+      <Tabs.Screen name="routine" options={{ href: null }} />
+      <Tabs.Screen name="score" options={{ href: null }} />
+      <Tabs.Screen name="next-focus" options={{ href: null }} />
+      <Tabs.Screen name="analysis" options={{ href: null }} />
     </Tabs>
   );
 }

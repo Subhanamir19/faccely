@@ -1,14 +1,12 @@
 // app/(onboarding)/goals.tsx
-// Multi-select goals — 2×3 grid of image cards. Each card maps to a face
-// area whose visual comes from the shared scoring images so the choice
-// previews exactly what gets scored later in the app.
-import React, { useCallback, useState, useEffect } from "react";
+// Multi-select goals - 2x3 grid of image cards. Each card maps to a face area.
+import React, { useCallback, useEffect, useState } from "react";
 import {
-  View,
-  StyleSheet,
-  Pressable,
   Image,
-  useWindowDimensions,
+  Pressable,
+  StyleSheet,
+  View,
+  type LayoutChangeEvent,
 } from "react-native";
 import { router } from "expo-router";
 import { Check } from "lucide-react-native";
@@ -18,21 +16,23 @@ import Animated, {
   interpolateColor,
   useAnimatedStyle,
   useSharedValue,
-  withSequence,
   withSpring,
   withTiming,
 } from "react-native-reanimated";
 
 import T from "@/components/ui/T";
-import { OnboardingScreenV2 } from "@/components/onboarding";
 import { COLORS, RADII, SP } from "@/lib/tokens";
-import { ms, sh, sw } from "@/lib/responsive";
 import { hapticSelection } from "@/lib/haptics";
+import { ms, sh, sw } from "@/lib/responsive";
 import { useOnboarding } from "@/store/onboarding";
+import OrangeOnboardingLayout, {
+  ORANGE_ONBOARDING,
+} from "@/components/onboarding/OrangeOnboardingLayout";
 
-const FONT_BOLD = "ProximaNova-Bold";
-const LIME = "#B4F34D";        // bright fill — active border, check chip
-const SAGE_SOFT = "#ECFCCB";   // pale lime — active card bg
+const FONT_BOLD = ORANGE_ONBOARDING.fontBold;
+const ORANGE = ORANGE_ONBOARDING.orange;
+const ORANGE_SOFT = ORANGE_ONBOARDING.orangeSoft;
+const GAP = sw(12);
 const SOFT_SHADOW = {
   shadowColor: "#000000",
   shadowOpacity: 0.06,
@@ -41,8 +41,6 @@ const SOFT_SHADOW = {
   elevation: 2,
 } as const;
 
-// Order maps to grid reading order (left→right, top→bottom). Existing store
-// keys are preserved so callers reading `data.goals` keep working.
 type GoalCard = {
   key: string;
   label: string;
@@ -50,23 +48,23 @@ type GoalCard = {
 };
 
 const GOAL_CARDS: GoalCard[] = [
-  { key: "jawline",    label: "Jawline",      image: require("@/assets/scoring-images/jawline.png") },
-  { key: "cheekbones", label: "Cheekbones",   image: require("@/assets/scoring-images/cheekbones.png") },
-  { key: "overall",    label: "Full Face",    image: require("@/assets/scoring-images/fullface-vector.png") },
-  { key: "eyes",       label: "Eye Area",     image: require("@/assets/scoring-images/eyearea-vector.png") },
-  { key: "symmetry",   label: "Symmetry",     image: require("@/assets/scoring-images/symmetry.png") },
-  { key: "skin",       label: "Face Muscles", image: require("@/assets/scoring-images/skin-quality.png") },
+  { key: "jawline", label: "Jawline", image: require("@/assets/scoring-images/jawline.png") },
+  { key: "cheekbones", label: "Cheekbones", image: require("@/assets/scoring-images/cheekbones.png") },
+  { key: "overall", label: "Full Face", image: require("@/assets/scoring-images/fullface-vector.png") },
+  { key: "eyes", label: "Eye Area", image: require("@/assets/scoring-images/eyearea-vector.png") },
+  { key: "symmetry", label: "Symmetry", image: require("@/assets/scoring-images/symmetry.png") },
+  { key: "skin", label: "Face Muscles", image: require("@/assets/scoring-images/skin-quality.png") },
 ];
 
 export default function GoalsScreen() {
-  const setField    = useOnboarding((s) => s.setField);
-  const savedGoals  = useOnboarding((s) => s.data.goals);
+  const setField = useOnboarding((state) => state.setField);
+  const savedGoals = useOnboarding((state) => state.data.goals);
   const [selected, setSelected] = useState<string[]>(savedGoals ?? []);
 
   const toggle = useCallback((key: string) => {
     hapticSelection();
     setSelected((prev) =>
-      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key],
+      prev.includes(key) ? prev.filter((item) => item !== key) : [...prev, key],
     );
   }, []);
 
@@ -77,23 +75,19 @@ export default function GoalsScreen() {
   }, [selected, setField]);
 
   return (
-    <OnboardingScreenV2
+    <OrangeOnboardingLayout
+      presentation="sequence"
       stepKey="goals"
       title="What do you want to improve?"
-      subtitle="Select all that apply — we'll personalize your plan around them"
+      subtitle="Select all that apply - we'll personalize your plan around them"
       onPrimary={handleNext}
       primaryDisabled={selected.length === 0}
+      sheetContentStyle={styles.screenContent}
     >
-      <GoalGrid
-        cards={GOAL_CARDS}
-        selected={selected}
-        onToggle={toggle}
-      />
-    </OnboardingScreenV2>
+      <GoalGrid cards={GOAL_CARDS} selected={selected} onToggle={toggle} />
+    </OrangeOnboardingLayout>
   );
 }
-
-// ─── Grid ──────────────────────────────────────────────────────────────────
 
 function GoalGrid({
   cards,
@@ -104,30 +98,34 @@ function GoalGrid({
   selected: string[];
   onToggle: (key: string) => void;
 }) {
-  const { width: winW } = useWindowDimensions();
-  // OnboardingScreenV2 applies SP[5] horizontal padding; subtract twice + gap
-  // to compute card width that fills the row exactly.
-  const HORIZONTAL_PAD = SP[5];
-  const GAP            = sw(12);
-  const cardWidth      = (winW - HORIZONTAL_PAD * 2 - GAP) / 2;
+  const [gridWidth, setGridWidth] = useState(0);
+  const cardWidth = gridWidth > 0 ? Math.floor((gridWidth - GAP) / 2) : 0;
+
+  const handleLayout = useCallback((event: LayoutChangeEvent) => {
+    const nextWidth = Math.floor(event.nativeEvent.layout.width);
+    setGridWidth((current) => (current === nextWidth ? current : nextWidth));
+  }, []);
 
   return (
-    <View style={[styles.grid, { gap: GAP }]}>
-      {cards.map((c, idx) => (
-        <Animated.View
-          key={c.key}
-          entering={FadeInDown.delay(idx * 60)
-            .duration(320)
-            .easing(Easing.out(Easing.cubic))}
-        >
-          <GoalCardView
-            card={c}
-            width={cardWidth}
-            isActive={selected.includes(c.key)}
-            onPress={() => onToggle(c.key)}
-          />
-        </Animated.View>
-      ))}
+    <View onLayout={handleLayout} style={[styles.grid, { columnGap: GAP, rowGap: GAP }]}>
+      {cardWidth > 0
+        ? cards.map((card, index) => (
+            <Animated.View
+              key={card.key}
+              entering={FadeInDown.delay(index * 35)
+                .duration(200)
+                .easing(Easing.out(Easing.cubic))}
+              style={{ width: cardWidth }}
+            >
+              <GoalCardView
+                card={card}
+                width={cardWidth}
+                isActive={selected.includes(card.key)}
+                onPress={() => onToggle(card.key)}
+              />
+            </Animated.View>
+          ))
+        : null}
     </View>
   );
 }
@@ -143,7 +141,7 @@ function GoalCardView({
   isActive: boolean;
   onPress: () => void;
 }) {
-  const press  = useSharedValue(0);
+  const press = useSharedValue(0);
   const active = useSharedValue(isActive ? 1 : 0);
 
   useEffect(() => {
@@ -151,26 +149,13 @@ function GoalCardView({
       duration: 220,
       easing: Easing.out(Easing.cubic),
     });
-  }, [isActive, active]);
+  }, [active, isActive]);
 
-  const containerStyle = useAnimatedStyle(() => {
-    const bg = interpolateColor(
-      active.value,
-      [0, 1],
-      [COLORS.lightCard, SAGE_SOFT],
-    );
-    const border = interpolateColor(
-      active.value,
-      [0, 1],
-      [COLORS.lightHairline, LIME],
-    );
-    const scale = 1 - press.value * 0.025;
-    return {
-      backgroundColor: bg,
-      borderColor: border,
-      transform: [{ scale }, { translateY: press.value * 1.5 }],
-    };
-  });
+  const containerStyle = useAnimatedStyle(() => ({
+    backgroundColor: interpolateColor(active.value, [0, 1], [COLORS.lightCard, ORANGE_SOFT]),
+    borderColor: interpolateColor(active.value, [0, 1], [COLORS.lightHairline, ORANGE]),
+    transform: [{ scale: 1 - press.value * 0.025 }, { translateY: press.value * 1.5 }],
+  }));
 
   const checkStyle = useAnimatedStyle(() => ({
     opacity: active.value,
@@ -187,7 +172,7 @@ function GoalCardView({
         press.value = withSpring(0, { damping: 14, stiffness: 260 });
       }}
       accessibilityRole="checkbox"
-      accessibilityState={{ selected: isActive }}
+      accessibilityState={{ checked: isActive }}
       accessibilityLabel={card.label}
     >
       <Animated.View
@@ -199,11 +184,7 @@ function GoalCardView({
         ]}
       >
         <View style={styles.imageWrap}>
-          <Image
-            source={card.image}
-            style={styles.image}
-            resizeMode="contain"
-          />
+          <Image source={card.image} style={styles.image} resizeMode="contain" />
         </View>
 
         <T style={styles.label} numberOfLines={1}>
@@ -211,7 +192,7 @@ function GoalCardView({
         </T>
 
         <Animated.View style={[styles.check, checkStyle]}>
-          <Check size={ms(13)} color={COLORS.lightText} strokeWidth={3.5} />
+          <Check size={ms(13)} color="#FFFFFF" strokeWidth={3.5} />
         </Animated.View>
       </Animated.View>
     </Pressable>
@@ -221,16 +202,23 @@ function GoalCardView({
 const CHECK_SIZE = ms(22);
 
 const styles = StyleSheet.create({
+  screenContent: {
+    justifyContent: "flex-start",
+    paddingTop: SP[3],
+    paddingBottom: SP[6],
+  },
   grid: {
+    width: "100%",
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "space-between",
+    alignItems: "flex-start",
   },
   card: {
-    borderRadius: RADII.lg,
+    borderRadius: RADII.md,
     borderWidth: 1.5,
-    paddingTop: SP[3],
-    paddingBottom: SP[3],
+    paddingTop: SP[2],
+    paddingBottom: SP[2],
     paddingHorizontal: SP[3],
     alignItems: "center",
     justifyContent: "center",
@@ -250,9 +238,10 @@ const styles = StyleSheet.create({
   label: {
     fontFamily: FONT_BOLD,
     fontSize: ms(13),
-    color: COLORS.lightText,
+    lineHeight: ms(17),
+    color: ORANGE_ONBOARDING.text,
     textAlign: "center",
-    letterSpacing: -0.1,
+    letterSpacing: 0,
   },
   check: {
     position: "absolute",
@@ -261,7 +250,7 @@ const styles = StyleSheet.create({
     width: CHECK_SIZE,
     height: CHECK_SIZE,
     borderRadius: CHECK_SIZE / 2,
-    backgroundColor: LIME,
+    backgroundColor: ORANGE,
     alignItems: "center",
     justifyContent: "center",
   },

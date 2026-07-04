@@ -1,63 +1,57 @@
-// app/(onboarding)/ethnicity.tsx
-// Ethnicity selection — redesigned to match gender/birthday: full-bleed
-// layout, hero illustration, pill-style options with lucide icons.
 import React, { useCallback } from "react";
 import { router } from "expo-router";
-import {
-  Globe2,
-  Globe,
-  Mountain,
-  Utensils,
-  Moon,
-  Shuffle,
-  HelpCircle,
-} from "lucide-react-native";
 
-import {
-  OnboardingScreenV2,
-  PillOptionsList,
-} from "@/components/onboarding";
-import type { PillOption } from "@/components/onboarding";
+import OrangeQuestionScreen, {
+  OrangeOption,
+  OrangeOptionRow,
+} from "@/components/onboarding/OrangeQuestionScreen";
+import { hapticSelection } from "@/lib/haptics";
 import { useOnboarding } from "@/store/onboarding";
 
-const OPTIONS: PillOption[] = [
-  { key: "Asian",             label: "Asian",             Icon: Globe2 },
-  { key: "African",           label: "African",           Icon: Globe },
-  { key: "Caucasian",         label: "Caucasian",         Icon: Mountain },
-  { key: "Hispanic / Latino", label: "Hispanic / Latino", Icon: Utensils },
-  { key: "Middle Eastern",    label: "Middle Eastern",    Icon: Moon },
-  { key: "Mixed / Other",     label: "Mixed / Other",     Icon: Shuffle },
-  { key: "Prefer not to say", label: "Prefer not to say", Icon: HelpCircle },
+const OPTIONS: OrangeOption[] = [
+  { key: "Asian", label: "Asian", emoji: "🌏" },
+  { key: "African", label: "African", emoji: "🌍" },
+  { key: "Caucasian", label: "Caucasian", emoji: "🏔️" },
+  { key: "Hispanic / Latino", label: "Hispanic / Latino", emoji: "🌎" },
+  { key: "Middle Eastern", label: "Middle Eastern", emoji: "🌙" },
+  { key: "Mixed / Other", label: "Mixed / Other", emoji: "✨" },
+  { key: "Prefer not to say", label: "Prefer not to say", emoji: "🤐" },
 ];
 
 export default function EthnicityScreen() {
   const { data, setField } = useOnboarding();
-  const selected = data.ethnicity ?? null;
+  const selected = data.ethnicity ?? "Asian";
 
   const handleSelect = useCallback(
-    (key: string) => setField("ethnicity", key),
+    (key: string) => {
+      hapticSelection();
+      setField("ethnicity", key);
+    },
     [setField],
   );
 
   const handleNext = useCallback(() => {
-    if (!selected) return;
+    setField("ethnicity", selected);
     router.push("/(onboarding)/scan");
-  }, [selected]);
+  }, [selected, setField]);
 
   return (
-    <OnboardingScreenV2
+    <OrangeQuestionScreen
       stepKey="ethnicity"
+      heroImage={require("@/assets/bg-assets-for-onbaording-screens/ethnicity.png")}
       title="What's your ethnicity?"
       subtitle="Optional. We use this to calibrate benchmarks; it doesn't affect your score."
-      heroImage={require("@/assets/onbaording-images/ethnicity.png")}
-      onPrimary={handleNext}
-      primaryDisabled={!selected}
+      onContinue={handleNext}
+      contentTall
     >
-      <PillOptionsList
-        options={OPTIONS}
-        selected={selected}
-        onSelect={handleSelect}
-      />
-    </OnboardingScreenV2>
+      {OPTIONS.map((option) => (
+        <OrangeOptionRow
+          key={option.key}
+          option={option}
+          selected={selected === option.key}
+          onPress={() => handleSelect(option.key)}
+        />
+      ))}
+    </OrangeQuestionScreen>
   );
 }

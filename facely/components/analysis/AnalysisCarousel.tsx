@@ -5,7 +5,7 @@
 // commentary + ideal range live in the existing MetricDetailCard popup,
 // triggered by tapping a card.
 
-import React, { useCallback, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Animated,
   FlatList,
@@ -20,8 +20,16 @@ import { ChevronLeft, ChevronRight } from "lucide-react-native";
 import Text from "@/components/ui/T";
 import { COLORS, RADII, SP } from "@/lib/tokens";
 import { ms, sh, sw } from "@/lib/responsive";
+import { ORANGE_ONBOARDING } from "@/components/onboarding/OrangeOnboardingLayout";
+import {
+  ADVANCED_ANALYSIS_FONT_BOLD,
+  getAdvancedAnalysisIconStyle,
+} from "@/lib/advancedAnalysisIcons";
 
-const FONT = "ProximaNova-Bold";
+const FONT = ADVANCED_ANALYSIS_FONT_BOLD;
+const PARROT_GREEN = COLORS.accent;
+const PARROT_GREEN_DARK = COLORS.accentDepth;
+const PARROT_GREEN_SOFT = "rgba(180,243,77,0.22)";
 const SOFT_SHADOW = {
   shadowColor: "#000000",
   shadowOpacity: 0.08,
@@ -41,13 +49,13 @@ const SECTION_LABEL: Record<SectionKey, string> = {
 };
 
 const SECTION_CHIP: Record<SectionKey, { bg: string; fg: string }> = {
-  working:    { bg: "#E2F1D8", fg: "#3F7A2A" },
+  working:    { bg: PARROT_GREEN_SOFT, fg: PARROT_GREEN_DARK },
   okay:       { bg: COLORS.lightSurfaceAlt, fg: COLORS.lightText },
   needs_work: { bg: COLORS.declineRedSoft, fg: COLORS.declineRed },
 };
 
 const STATUS_VERDICT_COLOR: Record<StatusKind, string> = {
-  fine:     "#3F7A2A",
+  fine:     PARROT_GREEN,
   neutral:  COLORS.lightText,
   alarming: COLORS.declineRed,
 };
@@ -71,6 +79,7 @@ type Props = {
   viewportWidth: number;
   onCardPress:   (m: CarouselMetric) => void;
   showControls?: boolean;
+  onboarding?: boolean;
 };
 
 // ─── Carousel ────────────────────────────────────────────────────────────────
@@ -80,12 +89,14 @@ export default function AnalysisCarousel({
   viewportWidth,
   onCardPress,
   showControls = false,
+  onboarding = false,
 }: Props) {
   const CARD_W   = Math.round(viewportWidth * 0.85);
   const SIDE_GAP = Math.round((viewportWidth - CARD_W) / 2);
   const SNAP_LEN = CARD_W;
 
   const listRef = useRef<FlatList<CarouselMetric> | null>(null);
+  const metricKey = useMemo(() => metrics.map((m) => m.id).join("|"), [metrics]);
   const [activeIdx, setActiveIdx] = useState(0);
   const onMomentumEnd = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const x = e.nativeEvent.contentOffset.x;
@@ -94,6 +105,12 @@ export default function AnalysisCarousel({
   }, [SNAP_LEN, metrics.length]);
 
   const scrollX = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    setActiveIdx(0);
+    scrollX.setValue(0);
+    listRef.current?.scrollToOffset({ offset: 0, animated: false });
+  }, [metricKey, scrollX]);
 
   const activeSection = metrics[activeIdx]?.section;
   const canGoPrev = activeIdx > 0;
@@ -114,9 +131,14 @@ export default function AnalysisCarousel({
         data={metrics}
         keyExtractor={(m) => m.id}
         horizontal
+        nestedScrollEnabled
+        directionalLockEnabled
+        disableIntervalMomentum
         showsHorizontalScrollIndicator={false}
         snapToInterval={SNAP_LEN}
+        snapToAlignment="start"
         decelerationRate="fast"
+        keyboardShouldPersistTaps="handled"
         contentContainerStyle={{ paddingHorizontal: SIDE_GAP, paddingVertical: sh(16) }}
         onMomentumScrollEnd={onMomentumEnd}
         onScroll={Animated.event(
@@ -142,7 +164,7 @@ export default function AnalysisCarousel({
           });
           return (
             <Animated.View style={{ width: CARD_W, transform: [{ scale }], opacity }}>
-              <MetricCard item={item} onPress={() => onCardPress(item)} />
+              <MetricCard item={item} onboarding={onboarding} onPress={() => onCardPress(item)} />
             </Animated.View>
           );
         }}
@@ -151,11 +173,11 @@ export default function AnalysisCarousel({
       {/* Counter — current / total — section */}
       {activeSection && (
         <View style={styles.counter}>
-          <Text style={styles.counterText}>
-            <Text style={styles.counterCurrent}>{activeIdx + 1}</Text>
-            <Text style={styles.counterDivider}> / {metrics.length}</Text>
-            <Text style={styles.counterDivider}>{"  ·  "}</Text>
-            <Text style={[styles.counterSection, { color: SECTION_CHIP[activeSection].fg }]}>
+          <Text style={[styles.counterText, onboarding && styles.onboardingFont]}>
+            <Text style={[styles.counterCurrent, onboarding && styles.onboardingFont]}>{activeIdx + 1}</Text>
+            <Text style={[styles.counterDivider, onboarding && styles.onboardingFont]}> / {metrics.length}</Text>
+            <Text style={[styles.counterDivider, onboarding && styles.onboardingFont]}>{"  ·  "}</Text>
+            <Text style={[styles.counterSection, onboarding && styles.onboardingFont, { color: SECTION_CHIP[activeSection].fg }]}>
               {SECTION_LABEL[activeSection]}
             </Text>
           </Text>
@@ -171,12 +193,13 @@ export default function AnalysisCarousel({
             accessibilityLabel="Previous metric"
             style={({ pressed }) => [
               styles.metricNavBtn,
+              onboarding && styles.onboardingNavBtn,
               !canGoPrev && styles.metricNavBtnDisabled,
               pressed && canGoPrev && { opacity: 0.82 },
             ]}
           >
             <ChevronLeft size={ms(17)} color={COLORS.lightText} strokeWidth={2.4} />
-            <Text style={styles.metricNavText}>PREV</Text>
+            <Text style={[styles.metricNavText, onboarding && styles.onboardingFont]}>PREV</Text>
           </Pressable>
 
           <Pressable
@@ -186,11 +209,12 @@ export default function AnalysisCarousel({
             accessibilityLabel="Next metric"
             style={({ pressed }) => [
               styles.metricNavBtn,
+              onboarding && styles.onboardingNavBtn,
               !canGoNext && styles.metricNavBtnDisabled,
               pressed && canGoNext && { opacity: 0.82 },
             ]}
           >
-            <Text style={styles.metricNavText}>NEXT METRIC</Text>
+            <Text style={[styles.metricNavText, onboarding && styles.onboardingFont]}>NEXT METRIC</Text>
             <ChevronRight size={ms(17)} color={COLORS.lightText} strokeWidth={2.4} />
           </Pressable>
         </View>
@@ -204,9 +228,11 @@ export default function AnalysisCarousel({
 function MetricCard({
   item,
   onPress,
+  onboarding,
 }: {
   item:    CarouselMetric;
   onPress: () => void;
+  onboarding: boolean;
 }) {
   const sectionChip   = SECTION_CHIP[item.section];
   const verdictColor  = STATUS_VERDICT_COLOR[item.status];
@@ -214,39 +240,49 @@ function MetricCard({
   return (
     <Pressable
       onPress={onPress}
-      style={({ pressed }) => [styles.card, pressed && { opacity: 0.92 }]}
+      style={({ pressed }) => [
+        styles.card,
+        onboarding && styles.onboardingCard,
+        pressed && { opacity: 0.92 },
+      ]}
     >
       {/* Top row — section chip (left) + category chip (right) */}
       <View style={styles.topRow}>
         <View style={[styles.sectionChip, { backgroundColor: sectionChip.bg }]}>
-          <Text style={[styles.sectionChipText, { color: sectionChip.fg }]}>
+          <Text style={[styles.sectionChipText, onboarding && styles.onboardingFont, { color: sectionChip.fg }]}>
             {SECTION_LABEL[item.section]}
           </Text>
         </View>
         <View style={styles.categoryChip}>
-          <Text style={styles.categoryChipText}>{item.category}</Text>
+          <Text style={[styles.categoryChipText, onboarding && styles.onboardingFont]}>{item.category}</Text>
         </View>
       </View>
 
       {/* Image — sits on card surface, no tile bg */}
       <View style={styles.imageWrap}>
         {item.icon ? (
-          <Image source={item.icon} style={styles.image} resizeMode="contain" />
+          <Image
+            source={item.icon}
+            style={[styles.image, getAdvancedAnalysisIconStyle(item.id)]}
+            resizeMode="contain"
+          />
         ) : (
           <Text style={styles.emoji}>{item.emoji}</Text>
         )}
       </View>
 
       {/* Label */}
-      <Text style={styles.label} numberOfLines={2}>{item.label.toUpperCase()}</Text>
+      <Text style={[styles.label, onboarding && styles.onboardingFont]} numberOfLines={2}>{item.label.toUpperCase()}</Text>
 
       {/* Verdict — loud, tier-colored */}
-      <Text style={[styles.verdict, { color: verdictColor }]} numberOfLines={1}>
+      <Text style={[styles.verdict, onboarding && styles.onboardingFont, { color: verdictColor }]} numberOfLines={1}>
         {item.verdict}
       </Text>
 
       {/* Tap hint */}
-      <Text style={styles.hint}>Tap to read your full analysis →</Text>
+      <Text style={[styles.hint, onboarding && styles.onboardingFont]}>
+        Tap to read your full analysis →
+      </Text>
     </Pressable>
   );
 }
@@ -256,6 +292,7 @@ function MetricCard({
 const styles = StyleSheet.create({
   wrap: {
     width: "100%",
+    backgroundColor: "transparent",
   },
 
   card: {
@@ -394,5 +431,19 @@ const styles = StyleSheet.create({
     fontSize: ms(11, 0.2),
     color: COLORS.lightText,
     letterSpacing: 0.4,
+  },
+  onboardingCard: {
+    borderRadius: ms(17),
+    borderWidth: 1,
+    borderColor: ORANGE_ONBOARDING.border,
+    shadowOpacity: 0.06,
+  },
+  onboardingNavBtn: {
+    borderRadius: ms(14),
+    backgroundColor: ORANGE_ONBOARDING.orangeSoft,
+    borderColor: "#FFD1A8",
+  },
+  onboardingFont: {
+    fontFamily: ORANGE_ONBOARDING.font,
   },
 });

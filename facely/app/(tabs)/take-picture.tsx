@@ -9,18 +9,27 @@ import {
   Modal,
   StatusBar,
   SafeAreaView,
+  ScrollView,
   Platform,
   StyleSheet,
-  useWindowDimensions,
 } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as ImagePicker from "expo-image-picker";
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
-import { History as HistoryIcon } from "lucide-react-native";
+import { Camera, History as HistoryIcon } from "lucide-react-native";
 import RecoveryCodeHint from "@/components/ui/RecoveryCodeHint";
 import StreakIcon from "@/assets/icons-for-dashboard/streak-icon (1) (1).svg";
+import Animated, {
+  Easing,
+  cancelAnimation,
+  interpolate,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withTiming,
+} from "react-native-reanimated";
 
 // NEW: shared pre-upload compressor (JPEG, max 1080px)
 import { ensureJpegCompressed } from "../../lib/api/media";
@@ -31,6 +40,8 @@ import { getWeekScanData, checkScanLimit, WEEKLY_SCAN_LIMIT } from "@/lib/supaba
 import { getNextMonday } from "@/lib/time/nextMidnight";
 import { COLORS, RADII, SP } from "@/lib/tokens";
 import { sw, sh, ms } from "@/lib/responsive";
+import { AppGradientBackground } from "@/components/layout/AppGradientBackground";
+import { FLOATING_TAB_BAR } from "@/components/layout/floatingTabBar";
 
 // Soft drop-shadow recipe shared by all elevated surfaces — same recipe used
 // across dashboard, routine list, workout preview.
@@ -39,12 +50,11 @@ const SOFT_SHADOW = {
   shadowOpacity: 0.08,
   shadowRadius: 20,
   shadowOffset: { width: 0, height: 8 },
-  elevation: 4,
+  elevation: 3,
 } as const;
 
-// Reusable Proxima Bold font ref — file is large; avoid per-Text repetition.
-const FONT = "ProximaNova-Bold";
-const SOFT_SCREEN_BG = "#FEF5E4";
+// Shared DIN Rounded Bold face loaded once by the app root.
+const FONT = "DINNextRounded-Bold";
 
 /* ============================== HELPERS ============================== */
 function toFileUri(u: string) {
@@ -78,7 +88,6 @@ function toUserFacingMessage(err: unknown, fallback = "Network or file error") {
 
 type Step = "intro" | "capture" | "review";
 
-
 /* ============================== SCREEN ============================== */
 export default function TakePicture() {
   const [perm, requestPerm] = useCameraPermissions();
@@ -97,7 +106,30 @@ export default function TakePicture() {
   const [cameraFacing, setCameraFacing] = useState<"front" | "back">("front");
   // Functional header chip — scans used this week / weekly limit
   const [scansThisWeek, setScansThisWeek] = useState<number | null>(null);
+  const scanSweepProgress = useSharedValue(0);
 
+  useEffect(() => {
+    scanSweepProgress.value = 0;
+    scanSweepProgress.value = withRepeat(
+      withTiming(1, {
+        duration: 2300,
+        easing: Easing.inOut(Easing.cubic),
+      }),
+      -1,
+      false,
+    );
+
+    return () => cancelAnimation(scanSweepProgress);
+  }, [scanSweepProgress]);
+
+  const scanSweepStartY = -sh(22);
+  const scanSweepEndY = sh(430);
+  const scanSweepStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateY: interpolate(scanSweepProgress.value, [0, 1], [scanSweepStartY, scanSweepEndY]) },
+    ],
+    opacity: interpolate(scanSweepProgress.value, [0, 0.12, 0.82, 1], [0, 0.82, 0.72, 0]),
+  }));
   // Fetch the user's weekly scan count on mount, and refresh whenever they
   // return to the intro step (so the chip reflects a freshly-completed scan).
   useEffect(() => {
@@ -119,9 +151,6 @@ export default function TakePicture() {
   // Prevents concurrent handleChosen calls (e.g. double-tap gallery)
   const handlingRef = useRef(false);
 
-  const window = useWindowDimensions();
-
-  const headingFontSize = window.width >= 420 ? 34 : window.width >= 360 ? 30 : 28;
 
   // Normalize URI and advance to the next step.
   // handlingRef prevents concurrent invocations (e.g. rapid gallery double-tap).
@@ -213,7 +242,7 @@ export default function TakePicture() {
 
   const beginScan = async () => {
     const bypass = await AsyncStorage.getItem("dev_bypass_scan_limit");
-    if (bypass === "true") {
+    if (__DEV__ && bypass === "true") {
       logger.log("[scanLimit] dev bypass active — skipping check");
     } else {
       const uid = useAuthStore.getState().uid;
@@ -310,136 +339,85 @@ export default function TakePicture() {
     }
   };
 
-  const renderIntro = () => (
-    <View style={{ flex: 1, backgroundColor: SOFT_SCREEN_BG }}>
-      <StatusBar barStyle="dark-content" />
-      <SafeAreaView style={{ flex: 1 }}>
-        <View style={{ flex: 1, paddingHorizontal: SP[5] }}>
-          {/* Header — title + caption + light History pill */}
-          <View
-            style={{
-              marginTop: sh(24),
-              flexDirection: "row",
-              justifyContent: "space-between",
-              alignItems: "center",
-              marginBottom: sh(20),
-            }}
-          >
-            <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: sw(10) }}>
-              {/* Functional chip — scans used this week */}
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: sw(6),
-                  backgroundColor: COLORS.ctaBlack,
-                  paddingHorizontal: sw(12),
-                  paddingVertical: sh(8),
-                  borderRadius: 999,
-                }}
-              >
-                <StreakIcon width={ms(16)} height={ms(16)} />
-                <Text style={{ color: "#FFFFFF", fontFamily: FONT, fontSize: ms(13), letterSpacing: -0.1 }}>
-                  {scansThisWeek ?? 0}
-                </Text>
-                <Text style={{ color: "rgba(255,255,255,0.55)", fontFamily: FONT, fontSize: ms(11), letterSpacing: 0.2 }}>
-                  / {WEEKLY_SCAN_LIMIT} this week
-                </Text>
-              </View>
-            </View>
-            <Pressable
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                goToHistory();
-              }}
-              hitSlop={16}
-              style={({ pressed }) => ({
-                minHeight: sh(46),
-                flexDirection: "row",
-                alignItems: "center",
-                gap: sw(8),
-                backgroundColor: COLORS.lightCard,
-                borderWidth: 1,
-                borderColor: "rgba(11,11,11,0.08)",
-                paddingHorizontal: sw(18),
-                paddingVertical: sh(12),
-                borderRadius: 999,
-                opacity: pressed ? 0.82 : 1,
-                transform: [{ scale: pressed ? 0.98 : 1 }],
-                ...SOFT_SHADOW,
-              })}
-              accessibilityRole="button"
-              accessibilityLabel="Open scan history"
-            >
-              <HistoryIcon size={ms(16)} color={COLORS.lightText} strokeWidth={2.4} />
-              <Text style={{ color: COLORS.lightText, fontFamily: FONT, fontSize: ms(16), letterSpacing: 0.2 }}>
-                History
-              </Text>
-            </Pressable>
-          </View>
+  const renderIntro = () => {
+    const scansUsed = scansThisWeek ?? 0;
 
-          {/* ── Scan card — image hero + caption + black CTA ── */}
-          <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-            <View
-              style={{
-                width: "100%",
-                maxWidth: 400,
-                borderRadius: RADII.lg,
-                overflow: "hidden",
-                backgroundColor: COLORS.lightCard,
-                ...SOFT_SHADOW,
-              }}
-            >
-              <View style={{ width: "100%", aspectRatio: 0.85, backgroundColor: COLORS.lightCard, overflow: "hidden" }}>
-                <Image
-                  source={require("../../assets/capture-guides/frontal-guide-vector.png")}
-                  style={{ width: "100%", height: "100%" }}
-                  resizeMode="contain"
-                />
+    return (
+      <AppGradientBackground>
+        <StatusBar barStyle="dark-content" />
+        <SafeAreaView style={styles.introSafe}>
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.introScroll}
+          >
+            <View style={styles.scanTopBar}>
+              <View style={styles.scanQuotaPill}>
+                <StreakIcon width={ms(17)} height={ms(17)} />
+                <Text style={styles.scanQuotaStrong}>{scansUsed}</Text>
+                <Text style={styles.scanQuotaMuted}>/ {WEEKLY_SCAN_LIMIT} this week</Text>
               </View>
-              <View style={{ paddingHorizontal: SP[5], paddingTop: SP[5], paddingBottom: SP[5], alignItems: "center" }}>
-                <Text
-                  style={{
-                    color: COLORS.lightText,
-                    textAlign: "center",
-                    fontFamily: FONT,
-                    fontSize: ms(22),
-                    lineHeight: ms(28),
-                    letterSpacing: -0.4,
-                    marginBottom: sh(18),
-                  }}
-                >
-                  Get your accurate{"\n"}facial analysis
-                </Text>
+
+              <Pressable
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  goToHistory();
+                }}
+                hitSlop={16}
+                style={({ pressed }) => [styles.historyPill, pressed && styles.pressedSoft]}
+                accessibilityRole="button"
+                accessibilityLabel="Open scan history"
+              >
+                <HistoryIcon size={ms(18)} color={COLORS.lightText} strokeWidth={2.4} />
+                <Text style={styles.historyText}>History</Text>
+              </Pressable>
+            </View>
+
+            <View style={styles.scanHeroWrap}>
+              <View style={styles.scanHeroPanel}>
+                <View style={styles.faceStage}>
+                  <View style={styles.faceGlow} />
+                  <Image
+                    source={require("../../assets/capture-guides/frontal-guide-vector.png")}
+                    style={styles.faceImage}
+                    resizeMode="cover"
+                  />
+
+                  <View pointerEvents="none" style={styles.faceGrid}>
+                    {[0.18, 0.34, 0.5, 0.66, 0.82].map((left) => (
+                      <View key={`v-${left}`} style={[styles.faceGridV, { left: `${left * 100}%` }]} />
+                    ))}
+                    {[0.2, 0.36, 0.52, 0.68, 0.84].map((top) => (
+                      <View key={`h-${top}`} style={[styles.faceGridH, { top: `${top * 100}%` }]} />
+                    ))}
+                    <Animated.View style={[styles.scanSweep, scanSweepStyle]} />
+                  </View>
+                </View>
+
+                <View style={styles.scanCopyBlock}>
+                  <Text style={styles.scanPanelKicker}>FACE SCAN</Text>
+                  <Text style={styles.scanHeadline}>Ready to scan</Text>
+                </View>
+
                 <Pressable
                   onPress={() => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                     beginScan();
                   }}
                   hitSlop={8}
-                  style={({ pressed }) => ({
-                    width: "100%",
-                    minHeight: sh(56),
-                    borderRadius: 999,
-                    backgroundColor: COLORS.ctaBlack,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    paddingVertical: sh(16),
-                    paddingHorizontal: SP[6],
-                    opacity: pressed ? 0.9 : 1,
-                  })}
+                  style={({ pressed }) => [styles.primaryScanButton, pressed && styles.primaryScanButtonPressed]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Start face scan"
                 >
-                  <Text style={{ color: "#FFFFFF", fontFamily: FONT, fontSize: ms(15), letterSpacing: 0.6, textAlign: "center" }}>
-                    BEGIN SCAN
-                  </Text>
+                  <Camera size={ms(18)} color="#FFFFFF" strokeWidth={2.4} />
+                  <Text style={styles.primaryScanText}>START SCAN</Text>
                 </Pressable>
               </View>
             </View>
-          </View>
-        </View>
-      </SafeAreaView>
-    </View>
-  );
+          </ScrollView>
+        </SafeAreaView>
+      </AppGradientBackground>
+    );
+  };
 
   const renderGuide = ({
     guideSrc,
@@ -450,7 +428,7 @@ export default function TakePicture() {
     title: string;
     overlay: "frontal" | "side";
   }) => (
-    <View style={{ flex: 1, backgroundColor: SOFT_SCREEN_BG }}>
+    <AppGradientBackground>
       <StatusBar barStyle="dark-content" />
       <SafeAreaView style={{ flex: 1 }}>
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: SP[5] }}>
@@ -537,7 +515,7 @@ export default function TakePicture() {
           </View>
         </View>
       </SafeAreaView>
-    </View>
+    </AppGradientBackground>
   );
 
   return (
@@ -555,7 +533,7 @@ export default function TakePicture() {
         })}
 
       {step === "review" && (
-        <View style={{ flex: 1, backgroundColor: SOFT_SCREEN_BG }}>
+        <AppGradientBackground>
           <StatusBar barStyle="dark-content" />
           <SafeAreaView style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: SP[5] }}>
             <Text
@@ -565,7 +543,7 @@ export default function TakePicture() {
                 fontSize: ms(22),
                 lineHeight: ms(26),
                 letterSpacing: -0.4,
-                marginBottom: sh(18),
+                marginBottom: sh(14),
               }}
             >
               Review your photos
@@ -651,7 +629,7 @@ export default function TakePicture() {
               </Text>
             </Pressable>
           </SafeAreaView>
-        </View>
+        </AppGradientBackground>
       )}
 
       {/* Chooser — bottom sheet matching the Edit/Targets sheets */}
@@ -862,7 +840,7 @@ export default function TakePicture() {
                 <Pressable
                   onPress={() => setCameraFacing((f) => (f === "front" ? "back" : "front"))}
                   style={({ pressed }) => ({
-                    paddingHorizontal: sw(18),
+                    paddingHorizontal: sw(12),
                     paddingVertical: sh(8),
                     borderRadius: 999,
                     backgroundColor: "rgba(255,255,255,0.10)",
@@ -904,6 +882,277 @@ export default function TakePicture() {
     </>
   );
 }
+const styles = StyleSheet.create({
+  introSafe: {
+    flex: 1,
+  },
+  introScroll: {
+    flexGrow: 1,
+    paddingHorizontal: SP[5],
+    paddingBottom: FLOATING_TAB_BAR.contentClearance + sh(72),
+  },
+  scanTopBar: {
+    marginTop: sh(16),
+    marginBottom: sh(12),
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: sw(12),
+  },
+  scanQuotaPill: {
+    minHeight: sh(46),
+    flexDirection: "row",
+    alignItems: "center",
+    gap: sw(7),
+    backgroundColor: COLORS.ctaBlack,
+    paddingHorizontal: sw(15),
+    paddingVertical: sh(10),
+    borderRadius: 999,
+    shadowColor: "#000",
+    shadowOpacity: 0.14,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 5,
+  },
+  scanQuotaStrong: {
+    color: "#FFFFFF",
+    fontFamily: FONT,
+    fontSize: ms(15),
+    letterSpacing: 0,
+  },
+  scanQuotaMuted: {
+    color: "rgba(255,255,255,0.58)",
+    fontFamily: FONT,
+    fontSize: ms(12),
+    letterSpacing: 0.1,
+  },
+  historyPill: {
+    minHeight: sh(50),
+    flexDirection: "row",
+    alignItems: "center",
+    gap: sw(8),
+    backgroundColor: "rgba(255,255,255,0.70)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.14)",
+    paddingHorizontal: sw(12),
+    paddingVertical: sh(12),
+    borderRadius: 999,
+    ...SOFT_SHADOW,
+  },
+  pressedSoft: {
+    opacity: 0.82,
+    transform: [{ scale: 0.98 }],
+  },
+  historyText: {
+    color: COLORS.lightText,
+    fontFamily: FONT,
+    fontSize: ms(16),
+    letterSpacing: 0.1,
+  },
+  scanStatusRow: {
+    minHeight: sh(36),
+    alignSelf: "stretch",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: sw(10),
+    marginBottom: sh(14),
+  },
+  statusItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: sw(6),
+  },
+  statusDivider: {
+    width: 1,
+    height: sh(18),
+    backgroundColor: "rgba(11,11,11,0.10)",
+  },
+  statusText: {
+    color: COLORS.lightMuted,
+    fontFamily: FONT,
+    fontSize: ms(12),
+    letterSpacing: 0.1,
+  },
+  scanHeroWrap: {
+    flexGrow: 1,
+    justifyContent: "center",
+    paddingTop: sh(4),
+    paddingBottom: sh(16),
+  },
+  scanHeroPanel: {
+    width: "100%",
+    maxWidth: 410,
+    alignSelf: "center",
+    borderRadius: ms(28),
+    backgroundColor: "rgba(255,255,255,0.72)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.74)",
+    paddingHorizontal: sw(12),
+    paddingTop: sh(12),
+    paddingBottom: sh(16),
+    overflow: "hidden",
+    shadowColor: "#7A3A10",
+    shadowOpacity: 0.08,
+    shadowRadius: 22,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 3,
+  },
+  scanPanelHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: sw(12),
+    marginBottom: sh(10),
+  },
+  scanPanelKicker: {
+    color: COLORS.lightMuted,
+    fontFamily: FONT,
+    fontSize: ms(11),
+    letterSpacing: 1.1,
+  },
+  scanPanelTitle: {
+    marginTop: sh(2),
+    color: COLORS.lightText,
+    fontFamily: FONT,
+    fontSize: ms(20),
+    lineHeight: ms(25),
+    letterSpacing: -0.2,
+  },
+  faceStage: {
+    position: "relative",
+    width: "100%",
+    aspectRatio: 0.82,
+    borderRadius: ms(24),
+    backgroundColor: "#FFF4DE",
+    overflow: "hidden",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    borderWidth: 1,
+    borderColor: "rgba(11,11,11,0.06)",
+  },
+  faceGlow: {
+    position: "absolute",
+    top: "8%",
+    width: "72%",
+    height: "54%",
+    borderRadius: 999,
+    backgroundColor: "rgba(180,243,77,0.06)",
+    transform: [{ scaleX: 1.2 }],
+  },
+  faceImage: {
+    width: "118%",
+    height: "112%",
+    marginBottom: "-8%",
+  },
+  faceGrid: {
+    ...StyleSheet.absoluteFillObject,
+    overflow: "hidden",
+  },
+  faceGridV: {
+    position: "absolute",
+    top: "13%",
+    bottom: "10%",
+    width: 1,
+    backgroundColor: "rgba(11,11,11,0.055)",
+  },
+  faceGridH: {
+    position: "absolute",
+    left: "10%",
+    right: "10%",
+    height: 1,
+    backgroundColor: "rgba(11,11,11,0.045)",
+  },
+  scanSweep: {
+    position: "absolute",
+    left: "8%",
+    right: "8%",
+    top: 0,
+    height: ms(3),
+    borderRadius: 999,
+    backgroundColor: "rgba(180,243,77,0.84)",
+    shadowColor: COLORS.accent,
+    shadowOpacity: 0.42,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 0 },
+  },
+  scanCopyBlock: {
+    alignItems: "center",
+    paddingTop: sh(17),
+    paddingHorizontal: sw(10),
+  },
+  scanHeadline: {
+    color: COLORS.lightText,
+    fontFamily: FONT,
+    fontSize: ms(26),
+    lineHeight: ms(31),
+    letterSpacing: -0.5,
+    textAlign: "center",
+  },
+  scanSubhead: {
+    marginTop: sh(8),
+    color: COLORS.lightMuted,
+    fontFamily: FONT,
+    fontSize: ms(13),
+    lineHeight: ms(19),
+    textAlign: "center",
+    maxWidth: sw(300),
+  },
+  primaryScanButton: {
+    marginTop: sh(16),
+    minHeight: sh(56),
+    borderRadius: 16,
+    backgroundColor: "#0B0B0B",
+    borderBottomWidth: 6,
+    borderBottomColor: "#000000",
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: sw(10),
+    paddingVertical: sh(14),
+    paddingHorizontal: SP[6],
+    shadowColor: "#000",
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 7,
+  },
+  primaryScanButtonPressed: {
+    transform: [{ translateY: 4 }],
+    borderBottomWidth: 3,
+  },
+  primaryScanText: {
+    color: "#FFFFFF",
+    fontFamily: FONT,
+    fontSize: ms(15),
+    letterSpacing: 0.8,
+    textAlign: "center",
+  },
+  scanFooterRow: {
+    minHeight: sh(26),
+    marginTop: sh(13),
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: sw(8),
+  },
+  scanFootItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: sw(5),
+  },
+  scanFootText: {
+    color: COLORS.lightMuted,
+    fontFamily: FONT,
+    fontSize: ms(11.5),
+    letterSpacing: 0.1,
+  },
+  scanFootDot: {
+    color: "rgba(11,11,11,0.26)",
+    fontFamily: FONT,
+    fontSize: ms(12),
+  },
+});
 async function ensurePersistentImageDir(): Promise<string> {
   const base = FileSystem.documentDirectory;
   if (!base) throw new Error("Persistent storage unavailable");

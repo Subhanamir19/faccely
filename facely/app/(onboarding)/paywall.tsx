@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Dimensions,
   KeyboardAvoidingView,
   Pressable,
   SafeAreaView,
@@ -19,6 +18,7 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import Animated, {
+  type SharedValue,
   Easing,
   interpolateColor,
   interpolate,
@@ -49,45 +49,40 @@ import {
   checkSubscriptionStatus,
 } from "@/lib/revenuecat";
 import { SP } from "@/lib/tokens";
+import { useResponsiveScale } from "@/lib/responsive";
 import { PurchasesPackage } from "react-native-purchases";
 import { logger } from '@/lib/logger';
 import * as WebBrowser from "expo-web-browser";
 import { useRecoveryCodeStore } from "@/store/recoveryCode";
 import { restoreWithCode } from "@/lib/api/recoveryCodes";
 
-const { width } = Dimensions.get("window");
-
-
-const CONTENT_WIDTH = Math.round(width * 0.86);
 const FONT_DIN = "DINNextRounded-Regular";
+const ORANGE = "#FF7900";
+const ORANGE_DARK = "#ED6B00";
+const ORANGE_SOFT = "#FFF3E8";
 const PLAN_ICONS = {
   yearly: require("../../assets/paywall-icons/yearly.png"),
   monthly: require("../../assets/paywall-icons/monthly.png"),
   weekly: require("../../assets/paywall-icons/weekly.png"),
 } as const;
-const SOCIAL_AVATARS = [
-  require("../../assets/paywall-social/selfie-1.jpg"),
-  require("../../assets/paywall-social/selfie-2.jpg"),
-  require("../../assets/paywall-social/selfie-3.jpg"),
-] as const;
 const PLAN_ACCENTS = {
   yearly: {
-    main: "#1296B8",
-    soft: "#DDF7FF",
-    badgeBg: "#DDF7FF",
-    badgeText: "#086A83",
+    main: ORANGE,
+    soft: ORANGE_SOFT,
+    badgeBg: ORANGE_SOFT,
+    badgeText: ORANGE_DARK,
   },
   monthly: {
-    main: "#C47A00",
-    soft: "#FFF0CF",
-    badgeBg: "#FFF0CF",
-    badgeText: "#8A5300",
+    main: ORANGE,
+    soft: ORANGE_SOFT,
+    badgeBg: ORANGE_SOFT,
+    badgeText: ORANGE_DARK,
   },
   weekly: {
-    main: "#66717C",
-    soft: "#EEF1F4",
-    badgeBg: "#EEF1F4",
-    badgeText: "#44505A",
+    main: ORANGE,
+    soft: ORANGE_SOFT,
+    badgeBg: ORANGE_SOFT,
+    badgeText: ORANGE_DARK,
   },
 } as const;
 
@@ -232,8 +227,8 @@ const PlanCard: React.FC<{
   onPress: () => void;
   entranceDelay: number;
   animation: {
-    scale: Animated.SharedValue<number>;
-    progress: Animated.SharedValue<number>;
+    scale: SharedValue<number>;
+    progress: SharedValue<number>;
   };
 }> = ({ label, tagline, price, period, iconSource, accent, badge, savings, selected, onPress, entranceDelay, animation }) => {
   const entranceOpacity = useSharedValue(0);
@@ -357,7 +352,9 @@ const PlanCard: React.FC<{
 
 const PaywallScreen: React.FC = () => {
   const navigation = useNavigation();
-  const [selected, setSelected] = useState<PlanKey>("yearly");
+  const responsive = useResponsiveScale();
+  const contentMaxWidth = Math.min(560, Math.max(240, responsive.width - SP[5] * 2));
+  const [selected, setSelected] = useState<PlanKey>("monthly");
   const [showPromoInput, setShowPromoInput] = useState(false);
   const [promoCode, setPromoCode] = useState("");
   const [showRecoveryInput, setShowRecoveryInput] = useState(false);
@@ -678,7 +675,7 @@ const PaywallScreen: React.FC = () => {
   return (
     <SafeAreaView style={styles.safeArea}>
       <LinearGradient
-        colors={["#FFFFFF", "#FFFFFF"]}
+        colors={["#FFA640", ORANGE]}
         start={{ x: 0.5, y: 0 }}
         end={{ x: 0.5, y: 1 }}
         style={StyleSheet.absoluteFill}
@@ -693,28 +690,26 @@ const PaywallScreen: React.FC = () => {
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
         >
+          <View
+            style={[
+              styles.paywallHero,
+              { minHeight: responsive.clampHeight(0.22, 160, 220) },
+            ]}
+          >
+            <Text style={styles.paywallEyebrow}>YOUR PLAN IS READY</Text>
+            <Text style={styles.paywallHeroTitle}>Unlock your full analysis.</Text>
+          </View>
           <View style={styles.inner}>
+            <View style={styles.sheetHandle} />
+            <View style={[styles.contentColumn, { maxWidth: contentMaxWidth }]}>
             {/* HEADER */}
             <RevealView style={styles.header} delay={80}>
               <View style={styles.socialProofRow}>
-                <View style={styles.avatarStack}>
-                  {SOCIAL_AVATARS.map((source, index) => (
-                    <View
-                      key={index}
-                      style={[
-                        styles.avatarBubble,
-                        index === 0 && styles.avatarFirst,
-                      ]}
-                    >
-                      <Image source={source} style={styles.avatarImage} resizeMode="cover" />
-                    </View>
-                  ))}
-                  <View style={[styles.avatarBubble, styles.avatarMore]}>
-                    <Text style={styles.avatarTextMuted}>+</Text>
-                  </View>
+                <View style={styles.socialProofPill}>
+                  <Text style={styles.socialProofStrong}>2,800+</Text>
                 </View>
                 <Text style={styles.socialProofText}>
-                  <Text style={styles.socialProofStrong}>2,800+</Text> men already leveling up
+                  men already leveling up
                 </Text>
               </View>
               <Text style={styles.title}>
@@ -758,7 +753,7 @@ const PaywallScreen: React.FC = () => {
                 label="Weekly"
                 tagline="Try it for a week"
                 price="$3.99"
-                period="per week - $16/mo"
+                period="per week"
                 iconSource={PLAN_ICONS.weekly}
                 accent={PLAN_ACCENTS.weekly}
                 selected={selected === "weekly"}
@@ -778,12 +773,13 @@ const PaywallScreen: React.FC = () => {
                   accessibilityState={{ disabled: isLoading }}
                   style={({ pressed }) => [
                     styles.ctaButton,
+                    { height: responsive.clamp(56, 48, 62) },
                     pressed && !isLoading && styles.ctaButtonPressed,
                     isLoading && styles.ctaButtonDisabled,
                   ]}
                 >
                   <LinearGradient
-                    colors={isLoading ? ["#2A2A2A", "#2A2A2A"] : ["#CCFF6B", "#B4F34D"]}
+                    colors={isLoading ? ["#D8D4CF", "#D8D4CF"] : ["#FF9238", ORANGE]}
                     locations={[0, 1]}
                     start={{ x: 0.5, y: 0 }}
                     end={{ x: 0.5, y: 1 }}
@@ -812,7 +808,7 @@ const PaywallScreen: React.FC = () => {
                 accessibilityRole="button"
                 accessibilityState={{ expanded: showPromoInput }}
               >
-                <Tag size={16} color={showPromoInput ? "#3B6D11" : "#8A8A8E"} strokeWidth={2.2} />
+                <Tag size={16} color={showPromoInput ? ORANGE_DARK : "#8A8A8E"} strokeWidth={2.2} />
                 <Text style={[styles.secondaryButtonText, showPromoInput && styles.secondaryButtonTextActive]}>
                   Apply promo code
                 </Text>
@@ -870,7 +866,7 @@ const PaywallScreen: React.FC = () => {
                   accessibilityRole="button"
                   accessibilityState={{ expanded: showRecoveryInput }}
                 >
-                  <KeyRound size={15} color={showRecoveryInput ? "#3B6D11" : "#8A8A8E"} strokeWidth={2.2} />
+                  <KeyRound size={15} color={showRecoveryInput ? ORANGE_DARK : "#8A8A8E"} strokeWidth={2.2} />
                   <Text style={[styles.secondaryButtonText, showRecoveryInput && styles.secondaryButtonTextActive]}>
                     Recovery code
                   </Text>
@@ -921,6 +917,7 @@ const PaywallScreen: React.FC = () => {
                 </Pressable>
               </View>
             </RevealView>
+            </View>
           </View>
         </ScrollView>
         </KeyboardAvoidingView>
@@ -934,21 +931,58 @@ export default PaywallScreen;
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: ORANGE,
   },
   flex: {
     flex: 1,
   },
   scrollContent: {
     paddingBottom: 34,
+    backgroundColor: ORANGE,
+  },
+  paywallHero: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: SP[5],
+    paddingTop: SP[4],
+  },
+  paywallEyebrow: {
+    fontFamily: FONT_DIN,
+    fontSize: 12,
+    lineHeight: 16,
+    color: "rgba(255,255,255,0.86)",
+    letterSpacing: 0.9,
+  },
+  paywallHeroTitle: {
+    fontFamily: FONT_DIN,
+    fontSize: 30,
+    lineHeight: 36,
+    color: "#FFFFFF",
+    textAlign: "center",
+    marginTop: SP[2],
+  },
+  sheetHandle: {
+    width: 48,
+    height: 5,
+    borderRadius: 999,
+    backgroundColor: "#D1D1D1",
+    marginBottom: SP[4],
   },
   inner: {
     alignItems: "center",
-    paddingTop: SP[6],
-    paddingHorizontal: SP[4],
+    paddingTop: SP[4],
+    paddingHorizontal: SP[5],
+    paddingBottom: SP[6],
+    backgroundColor: "#FFFFFF",
+    borderTopLeftRadius: 34,
+    borderTopRightRadius: 34,
+  },
+  contentColumn: {
+    width: "100%",
+    alignItems: "center",
   },
   header: {
-    width: CONTENT_WIDTH,
+    width: "100%",
     alignItems: "center",
     marginBottom: SP[5],
   },
@@ -960,37 +994,13 @@ const styles = StyleSheet.create({
     gap: 8,
     marginBottom: SP[4],
   },
-  avatarStack: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  avatarBubble: {
-    width: 24,
-    height: 24,
-    marginLeft: -7,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderColor: "#FFFFFF",
+  socialProofPill: {
+    minHeight: 24,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    backgroundColor: ORANGE_SOFT,
     alignItems: "center",
     justifyContent: "center",
-    overflow: "hidden",
-    backgroundColor: "#F0F0F0",
-  },
-  avatarFirst: {
-    marginLeft: 0,
-  },
-  avatarMore: {
-    backgroundColor: "#F0F0F0",
-  },
-  avatarImage: {
-    width: "100%",
-    height: "100%",
-  },
-  avatarTextMuted: {
-    fontFamily: FONT_DIN,
-    fontSize: 9,
-    lineHeight: 12,
-    color: "#8A8A8E",
   },
   socialProofText: {
     fontFamily: FONT_DIN,
@@ -1000,7 +1010,9 @@ const styles = StyleSheet.create({
   },
   socialProofStrong: {
     fontFamily: FONT_DIN,
-    color: "#3B6D11",
+    fontSize: 12,
+    lineHeight: 16,
+    color: ORANGE_DARK,
   },
   title: {
     fontFamily: FONT_DIN,
@@ -1010,7 +1022,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   titleAccent: {
-    color: "#639922",
+    color: ORANGE,
   },
   subtitle: {
     fontFamily: FONT_DIN,
@@ -1028,7 +1040,7 @@ const styles = StyleSheet.create({
   planCard: {
     width: "100%",
     minHeight: 106,
-    borderRadius: 16,
+    borderRadius: 14,
     borderWidth: 1.5,
     backgroundColor: "#FFFFFF",
     overflow: "hidden",
@@ -1190,12 +1202,12 @@ const styles = StyleSheet.create({
   },
   ctaDepth: {
     width: "100%",
-    borderRadius: 28,
-    backgroundColor: "#6B9A1E",
-    paddingBottom: 5,
-    shadowColor: "#B4F34D",
-    shadowOpacity: 0.35,
-    shadowRadius: 18,
+    borderRadius: 17,
+    backgroundColor: ORANGE_DARK,
+    paddingBottom: 3,
+    shadowColor: ORANGE,
+    shadowOpacity: 0.22,
+    shadowRadius: 16,
     shadowOffset: { width: 0, height: 8 },
     elevation: 10,
   },
@@ -1205,8 +1217,7 @@ const styles = StyleSheet.create({
     elevation: 0,
   },
   ctaButton: {
-    height: 56,
-    borderRadius: 28,
+    borderRadius: 17,
     overflow: "hidden",
   },
   ctaButtonPressed: {
@@ -1219,13 +1230,13 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 28,
+    borderRadius: 17,
   },
   ctaText: {
     fontFamily: FONT_DIN,
     fontSize: 18,
     lineHeight: 22,
-    color: "#0B0B0B",
+    color: "#FFFFFF",
   },
   ctaSubcopy: {
     fontFamily: FONT_DIN,
@@ -1272,8 +1283,8 @@ const styles = StyleSheet.create({
     backgroundColor: "#FAFAFA",
   },
   secondaryButtonActive: {
-    borderColor: "#D8E8C9",
-    backgroundColor: "#F5FAEF",
+    borderColor: "#FFD1AA",
+    backgroundColor: ORANGE_SOFT,
   },
   secondaryButtonPressed: {
     opacity: 0.75,
@@ -1289,7 +1300,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   secondaryButtonTextActive: {
-    color: "#3B6D11",
+    color: ORANGE_DARK,
   },
   inputLabel: {
     fontFamily: FONT_DIN,
@@ -1322,7 +1333,7 @@ const styles = StyleSheet.create({
   promoApplyButton: {
     minHeight: 46,
     paddingHorizontal: 16,
-    backgroundColor: "#639922",
+    backgroundColor: ORANGE,
     borderRadius: 10,
     justifyContent: "center",
     alignItems: "center",
