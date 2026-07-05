@@ -45,14 +45,14 @@ import { useScores } from "@/store/scores";
 import { useSigmaStore } from "@/store/sigma";
 import { useSubscriptionStore } from "@/store/subscription";
 
-const FONT = "ProximaNova-Bold";
+const FONT = "DINNextRounded-Bold";
 const DETAIL_FONT = "DINNextRounded-Regular";
 const GREEN = "#67C900";
 
 const SOFT_SHADOW = {
   shadowColor: "#000000",
-  shadowOpacity: 0.08,
-  shadowRadius: 20,
+  shadowOpacity: 0.09,
+  shadowRadius: 22,
   shadowOffset: { width: 0, height: 8 },
   elevation: 4,
 } as const;
@@ -521,7 +521,7 @@ const styles = StyleSheet.create({
     height: ms(92),
     borderRadius: ms(46),
     overflow: "hidden",
-    backgroundColor: COLORS.iconTileLavender,
+    backgroundColor: COLORS.lightSurfaceAlt,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -584,7 +584,7 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: RADII.md,
-    backgroundColor: COLORS.iconTileLavender,
+    backgroundColor: COLORS.lightSurfaceAlt,
     alignItems: "center",
     justifyContent: "center",
   },

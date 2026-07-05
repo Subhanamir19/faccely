@@ -64,7 +64,6 @@ import {
   Target,
   TriangleAlert,
   X,
-  Star,
 } from "lucide-react-native";
 import Text from "@/components/ui/T";
 import InsightPulseCard from "@/components/ui/InsightPulseCard";
@@ -87,6 +86,14 @@ import type {
 import type { AdvancedAnalysis } from "@/lib/api/advancedAnalysis";
 import { fetchScanDetail } from "@/lib/api/history";
 import { pickTopFive } from "@/lib/submetrics";
+import {
+  getAdvancedAnalysisIcon,
+  getAdvancedAnalysisIconStyle,
+} from "@/lib/advancedAnalysisIcons";
+import {
+  selectNextFocusRecommendations,
+  type NextFocusRecommendation,
+} from "@/lib/nextFocusRecommendations";
 import { TopFiveCard } from "@/components/dashboard/TopFiveCard";
 import ProblemsIcon from "@/assets/icons/problems.svg";
 import ProgressIcon from "@/assets/icons/progress.svg";
@@ -125,6 +132,7 @@ const TRACKING_HEADER = {
 } as const;
 
 const DETAIL_FONT = "DINNextRounded-Regular";
+const DETAIL_FONT_BOLD = "DINNextRounded-Bold";
 const FACE_PROGRESS_GREEN = "#89e219";
 const FACE_PROGRESS_SCORE_MIN = 0;
 const FACE_PROGRESS_SCORE_MAX = 100;
@@ -394,12 +402,51 @@ const METRIC_IMAGES: Record<string, any> = {
 const POTENTIAL_STAGE_IMAGE = require("@/assets/icons/potential-stage.png");
 const PROGRESS_MILESTONE_IMAGE = require("@/assets/icons/milestone.png");
 
+const PROGRESS_FOCUS_FALLBACK_IMAGE = require("@/assets/icons/next-foucs.png");
+
 const DASHBOARD_MODULE_ICONS = {
   problems: ProblemsIcon,
   progress: ProgressIcon,
   focus: FocusIcon,
 } as const;
 
+type ProgressFocusIconMeta = {
+  iconId: string;
+};
+
+const PROGRESS_FOCUS_ICON_MAP: Record<string, ProgressFocusIconMeta> = {
+  "testosterone-support": { iconId: "jawline.development" },
+  "control-estrogen-signals": { iconId: "cheekbones.face_fat" },
+  "igf1-support": { iconId: "cheekbones.bone_structure" },
+  "release-fascia": { iconId: "eyes.symmetry" },
+  "neck-thickness": { iconId: "jawline.ramus" },
+  "zygomatic-prominence": { iconId: "cheekbones.width" },
+  "orbicularis-oculi": { iconId: "eyes.eye_type" },
+  "eye-asymmetry": { iconId: "eyes.symmetry" },
+  coloring: { iconId: "skin.color" },
+  "release-body-fat": { iconId: "cheekbones.face_fat" },
+  "gut-clearance": { iconId: "skin.quality" },
+  "masseter-strength": { iconId: "jawline.development" },
+  "forward-growth": { iconId: "cheekbones.maxilla" },
+  eyebrows: { iconId: "eyes.brow_volume" },
+  "hairstyle-adjustment": { iconId: "haircut.styling" },
+  fwhr: { iconId: "cheekbones.fwhr" },
+  harmony: { iconId: "cheekbones.bone_structure" },
+  puffiness: { iconId: "cheekbones.face_fat" },
+  "skin-texture": { iconId: "skin.quality" },
+  deblot: { iconId: "cheekbones.face_fat" },
+  "train-structure": { iconId: "cheekbones.bone_structure" },
+  "dry-lips": { iconId: "skin.quality" },
+  "nose-fat": { iconId: "cheekbones.face_fat" },
+  "cortisol-control": { iconId: "skin.quality" },
+  "bone-mass": { iconId: "cheekbones.bone_structure" },
+  angularity: { iconId: "jawline.gonial_angle" },
+};
+
+function getProgressFocusIconId(item: NextFocusRecommendation | null) {
+  if (!item) return "cheekbones.bone_structure";
+  return PROGRESS_FOCUS_ICON_MAP[item.id]?.iconId ?? "cheekbones.bone_structure";
+}
 type DashboardModuleKey = "problems" | "progress" | "focus";
 type SvgIconSource = React.ComponentType<SvgProps> | ImageSourcePropType;
 
@@ -1804,7 +1851,7 @@ function HeroImagePreview({
               <ExpoImage
                 source={source}
                 style={styles.heroPreviewImage}
-                contentFit="contain"
+                contentFit="cover"
                 cachePolicy="memory-disk"
                 priority="high"
                 recyclingKey={cacheKey ?? uri ?? null}
@@ -1831,15 +1878,13 @@ function HeroImagePreview({
               </View>
             )}
           </View>
-          <Text style={styles.heroPreviewLabel}>{label}</Text>
           <Pressable
             onPress={onClose}
-            hitSlop={12}
             accessibilityRole="button"
             accessibilityLabel="Close image preview"
-            style={styles.heroPreviewClose}
+            style={({ pressed }) => [styles.heroPreviewCloseButton, pressed && styles.heroPreviewClosePressed]}
           >
-            <X size={18} color={COLORS.lightText} strokeWidth={2.4} />
+            <Text style={styles.heroPreviewCloseText}>Close</Text>
           </Pressable>
         </Animated.View>
       </View>
@@ -1853,12 +1898,18 @@ function OverviewFaceImage({
   cacheKey,
   loading,
   onError,
+  imageStyle,
+  wrapStyle,
+  contentFit = "contain",
 }: {
   uri: string | null;
   accent?: boolean;
   cacheKey?: string | null;
   loading?: boolean;
   onError?: () => void;
+  imageStyle?: any;
+  wrapStyle?: any;
+  contentFit?: "contain" | "cover";
 }) {
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
 
@@ -1875,11 +1926,11 @@ function OverviewFaceImage({
   }
 
   return (
-    <View style={styles.overviewFaceImageWrap}>
+    <View style={[styles.overviewFaceImageWrap, wrapStyle]}>
       <ExpoImage
         source={{ uri, cacheKey: cacheKey ?? undefined }}
-        style={styles.overviewFaceImage}
-        contentFit="cover"
+        style={[styles.overviewFaceImage, imageStyle]}
+        contentFit={contentFit}
         cachePolicy="memory-disk"
         priority={accent ? "high" : "normal"}
         recyclingKey={cacheKey ?? uri}
@@ -1906,6 +1957,114 @@ function OverviewFaceImage({
   );
 }
 
+function ProgressRollingDigit({
+  digit,
+  delay,
+  style,
+  height,
+}: {
+  digit: string;
+  delay: number;
+  style: any;
+  height: number;
+}) {
+  const previous = useRef(digit);
+  const [fromDigit, setFromDigit] = useState(digit);
+  const motion = useSharedValue(1);
+
+  useEffect(() => {
+    setFromDigit(previous.current);
+    previous.current = digit;
+    motion.value = 0;
+    motion.value = withDelay(delay, withTiming(1, { duration: 420, easing: Easing.out(Easing.cubic) }));
+  }, [delay, digit, motion]);
+
+  const outgoing = useAnimatedStyle(() => ({
+    transform: [{ translateY: -height * motion.value }],
+    opacity: 1 - motion.value,
+  }));
+
+  const incoming = useAnimatedStyle(() => ({
+    transform: [{ translateY: height * (1 - motion.value) }],
+    opacity: motion.value,
+  }));
+
+  return (
+    <View style={[styles.progressRollingDigitClip, { height }]}>
+      <Animated.Text style={[style, styles.progressRollingDigit, outgoing]}>{fromDigit}</Animated.Text>
+      <Animated.Text style={[style, styles.progressRollingDigit, incoming]}>{digit}</Animated.Text>
+    </View>
+  );
+}
+
+function ProgressRollingNumber({
+  value,
+  style,
+  height,
+}: {
+  value: number;
+  style: any;
+  height: number;
+}) {
+  const chars = String(Math.max(0, Math.round(value))).split("");
+
+  return (
+    <View style={styles.progressRollingNumber} accessibilityLabel={`${value}`}>
+      {chars.map((digit, index) => (
+        <ProgressRollingDigit
+          key={`${chars.length}-${index}`}
+          digit={digit}
+          delay={index * 55}
+          style={style}
+          height={height}
+        />
+      ))}
+    </View>
+  );
+}
+
+function ProgressTypewriterText({
+  text,
+  style,
+  delay = 260,
+  speedMs = 24,
+}: {
+  text: string;
+  style: any;
+  delay?: number;
+  speedMs?: number;
+}) {
+  const [visible, setVisible] = useState("");
+
+  useEffect(() => {
+    setVisible("");
+    let index = 0;
+    let interval: ReturnType<typeof setInterval> | null = null;
+    const timeout = setTimeout(() => {
+      interval = setInterval(() => {
+        index += 1;
+        setVisible(text.slice(0, index));
+        if (index >= text.length && interval) clearInterval(interval);
+      }, speedMs);
+    }, delay);
+
+    return () => {
+      clearTimeout(timeout);
+      if (interval) clearInterval(interval);
+    };
+  }, [delay, speedMs, text]);
+
+  return <Text style={style}>{visible}</Text>;
+}
+
+function ProgressHeadline({ pointsAway }: { pointsAway: number }) {
+  return (
+    <View style={styles.progressMockHeadlineRow} accessibilityLabel={`${pointsAway} points away`}>
+      <ProgressRollingNumber value={pointsAway} height={40} style={styles.progressMockHeadline} />
+      <ProgressTypewriterText text=" points away!" style={styles.progressMockHeadline} delay={360} />
+    </View>
+  );
+}
 function GapBadge({ pointsAway }: { pointsAway: number }) {
   const reveal = useSharedValue(0);
 
@@ -2273,17 +2432,24 @@ function ProgressOverview({
   overall,
   currentImageUri,
   latestScanId,
+  metrics,
+  latestAdvanced,
+  previousAdvanced,
   onSeeProgress,
 }: {
   overall: DashboardOverall;
   currentImageUri: string | null;
   latestScanId: string | null;
+  metrics: DashboardMetric[];
+  latestAdvanced: LatestAdvanced | null;
+  previousAdvanced: LatestAdvanced | null;
   onSeeProgress: () => void;
 }) {
   const router = useRouter();
   const [preview, setPreview] = useState<null | { target: "current" | "potential"; label: string }>(null);
   const [remoteCurrentImageUri, setRemoteCurrentImageUri] = useState<string | null>(null);
   const [remoteCurrentLoading, setRemoteCurrentLoading] = useState(false);
+  const [showProgressPlan, setShowProgressPlan] = useState(false);
   const [currentImageRetryTick, setCurrentImageRetryTick] = useState(0);
   const currentImageRetryRef = useRef(0);
   const potentialImageRetryRef = useRef(0);
@@ -2294,7 +2460,6 @@ function ProgressOverview({
   const loadPotentialFace = usePotentialFace((s) => s.load);
   const retryPotentialFace = usePotentialFace((s) => s.retryGeneration);
   const currentStreak = useTasksStore((s) => s.currentStreak);
-  const todayPlan = useTasksStore((s) => s.today);
   const potentialScore = getProgressPreviewPotentialScore(overall.current);
   const currentRounded = Math.round(overall.current);
   const potentialRounded = Math.max(Math.round(potentialScore), currentRounded);
@@ -2314,19 +2479,20 @@ function ProgressOverview({
       ? `potential-face:${potentialFace.id}:primary:${potentialFace.generatedAt ?? potentialFace.updatedAt}`
       : null;
   const displayCurrentImageUri = currentImageUri ?? remoteCurrentImageUri;
-  const questTasks = todayPlan?.tasks ?? [];
-  const questProtocols = todayPlan?.protocols ?? [];
-  const primaryQuest = questTasks.find((task) => task.status === "pending") ?? questTasks[0] ?? null;
-  const pendingQuestCount =
-    questTasks.filter((task) => task.status === "pending").length +
-    questProtocols.filter((protocol) => protocol.status === "pending").length;
-  const questReward = Math.max(
-    1,
-    pendingQuestCount || questTasks.length + questProtocols.length || 1,
+  const topFocus = useMemo(
+    () =>
+      selectNextFocusRecommendations({
+        scanId: latestScanId,
+        metrics,
+        latestAdvanced,
+        previousAdvanced,
+        limit: 1,
+      })[0] ?? null,
+    [latestScanId, latestAdvanced, metrics, previousAdvanced],
   );
-  const questName = primaryQuest?.name ?? (todayPlan?.focusSummary ? `${todayPlan.focusSummary} focus` : "Check-in focus");
-  const questReason = primaryQuest?.reason ?? (todayPlan?.focusSummary ? `Matches your ${todayPlan.focusSummary} plan` : "Review your latest scan trend");
-
+  const topFocusIconId = getProgressFocusIconId(topFocus);
+  const topFocusIcon = getAdvancedAnalysisIcon(topFocusIconId);
+  const topFocusScore = topFocus ? Math.round(topFocus.score) : null;
   useEffect(() => {
     void loadPotentialFace();
   }, [loadPotentialFace]);
@@ -2393,6 +2559,13 @@ function ProgressOverview({
   const summaryFillStyle = useAnimatedStyle(() => ({
     width: `${summaryProgress.value}%`,
   } as any));
+  const summaryTrackStyle = useAnimatedStyle(() => {
+    const progress = Math.max(0, Math.min(1, summaryProgress.value / 100));
+    return {
+      opacity: 0.5 + progress * 0.5,
+      transform: [{ scaleX: 0.94 + progress * 0.06 }],
+    } as any;
+  });
   const summaryMarkerStyle = useAnimatedStyle(() => ({
     left: `${summaryMarkerProgress.value}%`,
   } as any));
@@ -2470,25 +2643,19 @@ function ProgressOverview({
     <>
       <Animated.View entering={FadeInDown.duration(420)} style={styles.progressMockWrap}>
         <View style={styles.progressMockTopBar}>
-          <Pressable
-            onPress={handleBack}
-            accessibilityRole="button"
-            accessibilityLabel="Go back"
-            hitSlop={8}
-            style={({ pressed }) => [styles.progressMockBack, pressed && styles.overviewPressed]}
-          >
-            <ArrowLeft size={25} color={COLORS.lightText} strokeWidth={3.2} />
-          </Pressable>
+          <Text style={styles.progressScreenTitle}>Progress</Text>
 
-          <View style={styles.progressMockStreakPill} accessibilityLabel={`${currentStreak} day streak`}>
-            <Flame size={22} color="#FF8A00" fill="#FF8A00" strokeWidth={2.4} />
-            <Text style={styles.progressMockStreakText}>{currentStreak}</Text>
+          <View style={styles.progressFire3dPill} accessibilityLabel={`${currentStreak} day streak`}>
+            <View style={styles.progressFire3dFace}>
+              <Flame size={22} color="#FF8A00" fill="#FF8A00" strokeWidth={2.4} />
+              <Text style={styles.progressMockStreakText}>{currentStreak}</Text>
+            </View>
           </View>
         </View>
 
         <View style={styles.progressMockHeaderCopy}>
-          <Text style={styles.progressMockHeadline}>{pointsAway} points away!</Text>
-          <Text style={styles.progressMockSubhead}>Keep your streak going with a quick check-in.</Text>
+          <ProgressHeadline pointsAway={pointsAway} />
+          <ProgressTypewriterText text="Keep your streak going with a quick check-in." style={styles.progressMockSubhead} delay={780} speedMs={18} />
         </View>
 
         <View style={styles.progressLevelCard}>
@@ -2498,18 +2665,17 @@ function ProgressOverview({
               <Text style={styles.progressLevelEyebrow}>LEVEL PROGRESS</Text>
               <Text style={styles.progressLevelTitle}>You are {Math.round((currentRounded / Math.max(1, potentialRounded)) * 100)}% there</Text>
             </View>
-            <View style={styles.progressLevelGainPill}>
-              <Text style={styles.progressLevelGainText}>+{pointsAway}</Text>
-            </View>
+
+
           </View>
 
           <View style={styles.progressLevelTrackWrap}>
-            <View style={styles.progressLevelTrack} accessibilityRole="progressbar" accessibilityValue={{ min: 0, max: FACE_PROGRESS_SCORE_MAX, now: currentRounded }}>
+            <Animated.View style={[styles.progressLevelTrack, summaryTrackStyle]} accessibilityRole="progressbar" accessibilityValue={{ min: 0, max: FACE_PROGRESS_SCORE_MAX, now: currentRounded }}>
               <Animated.View style={[styles.progressLevelFill, summaryFillStyle]} />
               <Animated.View style={[styles.progressLevelMarker, summaryMarkerStyle]}>
                 <Text style={styles.progressLevelMarkerText}>{potentialRounded}</Text>
               </Animated.View>
-            </View>
+            </Animated.View>
           </View>
 
           <View style={styles.progressLevelFooter}>
@@ -2524,14 +2690,35 @@ function ProgressOverview({
           <View style={styles.progressPotentialHeader}>
             <Text style={styles.progressPotentialTitle}>Your potential</Text>
             <Pressable
-              onPress={onSeeProgress}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setShowProgressPlan((open) => !open);
+              }}
               accessibilityRole="button"
               accessibilityLabel="How progress works"
+              accessibilityState={{ expanded: showProgressPlan }}
               style={({ pressed }) => [styles.progressHowItWorksButton, pressed && styles.overviewPressed]}
             >
               <Text style={styles.progressHowItWorksText}>HOW IT WORKS</Text>
             </Pressable>
           </View>
+
+          {showProgressPlan && (
+            <Animated.View entering={FadeInDown.duration(220)} style={styles.progressHowItWorksPanel}>
+              <View style={styles.progressHowBulletRow}>
+                <View style={styles.progressHowBulletDot} />
+                <Text style={styles.progressHowBulletText}>Your latest scan sets the current score and strongest gaps.</Text>
+              </View>
+              <View style={styles.progressHowBulletRow}>
+                <View style={styles.progressHowBulletDot} />
+                <Text style={styles.progressHowBulletText}>The plan ranks the highest-impact focus first, then updates as your trend changes.</Text>
+              </View>
+              <View style={styles.progressHowBulletRow}>
+                <View style={styles.progressHowBulletDot} />
+                <Text style={styles.progressHowBulletText}>Consistent check-ins move the target from guesswork to a measurable path.</Text>
+              </View>
+            </Animated.View>
+          )}
 
           <View style={styles.progressPotentialScoreRow}>
             <View style={styles.progressPotentialColumn}>
@@ -2555,9 +2742,12 @@ function ProgressOverview({
                   uri={displayCurrentImageUri}
                   loading={remoteCurrentLoading}
                   onError={handleCurrentImageError}
+                  imageStyle={styles.progressPotentialInnerImage}
+                  wrapStyle={styles.progressPotentialImageWrap}
+                  contentFit="cover"
                 />
               </Pressable>
-              <Text style={styles.progressImageCaption}>TODAY</Text>
+
             </View>
 
             <View style={styles.progressPotentialImageCol}>
@@ -2578,12 +2768,15 @@ function ProgressOverview({
                     accent
                     cacheKey={potentialCacheKey}
                     onError={handlePotentialImageError}
+                    imageStyle={styles.progressPotentialInnerImage}
+                    wrapStyle={styles.progressPotentialImageWrap}
+                    contentFit="cover"
                   />
                 ) : potentialPending && displayCurrentImageUri ? (
-                  <View style={styles.overviewPotentialDraft}>
+                  <View style={[styles.overviewPotentialDraft, styles.progressPotentialDraftWrap]}>
                     <ExpoImage
                       source={{ uri: displayCurrentImageUri }}
-                      style={StyleSheet.absoluteFillObject}
+                      style={styles.progressPotentialDraftImage}
                       contentFit="cover"
                       cachePolicy="memory-disk"
                       transition={180}
@@ -2606,7 +2799,7 @@ function ProgressOverview({
                   </View>
                 )}
               </Pressable>
-              <Text style={styles.progressImageCaption}>AI PREVIEW</Text>
+
             </View>
           </View>
 
@@ -2617,22 +2810,31 @@ function ProgressOverview({
         </View>
 
         <Pressable
-          onPress={() => router.push("/(tabs)/program")}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            router.push("/(tabs)/next-focus");
+          }}
           accessibilityRole="button"
-          accessibilityLabel={`Open today's quest: ${questName}`}
+          accessibilityLabel={`Open next focus: ${topFocus?.title ?? "top focus metric"}`}
           style={({ pressed }) => [styles.progressQuestCard, pressed && styles.progressQuestPressed]}
         >
           <View style={styles.progressQuestIconWrap}>
-            <Star size={38} color="#FFFFFF" fill="#FFFFFF" strokeWidth={2.4} />
+            <Image
+              source={topFocusIcon ?? PROGRESS_FOCUS_FALLBACK_IMAGE}
+              style={[
+                styles.progressQuestMetricIcon,
+                topFocusIcon ? getAdvancedAnalysisIconStyle(topFocusIconId) : null,
+              ]}
+              resizeMode="contain"
+            />
           </View>
           <View style={styles.progressQuestCopy}>
-            <Text style={styles.progressQuestEyebrow}>BONUS QUEST</Text>
-            <Text style={styles.progressQuestTitle}>Next High-Level Quest</Text>
-            <Text style={styles.progressQuestName} numberOfLines={1}>{questName}</Text>
-            <Text style={styles.progressQuestReason} numberOfLines={1}>{questReason}</Text>
+            <Text style={styles.progressQuestEyebrow}>NEXT FOCUS</Text>
+            <Text style={styles.progressQuestName} numberOfLines={1}>{topFocus?.title ?? "Run advanced analysis"}</Text>
+            <Text style={styles.progressQuestReason} numberOfLines={1}>{topFocus?.evidence ?? "Unlock your top focus metric"}</Text>
           </View>
           <View style={styles.progressQuestRewardPill}>
-            <Text style={styles.progressQuestRewardText}>+{questReward}</Text>
+            <Text style={styles.progressQuestRewardText}>{topFocusScore ?? "--"}</Text>
           </View>
         </Pressable>
 
@@ -2642,11 +2844,11 @@ function ProgressOverview({
             router.push("/(tabs)/next-focus");
           }}
           accessibilityRole="button"
-          accessibilityLabel="Start check-in"
+          accessibilityLabel="Check in progress"
           style={({ pressed }) => [styles.progressStartButton, pressed && styles.progressStartButtonPressed]}
         >
           <ScanLine size={30} color="#FFFFFF" strokeWidth={3.2} />
-          <Text style={styles.progressStartText}>START CHECK-IN</Text>
+          <Text style={styles.progressStartText}>CHECK IN PROGRESS</Text>
         </Pressable>
       </Animated.View>
       <HeroImagePreview
@@ -3614,6 +3816,9 @@ export default function DashboardScreen() {
           overall={overall!}
           currentImageUri={scanImageUri ?? null}
           latestScanId={latestScanId}
+          metrics={metrics}
+          latestAdvanced={latestAdvanced}
+          previousAdvanced={previousAdvanced}
           onSeeProgress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             setProgressView("details");
@@ -3641,7 +3846,7 @@ export default function DashboardScreen() {
       <ScrollView
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingBottom: insets.bottom + SP[10] },
+          { paddingBottom: insets.bottom + (progressView === "overview" ? 148 : SP[10]) },
         ]}
         showsVerticalScrollIndicator={false}
         refreshControl={
@@ -4298,118 +4503,163 @@ const styles = StyleSheet.create({
     transform: [{ scale: 0.98 }],
   },
   progressMockWrap: {
-    gap: 13,
-    paddingBottom: SP[5],
+    gap: 8,
+    marginHorizontal: -4,
+    paddingBottom: 18,
   },
   progressMockTopBar: {
-    minHeight: 52,
+    minHeight: 42,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
+  progressScreenTitle: {
+    fontFamily: DETAIL_FONT_BOLD,
+    fontSize: 24,
+    lineHeight: 29,
+    color: COLORS.lightText,
+    letterSpacing: 0,
+  },
   progressMockBack: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(255,255,255,0.52)",
   },
   progressMockStreakPill: {
-    minWidth: 74,
-    height: 48,
-    borderRadius: 24,
-    paddingHorizontal: 14,
+    minWidth: 70,
+    height: 44,
+    borderRadius: 22,
+    paddingHorizontal: 13,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+    backgroundColor: "rgba(255,255,255,0.56)",
+  },
+  progressFire3dPill: {
+    minWidth: 72,
+    height: 46,
+    borderRadius: 23,
+    padding: 3,
+    backgroundColor: "rgba(255,255,255,0.72)",
+    shadowColor: "#D8B775",
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3,
+  },
+  progressFire3dFace: {
+    flex: 1,
+    borderRadius: 20,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
-    backgroundColor: "rgba(255,255,255,0.56)",
+    backgroundColor: "#FFFDF8",
+    borderBottomWidth: 3,
+    borderBottomColor: "#EFE5D0",
   },
   progressMockStreakText: {
-    fontFamily: "ProximaNova-Bold",
-    fontSize: 18,
+    fontFamily: DETAIL_FONT_BOLD,
+    fontSize: 16,
     lineHeight: 22,
     color: COLORS.lightText,
   },
   progressMockHeaderCopy: {
-    marginTop: -4,
-    marginBottom: 8,
+    marginTop: 0,
+    marginBottom: 4,
+  },
+  progressMockHeadlineRow: {
+    minHeight: 38,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  progressRollingNumber: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  progressRollingDigitClip: {
+    overflow: "hidden",
+    minWidth: 18,
+  },
+  progressRollingDigit: {
+    position: "absolute",
+    left: 0,
+    top: 0,
   },
   progressMockHeadline: {
-    fontFamily: "ProximaNova-Bold",
-    fontSize: 34,
-    lineHeight: 39,
+    fontFamily: DETAIL_FONT_BOLD,
+    fontSize: 31,
+    lineHeight: 38,
     color: COLORS.lightText,
     letterSpacing: 0,
   },
   progressMockSubhead: {
-    marginTop: 2,
+    marginTop: 0,
     fontFamily: DETAIL_FONT,
-    fontSize: 19,
-    lineHeight: 24,
+    fontSize: 16,
+    lineHeight: 21,
     color: COLORS.lightText,
   },
   progressLevelCard: {
-    borderRadius: 24,
+    borderRadius: 20,
     borderWidth: 2,
     borderColor: "#DEDEDA",
-    borderBottomWidth: 6,
+    borderBottomWidth: 5,
     borderBottomColor: "#D3CEC3",
     backgroundColor: "#FFFFFF",
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 17,
+    paddingHorizontal: 12,
+    paddingTop: 8,
+    paddingBottom: 9,
   },
   progressLevelHeader: {
-    minHeight: 78,
+    minHeight: 72,
     flexDirection: "row",
     alignItems: "center",
-    gap: 14,
+    gap: 10,
   },
   progressLevelIcon: {
-    width: 52,
-    height: 52,
+    width: 78,
+    height: 78,
   },
   progressLevelCopy: {
     flex: 1,
     minWidth: 0,
   },
   progressLevelEyebrow: {
-    fontFamily: "ProximaNova-Bold",
-    fontSize: 16,
-    lineHeight: 20,
+    fontFamily: DETAIL_FONT_BOLD,
+    fontSize: 12,
+    lineHeight: 15,
     color: "#A5A5AA",
-    letterSpacing: 4,
+    letterSpacing: 2.4,
   },
   progressLevelTitle: {
-    marginTop: 4,
+    marginTop: 3,
     fontFamily: DETAIL_FONT,
-    fontSize: 20,
-    lineHeight: 25,
+    fontSize: 16,
+    lineHeight: 20,
     color: COLORS.lightText,
   },
   progressLevelGainPill: {
-    minWidth: 70,
-    minHeight: 57,
-    borderRadius: 20,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#FFF0C7",
+    minWidth: 0,
+    minHeight: 0,
   },
   progressLevelGainText: {
-    fontFamily: "ProximaNova-Bold",
-    fontSize: 24,
-    lineHeight: 28,
-    color: "#F47D00",
+    fontFamily: DETAIL_FONT_BOLD,
+    fontSize: 1,
+    lineHeight: 1,
+    color: "transparent",
   },
   progressLevelTrackWrap: {
-    paddingHorizontal: 20,
-    paddingTop: 19,
-    paddingBottom: 12,
+    paddingHorizontal: 8,
+    paddingTop: 3,
+    paddingBottom: 15,
   },
   progressLevelTrack: {
-    height: 24,
+    height: 14,
     borderRadius: 999,
     backgroundColor: "#E1E1E1",
     overflow: "visible",
@@ -4421,22 +4671,22 @@ const styles = StyleSheet.create({
   },
   progressLevelMarker: {
     position: "absolute",
-    top: -10,
-    width: 46,
-    height: 46,
-    marginLeft: -23,
-    borderRadius: 23,
+    top: -8,
+    width: 30,
+    height: 30,
+    marginLeft: -15,
+    borderRadius: 15,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#FFFFFF",
-    borderWidth: 6,
+    borderWidth: 4,
     borderColor: "#2DCD12",
     zIndex: 4,
   },
   progressLevelMarkerText: {
-    fontFamily: "ProximaNova-Bold",
-    fontSize: 18,
-    lineHeight: 21,
+    fontFamily: DETAIL_FONT_BOLD,
+    fontSize: 12,
+    lineHeight: 15,
     color: "#35BF12",
   },
   progressLevelFooter: {
@@ -4445,53 +4695,82 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   progressLevelCurrentLabel: {
-    fontFamily: "ProximaNova-Bold",
-    fontSize: 17,
-    lineHeight: 21,
+    fontFamily: DETAIL_FONT_BOLD,
+    fontSize: 14,
+    lineHeight: 17,
     color: "#13AEE8",
   },
   progressLevelToGo: {
-    fontFamily: "ProximaNova-Bold",
-    fontSize: 17,
-    lineHeight: 21,
+    fontFamily: DETAIL_FONT_BOLD,
+    fontSize: 14,
+    lineHeight: 17,
     color: COLORS.lightText,
   },
   progressPotentialCard: {
-    borderRadius: 24,
+    borderRadius: 20,
     borderWidth: 2,
     borderColor: "#DEDEDA",
-    borderBottomWidth: 6,
+    borderBottomWidth: 5,
     borderBottomColor: "#D3CEC3",
     backgroundColor: "#FFFFFF",
-    paddingHorizontal: 18,
-    paddingTop: 20,
-    paddingBottom: 18,
+    paddingHorizontal: 12,
+    paddingTop: 13,
+    paddingBottom: 13,
   },
   progressPotentialHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 12,
+    gap: 10,
   },
   progressPotentialTitle: {
     flex: 1,
-    fontFamily: "ProximaNova-Bold",
-    fontSize: 29,
-    lineHeight: 34,
+    fontFamily: DETAIL_FONT_BOLD,
+    fontSize: 25,
+    lineHeight: 30,
     color: COLORS.lightText,
   },
   progressHowItWorksButton: {
-    minHeight: 38,
+    minHeight: 32,
     justifyContent: "center",
   },
   progressHowItWorksText: {
-    fontFamily: "ProximaNova-Bold",
-    fontSize: 16,
-    lineHeight: 20,
+    fontFamily: DETAIL_FONT_BOLD,
+    fontSize: 14,
+    lineHeight: 17,
     color: "#12A9E5",
   },
+  progressHowItWorksPanel: {
+    marginTop: 8,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 7,
+    backgroundColor: "#F2FBEE",
+    borderWidth: 1,
+    borderColor: "#C8F2B4",
+  },
+  progressHowBulletRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+  },
+  progressHowBulletDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginTop: 6,
+    backgroundColor: "#35D20A",
+  },
+  progressHowBulletText: {
+    flex: 1,
+    fontFamily: DETAIL_FONT,
+    fontSize: 12,
+    lineHeight: 17,
+    color: COLORS.lightText,
+  },
   progressPotentialScoreRow: {
-    marginTop: 17,
+    marginTop: 10,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -4502,184 +4781,198 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 10,
+    gap: 8,
   },
   progressNowPill: {
-    minWidth: 64,
-    height: 32,
-    borderRadius: 16,
+    minWidth: 60,
+    height: 29,
+    borderRadius: 15,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#E6FAFF",
   },
   progressNowPillText: {
-    fontFamily: "ProximaNova-Bold",
-    fontSize: 14,
+    fontFamily: DETAIL_FONT_BOLD,
+    fontSize: 12,
     color: "#13AEE8",
   },
   progressGoalPill: {
-    minWidth: 64,
-    height: 32,
-    borderRadius: 16,
+    minWidth: 60,
+    height: 29,
+    borderRadius: 15,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#B8F58C",
   },
   progressGoalPillText: {
-    fontFamily: "ProximaNova-Bold",
-    fontSize: 14,
+    fontFamily: DETAIL_FONT_BOLD,
+    fontSize: 12,
     color: "#31A800",
   },
   progressNowScore: {
-    fontFamily: "ProximaNova-Bold",
-    fontSize: 25,
-    lineHeight: 29,
+    fontFamily: DETAIL_FONT_BOLD,
+    fontSize: 24,
+    lineHeight: 28,
     color: "#13AEE8",
   },
   progressGoalScore: {
-    fontFamily: "ProximaNova-Bold",
-    fontSize: 25,
-    lineHeight: 29,
+    fontFamily: DETAIL_FONT_BOLD,
+    fontSize: 24,
+    lineHeight: 28,
     color: "#26BC0B",
   },
   progressPotentialImagesRow: {
-    marginTop: 10,
+    marginTop: 8,
     flexDirection: "row",
     justifyContent: "space-between",
-    gap: 24,
+    gap: 16,
   },
   progressPotentialImageCol: {
     flex: 1,
     minWidth: 0,
   },
   progressPotentialImageFrame: {
-    height: 96,
-    borderRadius: 16,
+    aspectRatio: 1,
+    borderRadius: 14,
     overflow: "hidden",
-    backgroundColor: COLORS.iconTileLavender,
-    borderWidth: 2,
-    borderColor: "#DFE1E6",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FFFFFF",
+    borderWidth: 0,
   },
   progressPotentialGoalFrame: {
-    borderWidth: 5,
-    borderColor: "#35D20A",
+    backgroundColor: "#FFFFFF",
+    borderWidth: 0,
+  },
+  progressPotentialImageWrap: {
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FFFFFF",
+  },
+  progressPotentialInnerImage: {
+    width: "100%",
+    height: "100%",
+    alignSelf: "center",
+  },
+  progressPotentialDraftImage: {
+    width: "100%",
+    height: "100%",
+    alignSelf: "center",
+  },
+  progressPotentialDraftWrap: {
+    backgroundColor: "#FFFFFF",
   },
   progressImageCaption: {
-    marginTop: 9,
-    fontFamily: "ProximaNova-Bold",
-    fontSize: 14,
-    lineHeight: 18,
-    color: COLORS.lightMuted,
+    display: "none",
   },
   progressPotentialNotice: {
-    marginTop: 17,
-    minHeight: 50,
-    borderRadius: 16,
-    paddingHorizontal: 16,
+    marginTop: 10,
+    minHeight: 41,
+    borderRadius: 14,
+    paddingHorizontal: 12,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 10,
+    gap: 8,
     backgroundColor: "#D5F6FF",
   },
   progressPotentialNoticeText: {
     flexShrink: 1,
-    fontFamily: "ProximaNova-Bold",
-    fontSize: 15,
-    lineHeight: 19,
+    fontFamily: DETAIL_FONT_BOLD,
+    fontSize: 12,
+    lineHeight: 15,
     color: "#0B88B3",
   },
   progressQuestCard: {
-    minHeight: 108,
-    borderRadius: 24,
-    borderWidth: 4,
-    borderColor: "#FFC800",
+    minHeight: 96,
+    borderRadius: 20,
+    borderWidth: 3,
+    borderColor: "#39D400",
     backgroundColor: "#FFFFFF",
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
     flexDirection: "row",
     alignItems: "center",
-    gap: 13,
+    gap: 10,
   },
   progressQuestPressed: {
     opacity: 0.9,
     transform: [{ translateY: 2 }],
   },
   progressQuestIconWrap: {
-    width: 62,
-    height: 62,
+    width: 60,
+    height: 60,
     borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#FFC800",
+    overflow: "hidden",
+    backgroundColor: "#39D400",
+  },
+  progressQuestMetricIcon: {
+    width: 54,
+    height: 54,
   },
   progressQuestCopy: {
     flex: 1,
     minWidth: 0,
   },
   progressQuestEyebrow: {
-    fontFamily: "ProximaNova-Bold",
-    fontSize: 12,
-    lineHeight: 15,
-    letterSpacing: 4,
-    color: "#B87400",
+    fontFamily: DETAIL_FONT_BOLD,
+    fontSize: 11,
+    lineHeight: 14,
+    letterSpacing: 2.4,
+    color: "#239300",
   },
-  progressQuestTitle: {
-    marginTop: 3,
-    fontFamily: DETAIL_FONT,
-    fontSize: 22,
-    lineHeight: 26,
-    color: COLORS.lightText,
-  },
+
   progressQuestName: {
-    marginTop: 1,
-    fontFamily: "ProximaNova-Bold",
-    fontSize: 16,
-    lineHeight: 19,
+    marginTop: 0,
+    fontFamily: DETAIL_FONT_BOLD,
+    fontSize: 14,
+    lineHeight: 17,
     color: COLORS.lightText,
   },
   progressQuestReason: {
-    marginTop: 2,
-    fontFamily: "ProximaNova-Bold",
-    fontSize: 13,
-    lineHeight: 16,
-    color: COLORS.lightText,
+    marginTop: 1,
+    fontFamily: DETAIL_FONT_BOLD,
+    fontSize: 12,
+    lineHeight: 15,
+    color: COLORS.lightSub,
   },
   progressQuestRewardPill: {
-    minWidth: 58,
-    minHeight: 58,
-    borderRadius: 20,
+    minWidth: 52,
+    minHeight: 52,
+    borderRadius: 17,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#FFF0C7",
+    backgroundColor: "#E9FFD9",
   },
   progressQuestRewardText: {
-    fontFamily: "ProximaNova-Bold",
-    fontSize: 22,
-    lineHeight: 26,
-    color: "#F47D00",
+    fontFamily: DETAIL_FONT_BOLD,
+    fontSize: 20,
+    lineHeight: 24,
+    color: "#24B900",
   },
   progressStartButton: {
-    minHeight: 76,
-    borderRadius: 18,
-    borderBottomWidth: 8,
-    borderBottomColor: "#2EAF00",
-    backgroundColor: "#42D900",
+    minHeight: 58,
+    borderRadius: 17,
+    borderBottomWidth: 5,
+    borderBottomColor: "#000000",
+    backgroundColor: "#0B0B0B",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 14,
+    gap: 10,
   },
   progressStartButtonPressed: {
-    transform: [{ translateY: 5 }],
-    borderBottomWidth: 3,
+    transform: [{ translateY: 3 }],
+    borderBottomWidth: 2,
   },
   progressStartText: {
-    fontFamily: "ProximaNova-Bold",
-    fontSize: 25,
-    lineHeight: 30,
+    fontFamily: DETAIL_FONT_BOLD,
+    fontSize: 20,
+    lineHeight: 24,
     color: "#FFFFFF",
-    letterSpacing: 1,
+    letterSpacing: 0,
   },
   detailBackRow: {
     display: "none",
@@ -4925,29 +5218,23 @@ const styles = StyleSheet.create({
   },
   heroPreviewBackdrop: {
     flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: SP[6],
+    backgroundColor: "#000000",
   },
   heroPreviewShade: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.78)",
+    backgroundColor: "#000000",
   },
   heroPreviewCard: {
+    flex: 1,
     width: "100%",
-    maxWidth: 360,
-    borderRadius: RADII.card,
-    backgroundColor: "#0B0B0B",
-    padding: SP[3],
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.14)",
-    ...SOFT_SHADOW,
+    backgroundColor: "#000000",
+    paddingHorizontal: 0,
+    paddingTop: 0,
+    paddingBottom: 102,
   },
   heroPreviewImageWrap: {
+    flex: 1,
     width: "100%",
-    aspectRatio: 1,
-    borderRadius: RADII.xl,
     overflow: "hidden",
     backgroundColor: "#000000",
   },
@@ -4960,32 +5247,45 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: SP[2],
-    backgroundColor: "rgba(0,0,0,0.38)",
+    backgroundColor: "rgba(255,255,255,0.72)",
   },
   heroPreviewStateText: {
-    fontFamily: DETAIL_FONT,
-    fontSize: 12,
-    color: "#FFFFFF",
-    letterSpacing: 0.2,
-  },
-  heroPreviewLabel: {
     fontFamily: "ProximaNova-Bold",
-    fontSize: 13,
-    color: COLORS.lightBg,
+    fontSize: 12,
+    color: COLORS.lightSub,
     letterSpacing: 0.3,
     marginTop: SP[3],
     marginBottom: SP[1],
   },
-  heroPreviewClose: {
+  heroPreviewCloseButton: {
     position: "absolute",
-    top: SP[4],
-    right: SP[4],
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    left: SP[5],
+    right: SP[5],
+    bottom: 28,
+    minHeight: 62,
+    borderRadius: 24,
+    backgroundColor: COLORS.ctaBlack,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.86)",
+    borderBottomWidth: 6,
+    borderBottomColor: "#000000",
+    shadowColor: "#000000",
+    shadowOpacity: 0.18,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 8,
+  },
+  heroPreviewClosePressed: {
+    opacity: 0.92,
+    transform: [{ translateY: 3 }],
+    borderBottomWidth: 3,
+  },
+  heroPreviewCloseText: {
+    fontFamily: "DINNextRounded-Bold",
+    fontSize: 25,
+    lineHeight: 30,
+    color: "#FFFFFF",
+    letterSpacing: 0,
   },
   unifiedIdentityRow: {
     flexDirection: "row",
@@ -5006,7 +5306,7 @@ const styles = StyleSheet.create({
     borderRadius: 15,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: COLORS.lightBg,
+    backgroundColor: "#000000",
   },
   unifiedStreakText: {
     fontFamily: "ProximaNova-Bold",

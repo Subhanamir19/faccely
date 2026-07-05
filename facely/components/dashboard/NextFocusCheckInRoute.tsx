@@ -18,6 +18,7 @@ import Animated, {
   useAnimatedProps,
   useAnimatedStyle,
   useSharedValue,
+  withDelay,
   withSpring,
   withTiming,
 } from "react-native-reanimated";
@@ -53,6 +54,7 @@ const CARD_BORDER = "#E1E1DE";
 
 const FALLBACK_ICON = require("../../assets/icons/next-foucs.png");
 const AnimatedPath = Animated.createAnimatedComponent(Path);
+const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
 const FOCUS_IMAGE_BG = "#E9FFD9";
 const PROBLEM_IMAGE_BG = "#FFE3E0";
@@ -219,31 +221,76 @@ function toAdvancedAnalysis(source: LatestAdvanced | AdvancedAnalysis | null): A
   };
 }
 
+function GraphTrendDot({
+  point,
+  accent,
+  delay,
+  isLast,
+}: {
+  point: GraphCoord;
+  accent: string;
+  delay: number;
+  isLast: boolean;
+}) {
+  const dotProgress = useSharedValue(0);
+
+  useEffect(() => {
+    dotProgress.value = 0;
+    dotProgress.value = withDelay(
+      delay,
+      withTiming(1, {
+        duration: 260,
+        easing: Easing.out(Easing.cubic),
+      }),
+    );
+  }, [delay, dotProgress, point.x, point.y]);
+
+  const animatedDotProps = useAnimatedProps(() => ({
+    opacity: dotProgress.value,
+    r: 2 + (isLast ? 4 : 3) * dotProgress.value,
+  }));
+
+  return (
+    <AnimatedCircle
+      cx={point.x}
+      cy={point.y}
+      fill="#FFFFFF"
+      stroke={accent}
+      strokeWidth={3}
+      animatedProps={animatedDotProps}
+    />
+  );
+}
+
 function ProgressGraphCard({
   points,
   dates,
   width,
+  loading,
 }: {
   points: number[];
   dates: string[];
   width: number;
+  loading: boolean;
 }) {
   const chartWidth = Math.max(240, width - 48);
   const chartHeight = 160;
-  const safePoints = points.length ? points.slice(-8) : [56];
-  const safeDates = dates.slice(-safePoints.length);
+  const safePoints = useMemo(() => points.filter(Number.isFinite).slice(-8), [points]);
+  const safeDates = useMemo(() => dates.slice(-safePoints.length), [dates, safePoints.length]);
   const graph = useMemo(() => buildGraphLayout(safePoints, chartWidth, chartHeight), [chartHeight, chartWidth, safePoints]);
   const lineProgress = useSharedValue(0);
-  const latest = Math.round(safePoints[safePoints.length - 1] ?? 56);
-  const first = safePoints[0] ?? latest;
-  const delta = latest - first;
-  const labelLeft = formatShortDate(safeDates[0], "Scan 1");
-  const labelRight = formatShortDate(safeDates[safeDates.length - 1], "Latest");
+  const hasGraph = graph.coords.length > 0;
+  const hasLine = graph.coords.length > 1 && graph.path.length > 0;
+  const latest = hasGraph ? Math.round(safePoints[safePoints.length - 1]) : null;
+  const first = hasGraph ? safePoints[0] : null;
+  const delta = latest !== null && first !== null ? latest - first : null;
+  const labelLeft = formatShortDate(safeDates[0], hasGraph ? "Scan 1" : "No scans");
+  const labelRight = formatShortDate(safeDates[safeDates.length - 1], hasGraph ? "Latest" : "Trend");
 
   useEffect(() => {
     lineProgress.value = 0;
     lineProgress.value = withTiming(1, {
-      duration: 950,
+      duration: 780,
       easing: Easing.out(Easing.cubic),
     });
   }, [graph.path, lineProgress]);
@@ -260,11 +307,19 @@ function ProgressGraphCard({
           <Text style={styles.graphTitle}>Your check-in trend</Text>
         </View>
         <View style={styles.scoreBadge}>
-          <Text style={styles.scoreBadgeValue}>{latest}</Text>
-          <Text style={[styles.scoreBadgeDelta, delta < 0 && styles.scoreBadgeDeltaDown]}>
-            {delta >= 0 ? "+" : ""}
-            {delta.toFixed(0)}
-          </Text>
+          {loading && !hasGraph ? (
+            <ActivityIndicator color={GREEN_DARK} size="small" />
+          ) : (
+            <>
+              <Text style={styles.scoreBadgeValue}>{latest ?? "--"}</Text>
+              {delta !== null ? (
+                <Text style={[styles.scoreBadgeDelta, delta < 0 && styles.scoreBadgeDeltaDown]}>
+                  {delta >= 0 ? "+" : ""}
+                  {delta.toFixed(0)}
+                </Text>
+              ) : null}
+            </>
+          )}
         </View>
       </View>
 
@@ -290,33 +345,53 @@ function ProgressGraphCard({
               />
             );
           })}
-          <AnimatedPath
-            d={graph.path}
-            fill="none"
-            stroke="url(#focusLine)"
-            strokeWidth={5}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeDasharray={`${graph.length} ${graph.length}`}
-            animatedProps={animatedLineProps}
-          />
+          {hasLine ? (
+            <>
+              <AnimatedPath
+                d={graph.path}
+                fill="none"
+                stroke="url(#focusLine)"
+                strokeWidth={10}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeDasharray={`${graph.length} ${graph.length}`}
+                strokeDashoffset={graph.length}
+                opacity={0.12}
+                animatedProps={animatedLineProps}
+              />
+              <AnimatedPath
+                d={graph.path}
+                fill="none"
+                stroke="url(#focusLine)"
+                strokeWidth={5}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeDasharray={`${graph.length} ${graph.length}`}
+                strokeDashoffset={graph.length}
+                animatedProps={animatedLineProps}
+              />
+            </>
+          ) : null}
           {graph.coords.map((point, index) => (
-            <Circle
+            <GraphTrendDot
               key={`${safePoints[index]}-${index}`}
-              cx={point.x}
-              cy={point.y}
-              r={5}
-              fill="#FFFFFF"
-              stroke={index === safePoints.length - 1 ? GREEN : BLUE}
-              strokeWidth={3}
+              point={point}
+              accent={index === safePoints.length - 1 ? GREEN : BLUE}
+              delay={hasLine ? 520 + index * 50 : index * 50}
+              isLast={index === safePoints.length - 1}
             />
           ))}
         </Svg>
+        {!hasGraph ? (
+          <View pointerEvents="none" style={styles.graphEmptyState}>
+            <Text style={styles.graphEmptyText}>{loading ? "Loading scan trend" : "No scan trend yet"}</Text>
+          </View>
+        ) : null}
       </View>
 
       <View style={styles.graphFooter}>
         <Text style={styles.graphDate}>{labelLeft}</Text>
-        <Text style={styles.graphHint}>{safePoints.length} scans</Text>
+        <Text style={styles.graphHint}>{hasGraph ? `${safePoints.length} scans` : "No scans"}</Text>
         <Text style={styles.graphDate}>{labelRight}</Text>
       </View>
     </View>
@@ -600,6 +675,7 @@ export function NextFocusCheckInRoute() {
             points={data?.graph_points ?? []}
             dates={data?.graph_dates ?? []}
             width={contentWidth}
+          loading={loading}
           />
 
           <View style={[styles.summaryCard, { width: contentWidth }]}>
@@ -784,6 +860,19 @@ const styles = StyleSheet.create({
     marginTop: 16,
     alignItems: "center",
     justifyContent: "center",
+    position: "relative",
+  },
+  graphEmptyState: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  graphEmptyText: {
+    fontFamily: FONT_BOLD,
+    fontSize: 13,
+    lineHeight: 17,
+    color: MUTED,
+    textAlign: "center",
   },
   graphFooter: {
     marginTop: 8,

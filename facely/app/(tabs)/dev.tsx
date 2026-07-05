@@ -136,8 +136,7 @@ const ONBOARDING_FLOW_SCREENS: { label: string; route: string }[] = [
   { label: "Scan",              route: "/(onboarding)/scan" },             // → trust
   { label: "Trust",             route: "/(onboarding)/trust" },            // → time-dedication
   { label: "Time Dedication",   route: "/(onboarding)/time-dedication" },  // → score-projection
-  { label: "Score Projection",  route: "/(onboarding)/score-projection" }, // → features
-  { label: "Features",          route: "/(onboarding)/features" },         // → transformation
+  { label: "Score Projection",  route: "/(onboarding)/score-projection" }, // -> transformation
   { label: "Transformation",    route: "/(onboarding)/transformation" },   // → paywall
   { label: "Paywall",           route: "/(onboarding)/paywall" },          // → potential face workflow
   { label: "Potential Face",    route: "/(onboarding)/potential-face-reveal" }, // → analysis intro
@@ -153,6 +152,7 @@ const ONBOARDING_ORPHANS: { label: string; route: string; note: string }[] = [
   { label: "Hook",            route: "/(onboarding)/hook",           note: "alt entry — only used by loading.tsx for returning users" },
   { label: "Intro",           route: "/(onboarding)/intro",          note: "routes to goals, but nothing routes to intro except hook" },
   { label: "Improve Areas",   route: "/(onboarding)/improve-areas",  note: "removed from live flow — duplicated goals selection" },
+  { label: "Features",        route: "/(onboarding)/features",        note: "removed from live flow - plan preview moved into feature sequence" },
   { label: "Welcome",         route: "/(onboarding)/welcome",        note: "legacy entry — no inbound route" },
   { label: "Experience",      route: "/(onboarding)/experience",     note: "no inbound route" },
   { label: "Face Scan (alt)", route: "/(onboarding)/face-scan",      note: "alt to /scan" },

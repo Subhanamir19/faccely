@@ -309,7 +309,7 @@ export default function ScoreProjectionScreen() {
 
   const handleContinue = useCallback(() => {
     hapticSuccess();
-    router.push("/(onboarding)/features");
+    router.push("/(onboarding)/transformation");
   }, []);
 
   const progress = getProgressForStep("score-projection");

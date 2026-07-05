@@ -7,7 +7,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import * as Haptics from "expo-haptics";
-import { Scan, CircleCheckBig, UserRound, TrendingUp, Wrench } from "lucide-react-native";
+import { Scan, CircleCheckBig, UserRound, TrendingUp } from "lucide-react-native";
 import { APP_SCREEN_BG } from "@/components/layout/AppGradientBackground";
 import { FLOATING_TAB_BAR } from "@/components/layout/floatingTabBar";
 
@@ -58,9 +58,10 @@ function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   }
 
   const theme = getTabTheme(activeRoute?.name);
-  const visibleRoutes = state.routes.filter(
-    (route) => !!descriptors[route.key].options.tabBarIcon,
-  );
+  const visibleRoutes = state.routes.filter((route) => {
+    const options = descriptors[route.key].options;
+    return route.name !== "dev" && !!options.tabBarIcon;
+  });
 
   const floatingHeight = FLOATING_TAB_BAR.backdropFadeHeight + safeBottom;
 
@@ -235,14 +236,7 @@ export default function TabsLayout() {
         }}
       />
 
-      <Tabs.Screen
-        name="dev"
-        options={{
-          title: "Dev",
-          tabBarIcon: ({ color, size }) => <Wrench color={color} size={size ?? 24} />,
-          tabBarButton: () => null,
-        }}
-      />
+      <Tabs.Screen name="dev" options={{ href: null }} />
 
       <Tabs.Screen name="sigma" options={{ href: null }} />
       <Tabs.Screen name="history" options={{ href: null }} />

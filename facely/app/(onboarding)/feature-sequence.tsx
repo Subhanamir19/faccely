@@ -36,6 +36,16 @@ const HAPTIC_EVERY_CHARS = 3;
 
 const STRUCTURE_IMAGE = require("../../assets/features-assets/structure.png");
 const POSTURE_IMAGE = require("../../assets/features-assets/posture.png");
+const WEAK_POINT_ITEMS: Array<{
+  source: ImageSourcePropType;
+  title: string;
+  score: string;
+}> = [
+  { source: require("../../assets/attractiveness-icons/harmony.png"), title: "Harmony", score: "61" },
+  { source: require("../../assets/attractiveness-icons/angularity.png"), title: "Angularity", score: "54" },
+  { source: require("../../assets/attractiveness-icons/dimorphism.png"), title: "Dimorphism", score: "58" },
+  { source: require("../../assets/attractiveness-icons/skin-quality.png"), title: "Skin quality", score: "66" },
+];
 
 const DIET_ITEMS: Array<{
   source: ImageSourcePropType;
@@ -99,6 +109,12 @@ const SCREENS = [
     accent: "Fix",
     heading: "Fix posture.",
     copy: "Align your neck, shoulders, and facial support from the base.",
+  },
+  {
+    key: "weak-points",
+    accent: "Know",
+    heading: "Know your weak points.",
+    copy: "Advanced analysis ranks the traits holding your face back first.",
   },
   {
     key: "diet",
@@ -282,6 +298,36 @@ function DietTile({
   );
 }
 
+
+function WeakPointsVisual({ stageWidth, stageHeight }: { stageWidth: number; stageHeight: number }) {
+  const cardWidth = Math.min(stageWidth * 0.82, 360);
+  const iconSize = Math.min(stageWidth * 0.15, 62);
+
+  return (
+    <View style={[styles.weakStage, { width: stageWidth, height: stageHeight }]}>
+      <View style={[styles.analysisCard, { width: cardWidth }]}>
+        <Text style={styles.analysisKicker}>ADVANCED ANALYSIS</Text>
+        <Text style={styles.analysisTitle}>Weak-point map</Text>
+        <View style={styles.analysisMeterTrack}>
+          <View style={styles.analysisMeterFill} />
+        </View>
+
+        <View style={styles.weakPointGrid}>
+          {WEAK_POINT_ITEMS.map((item) => (
+            <View key={item.title} style={styles.weakPointTile}>
+              <View style={[styles.weakPointIcon, { width: iconSize, height: iconSize, borderRadius: iconSize / 2 }]}>
+                <Image source={item.source} style={styles.weakPointImage} resizeMode="contain" />
+              </View>
+              <Text style={styles.weakPointTitle} numberOfLines={1}>{item.title}</Text>
+              <Text style={styles.weakPointMeta}>Score {item.score}</Text>
+            </View>
+          ))}
+        </View>
+      </View>
+    </View>
+  );
+}
+
 function EdgeFade({ height }: { height: number }) {
   return (
     <LinearGradient
@@ -303,6 +349,10 @@ function StageVisual({
   stageHeight: number;
 }) {
   if (index === 2) {
+    return <WeakPointsVisual stageWidth={stageWidth} stageHeight={stageHeight} />;
+  }
+
+  if (index === 3) {
     return <DietVisual stageWidth={stageWidth} stageHeight={stageHeight} />;
   }
 
@@ -618,6 +668,101 @@ const styles = StyleSheet.create({
   },
   dietImage: {
     alignSelf: "center",
+  },
+  weakStage: {
+    alignSelf: "center",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  analysisCard: {
+    borderRadius: 30,
+    backgroundColor: "#FFFFFF",
+    paddingHorizontal: 22,
+    paddingVertical: 24,
+    borderWidth: 1,
+    borderColor: "rgba(5,5,5,0.07)",
+    shadowColor: "#2A1A10",
+    shadowOpacity: 0.10,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 14 },
+    elevation: 7,
+  },
+  analysisKicker: {
+    color: "#7A8086",
+    fontFamily: BODY_FONT,
+    fontSize: 11,
+    lineHeight: 14,
+    letterSpacing: 1.4,
+    textAlign: "center",
+  },
+  analysisTitle: {
+    color: TEXT,
+    fontFamily: HEADING_FONT,
+    fontSize: 31,
+    lineHeight: 35,
+    letterSpacing: 0,
+    textAlign: "center",
+    marginTop: 6,
+  },
+  analysisMeterTrack: {
+    height: 9,
+    borderRadius: 999,
+    backgroundColor: "rgba(5,5,5,0.08)",
+    overflow: "hidden",
+    marginTop: 18,
+    marginHorizontal: 18,
+  },
+  analysisMeterFill: {
+    width: "68%",
+    height: "100%",
+    borderRadius: 999,
+    backgroundColor: ORANGE,
+  },
+  weakPointGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+    marginTop: 20,
+  },
+  weakPointTile: {
+    width: "47%",
+    flexGrow: 1,
+    minHeight: 104,
+    borderRadius: 22,
+    backgroundColor: "#FFFAF4",
+    borderWidth: 1,
+    borderColor: "rgba(242,106,19,0.12)",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 10,
+    paddingVertical: 12,
+  },
+  weakPointIcon: {
+    backgroundColor: "rgba(242,106,19,0.10)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 8,
+  },
+  weakPointImage: {
+    width: "62%",
+    height: "62%",
+  },
+  weakPointTitle: {
+    color: TEXT,
+    fontFamily: HEADING_FONT,
+    fontSize: 14,
+    lineHeight: 17,
+    letterSpacing: 0,
+    textAlign: "center",
+  },
+  weakPointMeta: {
+    color: "#71777D",
+    fontFamily: BODY_FONT,
+    fontSize: 12,
+    lineHeight: 15,
+    letterSpacing: 0,
+    marginTop: 2,
+    textAlign: "center",
   },
   copySlot: {
     flex: 1,
