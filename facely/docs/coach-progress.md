@@ -72,17 +72,29 @@ Two design choices worth knowing, because they are what stop Coach inventing num
 The first version you can open and use. Text answers, metric cards and charts, built on
 numbers pulled from your own scans.
 
-- [ ] The prompt — how Coach speaks and what it is forbidden to do
-      *(blocked: pick a voice, see Decisions still open)*
-- [ ] Streaming endpoint, protected by login *(blocked: Railway branch)*
-- [ ] The three stream blockers in `src/index.ts`: response compression, the 30-second
-      timeout, and the rate limiter
-- [ ] Replace the dormant Sigma prototype (see *Decisions* below)
+**Backend — done.**
+
+- [x] The prompt and voice — `src/services/coachPrompt.ts`
+- [x] The always-on context snapshot — `src/services/coachContext.ts`
+- [x] Opening suggestions with no model call — `suggestOpeningChips`
+- [x] The turn engine: model loop, tools, guard, saving, billing —
+      `src/services/coachTurn.ts`
+- [x] Four endpoints — `src/routes/coach.ts`, all behind login and behind
+      `FEATURE_COACH_ENABLED`
+- [x] Stream blockers fixed in `src/index.ts`: response compression now skips streams, and
+      `/coach` gets its own longer timeout. The rate limiter needed no change — it counts
+      requests, not seconds.
+- [x] 34 tests passing, production build clean
+
+**App — not started.**
+
+- [ ] Reading the stream on the phone (`expo/fetch`)
 - [ ] The floating button — draggable, snaps to the edge, remembers where you left it
 - [ ] The chat sheet, message list, and input bar
 - [ ] Block renderers: text, metric card, chart, suggested-question chips
 - [ ] Opens with context from the screen you were on, never a blank box
 - [ ] Conversation survives closing and reopening the app
+- [ ] Replace the dormant Sigma prototype (see *Decisions* below)
 
 ## Phase 2 — Limits, safety and billing
 
