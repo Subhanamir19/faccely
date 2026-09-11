@@ -11,3 +11,14 @@ npm-cache-*/
 # Skills/agents (contain symlinks that break EAS build uploads)
 .agents/
 screenshots/
+
+# Metro/Expo build artifacts (a bundled index.bundle.js was committed by mistake)
+**/.tmp/
+**/dist/
+
+# Stray working files at repo root (duplicates of facely/assets, scratch mockups, logs)
+/*.otf
+/*.html
+/*.png
+/*.log
+.tools/
