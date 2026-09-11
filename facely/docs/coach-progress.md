@@ -86,28 +86,37 @@ numbers pulled from your own scans.
       requests, not seconds.
 - [x] 34 tests passing, production build clean
 
-**App — not started.**
+**App — built, not yet seen on a device.**
 
-- [ ] Reading the stream on the phone (`expo/fetch`)
-- [ ] The floating button — draggable, snaps to the edge, remembers where you left it
-- [ ] The chat sheet, message list, and input bar
-- [ ] Block renderers: text, metric card, chart, suggested-question chips
-- [ ] Opens with context from the screen you were on, never a blank box
-- [ ] Conversation survives closing and reopening the app
+- [x] Reading the stream on the phone (`expo/fetch`)
+- [x] The floating button — draggable, snaps to the edge, remembers where you left it
+- [x] The chat sheet, message list, and input bar
+- [x] Block renderers: text, metric card, chart, chips, evidence tag
+- [x] Opens with context from the screen you were on, never a blank box
+- [x] Conversation survives closing and reopening the app
+- [ ] **Confirmed working on the iPhone** — the only open item in phase 1
 - [ ] Replace the dormant Sigma prototype (see *Decisions* below)
+
+**Verified end to end on 2026-09-11** against the real database, with a live model call:
+Coach chose `get_routine_adherence` on its own, answered from the real routine record, and
+ended with follow-up chips. Measured cost ~1 cent per message.
 
 ## Phase 2 — Limits, safety and billing
 
 Nothing ships to real users before this phase is finished.
 
-- [ ] Weekly token budget, shown to you as "messages left"
-- [ ] Daily sub-limit so a week cannot be burned in one sitting
-- [ ] Locked behind the paywall, matching the rest of the app
-- [ ] Cheap-model router: simple questions answered cheaply, hard ones by the strong model
-- [ ] Cost tracking per user, visible to you
-- [ ] Safety filter: minors, body-image distress, medical and surgical questions
+- [x] Weekly token budget, shown to you as "messages left"
+- [x] Daily sub-limit so a week cannot be burned in one sitting
+- [x] Cost tracking per user — every message stores its tokens and estimated cost
+- [ ] Locked behind the paywall. Coach currently shows for any signed-in, onboarded user;
+      `CoachHost` checks auth and onboarding but not subscription.
+- [ ] Safety filter: minors, body-image distress, medical and surgical questions. Rules are
+      in the prompt; a classifier that cannot be talked around is not built yet.
 - [ ] Report button on each message (App Store requires this)
 - [ ] Red-team test set of 20 hostile messages, all handled correctly
+- [ ] Cheap-model router: simple questions answered cheaply, hard ones by the strong model.
+      Measured cost is ~1 cent/message, so this is now an optimisation rather than a
+      requirement.
 
 ## Phase 3 — Coach sees and remembers
 
