@@ -10,7 +10,7 @@ import {
 } from "../supabase/coachThreads.js";
 import { checkQuota, recordUsage } from "../supabase/coachUsage.js";
 import { buildCoachContext } from "./coachContext.js";
-import { composeCoachMessages } from "./coachPrompt.js";
+import { composeCoachMessages, suggestFollowUpChips } from "./coachPrompt.js";
 import { guardNumbers, isEmptyAfterGuard } from "./coachNumberGuard.js";
 import {
   COACH_TOOL_DEFINITIONS,
@@ -298,6 +298,27 @@ export async function runCoachTurn(
         tool_call_id: call.id,
         content: JSON.stringify(execution.payload),
       });
+    }
+  }
+
+  // Guarantee a way forward.
+  //
+  // The prompt asks for follow-up suggestions on every reply, and the model
+  // often forgets. A dead-end answer is the single biggest drop-off point in a
+  // chat feature, so this is enforced rather than requested: if the model did
+  // not offer chips or an action, the same suggestions the sheet opens with are
+  // appended. They are derived from the user's own data and cost nothing.
+  const endsOpen = blocks.some(
+    (block) => block.type === "chips" || block.type === "action_card"
+  );
+
+  if (!endsOpen && blocks.length > 0) {
+    const fallback = suggestFollowUpChips(context);
+    if (fallback.length > 0) {
+      const index = blocks.length;
+      const block: CoachBlock = { type: "chips", items: fallback };
+      blocks.push(block);
+      emit({ t: "block", i: index, block });
     }
   }
 

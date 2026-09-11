@@ -198,3 +198,35 @@ test("flush returns an unterminated tail", () => {
   assert.equal(buffer.flush(), "No terminator here");
   assert.equal(buffer.flush(), "");
 });
+
+/* ========================================================================== */
+/*   Follow-up chips                                                          */
+/* ========================================================================== */
+
+const { suggestFollowUpChips } = await import("../src/services/coachPrompt.js");
+
+test("follow-ups continue a conversation rather than restart it", () => {
+  const chips = suggestFollowUpChips(context());
+
+  assert.ok(chips.length > 0);
+  assert.ok(chips.length <= 3);
+  // The opening set leads with a "why is my X low" question; follow-ups must
+  // not repeat it mid-thread.
+  assert.ok(!chips.some((chip) => /^Why is my .* low\?$/.test(chip)));
+});
+
+test("a lapsed user is offered a smaller commitment", () => {
+  const lapsed = context();
+  lapsed.adherence.daysCompleted = 1;
+
+  const chips = suggestFollowUpChips(lapsed);
+  assert.ok(chips.some((chip) => /minimum/i.test(chip)));
+});
+
+test("a consistent user is asked about timelines instead", () => {
+  const consistent = context();
+  consistent.adherence.daysCompleted = 12;
+
+  const chips = suggestFollowUpChips(consistent);
+  assert.ok(chips.some((chip) => /how long/i.test(chip)));
+});

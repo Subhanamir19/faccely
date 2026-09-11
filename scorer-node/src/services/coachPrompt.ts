@@ -141,3 +141,33 @@ export function suggestOpeningChips(context: CoachContext): string[] {
 
   return chips.slice(0, 3);
 }
+
+/**
+ * Fallback follow-ups for a reply that ended without any.
+ *
+ * The model is told to finish every answer with suggestions and regularly
+ * forgets. A dead-end reply is where users stop, so the turn engine appends
+ * these rather than trusting the instruction — see coachTurn.ts.
+ *
+ * Phrased to continue a conversation rather than start one, so they do not read
+ * as the opening screen appearing again mid-thread.
+ */
+export function suggestFollowUpChips(context: CoachContext): string[] {
+  const chips: string[] = [];
+
+  if (context.adherence.daysCompleted < context.adherence.daysInWindow / 2) {
+    chips.push("What is the minimum that still works?");
+  } else {
+    chips.push("How long until I see a change?");
+  }
+
+  if (context.weakest.length > 1) {
+    chips.push(`What about my ${context.weakest[1].replace(/_/g, " ")}?`);
+  } else if (context.scanCount >= 2) {
+    chips.push("Show me my progress");
+  }
+
+  chips.push("Why does that work?");
+
+  return chips.slice(0, 3);
+}
