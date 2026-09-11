@@ -52,6 +52,36 @@ const EnvSchema = z.object({
   SIGMA_MAX_TOKENS: z.coerce.number().int().positive().default(800),
   SIGMA_MAX_RESPONSE_BYTES: z.coerce.number().int().positive().default(200 * 1024),
 
+  // Coach — models. Two tiers: a cheap one that handles definitions, small talk
+  // and navigation help, and a strong one for diagnosis, planning and vision.
+  // Roughly 70% of turns are expected to land on the cheap tier.
+  OPENAI_MODEL_COACH_SMALL: z.string().min(1).default("gpt-4o-mini"),
+  OPENAI_MODEL_COACH_LARGE: z.string().min(1).default("gpt-4o"),
+
+  // Coach — quota. Weekly caps reset Monday 00:00 UTC.
+  // Sized against a ~$4/week subscription with model spend held under 15%.
+  COACH_WEEKLY_MESSAGE_CAP: z.coerce.number().int().positive().default(20),
+  COACH_WEEKLY_TOKEN_BUDGET: z.coerce.number().int().positive().default(80_000),
+  COACH_DAILY_MESSAGE_CAP: z.coerce.number().int().positive().default(8),
+  COACH_WEEKLY_IMAGE_CAP: z.coerce.number().int().nonnegative().default(2),
+
+  // Coach — generation limits. The short output cap is both a cost control and
+  // a product decision: replies are meant to be punchy, not essays.
+  COACH_MAX_OUTPUT_TOKENS: z.coerce.number().int().positive().default(350),
+  COACH_TEMPERATURE: z.coerce.number().min(0).max(2).default(0.4),
+  COACH_HISTORY_TURNS: z.coerce.number().int().positive().default(8),
+  COACH_MEMORY_FACT_CAP: z.coerce.number().int().positive().default(20),
+  COACH_TIMEOUT_MS: z.coerce.number().int().positive().default(120_000),
+
+  // Coach — USD per million tokens, used only to estimate spend per user.
+  // Env-configurable so price changes do not need a code change.
+  COACH_PRICE_SMALL_IN: z.coerce.number().nonnegative().default(0.15),
+  COACH_PRICE_SMALL_OUT: z.coerce.number().nonnegative().default(0.6),
+  COACH_PRICE_LARGE_IN: z.coerce.number().nonnegative().default(2.5),
+  COACH_PRICE_LARGE_OUT: z.coerce.number().nonnegative().default(10),
+
+  FEATURE_COACH_ENABLED: z.string().optional(),
+
   // Runtime knobs
   ROUTINE_LLM_TIMEOUT_MS: z.coerce.number().int().positive().default(25_000),
   IMAGE_GENERATION_TIMEOUT_MS: z.coerce.number().int().positive().default(180_000),
@@ -153,8 +183,66 @@ export const PROVIDERS = {
     sigmaTemperature: env.SIGMA_TEMPERATURE,
     sigmaMaxTokens: env.SIGMA_MAX_TOKENS,
     sigmaMaxResponseBytes: env.SIGMA_MAX_RESPONSE_BYTES,
+    coachSmallModel: env.OPENAI_MODEL_COACH_SMALL,
+    coachLargeModel: env.OPENAI_MODEL_COACH_LARGE,
   },
 };
+
+/**
+ * Coach limits and tuning.
+ *
+ * Quota is enforced on two axes at once — a message count and a token budget —
+ * so the allowance stays legible ("12 messages left") while long prompts still
+ * cost their user more of the week than short ones do. See
+ * supabase/coachUsage.ts for how the two interact.
+ */
+export const COACH = {
+  enabled: isTruthyFlag(env.FEATURE_COACH_ENABLED),
+
+  weeklyMessageCap: env.COACH_WEEKLY_MESSAGE_CAP,
+  weeklyTokenBudget: env.COACH_WEEKLY_TOKEN_BUDGET,
+  dailyMessageCap: env.COACH_DAILY_MESSAGE_CAP,
+  weeklyImageCap: env.COACH_WEEKLY_IMAGE_CAP,
+
+  /**
+   * Assumed cost of a turn before the user has sent one, used to show an
+   * allowance on a fresh week. Once they have history, their own running
+   * average replaces it.
+   */
+  estimatedTokensPerMessage: Math.max(
+    1,
+    Math.floor(env.COACH_WEEKLY_TOKEN_BUDGET / env.COACH_WEEKLY_MESSAGE_CAP)
+  ),
+  /**
+   * Floor on that average. Without it, a run of one-word exchanges would drive
+   * the estimate low enough to promise more messages than the budget can pay
+   * for, and the count would visibly jump backwards later.
+   */
+  minTokensPerMessage: 800,
+
+  maxOutputTokens: env.COACH_MAX_OUTPUT_TOKENS,
+  temperature: env.COACH_TEMPERATURE,
+  /** Turns of history replayed into the prompt. Older turns are dropped. */
+  historyTurns: env.COACH_HISTORY_TURNS,
+  memoryFactCap: env.COACH_MEMORY_FACT_CAP,
+  timeoutMs: env.COACH_TIMEOUT_MS,
+
+  /** USD per million tokens, for spend estimates only. */
+  pricing: {
+    small: { in: env.COACH_PRICE_SMALL_IN, out: env.COACH_PRICE_SMALL_OUT },
+    large: { in: env.COACH_PRICE_LARGE_IN, out: env.COACH_PRICE_LARGE_OUT },
+  },
+} as const;
+
+/** Estimated USD for one call. Used for per-user cost reporting, not billing. */
+export function estimateCoachCostUsd(
+  tier: "small" | "large",
+  tokensIn: number,
+  tokensOut: number
+): number {
+  const price = COACH.pricing[tier];
+  return (tokensIn * price.in + tokensOut * price.out) / 1_000_000;
+}
 
 // Redis is fully optional - caching is disabled when not configured
 export const REDIS = {

@@ -38,6 +38,39 @@ export async function upsertUserProfile(input: UserUpsertInput): Promise<void> {
   }
 }
 
+export interface UserProfileRecord {
+  id: string;
+  email: string | null;
+  age: number | null;
+  gender: string | null;
+  ethnicity: string | null;
+  onboarding_completed: boolean | null;
+  created_at: string;
+}
+
+/**
+ * Read a user's profile row, or null when it has not been created yet.
+ *
+ * Callers treat a missing row as "not onboarded" rather than an error: the row
+ * is written by `upsertUserProfile` during onboarding, so an account can exist
+ * without one.
+ */
+export async function getUserProfile(
+  userId: string
+): Promise<UserProfileRecord | null> {
+  const { data, error } = await supabase
+    .from("users")
+    .select("id, email, age, gender, ethnicity, onboarding_completed, created_at")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Failed to fetch user profile for ${userId}: ${error.message}`);
+  }
+
+  return (data as UserProfileRecord | null) ?? null;
+}
+
 export async function deleteUserWithCascade(
   userId: string
 ): Promise<"deleted" | "not_found"> {

@@ -12,8 +12,10 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked, w
 
 ## Waiting on you
 
-- [!] **Run the database file.** Open Supabase → SQL Editor → New query → paste
-      `supabase/coach/001_coach_tables.sql` → Run. Expect "Success. No rows returned."
+- [!] **Run the two database files, in order.** Supabase → SQL Editor → New query → paste
+      `supabase/coach/001_coach_tables.sql` → Run. Then the same for
+      `supabase/coach/002_coach_usage_rpc.sql`. Both should say
+      "Success. No rows returned."
 - [!] **Railway branch.** Railway dashboard → the API service → Settings → Source. Which
       branch does it deploy? Needed before any backend change is pushed, otherwise Coach
       code could reach live users early.
@@ -31,21 +33,46 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked, w
 - [x] `feat/coach` branch created
 - [x] Confirmed streaming is possible: `expo/fetch` in Expo SDK 57 returns a
       `ReadableStream` body with `getReader()`, so replies can appear word by word
-- [x] Database file written (`supabase/coach/001_coach_tables.sql`)
+- [x] Database files written (`supabase/coach/001_coach_tables.sql`,
+      `002_coach_usage_rpc.sql`)
 - [x] Build tracker written (this file)
 - [ ] Streaming proved end to end on your actual phone
 
-## Phase 1 — Coach talks, using your real scan data
+## Phase 1a — Backend foundations (done)
+
+Everything below is written, type-checks clean, and has tests where the logic is worth
+testing. None of it is wired to a live endpoint yet, and nothing is deployed.
+
+- [x] Answer format shared by the API and the app — `src/schemas/CoachSchema.ts`
+- [x] Conversation storage — `src/supabase/coachThreads.ts`
+- [x] Quota accounting — `src/supabase/coachUsage.ts`
+- [x] Remembered facts — `src/supabase/coachMemory.ts`
+- [x] Data lookups and block builders — `src/services/coachData.ts`
+- [x] The seven tools Coach can call — `src/services/coachTools.ts`
+- [x] Invented-number guard — `src/services/coachNumberGuard.ts`
+- [x] Settings and cost estimates — added to `src/config/index.ts`
+- [x] Tests: 19 passing (`npm run test:coach` in `scorer-node`)
+
+Two design choices worth knowing, because they are what stop Coach inventing numbers:
+
+1. **Coach cannot supply a score.** When it shows a metric card or a chart, it picks the
+   metric and writes the words; every figure is filled in from your database afterwards. A
+   wrong number in a card is not something it is able to express.
+2. **Its sentences are checked against what it was shown.** If it writes "your jawline is
+   around 78" when the lookup returned 62, that sentence is removed before it reaches you.
+   Ordinary advice numbers — "3 sets of 10", "8 hours of sleep" — are left alone.
+
+## Phase 1b — Coach talks, using your real scan data
 
 The first version you can open and use. Text answers, metric cards and charts, built on
 numbers pulled from your own scans.
 
+- [ ] The prompt — how Coach speaks and what it is forbidden to do
+      *(blocked: pick a voice, see Decisions still open)*
+- [ ] Streaming endpoint, protected by login *(blocked: Railway branch)*
+- [ ] The three stream blockers in `src/index.ts`: response compression, the 30-second
+      timeout, and the rate limiter
 - [ ] Replace the dormant Sigma prototype (see *Decisions* below)
-- [ ] Database access layer: threads, messages, usage
-- [ ] The five data lookups: scan history, submetrics, routine adherence, profile, charts
-- [ ] The answer format — typed blocks shared by the backend and the app
-- [ ] Streaming endpoint, protected by login
-- [ ] Number check: strip any figure the model did not get from real data
 - [ ] The floating button — draggable, snaps to the edge, remembers where you left it
 - [ ] The chat sheet, message list, and input bar
 - [ ] Block renderers: text, metric card, chart, suggested-question chips
