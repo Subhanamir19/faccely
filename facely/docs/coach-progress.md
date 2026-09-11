@@ -12,13 +12,18 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked, w
 
 ## Waiting on you
 
-- [!] **Run the two database files, in order.** Supabase → SQL Editor → New query → paste
-      `supabase/coach/001_coach_tables.sql` → Run. Then the same for
-      `supabase/coach/002_coach_usage_rpc.sql`. Both should say
-      "Success. No rows returned."
-- [!] **Railway branch.** Railway dashboard → the API service → Settings → Source. Which
-      branch does it deploy? Needed before any backend change is pushed, otherwise Coach
-      code could reach live users early.
+- [x] **Database files run.** Both `001_coach_tables.sql` and `002_coach_usage_rpc.sql`
+      ran successfully on 2026-09-10. The four Coach tables and the usage counter exist.
+- [x] **Railway branch confirmed: `main`.** Project `faithful-magic`, service `faccely`,
+      root directory `scorer-node`, auto-deploy on push, no CI gate. Serving
+      `faccely-production.up.railway.app` on port 8080.
+
+      **Rule for this build:** all Coach work stays on `feat/coach`. Merging to `main`
+      deploys to live users within minutes, with nothing checking it first. Merge only
+      after Coach has been seen working on a phone, and with
+      `FEATURE_COACH_ENABLED=false` set so the code ships dormant.
+- [ ] **Add `FEATURE_COACH_ENABLED=false`** in Railway → `faccely` → Variables. Do this
+      before any Coach code reaches `main`.
 - [!] **Which icon do you tap on the iPhone 11** to open the app — the white Expo Go icon,
       or one with your own logo? Determines how Coach gets tested, and whether RevenueCat
       is silently broken in your current setup.
