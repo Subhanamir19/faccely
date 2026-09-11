@@ -1,10 +1,9 @@
 import React from "react";
 import { View, Text } from "react-native";
 
-import { TYPE } from "@/lib/tokens";
 import type { CoachCitationBlock } from "@/lib/coach/blocks";
 
-import { COACH, COACH_RADIUS } from "../theme";
+import { COACH, COACH_RADIUS, COACH_TYPE } from "../theme";
 
 /* ============================================================================
  * Evidence labelling.
@@ -46,14 +45,13 @@ export function CitationBlock({ block }: { block: CoachCitationBlock }) {
     >
       <Text
         style={{
-          ...TYPE.caption,
+          ...COACH_TYPE.captionSemiBold,
           color: tier.color,
-          fontFamily: "Poppins-SemiBold",
         }}
       >
         {tier.label}
       </Text>
-      <Text style={{ ...TYPE.caption, color: COACH.inkMuted, flexShrink: 1 }}>
+      <Text style={{ ...COACH_TYPE.caption, color: COACH.inkMuted, flexShrink: 1 }}>
         {block.claim}
       </Text>
     </View>

@@ -1,11 +1,10 @@
 import React from "react";
 import { View, Pressable, Text } from "react-native";
 
-import { TYPE } from "@/lib/tokens";
 import { hapticLight } from "@/lib/haptics";
 import type { CoachChipsBlock } from "@/lib/coach/blocks";
 
-import { COACH, COACH_RADIUS } from "../theme";
+import { COACH, COACH_RADIUS, COACH_TYPE } from "../theme";
 
 /* ============================================================================
  * Tappable follow-up questions.
@@ -59,7 +58,7 @@ export function Chip({ label, onPress }: { label: string; onPress: () => void })
       accessibilityRole="button"
       accessibilityLabel={label}
     >
-      <Text style={{ ...TYPE.caption, color: COACH.ink }}>{label}</Text>
+      <Text style={{ ...COACH_TYPE.caption, color: COACH.ink }}>{label}</Text>
     </Pressable>
   );
 }

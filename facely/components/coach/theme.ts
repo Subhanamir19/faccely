@@ -71,6 +71,67 @@ export const COACH_RADIUS = {
  */
 export const COACH_TAB_CLEARANCE = FLOATING_TAB_BAR.contentClearance;
 
+/* ============================================================================
+ * Type scale.
+ *
+ * SF Pro Rounded rather than the Poppins used elsewhere. Coach is a
+ * conversation, and the rounded terminals read as speech where Poppins reads as
+ * a label. Sizes and line heights match the shared scale exactly, so a Coach
+ * card sits at the same rhythm as the cards on every other screen.
+ *
+ * Sizes hold the spec floor: body at 14px minimum, annotations at 12px.
+ * ========================================================================== */
+
+export const COACH_TYPE = {
+  title: {
+    fontSize: 28,
+    lineHeight: 34,
+    fontFamily: "SFProRounded-Bold",
+    letterSpacing: -0.5,
+  },
+  heading: {
+    fontSize: 22,
+    lineHeight: 28,
+    fontFamily: "SFProRounded-Semibold",
+  },
+  score: {
+    fontSize: 22,
+    lineHeight: 28,
+    fontFamily: "SFProRounded-Bold",
+  },
+  body: {
+    fontSize: 16,
+    lineHeight: 23,
+    fontFamily: "SFProRounded-Regular",
+  },
+  bodyMedium: {
+    fontSize: 16,
+    lineHeight: 23,
+    fontFamily: "SFProRounded-Semibold",
+  },
+  caption: {
+    fontSize: 14,
+    lineHeight: 20,
+    fontFamily: "SFProRounded-Regular",
+  },
+  captionSemiBold: {
+    fontSize: 14,
+    lineHeight: 20,
+    fontFamily: "SFProRounded-Semibold",
+  },
+  small: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontFamily: "SFProRounded-Regular",
+  },
+} as const;
+
+/** Avatar column: 28pt image plus a 10pt gutter before the message. */
+export const COACH_AVATAR = {
+  size: 28,
+  gutter: 10,
+} as const;
+
 /** Score to band colour. */
 export function scoreBand(score: number): string {
   if (score >= 85) return COACH.band.elite;

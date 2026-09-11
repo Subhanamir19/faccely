@@ -1,22 +1,32 @@
 import React, { useEffect, useRef } from "react";
 import { ScrollView, View, Text, ActivityIndicator } from "react-native";
 
-import { TYPE } from "@/lib/tokens";
 import type { CoachErrorCode, CoachMessage } from "@/lib/coach/blocks";
 
-import { COACH, COACH_RADIUS, COACH_SPACE, COACH_TAB_CLEARANCE } from "./theme";
+import {
+  COACH,
+  COACH_AVATAR,
+  COACH_RADIUS,
+  COACH_SPACE,
+  COACH_TAB_CLEARANCE,
+  COACH_TYPE,
+} from "./theme";
+import { CoachAvatar, UserAvatar } from "./Avatar";
 import { BlockRenderer } from "./blocks/BlockRenderer";
 
 /* ============================================================================
  * The conversation.
  *
- * Laid out the way a chat assistant reads: the user's turns are compact bubbles
- * pushed to the right, Coach's replies run full width with no bubble at all.
+ * Both sides carry an avatar, the way a normal chat reads: Coach's illustrated
+ * face on the left of its replies, the user's profile photo on the right of
+ * theirs.
  *
- * That asymmetry is doing real work. A chart or a metric card inside a chat
- * bubble reads as a quoted screenshot; the same card on the page reads as part
- * of the app. Coach's answers are app content that happens to be written in
- * response to a question.
+ * The user's turn is a compact bubble; Coach's runs full width with no bubble.
+ * A chart or metric card inside a chat bubble reads as a screenshot quoted into
+ * a conversation, where the same card on the page reads as part of the app.
+ *
+ * Consecutive turns from the same side show the avatar only once, so a
+ * back-and-forth does not turn into a column of repeated faces.
  * ========================================================================== */
 
 export type ThreadProps = {
@@ -54,46 +64,100 @@ export function Thread({ messages, activeTool, onChipPress }: ThreadProps) {
         paddingHorizontal: COACH_SPACE.pageMargin,
         paddingTop: COACH_SPACE.gapLarge,
         paddingBottom: COACH_SPACE.section,
-        gap: COACH_SPACE.section,
       }}
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="interactive"
       showsVerticalScrollIndicator={false}
     >
-      {messages.map((message) =>
-        message.role === "user" ? (
-          <UserBubble key={message.id} text={message.text} />
-        ) : (
-          <CoachTurn key={message.id} message={message} onChipPress={onChipPress} />
-        )
-      )}
+      {messages.map((message, index) => {
+        const previous = messages[index - 1];
+        const startsGroup = previous?.role !== message.role;
 
-      {activeTool ? <ToolIndicator name={activeTool} /> : null}
+        return (
+          <View
+            key={message.id}
+            style={{ marginTop: index === 0 ? 0 : startsGroup ? COACH_SPACE.section : 12 }}
+          >
+            {message.role === "user" ? (
+              <UserRow text={message.text} showAvatar={startsGroup} />
+            ) : (
+              <CoachRow
+                message={message}
+                showAvatar={startsGroup}
+                onChipPress={onChipPress}
+              />
+            )}
+          </View>
+        );
+      })}
+
+      {activeTool ? (
+        <View style={{ marginTop: 12, paddingLeft: COACH_AVATAR.size + COACH_AVATAR.gutter }}>
+          <ToolIndicator name={activeTool} />
+        </View>
+      ) : null}
     </ScrollView>
   );
 }
 
-function UserBubble({ text }: { text: string }) {
+/** Fixed-width avatar column, so messages line up whether or not one shows. */
+function AvatarSlot({ children }: { children?: React.ReactNode }) {
+  return (
+    <View style={{ width: COACH_AVATAR.size, alignItems: "center" }}>{children}</View>
+  );
+}
+
+function UserRow({ text, showAvatar }: { text: string; showAvatar: boolean }) {
   return (
     <View
       style={{
-        alignSelf: "flex-end",
-        maxWidth: "84%",
-        paddingVertical: 10,
-        paddingHorizontal: 14,
-        borderRadius: COACH_RADIUS.bubble,
-        borderBottomRightRadius: 6,
-        backgroundColor: COACH.surface,
-        borderWidth: 1,
-        borderColor: COACH.border,
+        flexDirection: "row",
+        justifyContent: "flex-end",
+        alignItems: "flex-start",
+        gap: COACH_AVATAR.gutter,
       }}
     >
-      <Text style={{ ...TYPE.body, color: COACH.ink }}>{text}</Text>
+      <View
+        style={{
+          maxWidth: "78%",
+          paddingVertical: 10,
+          paddingHorizontal: 14,
+          borderRadius: COACH_RADIUS.bubble,
+          borderBottomRightRadius: 6,
+          backgroundColor: COACH.surface,
+          borderWidth: 1,
+          borderColor: COACH.border,
+        }}
+      >
+        <Text style={{ ...COACH_TYPE.body, color: COACH.ink }}>{text}</Text>
+      </View>
+
+      <AvatarSlot>{showAvatar ? <UserAvatar /> : null}</AvatarSlot>
     </View>
   );
 }
 
-function CoachTurn({
+function CoachRow({
+  message,
+  showAvatar,
+  onChipPress,
+}: {
+  message: CoachMessage;
+  showAvatar: boolean;
+  onChipPress: (text: string) => void;
+}) {
+  return (
+    <View style={{ flexDirection: "row", alignItems: "flex-start", gap: COACH_AVATAR.gutter }}>
+      <AvatarSlot>{showAvatar ? <CoachAvatar /> : null}</AvatarSlot>
+
+      <View style={{ flex: 1 }}>
+        <CoachContent message={message} onChipPress={onChipPress} />
+      </View>
+    </View>
+  );
+}
+
+function CoachContent({
   message,
   onChipPress,
 }: {
@@ -117,9 +181,9 @@ function ToolIndicator({ name }: { name: string }) {
   const label = TOOL_LABELS[name] ?? (name === "thinking" ? "Thinking" : "Working");
 
   return (
-    <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingTop: 4 }}>
       <ActivityIndicator size="small" color={COACH.inkFaint} />
-      <Text style={{ ...TYPE.caption, color: COACH.inkFaint }}>{label}…</Text>
+      <Text style={{ ...COACH_TYPE.caption, color: COACH.inkFaint }}>{label}…</Text>
     </View>
   );
 }
@@ -145,7 +209,9 @@ function ErrorNotice({ code }: { code: CoachErrorCode }) {
         borderLeftColor: COACH.coral,
       }}
     >
-      <Text style={{ ...TYPE.caption, color: COACH.inkMuted }}>{ERROR_COPY[code]}</Text>
+      <Text style={{ ...COACH_TYPE.caption, color: COACH.inkMuted }}>
+        {ERROR_COPY[code]}
+      </Text>
     </View>
   );
 }

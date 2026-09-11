@@ -1,11 +1,10 @@
 import React from "react";
 import { View, Text } from "react-native";
 
-import { TYPE } from "@/lib/tokens";
 import { METRIC_LABELS } from "@/lib/types";
 import type { CoachMetricCardBlock } from "@/lib/coach/blocks";
 
-import { COACH, COACH_SPACE, scoreBand } from "../theme";
+import { COACH, COACH_SPACE, COACH_TYPE, scoreBand } from "../theme";
 import { BlockSurface } from "./BlockRenderer";
 
 /* ============================================================================
@@ -34,17 +33,17 @@ export function MetricCardBlock({ block }: { block: CoachMetricCardBlock }) {
           gap: COACH_SPACE.gap,
         }}
       >
-        <Text style={{ ...TYPE.bodyMedium, color: COACH.ink, flexShrink: 1 }}>
+        <Text style={{ ...COACH_TYPE.bodyMedium, color: COACH.ink, flexShrink: 1 }}>
           {METRIC_LABELS[block.metric] ?? block.metric.replace(/_/g, " ")}
         </Text>
 
         <View style={{ flexDirection: "row", alignItems: "baseline", gap: 8 }}>
-          <Text style={{ ...TYPE.h3, color }}>{block.score}</Text>
+          <Text style={{ ...COACH_TYPE.score, color }}>{block.score}</Text>
 
           {hasDelta ? (
             <Text
               style={{
-                ...TYPE.caption,
+                ...COACH_TYPE.caption,
                 color: rising ? COACH.positive : COACH.coral,
               }}
             >
@@ -55,7 +54,7 @@ export function MetricCardBlock({ block }: { block: CoachMetricCardBlock }) {
         </View>
       </View>
 
-      <Text style={{ ...TYPE.caption, color: COACH.inkMuted, marginTop: 8 }}>
+      <Text style={{ ...COACH_TYPE.caption, color: COACH.inkMuted, marginTop: 8 }}>
         {block.note}
       </Text>
     </BlockSurface>

@@ -1,8 +1,7 @@
 import React, { useMemo } from "react";
 import { Text } from "react-native";
 
-import { TYPE } from "@/lib/tokens";
-import { COACH } from "../theme";
+import { COACH, COACH_TYPE } from "../theme";
 import type { CoachTextBlock } from "@/lib/coach/blocks";
 
 /* ============================================================================
@@ -55,7 +54,7 @@ export function TextBlock({ block }: { block: CoachTextBlock }) {
   return (
     <Text
       style={{
-        ...TYPE.body,
+        ...COACH_TYPE.body,
         color: COACH.ink,
       }}
     >
@@ -63,7 +62,9 @@ export function TextBlock({ block }: { block: CoachTextBlock }) {
         <Text
           key={index}
           style={{
-            fontFamily: segment.bold ? "Poppins-SemiBold" : TYPE.body.fontFamily,
+            fontFamily: segment.bold
+              ? COACH_TYPE.bodyMedium.fontFamily
+              : COACH_TYPE.body.fontFamily,
             fontStyle: segment.italic ? "italic" : "normal",
           }}
         >

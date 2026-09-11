@@ -3,14 +3,15 @@ import { View, Text, KeyboardAvoidingView, Platform, ScrollView } from "react-na
 import { useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { TYPE } from "@/lib/tokens";
 import { AppGradientBackground } from "@/components/layout/AppGradientBackground";
 import { FLOATING_TAB_BAR } from "@/components/layout/floatingTabBar";
 import { useCoach } from "@/store/coach";
 import { Thread } from "@/components/coach/Thread";
 import { Composer, ComposerSkeleton } from "@/components/coach/Composer";
 import { Chip } from "@/components/coach/blocks/ChipsBlock";
-import { COACH, COACH_SPACE } from "@/components/coach/theme";
+import { CoachAvatar } from "@/components/coach/Avatar";
+import { useProfile } from "@/store/profile";
+import { COACH, COACH_SPACE, COACH_TYPE } from "@/components/coach/theme";
 
 /* ============================================================================
  * The Coach tab.
@@ -36,6 +37,7 @@ export default function CoachScreen() {
   const initialise = useCoach((state) => state.initialise);
   const send = useCoach((state) => state.send);
   const stop = useCoach((state) => state.stop);
+  const hydrateProfile = useProfile((state) => state.hydrate);
 
   const busy = status !== "idle";
 
@@ -45,7 +47,11 @@ export default function CoachScreen() {
   useFocusEffect(
     useCallback(() => {
       void initialise("coach");
-    }, [initialise])
+      // The profile store is hydrated by the Profile tab, which the user may
+      // never have opened. Coach shows their avatar on every message, so it
+      // loads it itself rather than rendering a placeholder for them.
+      void hydrateProfile();
+    }, [initialise, hydrateProfile])
   );
 
   const submit = useCallback(
@@ -130,9 +136,9 @@ function Header({
         gap: COACH_SPACE.gap,
       }}
     >
-      <Text style={{ ...TYPE.h2, color: COACH.ink }}>Coach</Text>
+      <Text style={{ ...COACH_TYPE.title, color: COACH.ink }}>Coach</Text>
       {label ? (
-        <Text style={{ ...TYPE.caption, color: COACH.inkFaint }}>{label}</Text>
+        <Text style={{ ...COACH_TYPE.caption, color: COACH.inkFaint }}>{label}</Text>
       ) : null}
     </View>
   );
@@ -165,11 +171,14 @@ function EmptyState({
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}
     >
-      <Text style={{ ...TYPE.body, color: COACH.inkMuted }}>
-        I can see your scans, your scores and your routine. Ask me anything about them.
-      </Text>
+      <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 10 }}>
+        <CoachAvatar />
+        <Text style={{ ...COACH_TYPE.body, color: COACH.inkMuted, flex: 1 }}>
+          I can see your scans, your scores and your routine. Ask me anything about them.
+        </Text>
+      </View>
 
-      <View style={{ gap: 8 }}>
+      <View style={{ gap: 8, paddingLeft: 38 }}>
         {chips.map((chip) => (
           <Chip key={chip} label={chip} onPress={() => onChipPress(chip)} />
         ))}
@@ -188,7 +197,7 @@ function Unavailable() {
         paddingHorizontal: COACH_SPACE.pageMargin,
       }}
     >
-      <Text style={{ ...TYPE.body, color: COACH.inkMuted, textAlign: "center" }}>
+      <Text style={{ ...COACH_TYPE.body, color: COACH.inkMuted, textAlign: "center" }}>
         Coach is not available right now.
       </Text>
     </View>

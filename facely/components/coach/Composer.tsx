@@ -2,10 +2,9 @@ import React from "react";
 import { View, Text, Pressable, TextInput, ActivityIndicator } from "react-native";
 import { ArrowUp, Square } from "lucide-react-native";
 
-import { TYPE } from "@/lib/tokens";
 import { hapticLight } from "@/lib/haptics";
 
-import { COACH, COACH_RADIUS, COACH_SPACE } from "./theme";
+import { COACH, COACH_RADIUS, COACH_SPACE, COACH_TYPE } from "./theme";
 
 /* ============================================================================
  * The input row.
@@ -81,7 +80,7 @@ export function Composer({
             paddingTop: 6,
             paddingBottom: 6,
             color: COACH.ink,
-            ...TYPE.body,
+            ...COACH_TYPE.body,
           }}
         />
 
@@ -124,7 +123,7 @@ export function ComposerSkeleton() {
   return (
     <View style={{ padding: COACH_SPACE.pageMargin, alignItems: "center" }}>
       <ActivityIndicator size="small" color={COACH.inkFaint} />
-      <Text style={{ ...TYPE.caption, color: COACH.inkFaint, marginTop: 8 }}>
+      <Text style={{ ...COACH_TYPE.caption, color: COACH.inkFaint, marginTop: 8 }}>
         Loading Coach…
       </Text>
     </View>

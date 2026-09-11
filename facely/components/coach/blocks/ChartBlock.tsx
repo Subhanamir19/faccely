@@ -2,11 +2,10 @@ import React, { useMemo } from "react";
 import { View, Text } from "react-native";
 import Svg, { Circle, Line, Path, Text as SvgText } from "react-native-svg";
 
-import { TYPE } from "@/lib/tokens";
 import { METRIC_LABELS, type MetricKey } from "@/lib/types";
 import type { CoachChartBlock } from "@/lib/coach/blocks";
 
-import { COACH } from "../theme";
+import { COACH, COACH_TYPE } from "../theme";
 import { BlockSurface } from "./BlockRenderer";
 
 /* ============================================================================
@@ -140,8 +139,8 @@ export function ChartBlock({ block }: { block: CoachChartBlock }) {
             marginTop: 4,
           }}
         >
-          <Text style={{ ...TYPE.caption, color: COACH.inkFaint }}>{labels.start}</Text>
-          <Text style={{ ...TYPE.caption, color: COACH.inkFaint }}>{labels.end}</Text>
+          <Text style={{ ...COACH_TYPE.caption, color: COACH.inkFaint }}>{labels.start}</Text>
+          <Text style={{ ...COACH_TYPE.caption, color: COACH.inkFaint }}>{labels.end}</Text>
         </View>
 
         {block.series.length > 1 ? (
@@ -159,7 +158,7 @@ export function ChartBlock({ block }: { block: CoachChartBlock }) {
                     backgroundColor: SERIES_COLORS[index % SERIES_COLORS.length],
                   }}
                 />
-                <Text style={{ ...TYPE.caption, color: COACH.inkFaint }}>
+                <Text style={{ ...COACH_TYPE.caption, color: COACH.inkFaint }}>
                   {METRIC_LABELS[series.label as MetricKey] ??
                     series.label.replace(/_/g, " ")}
                 </Text>
@@ -169,7 +168,7 @@ export function ChartBlock({ block }: { block: CoachChartBlock }) {
         ) : null}
 
         {block.caption ? (
-          <Text style={{ ...TYPE.caption, color: COACH.inkMuted, marginTop: 8 }}>
+          <Text style={{ ...COACH_TYPE.caption, color: COACH.inkMuted, marginTop: 8 }}>
             {block.caption}
           </Text>
         ) : null}
