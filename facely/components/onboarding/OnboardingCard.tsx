@@ -72,7 +72,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   glassOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: COLORS.card,
     borderWidth: 1,
     borderColor: COLORS.cardBorder,

@@ -9,6 +9,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import Animated, {
+  type StyleProps,
   Easing,
   FadeIn,
   FadeInUp,
@@ -29,8 +30,10 @@ import { getProgressForStep, SP } from "@/lib/tokens";
 import { ms, sh, useResponsiveScale } from "@/lib/responsive";
 
 export const ORANGE_ONBOARDING = {
-  font: "DINNextRounded-Regular",
-  fontBold: "DINNextRounded-Bold",
+  font: "SFProRounded-Regular",
+  fontRegular: "SFProRounded-Regular",
+  fontSemibold: "SFProRounded-Semibold",
+  fontBold: "SFProRounded-Bold",
   orange: "#F26A13",
   orangeDark: "#D85609",
   orangeSoft: "#FFF1E7",
@@ -101,7 +104,7 @@ export default function OrangeOnboardingLayout({
           .withInitialValues({
             opacity: 0,
             transform: [{ translateY: sh(8) }, { scale: 0.94 }],
-          })
+          } as { opacity: number; transform: StyleProps["transform"] })
       : FadeIn.duration(150).easing(Easing.out(Easing.cubic));
   const sheetEntrance = reduceMotion
     ? undefined
@@ -156,39 +159,11 @@ export default function OrangeOnboardingLayout({
       <View style={styles.sequenceScreen}>
         <StatusBar barStyle={statusBarStyle} backgroundColor={ORANGE_ONBOARDING.paper} />
 
-        <View
-          style={[
-            styles.sequenceNav,
-            {
-              paddingTop: insets.top + responsive.clamp(8, 6, 12),
-              paddingHorizontal: responsive.clamp(24, 20, 38),
-            },
-          ]}
-        >
-          {showBack ? (
-            <Pressable
-              onPress={handleBack}
-              accessibilityRole="button"
-              accessibilityLabel="Go back"
-              hitSlop={12}
-              style={({ pressed }) => [
-                styles.sequenceBackButton,
-                {
-                  width: backSize,
-                  height: backSize,
-                  borderRadius: backSize / 2,
-                },
-                pressed && styles.pressed,
-              ]}
-            >
-              <ChevronLeft size={ms(24)} color={ORANGE_ONBOARDING.text} strokeWidth={2.5} />
-            </Pressable>
-          ) : (
-            <View style={{ width: backSize, height: backSize }} />
-          )}
-
-          {stepKey ? <SequenceProgressBar stepKey={stepKey} /> : null}
-        </View>
+        <OnboardingSequenceHeader
+          stepKey={stepKey}
+          showBack={showBack}
+          onBack={onBack}
+        />
 
         <Animated.View
           entering={sheetEntrance}
@@ -346,18 +321,76 @@ export default function OrangeOnboardingLayout({
   );
 }
 
+export function OnboardingSequenceHeader({
+  stepKey,
+  showBack = true,
+  onBack,
+}: {
+  stepKey?: string;
+  showBack?: boolean;
+  onBack?: () => void;
+}) {
+  const insets = useSafeAreaInsets();
+  const responsive = useResponsiveScale();
+  const backSize = responsive.clamp(46, 44, 52);
+
+  const handleBack = () => {
+    hapticLight();
+    if (onBack) onBack();
+    else router.back();
+  };
+
+  return (
+    <View
+      style={[
+        styles.sequenceNav,
+        {
+          paddingTop: insets.top + responsive.clamp(8, 6, 12),
+          paddingHorizontal: responsive.clamp(24, 20, 38),
+        },
+      ]}
+    >
+      {showBack ? (
+        <Pressable
+          onPress={handleBack}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+          hitSlop={12}
+          style={({ pressed }) => [
+            styles.sequenceBackButton,
+            {
+              width: backSize,
+              height: backSize,
+              borderRadius: backSize / 2,
+            },
+            pressed && styles.pressed,
+          ]}
+        >
+          <ChevronLeft size={ms(24)} color={ORANGE_ONBOARDING.text} strokeWidth={2.5} />
+        </Pressable>
+      ) : (
+        <View style={{ width: backSize, height: backSize }} />
+      )}
+
+      {stepKey ? <SequenceProgressBar stepKey={stepKey} /> : null}
+    </View>
+  );
+}
+
 export function OrangePrimaryButton({
   label,
   onPress,
   disabled = false,
   tone = "orange",
   uppercase = true,
+  fontFamily,
 }: {
   label: string;
   onPress: () => void;
   disabled?: boolean;
   tone?: "orange" | "ink";
   uppercase?: boolean;
+  fontFamily?: string;
 }) {
   const responsive = useResponsiveScale();
   const reduceMotion = useReducedMotion();
@@ -434,6 +467,7 @@ export function OrangePrimaryButton({
               styles.primaryButtonText,
               isInk && styles.primaryButtonTextInk,
               disabled && styles.primaryButtonTextDisabled,
+              fontFamily ? { fontFamily } : null,
             ]}
           >
             {uppercase ? label.toUpperCase() : label}
@@ -578,7 +612,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   coverArtwork: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     width: "100%",
     height: "100%",
   },
@@ -591,7 +625,7 @@ const styles = StyleSheet.create({
     height: "82%",
   },
   headerContent: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: "center",
     justifyContent: "center",
     paddingTop: sh(34),
@@ -763,7 +797,7 @@ const styles = StyleSheet.create({
     elevation: 0,
   },
   primaryButtonText: {
-    fontFamily: ORANGE_ONBOARDING.fontBold,
+    fontFamily: ORANGE_ONBOARDING.fontSemibold,
     fontSize: ms(17, 0.18),
     lineHeight: ms(22, 0.18),
     color: "#FFFFFF",

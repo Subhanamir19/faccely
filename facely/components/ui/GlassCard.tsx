@@ -52,7 +52,7 @@ const s = StyleSheet.create({
   },
 
   scoreOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "rgba(255,255,255,0.04)",
   },
 });

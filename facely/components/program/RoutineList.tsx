@@ -5,28 +5,42 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import {
+  AccessibilityInfo,
   Image,
+  Platform,
   Pressable,
-  SafeAreaView,
+  type PressableStateCallbackType,
   ScrollView,
+  StatusBar,
   StyleSheet,
   Text,
   View,
 } from "react-native";
-import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
-import { LinearGradient } from "expo-linear-gradient";
+import { BlurView } from "expo-blur";
 import {
+  GlassView,
+  isGlassEffectAPIAvailable,
+  isLiquidGlassAvailable,
+} from "expo-glass-effect";
+import { LinearGradient } from "expo-linear-gradient";
+import Animated, {
+  cancelAnimation,
+  Easing,
+  interpolate,
   useAnimatedStyle,
+  useReducedMotion,
   useSharedValue,
+  withRepeat,
   withSequence,
   withSpring,
   withTiming,
 } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
-import { ChevronLeft, SquareCheckBig } from "lucide-react-native";
+import { ChevronLeft, Play, SlidersHorizontal } from "lucide-react-native";
+import { FLOATING_TAB_BAR } from "@/components/layout/floatingTabBar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { COLORS, RADII, SP, TYPE } from "@/lib/tokens";
+import { SP } from "@/lib/tokens";
 import { sw, sh, ms } from "@/lib/responsive";
 import { CARD_FACE_LABELS } from "@/lib/faceTargets";
 import { getExerciseIcon } from "@/lib/exerciseIcons";
@@ -38,15 +52,69 @@ import { useRoutineStore } from "@/store/routineStore";
 import TargetAreasSheet from "./TargetAreasSheet";
 import EditExercisesSheet from "./EditExercisesSheet";
 import ProtocolPlanCard from "./ProtocolPlanCard";
-import {
-  AppGradientBackground,
-  APP_SCREEN_GRADIENT_BOTTOM,
-} from "@/components/layout/AppGradientBackground";
-import { FLOATING_TAB_BAR } from "@/components/layout/floatingTabBar";
+
+// Vertical space the floating tab bar occupies, so the sticky CTA and the
+// scroll content clear it instead of sitting under the pill.
+const TAB_BAR_CLEARANCE = FLOATING_TAB_BAR.pillHeight + FLOATING_TAB_BAR.gapBottom;
 
 const DIN_FONT = "DINNextRounded-Regular";
 const DIN_FONT_BOLD = "DINNextRounded-Bold";
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+const SCREEN_BG = "#FFFFFF";
+const INK = "#171512";
+const SECONDARY = "#736E67";
+const GROUPED = "#F7F6F3";
+const INSET = "#EFEDE9";
+const SEPARATOR = "rgba(23,21,18,0.09)";
+const BRAND_GREEN = "#4D9800";
+const CTA_TEXT = "#FAF9F7";
+const ROUTINE_LIQUID_GLASS =
+  Platform.OS === "ios" &&
+  isLiquidGlassAvailable() &&
+  isGlassEffectAPIAvailable();
+
+function useReduceTransparency() {
+  const [reduced, setReduced] = useState(false);
+
+  useEffect(() => {
+    void AccessibilityInfo.isReduceTransparencyEnabled().then(setReduced);
+    const subscription = AccessibilityInfo.addEventListener(
+      "reduceTransparencyChanged",
+      setReduced,
+    );
+    return () => subscription.remove();
+  }, []);
+
+  return reduced;
+}
+
+function RoutineDockMaterial({ reduced }: { reduced: boolean }) {
+  if (ROUTINE_LIQUID_GLASS && !reduced) {
+    return (
+      <GlassView
+        glassEffectStyle="clear"
+        tintColor="rgba(255,255,255,0.18)"
+        pointerEvents="none"
+        style={s.dockMaterial}
+      />
+    );
+  }
+
+  return (
+    <View pointerEvents="none" style={[s.dockMaterial, reduced && s.dockMaterialSolid]}>
+      {!reduced ? (
+        <BlurView
+          tint="systemUltraThinMaterialLight"
+          intensity={Platform.OS === "android" ? 30 : 68}
+          blurMethod="dimezisBlurView"
+          blurReductionFactor={3}
+          style={StyleSheet.absoluteFill}
+        />
+      ) : null}
+      <View style={s.dockMaterialTint} />
+    </View>
+  );
+}
 
 // ── helpers ─────────────────────────────────────────────────────────────
 function formatSecs(secs: number): string {
@@ -60,49 +128,61 @@ function targetLabel(t: string): string {
 }
 
 // ── stepper (light variant) ─────────────────────────────────────────────
-function StepperLight({ exerciseId }: { exerciseId: string }) {
+function StepperLight({
+  exerciseId,
+  exerciseName,
+}: {
+  exerciseId: string;
+  exerciseName: string;
+}) {
   const { getDuration, incrementDuration, decrementDuration } = useExerciseSettings();
   const secs  = getDuration(exerciseId);
   const atMin = secs <= 15;
   const atMax = secs >= 90;
+  const reduceMotion = useReducedMotion();
   const minusScale = useSharedValue(1);
   const plusScale = useSharedValue(1);
   const timeScale = useSharedValue(1);
 
   const minusStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: minusScale.value }],
+    transform: [{ scale: minusScale.get() }],
   }));
   const plusStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: plusScale.value }],
+    transform: [{ scale: plusScale.get() }],
   }));
   const timeStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: timeScale.value }],
+    transform: [{ scale: timeScale.get() }],
   }));
 
   const popTime = () => {
-    timeScale.value = withSequence(
-      withTiming(1.06, { duration: 90 }),
-      withSpring(1, { damping: 13, stiffness: 260 }),
-    );
+    if (reduceMotion) return;
+    timeScale.set(withSequence(
+      withTiming(1.025, { duration: 90, easing: Easing.out(Easing.cubic) }),
+      withTiming(1, { duration: 110, easing: Easing.out(Easing.cubic) }),
+    ));
   };
 
   return (
     <View style={s.stepperRow}>
       <AnimatedPressable
         onPress={() => {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          Haptics.selectionAsync();
           decrementDuration(exerciseId);
           popTime();
         }}
         onPressIn={() => {
-          minusScale.value = withTiming(0.92, { duration: 80 });
+          if (!reduceMotion) minusScale.set(withTiming(0.96, { duration: 100 }));
         }}
         onPressOut={() => {
-          minusScale.value = withSpring(1, { damping: 14, stiffness: 260 });
+          minusScale.set(withSpring(1, { duration: 400, dampingRatio: 1 }));
         }}
         disabled={atMin}
         hitSlop={8}
-        style={({ pressed }) => [
+        accessibilityRole="button"
+        accessibilityLabel={`Decrease ${exerciseName} duration`}
+        accessibilityHint={atMin ? "Minimum duration reached" : `Current duration ${formatSecs(secs)}`}
+        accessibilityState={{ disabled: atMin }}
+        style={({ pressed }: PressableStateCallbackType) => [
           s.stepperBtn,
           atMin && s.stepperBtnDisabled,
           pressed && !atMin && s.stepperBtnPressed,
@@ -112,23 +192,32 @@ function StepperLight({ exerciseId }: { exerciseId: string }) {
         <Text style={s.stepperGlyph}>−</Text>
       </AnimatedPressable>
 
-      <Animated.Text style={[s.stepperTime, timeStyle]}>{formatSecs(secs)}</Animated.Text>
+      <Animated.Text
+        accessibilityLabel={`${formatSecs(secs)} duration`}
+        style={[s.stepperTime, timeStyle]}
+      >
+        {formatSecs(secs)}
+      </Animated.Text>
 
       <AnimatedPressable
         onPress={() => {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          Haptics.selectionAsync();
           incrementDuration(exerciseId);
           popTime();
         }}
         onPressIn={() => {
-          plusScale.value = withTiming(0.92, { duration: 80 });
+          if (!reduceMotion) plusScale.set(withTiming(0.96, { duration: 100 }));
         }}
         onPressOut={() => {
-          plusScale.value = withSpring(1, { damping: 14, stiffness: 260 });
+          plusScale.set(withSpring(1, { duration: 400, dampingRatio: 1 }));
         }}
         disabled={atMax}
         hitSlop={8}
-        style={({ pressed }) => [
+        accessibilityRole="button"
+        accessibilityLabel={`Increase ${exerciseName} duration`}
+        accessibilityHint={atMax ? "Maximum duration reached" : `Current duration ${formatSecs(secs)}`}
+        accessibilityState={{ disabled: atMax }}
+        style={({ pressed }: PressableStateCallbackType) => [
           s.stepperBtn,
           atMax && s.stepperBtnDisabled,
           pressed && !atMax && s.stepperBtnPressed,
@@ -154,24 +243,25 @@ function TactilePill({
   pressedStyle: object;
   accessibilityLabel: string;
 }) {
+  const reduceMotion = useReducedMotion();
   const scale = useSharedValue(1);
   const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
+    transform: [{ scale: scale.get() }],
   }));
 
   return (
     <AnimatedPressable
       onPress={onPress}
       onPressIn={() => {
-        scale.value = withTiming(0.96, { duration: 80 });
+        if (!reduceMotion) scale.set(withTiming(0.97, { duration: 100 }));
       }}
       onPressOut={() => {
-        scale.value = withSpring(1, { damping: 14, stiffness: 260 });
+        scale.set(withSpring(1, { duration: 400, dampingRatio: 1 }));
       }}
       hitSlop={6}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
-      style={({ pressed }) => [style, pressed && pressedStyle, animatedStyle]}
+      style={({ pressed }: PressableStateCallbackType) => [style, pressed && pressedStyle, animatedStyle]}
     >
       {children}
     </AnimatedPressable>
@@ -197,7 +287,7 @@ function ExerciseRowLight({ task }: { task: DailyTask }) {
         </Text>
       </View>
 
-      <StepperLight exerciseId={task.exerciseId} />
+      <StepperLight exerciseId={task.exerciseId} exerciseName={task.name} />
     </View>
   );
 }
@@ -227,11 +317,9 @@ export default function RoutineList({
 
   const [areasOpen, setAreasOpen] = useState(false);
   const [editOpen,  setEditOpen]  = useState(false);
-  const ctaScale = useSharedValue(1);
-  const ctaShift = useSharedValue(0);
-  const ctaStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: ctaShift.value }, { scale: ctaScale.value }],
-  }));
+  const reduceMotion = useReducedMotion();
+  const reduceTransparency = useReduceTransparency();
+  const ctaPulse = useSharedValue(0);
 
   useEffect(() => {
     if (initialEditOpen) setEditOpen(true);
@@ -243,6 +331,28 @@ export default function RoutineList({
   );
   const allResolved = tasks.length > 0 && tasks.every((task) => task.status !== "pending");
   const allProtocolsDone = protocols.length === 0 || protocols.every((p) => p.status === "done");
+
+  useEffect(() => {
+    cancelAnimation(ctaPulse);
+    ctaPulse.set(0);
+    if (reduceMotion || allResolved) return;
+
+    ctaPulse.set(withRepeat(
+      withTiming(1, {
+        duration: 2600,
+        easing: Easing.out(Easing.cubic),
+      }),
+      -1,
+      false,
+    ));
+
+    return () => cancelAnimation(ctaPulse);
+  }, [allResolved, ctaPulse, reduceMotion]);
+
+  const ctaRingStyle = useAnimatedStyle(() => ({
+    opacity: reduceMotion ? 0 : interpolate(ctaPulse.get(), [0, 1], [0.34, 0]),
+    transform: [{ scale: interpolate(ctaPulse.get(), [0, 1], [1, 1.07]) }],
+  }));
   // Chip row: prefer the user's explicit selection (pinned by the Select sheet)
   // over the derived union of every exercise's tags — the union surfaces stray
   // chips like "Nose" when the user only picked "Midface".
@@ -290,31 +400,35 @@ export default function RoutineList({
   const currentIds = useMemo(() => tasks.map((t) => t.exerciseId), [tasks]);
 
   return (
-    <AppGradientBackground>
-      <SafeAreaView style={s.safe}>
+    <View style={s.screen}>
+      <StatusBar barStyle="dark-content" backgroundColor={SCREEN_BG} />
       {/* ── Header ── */}
-      <Animated.View entering={FadeIn.duration(300)} style={s.header}>
+      <View style={[s.header, { minHeight: insets.top + 58, paddingTop: insets.top }]}>
         <Pressable
           onPress={handleBack}
           hitSlop={10}
-          style={s.backBtn}
+          style={({ pressed }) => [s.backBtn, pressed && s.headerControlPressed]}
           accessibilityRole="button"
           accessibilityLabel="Go back"
         >
-          <ChevronLeft size={ms(26)} color={COLORS.lightText} strokeWidth={2.4} />
+          <ChevronLeft size={ms(25)} color={INK} strokeWidth={2.4} />
         </Pressable>
         <View style={s.headerTitleWrap} pointerEvents="none">
           <Text style={s.headerTitle}>{dayLabel}</Text>
-          <Text style={s.headerSubtitle}>routine preview</Text>
         </View>
-      </Animated.View>
+      </View>
 
       <ScrollView
-        contentContainerStyle={[s.scrollContent, { paddingBottom: Math.max(sh(140), FLOATING_TAB_BAR.contentClearance + sh(88)) }]}
+        style={s.scroll}
+        contentContainerStyle={[
+          s.scrollContent,
+          { paddingBottom: Math.max(insets.bottom + sh(126), sh(142)) + TAB_BAR_CLEARANCE },
+        ]}
+        contentInsetAdjustmentBehavior="never"
         showsVerticalScrollIndicator={false}
       >
         {/* ── Stats card ── */}
-        <Animated.View entering={FadeInDown.delay(60).duration(360)} style={s.statsCard}>
+        <View style={s.summaryStrip}>
           <View style={s.statCell}>
             <Text style={s.statNum}>{exerciseCnt}</Text>
             <Text style={s.statLabel}>Exercises</Text>
@@ -322,27 +436,27 @@ export default function RoutineList({
           <View style={s.statDivider} />
           <View style={s.statCell}>
             <Text style={s.statNum}>{durationStr}</Text>
-            <Text style={s.statLabel}>Total duration</Text>
+            <Text style={s.statLabel}>Duration</Text>
           </View>
           <View style={s.statDivider} />
           <View style={s.statCell}>
             <Text style={s.statNum}>{`${protocolDoneCnt}/${protocols.length}`}</Text>
-            <Text style={s.statLabel}>Diet</Text>
+            <Text style={s.statLabel}>Diet tasks</Text>
           </View>
-        </Animated.View>
+        </View>
 
         {/* ── Targeted Areas ── */}
-        <Animated.View entering={FadeInDown.delay(120).duration(360)} style={s.targetsCard}>
-          <View style={s.targetsHeader}>
-            <Text style={s.sectionTitle}>Targeted Areas</Text>
+        <View style={s.sectionBlock}>
+          <View style={s.sectionHeader}>
+            <Text style={s.sectionTitle}>Target areas</Text>
             <TactilePill
               onPress={handleSelect}
-              style={s.selectPill}
-              pressedStyle={s.selectPillPressed}
-              accessibilityLabel="Select targeted areas"
+              style={s.textAction}
+              pressedStyle={s.textActionPressed}
+              accessibilityLabel="Edit targeted areas"
             >
-              <SquareCheckBig size={ms(16)} color={COLORS.lightText} strokeWidth={2.2} />
-              <Text style={s.selectPillText}>Select</Text>
+              <SlidersHorizontal size={ms(15)} color={BRAND_GREEN} strokeWidth={2.3} />
+              <Text style={s.textActionLabel}>Edit areas</Text>
             </TactilePill>
           </View>
 
@@ -359,87 +473,91 @@ export default function RoutineList({
               ))
             )}
           </View>
-        </Animated.View>
+        </View>
 
         {/* ── Exercises header ── */}
-        <Animated.View entering={FadeInDown.delay(180).duration(360)} style={s.exercisesHeader}>
-          <Text style={s.sectionTitle}>{`Exercises (${exerciseCnt})`}</Text>
+        <View style={[s.sectionHeader, s.exercisesHeader]}>
+          <Text style={s.sectionTitle}>Exercises</Text>
           <TactilePill
             onPress={handleEdit}
-            style={s.editPill}
-            pressedStyle={s.editPillPressed}
+            style={s.textAction}
+            pressedStyle={s.textActionPressed}
             accessibilityLabel="Edit exercises"
           >
-            <Text style={s.editPillText}>Edit</Text>
+            <Text style={s.textActionLabel}>Edit list</Text>
           </TactilePill>
-        </Animated.View>
+        </View>
 
         {/* ── Exercise rows ── */}
         <View style={s.list}>
-          {tasks.map((task, idx) => (
-            <Animated.View
-              key={task.exerciseId}
-              entering={FadeInDown.delay(220 + idx * 50).duration(320)}
-            >
-              <ExerciseRowLight task={task} />
-            </Animated.View>
-          ))}
+          {tasks.length > 0 ? (
+            tasks.map((task, idx) => (
+              <React.Fragment key={task.exerciseId}>
+                <ExerciseRowLight task={task} />
+                {idx < tasks.length - 1 ? <View style={s.rowDivider} /> : null}
+              </React.Fragment>
+            ))
+          ) : (
+            <View style={s.emptyList}>
+              <Text style={s.emptyListTitle}>No exercises selected</Text>
+              <Text style={s.emptyListBody}>Use Edit list to add exercises to today&apos;s routine.</Text>
+            </View>
+          )}
         </View>
 
         {protocols.length > 0 ? (
-          <Animated.View entering={FadeInDown.delay(250 + tasks.length * 45).duration(360)} style={s.dietHeader}>
-            <Text style={s.sectionTitle}>{`Diet (${protocols.length})`}</Text>
-          </Animated.View>
+          <View style={[s.sectionHeader, s.dietHeader]}>
+            <Text style={s.sectionTitle}>Diet tasks</Text>
+            <Text style={s.sectionCount}>{protocols.length}</Text>
+          </View>
         ) : null}
 
         <ProtocolPlanCard
           protocols={protocols}
           onToggle={completeProtocol}
           onShuffle={shuffleProtocols}
-          startDelay={260 + tasks.length * 45}
+          variant="native"
         />
       </ScrollView>
 
       {/* ── Sticky CTA ── */}
-      <View style={[s.ctaDock, { bottom: Math.max(insets.bottom, 8) + FLOATING_TAB_BAR.pillHeight + FLOATING_TAB_BAR.gapBottom + FLOATING_TAB_BAR.raisedControlGap }]}>
-        <LinearGradient
-          pointerEvents="none"
-          colors={["rgba(254,245,228,0)", APP_SCREEN_GRADIENT_BOTTOM]}
-          start={{ x: 0.5, y: 0 }}
-          end={{ x: 0.5, y: 1 }}
-          style={s.ctaFade}
-        />
-        <View style={s.ctaDivider} />
+      <View
+        style={[
+          s.ctaDock,
+          { paddingBottom: Math.max(insets.bottom, 12) + TAB_BAR_CLEARANCE },
+        ]}
+      >
+        <RoutineDockMaterial reduced={reduceTransparency} />
         <Pressable
           onPress={allResolved ? undefined : handleStart}
-          onPressIn={() => {
-            if (allResolved) return;
-            ctaScale.value = withTiming(0.985, { duration: 90 });
-            ctaShift.value = withTiming(1, { duration: 90 });
-          }}
-          onPressOut={() => {
-            ctaScale.value = withSpring(1, { damping: 15, stiffness: 240 });
-            ctaShift.value = withSpring(0, { damping: 15, stiffness: 240 });
-          }}
           disabled={allResolved}
           accessibilityRole="button"
           accessibilityLabel={ctaLabel}
           accessibilityState={allResolved ? { disabled: true } : undefined}
+          hitSlop={4}
+          style={({ pressed }) => [
+            s.ctaBtn,
+            allResolved && s.ctaBtnDisabled,
+            pressed && !allResolved && s.ctaBtnPressed,
+          ]}
         >
-          {({ pressed }) => (
-            <Animated.View
-              style={[
-                s.ctaBtn,
-                allResolved && s.ctaBtnDisabled,
-                pressed && !allResolved && s.ctaBtnPressed,
-                ctaStyle,
-              ]}
-            >
-              <Text style={[s.ctaText, allResolved && s.ctaTextDisabled]}>
-                {ctaLabel}
-              </Text>
-            </Animated.View>
-          )}
+          {!allResolved ? (
+            <>
+              <Animated.View pointerEvents="none" style={[s.ctaPulseRing, ctaRingStyle]} />
+              <LinearGradient
+                pointerEvents="none"
+                colors={["#2B2B2E", "#0A0A0B", "#0A0A0B"]}
+                locations={[0, 0.6, 1]}
+                start={{ x: 0.1, y: 0 }}
+                end={{ x: 0.9, y: 1 }}
+                style={s.ctaGradient}
+              />
+              <Play size={ms(17)} color={CTA_TEXT} fill={CTA_TEXT} strokeWidth={2} />
+            </>
+          ) : null}
+          <Text style={[s.ctaText, allResolved && s.ctaTextDisabled]}>
+            {ctaLabel}
+          </Text>
         </Pressable>
       </View>
 
@@ -462,327 +580,352 @@ export default function RoutineList({
         }}
         onDismiss={() => setEditOpen(false)}
       />
-      </SafeAreaView>
-    </AppGradientBackground>
+    </View>
   );
 }
 
 // ── styles ──────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
-  safe: {
+  screen: {
     flex: 1,
-    backgroundColor: "transparent",
+    backgroundColor: SCREEN_BG,
   },
-
-  // Header
   header: {
-    height: sh(64),
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: SP[4],
+    paddingHorizontal: SP[5],
+    backgroundColor: SCREEN_BG,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: SEPARATOR,
   },
   backBtn: {
     position: "absolute",
     left: SP[4],
+    bottom: 9,
     width: ms(40),
     height: ms(40),
-    alignItems: "flex-start",
+    alignItems: "center",
     justifyContent: "center",
+    borderRadius: ms(20),
+  },
+  headerControlPressed: {
+    backgroundColor: GROUPED,
+    transform: [{ scale: 0.97 }],
   },
   headerTitleWrap: {
     alignItems: "center",
     justifyContent: "center",
   },
   headerTitle: {
-    ...TYPE.proximaScreenTitle,
-    fontFamily: DIN_FONT,
-    fontSize: ms(26),
-    color: COLORS.lightText,
+    fontFamily: DIN_FONT_BOLD,
+    fontSize: ms(25),
+    lineHeight: ms(30),
+    letterSpacing: -0.25,
+    color: INK,
     textAlign: "center",
   },
-  headerSubtitle: {
-    fontFamily: DIN_FONT,
-    fontSize: ms(13),
-    lineHeight: ms(16),
-    color: COLORS.lightSub,
-    marginTop: sh(2),
-    textAlign: "center",
+  scroll: {
+    flex: 1,
+    backgroundColor: SCREEN_BG,
   },
-
-  // Scroll
   scrollContent: {
     paddingHorizontal: SP[5],
-    paddingTop: SP[2],
-    paddingBottom: sh(140),
+    paddingTop: SP[3],
   },
-
-  // Stats card
-  statsCard: {
+  summaryStrip: {
+    minHeight: sh(72),
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#FFFDF8",
-    borderRadius: sw(20),
-    borderWidth: 1,
-    borderColor: "rgba(17,17,17,0.06)",
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: SEPARATOR,
     paddingVertical: SP[3],
-    paddingHorizontal: SP[3],
-    minHeight: sh(78),
-    shadowColor: "#000000",
-    shadowOpacity: 0.04,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 2,
   },
   statCell: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    gap: sh(4),
+    gap: sh(3),
   },
   statDivider: {
-    width: 1,
-    height: sh(36),
-    backgroundColor: COLORS.lightHairline,
+    width: StyleSheet.hairlineWidth,
+    height: sh(34),
+    backgroundColor: SEPARATOR,
   },
   statNum: {
-    ...TYPE.proximaStatNum,
-    fontFamily: DIN_FONT,
-    fontSize: ms(23),
-    color: COLORS.lightText,
+    fontFamily: DIN_FONT_BOLD,
+    fontSize: ms(21),
+    lineHeight: ms(25),
+    color: INK,
+    fontVariant: ["tabular-nums"],
   },
   statLabel: {
     fontFamily: DIN_FONT,
-    fontSize: ms(12),
+    fontSize: ms(11.5),
     lineHeight: ms(15),
-    color: COLORS.lightMuted,
+    color: SECONDARY,
+    textAlign: "center",
   },
-
-  // Targeted Areas card
-  targetsCard: {
-    marginTop: SP[3],
-    backgroundColor: "#F3F4F1",
-    borderRadius: sw(18),
-    paddingHorizontal: SP[4],
-    paddingVertical: SP[4],
+  sectionBlock: {
+    paddingTop: SP[5],
   },
-  targetsHeader: {
+  sectionHeader: {
+    minHeight: ms(44),
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: SP[4],
   },
   sectionTitle: {
-    ...TYPE.proximaSection,
     fontFamily: DIN_FONT_BOLD,
-    fontSize: ms(20),
-    color: COLORS.lightText,
+    fontSize: ms(19),
+    lineHeight: ms(24),
+    letterSpacing: -0.15,
+    color: INK,
   },
-  selectPill: {
+  sectionCount: {
+    minWidth: ms(30),
+    height: ms(28),
+    borderRadius: ms(14),
+    paddingHorizontal: sw(9),
+    backgroundColor: GROUPED,
+    color: SECONDARY,
+    fontFamily: DIN_FONT_BOLD,
+    fontSize: ms(12),
+    lineHeight: ms(28),
+    textAlign: "center",
+    fontVariant: ["tabular-nums"],
+  },
+  textAction: {
+    minHeight: ms(44),
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
     gap: sw(6),
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: "rgba(17,17,17,0.1)",
-    paddingHorizontal: sw(14),
-    paddingVertical: sh(9),
-    borderRadius: RADII.circle,
+    paddingHorizontal: sw(10),
+    borderRadius: ms(14),
   },
-  selectPillPressed: {
-    backgroundColor: "#ECEDEA",
+  textActionPressed: {
+    backgroundColor: GROUPED,
   },
-  selectPillText: {
-    ...TYPE.proximaPill,
-    fontFamily: DIN_FONT,
+  textActionLabel: {
+    fontFamily: DIN_FONT_BOLD,
     fontSize: ms(13),
-    color: COLORS.lightText,
+    lineHeight: ms(17),
+    color: BRAND_GREEN,
   },
   chipsWrap: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: sw(8),
+    paddingTop: SP[2],
   },
   chip: {
-    backgroundColor: COLORS.lightChipBg,
-    borderWidth: 1,
-    borderColor: COLORS.lightBorder,
-    borderRadius: sw(12),
+    minHeight: ms(36),
+    justifyContent: "center",
+    backgroundColor: GROUPED,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: SEPARATOR,
+    borderRadius: ms(18),
     paddingHorizontal: sw(14),
     paddingVertical: sh(8),
   },
   chipText: {
-    ...TYPE.proximaPill,
     fontFamily: DIN_FONT,
     fontSize: ms(13),
-    color: COLORS.lightText,
+    lineHeight: ms(17),
+    color: INK,
   },
-
-  // Exercises header
   exercisesHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
     marginTop: SP[5],
-    marginBottom: SP[3],
-  },
-  editPill: {
-    backgroundColor: COLORS.lightSurfaceAlt,
-    paddingHorizontal: sw(18),
-    paddingVertical: sh(10),
-    borderRadius: RADII.circle,
-  },
-  editPillPressed: {
-    backgroundColor: COLORS.lightBorder,
-  },
-  editPillText: {
-    ...TYPE.proximaPill,
-    fontFamily: DIN_FONT,
-    fontSize: ms(14),
-    color: COLORS.lightText,
+    marginBottom: SP[2],
   },
   dietHeader: {
     marginTop: SP[5],
-    marginBottom: SP[3],
+    marginBottom: SP[2],
   },
-
-  // Rows
   list: {
-    gap: sh(2),
-    backgroundColor: "#FFFDF8",
-    borderRadius: sw(22),
-    borderWidth: 1,
-    borderColor: "rgba(17,17,17,0.06)",
-    paddingHorizontal: SP[3],
-    paddingVertical: SP[2],
-    shadowColor: "#000000",
-    shadowOpacity: 0.025,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 1,
+    backgroundColor: GROUPED,
+    borderRadius: ms(20),
+    borderCurve: "continuous",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: SEPARATOR,
+    overflow: "hidden",
   },
   row: {
+    minHeight: sh(76),
     flexDirection: "row",
     alignItems: "center",
-    gap: sw(12),
-    minHeight: sh(70),
-    paddingVertical: sh(6),
+    gap: sw(11),
+    paddingHorizontal: sw(12),
+    paddingVertical: sh(10),
+  },
+  rowDivider: {
+    height: StyleSheet.hairlineWidth,
+    marginLeft: sw(74),
+    backgroundColor: SEPARATOR,
   },
   iconTile: {
-    width: ms(52),
-    height: ms(52),
-    borderRadius: sw(13),
-    backgroundColor: "#F7F8F4",
+    width: ms(50),
+    height: ms(50),
+    borderRadius: ms(14),
+    borderCurve: "continuous",
+    backgroundColor: INSET,
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
-    borderWidth: 1,
-    borderColor: "rgba(17,17,17,0.08)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: SEPARATOR,
   },
   iconImg: {
-    width: "92%",
-    height: "92%",
-    borderRadius: RADII.sm,
+    width: "94%",
+    height: "94%",
+    borderRadius: ms(12),
     resizeMode: "cover",
   },
   rowText: {
     flex: 1,
+    minWidth: 0,
     justifyContent: "center",
     gap: sh(2),
   },
   rowTitle: {
-    ...TYPE.proximaExerciseTitle,
     fontFamily: DIN_FONT_BOLD,
-    fontSize: ms(15),
-    color: COLORS.lightText,
+    fontSize: ms(15.5),
+    lineHeight: ms(19),
+    color: INK,
   },
   rowSub: {
     fontFamily: DIN_FONT,
-    fontSize: ms(13),
+    fontSize: ms(12.5),
     lineHeight: ms(16),
-    color: COLORS.lightMuted,
+    color: SECONDARY,
   },
-
-  // Stepper
   stepperRow: {
+    minWidth: sw(122),
+    height: ms(40),
     flexDirection: "row",
     alignItems: "center",
-    gap: sw(6),
+    justifyContent: "center",
+    backgroundColor: INSET,
+    borderRadius: ms(20),
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: SEPARATOR,
+    overflow: "hidden",
   },
   stepperBtn: {
-    width: ms(32),
-    height: ms(32),
-    borderRadius: ms(16),
-    backgroundColor: "#F1F2F4",
+    width: ms(40),
+    height: ms(40),
     alignItems: "center",
     justifyContent: "center",
   },
   stepperBtnPressed: {
-    backgroundColor: COLORS.lightBorder,
+    backgroundColor: "rgba(23,21,18,0.07)",
   },
   stepperBtnDisabled: {
-    opacity: 0.4,
+    opacity: 0.32,
   },
   stepperGlyph: {
     fontFamily: DIN_FONT,
-    fontSize: ms(18),
-    lineHeight: ms(20),
-    color: COLORS.lightText,
+    fontSize: ms(19),
+    lineHeight: ms(21),
+    color: INK,
     marginTop: -1,
   },
   stepperTime: {
-    ...TYPE.proximaStepper,
+    minWidth: sw(43),
+    fontFamily: DIN_FONT_BOLD,
+    fontSize: ms(13),
+    lineHeight: ms(17),
+    color: INK,
+    textAlign: "center",
+    fontVariant: ["tabular-nums"],
+  },
+  emptyList: {
+    alignItems: "center",
+    paddingHorizontal: SP[4],
+    paddingVertical: SP[6],
+  },
+  emptyListTitle: {
+    fontFamily: DIN_FONT_BOLD,
+    fontSize: ms(16),
+    color: INK,
+  },
+  emptyListBody: {
+    marginTop: sh(4),
     fontFamily: DIN_FONT,
-    fontSize: ms(14),
-    color: COLORS.lightText,
-    minWidth: sw(42),
+    fontSize: ms(13),
+    lineHeight: ms(18),
+    color: SECONDARY,
     textAlign: "center",
   },
-
-  // CTA dock
   ctaDock: {
     position: "absolute",
     left: 0,
     right: 0,
     bottom: 0,
+    zIndex: 20,
     paddingTop: SP[3],
-    paddingBottom: SP[4],
     paddingHorizontal: SP[5],
-    backgroundColor: "transparent",
   },
-  ctaFade: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    top: -48,
-    bottom: 0,
+  dockMaterial: {
+    ...StyleSheet.absoluteFill,
+    overflow: "hidden",
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "rgba(255,255,255,0.86)",
   },
-  ctaDivider: {
-    display: "none",
+  dockMaterialSolid: {
+    backgroundColor: "rgba(255,255,255,0.98)",
+  },
+  dockMaterialTint: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: "rgba(255,255,255,0.52)",
   },
   ctaBtn: {
-    minHeight: sh(58),
-    borderRadius: RADII.circle,
-    backgroundColor: COLORS.ctaBlack,
+    position: "relative",
+    minHeight: ms(54),
+    width: "100%",
+    borderRadius: 999,
+    overflow: "visible",
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    gap: sw(9),
     paddingHorizontal: SP[6],
-    paddingVertical: sh(18),
+    paddingVertical: sh(16),
+    boxShadow: "0 10px 18px rgba(0,0,0,0.24)",
   },
   ctaBtnPressed: {
-    backgroundColor: COLORS.ctaBlackPressed,
+    transform: [{ scale: 0.98 }],
   },
   ctaBtnDisabled: {
-    backgroundColor: COLORS.lightSurfaceAlt,
+    backgroundColor: INSET,
+    boxShadow: "none",
+  },
+  ctaPulseRing: {
+    position: "absolute",
+    top: -5,
+    right: -5,
+    bottom: -5,
+    left: -5,
+    borderRadius: 999,
+    borderWidth: 1.5,
+    borderColor: "rgba(0,0,0,0.20)",
+  },
+  ctaGradient: {
+    ...StyleSheet.absoluteFill,
+    borderRadius: 999,
   },
   ctaText: {
-    fontFamily: DIN_FONT,
-    fontSize: ms(17),
-    letterSpacing: 0.6,
-    color: "#FFFFFF",
+    zIndex: 1,
+    fontFamily: DIN_FONT_BOLD,
+    fontSize: ms(16),
+    lineHeight: ms(20),
+    letterSpacing: 0.2,
+    color: CTA_TEXT,
     textAlign: "center",
   },
   ctaTextDisabled: {
-    color: COLORS.lightSub,
+    color: SECONDARY,
   },
 });

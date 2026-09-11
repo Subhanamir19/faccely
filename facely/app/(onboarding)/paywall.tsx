@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   KeyboardAvoidingView,
   Pressable,
@@ -14,30 +14,30 @@ import {
   Image,
   ImageSourcePropType,
   StyleProp,
+  TextStyle,
   ViewStyle,
 } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
+import * as Haptics from "expo-haptics";
 import Animated, {
-  type SharedValue,
+  cancelAnimation,
   Easing,
-  interpolateColor,
-  interpolate,
+  useReducedMotion,
   useAnimatedStyle,
   useSharedValue,
   withDelay,
+  withSequence,
+  withSpring,
   withTiming,
 } from "react-native-reanimated";
-import { CommonActions, useNavigation } from "@react-navigation/native";
+import { CommonActions, useNavigation } from "expo-router/react-navigation";
 import { router } from "expo-router";
-import {
-  Dumbbell,
-  KeyRound,
-  RefreshCw,
-  ScanLine,
-  Sparkles,
-  Tag,
-  TrendingUp,
-} from "lucide-react-native";
+import { Check } from "lucide-react-native";
+import Svg, {
+  Defs,
+  LinearGradient as SvgLinearGradient,
+  Path,
+  Stop,
+} from "react-native-svg";
 import { useOnboarding } from "@/store/onboarding";
 import { useAuthStore } from "@/store/auth";
 import { useSubscriptionStore } from "@/store/subscription";
@@ -48,7 +48,6 @@ import {
   restorePurchases,
   checkSubscriptionStatus,
 } from "@/lib/revenuecat";
-import { SP } from "@/lib/tokens";
 import { useResponsiveScale } from "@/lib/responsive";
 import { PurchasesPackage } from "react-native-purchases";
 import { logger } from '@/lib/logger';
@@ -56,163 +55,312 @@ import * as WebBrowser from "expo-web-browser";
 import { useRecoveryCodeStore } from "@/store/recoveryCode";
 import { restoreWithCode } from "@/lib/api/recoveryCodes";
 
-const FONT_DIN = "DINNextRounded-Regular";
-const ORANGE = "#FF7900";
-const ORANGE_DARK = "#ED6B00";
-const ORANGE_SOFT = "#FFF3E8";
+const FONT_REGULAR = "SFProRounded-Regular";
+const FONT_SEMIBOLD = "SFProRounded-Semibold";
+const FONT_BOLD = "SFProRounded-Bold";
 const PLAN_ICONS = {
   yearly: require("../../assets/paywall-icons/yearly.png"),
   monthly: require("../../assets/paywall-icons/monthly.png"),
   weekly: require("../../assets/paywall-icons/weekly.png"),
 } as const;
-const PLAN_ACCENTS = {
-  yearly: {
-    main: ORANGE,
-    soft: ORANGE_SOFT,
-    badgeBg: ORANGE_SOFT,
-    badgeText: ORANGE_DARK,
-  },
-  monthly: {
-    main: ORANGE,
-    soft: ORANGE_SOFT,
-    badgeBg: ORANGE_SOFT,
-    badgeText: ORANGE_DARK,
-  },
-  weekly: {
-    main: ORANGE,
-    soft: ORANGE_SOFT,
-    badgeBg: ORANGE_SOFT,
-    badgeText: ORANGE_DARK,
-  },
-} as const;
+const COACH_IMAGE = require("../../assets/advanced-analysis-coach.png");
+const HEADER_TEXT = "Start your glowup today!";
+const PARROT_GREEN = "#58CC02";
+const PARROT_GREEN_TEXT = "#348000";
 
-type PlanAccent = (typeof PLAN_ACCENTS)[PlanKey];
-
-const FEATURE_ITEMS = [
-  {
-    title: "Potential face generation",
-    subtitle: "See your optimized face after executing your protocol.",
-    icon: Sparkles,
-  },
-  {
-    title: "Know your weakest points",
-    subtitle: "Facial symmetry scoring, structure analysis, and ranked fixes.",
-    icon: ScanLine,
-  },
-  {
-    title: "Progress tracking",
-    subtitle: "Scan history, rank progression, and measurable improvements.",
-    icon: TrendingUp,
-  },
-  {
-    title: "Daily routine",
-    subtitle: "Exercises and diet protocols built around your scan results.",
-    icon: Dumbbell,
-  },
+const PAYWALL_BENEFITS = [
+  "See your complete facial scores and priority fixes",
+  "Preview your potential face with personalized guidance",
+  "Follow a daily routine and track measurable progress",
 ] as const;
 
 type PlanKey = "weekly" | "monthly" | "yearly";
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
-const AnimatedText = Animated.createAnimatedComponent(Text);
+const EASE_OUT = Easing.bezier(0.23, 1, 0.32, 1);
+const EASE_IN_OUT = Easing.bezier(0.77, 0, 0.175, 1);
+
+const MascotCrown: React.FC = () => (
+  <Svg
+    width="100%"
+    height="100%"
+    viewBox="0 0 220 190"
+    fill="none"
+    pointerEvents="none"
+    accessibilityElementsHidden
+    importantForAccessibility="no-hide-descendants"
+  >
+    <Defs>
+      <SvgLinearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
+        <Stop offset="0" stopColor="#FFE58A" />
+        <Stop offset="0.5" stopColor="#F5C54A" />
+        <Stop offset="1" stopColor="#D99A25" />
+      </SvgLinearGradient>
+    </Defs>
+
+    <Path
+      d="M81 42 L86 12 L101 28 L110 2 L121 28 L137 12 L141 42 Q111 49 81 42 Z"
+      fill="#8E641B"
+      opacity="0.16"
+      transform="translate(0 2)"
+    />
+    <Path
+      d="M81 42 L86 12 L101 28 L110 2 L121 28 L137 12 L141 42 Q111 49 81 42 Z"
+      fill="url(#gold)"
+      stroke="#D69B2E"
+      strokeWidth="1.2"
+      strokeLinejoin="round"
+    />
+    <Path
+      d="M88 36 Q110 42 134 36"
+      stroke="#FFF2B9"
+      strokeWidth="2"
+      strokeLinecap="round"
+      opacity="0.72"
+    />
+  </Svg>
+);
+
+const MascotComposition: React.FC<{
+  width: number;
+  height: number;
+  imageSize: number;
+}> = ({ width, height, imageSize }) => {
+  const reduceMotion = useReducedMotion();
+  const scale = useSharedValue(reduceMotion ? 1 : 0.965);
+  const translateX = useSharedValue(0);
+  const rotation = useSharedValue(0);
+
+  useEffect(() => {
+    if (reduceMotion) {
+      scale.set(1);
+      translateX.set(0);
+      rotation.set(0);
+      return;
+    }
+
+    scale.set(withDelay(
+      45,
+      withSpring(1, { duration: 360, dampingRatio: 0.9 }),
+    ));
+    translateX.set(withDelay(
+      2450,
+      withSequence(
+        withTiming(-3, { duration: 55, easing: EASE_IN_OUT }),
+        withTiming(3, { duration: 65, easing: EASE_IN_OUT }),
+        withTiming(-2, { duration: 60, easing: EASE_IN_OUT }),
+        withTiming(2, { duration: 65, easing: EASE_IN_OUT }),
+        withTiming(0, { duration: 95, easing: EASE_OUT }),
+      ),
+    ));
+    rotation.set(withDelay(
+      2450,
+      withSequence(
+        withTiming(-1.25, { duration: 55, easing: EASE_IN_OUT }),
+        withTiming(1.25, { duration: 65, easing: EASE_IN_OUT }),
+        withTiming(-0.75, { duration: 60, easing: EASE_IN_OUT }),
+        withTiming(0.75, { duration: 65, easing: EASE_IN_OUT }),
+        withTiming(0, { duration: 95, easing: EASE_OUT }),
+      ),
+    ));
+
+    return () => {
+      cancelAnimation(scale);
+      cancelAnimation(translateX);
+      cancelAnimation(rotation);
+    };
+  }, [reduceMotion, rotation, scale, translateX]);
+
+  const scaleStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: translateX.get() },
+      { rotate: `${rotation.get()}deg` },
+      { scale: scale.get() },
+    ],
+  }));
+
+  return (
+    <Animated.View style={[styles.mascotStage, { width, height }, scaleStyle]}>
+      <View style={styles.mascotDecor}>
+        <MascotCrown />
+      </View>
+      <Image
+        source={COACH_IMAGE}
+        style={[
+          styles.coachImage,
+          {
+            width: imageSize,
+            height: imageSize,
+            left: (width - imageSize) / 2,
+          },
+        ]}
+        resizeMode="contain"
+      />
+    </Animated.View>
+  );
+};
+
+const TypewriterHeading: React.FC<{
+  style?: StyleProp<TextStyle>;
+}> = ({ style }) => {
+  const reduceMotion = useReducedMotion();
+  const [visibleCharacterCount, setVisibleCharacterCount] = useState(
+    reduceMotion ? HEADER_TEXT.length : 0,
+  );
+
+  useEffect(() => {
+    if (reduceMotion) {
+      setVisibleCharacterCount(HEADER_TEXT.length);
+      return;
+    }
+
+    let currentCharacterCount = 0;
+    let intervalId: ReturnType<typeof setInterval> | undefined;
+    const startId = setTimeout(() => {
+      intervalId = setInterval(() => {
+        currentCharacterCount += 1;
+        setVisibleCharacterCount(currentCharacterCount);
+
+        if (currentCharacterCount >= HEADER_TEXT.length && intervalId) {
+          clearInterval(intervalId);
+          intervalId = undefined;
+        }
+      }, 36);
+    }, 85);
+
+    return () => {
+      clearTimeout(startId);
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [reduceMotion]);
+
+  return (
+    <Text
+      style={style}
+      accessibilityRole="header"
+      accessibilityLabel={HEADER_TEXT}
+    >
+      {HEADER_TEXT.slice(0, visibleCharacterCount)}
+      <Text style={styles.typewriterReservedText}>
+        {HEADER_TEXT.slice(visibleCharacterCount)}
+      </Text>
+    </Text>
+  );
+};
 
 const RevealView: React.FC<{
   children: React.ReactNode;
   delay?: number;
   style?: StyleProp<ViewStyle>;
 }> = ({ children, delay = 0, style }) => {
+  const reduceMotion = useReducedMotion();
   const opacity = useSharedValue(0);
-  const translateY = useSharedValue(18);
-  const scale = useSharedValue(0.985);
+  const translateY = useSharedValue(reduceMotion ? 0 : 16);
 
   useEffect(() => {
-    opacity.value = withDelay(
-      delay,
+    const effectiveDelay = reduceMotion ? 0 : delay;
+
+    opacity.set(withDelay(
+      effectiveDelay,
       withTiming(1, {
-        duration: 460,
-        easing: Easing.out(Easing.cubic),
+        duration: reduceMotion ? 150 : 230,
+        easing: EASE_OUT,
       }),
-    );
-    translateY.value = withDelay(
-      delay,
-      withTiming(0, {
-        duration: 520,
-        easing: Easing.out(Easing.cubic),
-      }),
-    );
-    scale.value = withDelay(
-      delay,
-      withTiming(1, {
-        duration: 520,
-        easing: Easing.out(Easing.cubic),
-      }),
-    );
-  }, [delay, opacity, scale, translateY]);
+    ));
+
+    if (!reduceMotion) {
+      translateY.set(withDelay(
+        delay,
+        withTiming(0, {
+          duration: 250,
+          easing: EASE_OUT,
+        }),
+      ));
+    }
+  }, [delay, opacity, reduceMotion, translateY]);
 
   const revealStyle = useAnimatedStyle(() => ({
-    opacity: opacity.value,
-    transform: [
-      { translateY: translateY.value },
-      { scale: scale.value },
-    ],
+    opacity: opacity.get(),
+    transform: [{ translateY: translateY.get() }],
   }));
 
   return <Animated.View style={[style, revealStyle]}>{children}</Animated.View>;
 };
 
-const FeatureRow: React.FC<{
-  title: string;
-  subtitle: string;
-  icon: React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
-  delay: number;
-  accent: PlanAccent;
-}> = ({
-  title,
-  subtitle,
-  icon: Icon,
-  delay,
-  accent,
-}) => {
-  const opacity = useSharedValue(0);
-  const translateY = useSharedValue(16);
+const BenefitRow: React.FC<{ text: string; index: number }> = ({ text, index }) => {
+  const reduceMotion = useReducedMotion();
+  const checkOpacity = useSharedValue(0);
+  const checkScale = useSharedValue(reduceMotion ? 1 : 0.78);
+  const textOpacity = useSharedValue(0);
+  const textTranslateY = useSharedValue(reduceMotion ? 0 : 11);
 
   useEffect(() => {
-    opacity.value = withDelay(
-      delay,
-      withTiming(1, {
-        duration: 300,
-        easing: Easing.out(Easing.cubic),
-      }),
-    );
+    const delay = reduceMotion ? 0 : 260 + index * 50;
 
-    translateY.value = withDelay(
+    checkOpacity.set(withDelay(
       delay,
-      withTiming(0, {
-        duration: 300,
-        easing: Easing.out(Easing.cubic),
-      }),
-    );
-  }, [delay, opacity, translateY]);
+      withTiming(1, { duration: reduceMotion ? 150 : 170, easing: EASE_OUT }),
+    ));
+    textOpacity.set(withDelay(
+      delay + (reduceMotion ? 0 : 18),
+      withTiming(1, { duration: reduceMotion ? 150 : 220, easing: EASE_OUT }),
+    ));
 
-  const rowStyle = useAnimatedStyle(() => ({
-    opacity: opacity.value,
-    transform: [{ translateY: translateY.value }],
+    if (!reduceMotion) {
+      checkScale.set(withDelay(
+        delay,
+        withSpring(1, { duration: 260, dampingRatio: 0.86 }),
+      ));
+      textTranslateY.set(withDelay(
+        delay + 18,
+        withTiming(0, { duration: 230, easing: EASE_OUT }),
+      ));
+    }
+  }, [checkOpacity, checkScale, index, reduceMotion, textOpacity, textTranslateY]);
+
+  const checkStyle = useAnimatedStyle(() => ({
+    opacity: checkOpacity.get(),
+    transform: [{ scale: checkScale.get() }],
+  }));
+
+  const textStyle = useAnimatedStyle(() => ({
+    opacity: textOpacity.get(),
+    transform: [{ translateY: textTranslateY.get() }],
   }));
 
   return (
-    <Animated.View
-      style={[styles.featureRow, rowStyle]}
-    >
-      <View style={[styles.featureIconWrap, { backgroundColor: accent.soft }]}>
-        <Icon size={16} color={accent.main} strokeWidth={2.4} />
-      </View>
-      <View style={styles.featureCopy}>
-        <Text style={styles.featureTitle}>{title}</Text>
-        <Text style={styles.featureSubtitle}>{subtitle}</Text>
-      </View>
-    </Animated.View>
+    <View style={styles.benefitRow}>
+      <Animated.View style={[styles.benefitCheck, checkStyle]}>
+        <Check size={18} color={PARROT_GREEN} strokeWidth={3} />
+      </Animated.View>
+      <Animated.Text style={[styles.benefitText, textStyle]}>{text}</Animated.Text>
+    </View>
   );
 };
+
+/**
+ * Format an amount the same way the store formatted `sample`, so derived
+ * figures (per-day, savings) keep the storefront's currency symbol, position
+ * and decimal separator. Never hardcode a currency: the store decides it.
+ */
+function formatLikePriceString(amount: number, sample: string): string {
+  const match = sample.match(/[\d][\d\s.,]*/);
+  if (!match || match.index == null) return amount.toFixed(2);
+  // Trailing space belongs to the suffix ("59,99 €"), not the number.
+  const numeric = match[0].replace(/\s+$/, "");
+  const prefix = sample.slice(0, match.index);
+  const suffix = sample.slice(match.index + numeric.length);
+  const trimmed = numeric.trim();
+  const usesComma = /,\d{1,2}$/.test(trimmed);
+  // Zero-decimal currencies (JPY, KRW) print no fraction — match that.
+  const hasFraction = /[.,]\d{1,2}$/.test(trimmed);
+  const body = hasFraction
+    ? usesComma
+      ? amount.toFixed(2).replace(".", ",")
+      : amount.toFixed(2)
+    : String(Math.round(amount));
+  return `${prefix}${body}${suffix}`;
+}
 
 const PlanCard: React.FC<{
   label: string;
@@ -220,132 +368,143 @@ const PlanCard: React.FC<{
   price: string;
   period: string;
   iconSource: ImageSourcePropType;
-  accent: PlanAccent;
   badge?: string;
   savings?: string;
   selected: boolean;
   onPress: () => void;
   entranceDelay: number;
-  animation: {
-    scale: SharedValue<number>;
-    progress: SharedValue<number>;
-  };
-}> = ({ label, tagline, price, period, iconSource, accent, badge, savings, selected, onPress, entranceDelay, animation }) => {
+}> = ({ label, tagline, price, period, iconSource, badge, savings, selected, onPress, entranceDelay }) => {
+  const reduceMotion = useReducedMotion();
   const entranceOpacity = useSharedValue(0);
-  const entranceY = useSharedValue(20);
-  const entranceScale = useSharedValue(0.985);
+  const entranceY = useSharedValue(reduceMotion ? 0 : 17);
+  const cardPressScale = useSharedValue(1);
+  const gemScale = useSharedValue(selected ? 1.06 : 1);
+  const gemRotation = useSharedValue(0);
 
   useEffect(() => {
-    entranceOpacity.value = withDelay(
-      entranceDelay,
+    const effectiveDelay = reduceMotion ? 0 : entranceDelay;
+
+    entranceOpacity.set(withDelay(
+      effectiveDelay,
       withTiming(1, {
-        duration: 420,
-        easing: Easing.out(Easing.cubic),
+        duration: reduceMotion ? 150 : 220,
+        easing: EASE_OUT,
       }),
-    );
-    entranceY.value = withDelay(
-      entranceDelay,
-      withTiming(0, {
-        duration: 520,
-        easing: Easing.out(Easing.cubic),
-      }),
-    );
-    entranceScale.value = withDelay(
-      entranceDelay,
-      withTiming(1, {
-        duration: 520,
-        easing: Easing.out(Easing.cubic),
-      }),
-    );
-  }, [entranceDelay, entranceOpacity, entranceScale, entranceY]);
+    ));
+
+    if (!reduceMotion) {
+      entranceY.set(withDelay(
+        entranceDelay,
+        withTiming(0, { duration: 245, easing: EASE_OUT }),
+      ));
+    }
+  }, [entranceDelay, entranceOpacity, entranceY, reduceMotion]);
+
+  useEffect(() => {
+    if (!selected) {
+      gemScale.set(withTiming(1, { duration: 150, easing: EASE_OUT }));
+      gemRotation.set(withTiming(0, { duration: 150, easing: EASE_OUT }));
+    }
+  }, [gemRotation, gemScale, selected]);
+
+  const animateGem = () => {
+    cancelAnimation(gemScale);
+    cancelAnimation(gemRotation);
+
+    if (reduceMotion) {
+      gemScale.set(withTiming(1.06, { duration: 120, easing: EASE_OUT }));
+      return;
+    }
+
+    gemScale.set(withSequence(
+      withTiming(1.16, { duration: 105, easing: EASE_OUT }),
+      withSpring(1.06, { duration: 230, dampingRatio: 0.86 }),
+    ));
+    gemRotation.set(withSequence(
+      withTiming(-7, { duration: 70, easing: EASE_OUT }),
+      withTiming(8, { duration: 90, easing: EASE_OUT }),
+      withSpring(0, { duration: 210, dampingRatio: 0.9 }),
+    ));
+  };
+
+  const handlePress = () => {
+    animateGem();
+    onPress();
+  };
 
   const cardStyle = useAnimatedStyle(() => ({
-    opacity: entranceOpacity.value,
+    opacity: entranceOpacity.get(),
     transform: [
-      { translateY: entranceY.value },
-      { scale: animation.scale.value * entranceScale.value },
+      { translateY: entranceY.get() },
+      { scale: cardPressScale.get() },
     ],
-    borderColor: interpolateColor(
-      animation.progress.value,
-      [0, 1],
-      ["#E8E8E8", accent.main],
-    ),
-    shadowOpacity: interpolate(animation.progress.value, [0, 1], [0, 0.08]),
   }));
 
-  const bodyStyle = useAnimatedStyle(() => ({
-    opacity: animation.progress.value,
+  const gemStyle = useAnimatedStyle(() => ({
     transform: [
-      {
-        translateY: interpolate(animation.progress.value, [0, 1], [-8, 0]),
-      },
+      { rotate: `${gemRotation.get()}deg` },
+      { scale: gemScale.get() },
     ],
   }));
 
   return (
     <AnimatedPressable
       style={[styles.planCard, selected && styles.planCardSelected, cardStyle]}
-      onPress={onPress}
+      onPress={handlePress}
+      onPressIn={() => {
+        if (!reduceMotion) {
+          cardPressScale.set(withTiming(0.985, { duration: 100, easing: EASE_OUT }));
+        }
+      }}
+      onPressOut={() => {
+        if (!reduceMotion) {
+          cardPressScale.set(withSpring(1, { duration: 200, dampingRatio: 1 }));
+        }
+      }}
+      pressRetentionOffset={16}
       accessibilityRole="button"
-      accessibilityState={{ selected, expanded: selected }}
+      accessibilityState={{ selected }}
     >
       <View style={styles.planHeader}>
-        <View style={[styles.planIcon, selected && { backgroundColor: accent.soft }]}>
-          <Image source={iconSource} style={styles.planIconImage} resizeMode="contain" />
+        <View style={styles.planGemSlot}>
+          <Animated.Image
+            source={iconSource}
+            style={[styles.planIconImage, gemStyle]}
+            resizeMode="contain"
+          />
         </View>
         <View style={styles.planMeta}>
-          <Text style={styles.planLabel}>{label}</Text>
-          <Text style={styles.planTagline}>{tagline}</Text>
+          <Text style={[styles.planLabel, selected && styles.planPrimaryTextSelected]}>{label}</Text>
+          <Text style={[styles.planTagline, selected && styles.planSecondaryTextSelected]}>{tagline}</Text>
           <View style={styles.planBadgeRow}>
             {badge && (
-              <View style={[
-                styles.planBadge,
-                { backgroundColor: accent.badgeBg },
-              ]}>
-                <Text style={[
-                  styles.planBadgeText,
-                  { color: accent.badgeText },
-                ]}>{badge}</Text>
+              <View style={[styles.planBadge, selected && styles.planBadgeSelected]}>
+                <Text style={[styles.planBadgeText, selected && styles.planBadgeTextSelected]}>{badge}</Text>
               </View>
             )}
             {savings && (
-              <View style={[styles.savingsBadge, { backgroundColor: accent.badgeBg }]}>
-                <Text style={[styles.savingsText, { color: accent.badgeText }]}>{savings}</Text>
+              <View style={[styles.savingsBadge, selected && styles.planBadgeSelected]}>
+                <Text style={[styles.savingsText, selected && styles.planBadgeTextSelected]}>{savings}</Text>
               </View>
             )}
           </View>
         </View>
-        <View style={styles.planPriceColumn}>
-          <AnimatedText style={styles.planPrice}>{price}</AnimatedText>
-          <Text style={styles.planPeriod}>{period}</Text>
+        <View style={styles.planTrailing}>
+          <View style={styles.planPriceColumn}>
+            <Text style={[styles.planPrice, selected && styles.planPrimaryTextSelected]}>{price}</Text>
+            <Text style={[styles.planPeriod, selected && styles.planSecondaryTextSelected]}>{period}</Text>
+          </View>
           <View style={[
             styles.radioDot,
             selected && {
-              borderColor: accent.main,
-              backgroundColor: accent.main,
+              borderColor: "#FFFFFF",
+              backgroundColor: "#FFFFFF",
             },
           ]}>
             {selected && <View style={styles.radioDotInner} />}
           </View>
         </View>
       </View>
-      {selected && (
-        <Animated.View style={[styles.planBody, bodyStyle]}>
-          <View style={styles.planDivider} />
-          <View style={styles.expandedFeatureList}>
-            {FEATURE_ITEMS.map((item, index) => (
-              <FeatureRow
-                key={item.title}
-                title={item.title}
-                subtitle={item.subtitle}
-                icon={item.icon}
-                delay={index * 45}
-                accent={accent}
-              />
-            ))}
-          </View>
-        </Animated.View>
-      )}
     </AnimatedPressable>
   );
 };
@@ -353,10 +512,11 @@ const PlanCard: React.FC<{
 const PaywallScreen: React.FC = () => {
   const navigation = useNavigation();
   const responsive = useResponsiveScale();
-  const contentMaxWidth = Math.min(560, Math.max(240, responsive.width - SP[5] * 2));
+  const horizontalPadding = responsive.clamp(20, 16, 24);
+  const contentMaxWidth = Math.min(560, Math.max(240, responsive.width - horizontalPadding * 2));
+  const mascotStageWidth = responsive.clampWidth(0.56, 210, 236);
+  const mascotImageSize = responsive.clampWidth(0.39, 146, 162);
   const [selected, setSelected] = useState<PlanKey>("monthly");
-  const [showPromoInput, setShowPromoInput] = useState(false);
-  const [promoCode, setPromoCode] = useState("");
   const [showRecoveryInput, setShowRecoveryInput] = useState(false);
   const [recoveryCode, setRecoveryCode] = useState("");
   const [restoringWithCode, setRestoringWithCode] = useState(false);
@@ -369,6 +529,36 @@ const PaywallScreen: React.FC = () => {
     yearly?: PurchasesPackage;
   }>({});
 
+  // Prices come from the store (RevenueCat product), never from constants —
+  // a hardcoded "$49.99" is wrong in every non-USD storefront.
+  const pricing = useMemo(() => {
+    const placeholder = "…";
+    const yearlyProduct = packages.yearly?.product;
+    const monthlyProduct = packages.monthly?.product;
+    const weeklyProduct = packages.weekly?.product;
+
+    const yearlyPerDay =
+      yearlyProduct && yearlyProduct.price > 0
+        ? formatLikePriceString(yearlyProduct.price / 365, yearlyProduct.priceString)
+        : null;
+
+    const yearlySaving =
+      yearlyProduct && monthlyProduct && monthlyProduct.price * 12 > yearlyProduct.price
+        ? formatLikePriceString(
+            monthlyProduct.price * 12 - yearlyProduct.price,
+            yearlyProduct.priceString,
+          )
+        : null;
+
+    return {
+      yearlyPrice: yearlyProduct?.priceString ?? placeholder,
+      yearlyPeriod: yearlyPerDay ? `per year - ${yearlyPerDay}/day` : "per year",
+      yearlySavings: yearlySaving ? `Save ${yearlySaving} vs monthly` : undefined,
+      monthlyPrice: monthlyProduct?.priceString ?? placeholder,
+      weeklyPrice: weeklyProduct?.priceString ?? placeholder,
+    };
+  }, [packages]);
+
   const finishOnboarding = useOnboarding((state) => state.finish);
   const setOnboardingCompletedFromOnboarding = useAuthStore(
     (state) => state.setOnboardingCompletedFromOnboarding
@@ -379,20 +569,10 @@ const PaywallScreen: React.FC = () => {
   const setOfferings = useSubscriptionStore((state) => state.setOfferings);
   const setCurrentPackage = useSubscriptionStore((state) => state.setCurrentPackage);
   const setRevenueCatEntitlement = useSubscriptionStore((state) => state.setRevenueCatEntitlement);
-  const activatePromoCode = useSubscriptionStore((state) => state.activatePromoCode);
 
   useEffect(() => {
     return () => { isMountedRef.current = false; };
   }, []);
-
-  const screenFade = useSharedValue(0);
-
-  useEffect(() => {
-    screenFade.value = withTiming(1, {
-      duration: 400,
-      easing: Easing.out(Easing.cubic),
-    });
-  }, [screenFade]);
 
   // Fetch offerings on mount
   useEffect(() => {
@@ -446,39 +626,10 @@ const PaywallScreen: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Only run once on mount
 
-  const weeklyScale = useSharedValue(selected === "weekly" ? 1.02 : 1);
-  const monthlyScale = useSharedValue(selected === "monthly" ? 1.02 : 1);
-  const yearlyScale = useSharedValue(selected === "yearly" ? 1.02 : 1);
-
-  const weeklyProgress = useSharedValue(selected === "weekly" ? 1 : 0);
-  const monthlyProgress = useSharedValue(selected === "monthly" ? 1 : 0);
-  const yearlyProgress = useSharedValue(selected === "yearly" ? 1 : 0);
-
-  useEffect(() => {
-    const scales = { weekly: weeklyScale, monthly: monthlyScale, yearly: yearlyScale };
-    const progresses = { weekly: weeklyProgress, monthly: monthlyProgress, yearly: yearlyProgress };
-
-    Object.keys(scales).forEach((key) => {
-      const planKey = key as PlanKey;
-      const isSelected = planKey === selected;
-
-      scales[planKey].value = withTiming(isSelected ? 1.02 : 1, {
-        duration: 250,
-        easing: Easing.out(isSelected ? Easing.back(1.2) : Easing.cubic),
-      });
-
-      progresses[planKey].value = withTiming(isSelected ? 1 : 0, {
-        duration: 250,
-        easing: Easing.out(Easing.cubic),
-      });
-    });
-  }, [selected, weeklyScale, monthlyScale, yearlyScale, weeklyProgress, monthlyProgress, yearlyProgress]);
-
-  const containerStyle = useAnimatedStyle(() => ({
-    opacity: screenFade.value,
-  }));
-
   const onSelectPlan = (plan: PlanKey) => {
+    if (Platform.OS === "ios") {
+      void Haptics.selectionAsync();
+    }
     if (plan === selected) return;
     setSelected(plan);
   };
@@ -534,10 +685,17 @@ const PaywallScreen: React.FC = () => {
     try {
       const result = await restoreWithCode(trimmed);
       if (result === "ok") {
-        await completeOnboarding();
         const hasEntitlement = await checkSubscriptionStatus();
         setRevenueCatEntitlement(hasEntitlement);
-        navigateToMainApp();
+        if (hasEntitlement) {
+          await completeOnboarding();
+          navigateToMainApp();
+        } else {
+          Alert.alert(
+            "No Subscription Found",
+            "That account is restored, but it has no active subscription. Choose a plan to continue."
+          );
+        }
       } else if (result === "invalid_code") {
         Alert.alert("Invalid Code", "We couldn't find a subscription linked to that code. Double-check and try again.");
       } else {
@@ -619,14 +777,9 @@ const PaywallScreen: React.FC = () => {
     try {
       await restorePurchases();
 
-      // Check if user has entitlement (only updates RevenueCat state, never touches promo)
       const hasEntitlement = await checkSubscriptionStatus();
 
-      // Get fresh promoActivated value from store to avoid stale closure
-      const currentPromoActivated = useSubscriptionStore.getState().promoActivated;
-      const hasAccess = hasEntitlement || currentPromoActivated;
-
-      if (hasAccess) {
+      if (hasEntitlement) {
         await completeOnboarding();
         ensureCode().catch(() => {});
         setRevenueCatEntitlement(hasEntitlement);
@@ -653,121 +806,91 @@ const PaywallScreen: React.FC = () => {
     }
   }, [setLoading, setRevenueCatEntitlement, completeOnboarding, navigateToMainApp]);
 
-  const onApplyPromoCode = useCallback(async () => {
-    if (!promoCode.trim()) {
-      Alert.alert("Enter a Code", "Please enter a promo code.");
-      return;
-    }
-
-    const success = await activatePromoCode(promoCode);
-
-    if (success) {
-      await completeOnboarding();
-      navigateToMainApp();
-    } else {
-      // Get fresh error value from store
-      const currentError = useSubscriptionStore.getState().error;
-      const errorMessage = currentError || "The promo code you entered is not valid.";
-      Alert.alert("Invalid Code", errorMessage);
-    }
-  }, [promoCode, activatePromoCode, completeOnboarding, navigateToMainApp]);
-
   return (
     <SafeAreaView style={styles.safeArea}>
-      <LinearGradient
-        colors={["#FFA640", ORANGE]}
-        start={{ x: 0.5, y: 0 }}
-        end={{ x: 0.5, y: 1 }}
-        style={StyleSheet.absoluteFill}
-      />
-      <Animated.View style={[styles.flex, containerStyle]}>
+      <View style={styles.flex}>
         <KeyboardAvoidingView
           style={styles.flex}
           behavior={Platform.OS === "ios" ? "padding" : undefined}
         >
         <ScrollView
+          style={styles.scrollView}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
+          contentInsetAdjustmentBehavior="automatic"
         >
-          <View
-            style={[
-              styles.paywallHero,
-              { minHeight: responsive.clampHeight(0.22, 160, 220) },
-            ]}
-          >
-            <Text style={styles.paywallEyebrow}>YOUR PLAN IS READY</Text>
-            <Text style={styles.paywallHeroTitle}>Unlock your full analysis.</Text>
-          </View>
-          <View style={styles.inner}>
-            <View style={styles.sheetHandle} />
+          <RevealView style={styles.paywallHero} delay={20}>
+            <TypewriterHeading
+              style={[
+                styles.heroHeading,
+                {
+                  fontSize: responsive.clamp(24, 22, 26),
+                  lineHeight: responsive.clamp(29, 27, 31),
+                },
+              ]}
+            />
+            <MascotComposition
+              width={mascotStageWidth}
+              height={responsive.clamp(174, 164, 188)}
+              imageSize={mascotImageSize}
+            />
+          </RevealView>
+          <View style={[styles.inner, { paddingHorizontal: horizontalPadding }]}>
             <View style={[styles.contentColumn, { maxWidth: contentMaxWidth }]}>
-            {/* HEADER */}
-            <RevealView style={styles.header} delay={80}>
-              <View style={styles.socialProofRow}>
-                <View style={styles.socialProofPill}>
-                  <Text style={styles.socialProofStrong}>2,800+</Text>
-                </View>
-                <Text style={styles.socialProofText}>
-                  men already leveling up
-                </Text>
-              </View>
-              <Text style={styles.title}>
-                Your best face is{"\n"}
-                <Text style={styles.titleAccent}>already possible.</Text>
-              </Text>
-              <Text style={styles.subtitle}>
-                Know your weaknesses. Fix them with precision. Track every win.
-              </Text>
-            </RevealView>
+            {/* CORE BENEFITS */}
+            <View style={styles.benefitsSection}>
+              {PAYWALL_BENEFITS.map((benefit, index) => (
+                <BenefitRow key={benefit} text={benefit} index={index} />
+              ))}
+            </View>
 
             {/* PRICING */}
             <View style={styles.pricingColumn}>
               <PlanCard
                 label="Yearly"
-                tagline="Best value - commit to the mission"
-                price="$49.99"
-                period="per year - $0.14/day"
+                tagline="Best value"
+                price={pricing.yearlyPrice}
+                period={pricing.yearlyPeriod}
                 iconSource={PLAN_ICONS.yearly}
-                accent={PLAN_ACCENTS.yearly}
-                savings="Save $57 vs monthly"
+                savings={pricing.yearlySavings}
                 selected={selected === "yearly"}
                 onPress={() => onSelectPlan("yearly")}
-                entranceDelay={190}
-                animation={{ scale: yearlyScale, progress: yearlyProgress }}
+                entranceDelay={430}
               />
               <PlanCard
                 label="Monthly"
-                tagline="Start this month, cancel anytime"
-                price="$8.99"
+                tagline="Cancel anytime"
+                price={pricing.monthlyPrice}
                 period="per month"
                 iconSource={PLAN_ICONS.monthly}
-                accent={PLAN_ACCENTS.monthly}
                 badge="Most Popular"
                 selected={selected === "monthly"}
                 onPress={() => onSelectPlan("monthly")}
-                entranceDelay={280}
-                animation={{ scale: monthlyScale, progress: monthlyProgress }}
+                entranceDelay={475}
               />
               <PlanCard
                 label="Weekly"
-                tagline="Try it for a week"
-                price="$3.99"
+                tagline="Flexible access"
+                price={pricing.weeklyPrice}
                 period="per week"
                 iconSource={PLAN_ICONS.weekly}
-                accent={PLAN_ACCENTS.weekly}
                 selected={selected === "weekly"}
                 onPress={() => onSelectPlan("weekly")}
-                entranceDelay={370}
-                animation={{ scale: weeklyScale, progress: weeklyProgress }}
+                entranceDelay={520}
               />
             </View>
 
             {/* PRIMARY BUTTON */}
-            <RevealView style={styles.primaryButtonWrap} delay={500}>
+            <RevealView style={styles.primaryButtonWrap} delay={570}>
               <View style={[styles.ctaDepth, isLoading && styles.ctaDepthDisabled]}>
                 <Pressable
-                  onPress={onContinue}
+                  onPress={() => {
+                    if (Platform.OS === "ios") {
+                      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    }
+                    void onContinue();
+                  }}
                   disabled={isLoading}
                   accessibilityRole="button"
                   accessibilityState={{ disabled: isLoading }}
@@ -778,104 +901,76 @@ const PaywallScreen: React.FC = () => {
                     isLoading && styles.ctaButtonDisabled,
                   ]}
                 >
-                  <LinearGradient
-                    colors={isLoading ? ["#D8D4CF", "#D8D4CF"] : ["#FF9238", ORANGE]}
-                    locations={[0, 1]}
-                    start={{ x: 0.5, y: 0 }}
-                    end={{ x: 0.5, y: 1 }}
-                    style={styles.ctaGradient}
-                  >
-                    {isLoading ? (
-                      <ActivityIndicator size="small" color="#7A7A7A" />
-                    ) : (
-                      <Text style={styles.ctaText}>Start Subscription</Text>
-                    )}
-                  </LinearGradient>
+                  {isLoading ? (
+                    <ActivityIndicator size="small" color="#7A7A7A" />
+                  ) : (
+                    <Text style={styles.ctaText}>Unlock My Analysis</Text>
+                  )}
                 </Pressable>
               </View>
-              <Text style={styles.ctaSubcopy}>Cancel anytime - secure checkout</Text>
+              <Text style={styles.ctaSubcopy}>Cancel anytime · Secure checkout</Text>
             </RevealView>
 
-            <RevealView style={styles.secondaryActions} delay={590}>
-              {/* PROMO CODE */}
-              <Pressable
-                style={({ pressed }) => [
-                  styles.fullSecondaryButton,
-                  showPromoInput && styles.secondaryButtonActive,
-                  pressed && styles.secondaryButtonPressed,
-                ]}
-                onPress={() => setShowPromoInput(!showPromoInput)}
-                accessibilityRole="button"
-                accessibilityState={{ expanded: showPromoInput }}
-              >
-                <Tag size={16} color={showPromoInput ? ORANGE_DARK : "#8A8A8E"} strokeWidth={2.2} />
-                <Text style={[styles.secondaryButtonText, showPromoInput && styles.secondaryButtonTextActive]}>
-                  Apply promo code
-                </Text>
-              </Pressable>
-
-              {showPromoInput && (
-                <View style={styles.promoSection}>
-                  <Text style={styles.inputLabel}>Promo code</Text>
-                  <View style={styles.promoInputWrapper}>
-                    <TextInput
-                      style={styles.promoInput}
-                      placeholder="Enter code"
-                      placeholderTextColor="#A9A9A9"
-                      value={promoCode}
-                      onChangeText={setPromoCode}
-                      autoCapitalize="characters"
-                      autoCorrect={false}
-                    />
-                    <Pressable
-                      style={({ pressed }) => [
-                        styles.promoApplyButton,
-                        pressed && styles.applyButtonPressed,
-                        isLoading && styles.applyButtonDisabled,
-                      ]}
-                      onPress={onApplyPromoCode}
-                      disabled={isLoading}
-                    >
-                      <Text style={styles.promoApplyText}>Apply</Text>
-                    </Pressable>
-                  </View>
+            <RevealView style={styles.footerArea} delay={620}>
+              <Text style={styles.legalText}>
+                Subscription automatically renews unless auto-renew is turned off at least 24 hours before the end of the current period.
+              </Text>
+              <View style={styles.footerActions}>
+                <View style={styles.footerAction}>
+                  <Text style={styles.footerActionText}>Terms</Text>
                 </View>
-              )}
-
-              <View style={styles.secondaryRow}>
                 <Pressable
-                  style={({ pressed }) => [
-                    styles.secondaryButton,
-                    pressed && styles.secondaryButtonPressed,
-                    isLoading && styles.secondaryButtonDisabled,
-                  ]}
-                  onPress={onRestorePurchases}
-                  disabled={isLoading}
-                  accessibilityRole="button"
+                  style={({ pressed }) => [styles.footerAction, pressed && styles.footerActionPressed]}
+                  onPress={() => {
+                    if (Platform.OS === "ios") void Haptics.selectionAsync();
+                    void WebBrowser.openBrowserAsync("https://third-tamarillo-756.notion.site/Privacy-Policy-30266c2b427680a29ba5e586b5913999");
+                  }}
+                  accessibilityRole="link"
                 >
-                  <RefreshCw size={15} color="#8A8A8E" strokeWidth={2.2} />
-                  <Text style={styles.secondaryButtonText}>Restore purchases</Text>
+                  <Text style={styles.footerActionText}>Privacy</Text>
                 </Pressable>
                 <Pressable
                   style={({ pressed }) => [
-                    styles.secondaryButton,
-                    showRecoveryInput && styles.secondaryButtonActive,
-                    pressed && styles.secondaryButtonPressed,
+                    styles.footerAction,
+                    showRecoveryInput && styles.footerActionActive,
+                    pressed && styles.footerActionPressed,
                   ]}
-                  onPress={() => setShowRecoveryInput(!showRecoveryInput)}
+                  onPress={() => {
+                    if (Platform.OS === "ios") void Haptics.selectionAsync();
+                    setShowRecoveryInput(!showRecoveryInput);
+                  }}
                   accessibilityRole="button"
                   accessibilityState={{ expanded: showRecoveryInput }}
                 >
-                  <KeyRound size={15} color={showRecoveryInput ? ORANGE_DARK : "#8A8A8E"} strokeWidth={2.2} />
-                  <Text style={[styles.secondaryButtonText, showRecoveryInput && styles.secondaryButtonTextActive]}>
+                  <Text style={[styles.footerActionText, showRecoveryInput && styles.footerActionTextActive]}>
                     Recovery code
                   </Text>
+                </Pressable>
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.footerAction,
+                    pressed && styles.footerActionPressed,
+                    isLoading && styles.footerActionDisabled,
+                  ]}
+                  onPress={() => {
+                    if (Platform.OS === "ios") {
+                      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    }
+                    void onRestorePurchases();
+                  }}
+                  disabled={isLoading}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.footerActionText}>Restore</Text>
                 </Pressable>
               </View>
 
               {showRecoveryInput && (
                 <View style={styles.promoSection}>
                   <Text style={styles.inputLabel}>Recovery code</Text>
+                  <Text style={styles.recoveryHint}>
+                    Sign back into an account that already has an active subscription.
+                  </Text>
                   <View style={styles.promoInputWrapper}>
                     <TextInput
                       style={styles.promoInput}
@@ -904,24 +999,11 @@ const PaywallScreen: React.FC = () => {
               )}
             </RevealView>
 
-            {/* LEGAL */}
-            <RevealView style={styles.legal} delay={680}>
-              <Text style={styles.legalText}>
-                Subscription automatically renews unless auto-renew is turned off at least 24 hours before the end of the current period.
-              </Text>
-              <View style={styles.legalLinks}>
-                <Text style={styles.legalLink}>Terms of Service</Text>
-                <Text style={styles.legalSeparator}>•</Text>
-                <Pressable onPress={() => WebBrowser.openBrowserAsync("https://third-tamarillo-756.notion.site/Privacy-Policy-30266c2b427680a29ba5e586b5913999")}>
-                  <Text style={styles.legalLink}>Privacy Policy</Text>
-                </Pressable>
-              </View>
-            </RevealView>
             </View>
           </View>
         </ScrollView>
         </KeyboardAvoidingView>
-      </Animated.View>
+      </View>
     </SafeAreaView>
   );
 };
@@ -931,146 +1013,120 @@ export default PaywallScreen;
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: ORANGE,
+    backgroundColor: "#FFFFFF",
   },
   flex: {
     flex: 1,
   },
+  scrollView: {
+    backgroundColor: "#FFFFFF",
+  },
   scrollContent: {
-    paddingBottom: 34,
-    backgroundColor: ORANGE,
+    paddingBottom: 24,
+    backgroundColor: "#FFFFFF",
   },
   paywallHero: {
+    width: "100%",
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: SP[5],
-    paddingTop: SP[4],
+    gap: 4,
+    paddingTop: 4,
+    backgroundColor: "#FFFFFF",
+    overflow: "hidden",
   },
-  paywallEyebrow: {
-    fontFamily: FONT_DIN,
-    fontSize: 12,
-    lineHeight: 16,
-    color: "rgba(255,255,255,0.86)",
-    letterSpacing: 0.9,
-  },
-  paywallHeroTitle: {
-    fontFamily: FONT_DIN,
-    fontSize: 30,
-    lineHeight: 36,
-    color: "#FFFFFF",
+  heroHeading: {
+    fontFamily: FONT_BOLD,
+    color: "#0A0A0A",
+    letterSpacing: -0.55,
     textAlign: "center",
-    marginTop: SP[2],
   },
-  sheetHandle: {
-    width: 48,
-    height: 5,
-    borderRadius: 999,
-    backgroundColor: "#D1D1D1",
-    marginBottom: SP[4],
+  typewriterReservedText: {
+    color: "transparent",
+  },
+  mascotStage: {
+    position: "relative",
+    alignItems: "center",
+  },
+  mascotDecor: {
+    position: "absolute",
+    inset: 0,
+    zIndex: 0,
+  },
+  coachImage: {
+    position: "absolute",
+    bottom: 0,
+    zIndex: 2,
   },
   inner: {
     alignItems: "center",
-    paddingTop: SP[4],
-    paddingHorizontal: SP[5],
-    paddingBottom: SP[6],
+    paddingTop: 8,
+    paddingBottom: 24,
     backgroundColor: "#FFFFFF",
-    borderTopLeftRadius: 34,
-    borderTopRightRadius: 34,
   },
   contentColumn: {
     width: "100%",
     alignItems: "center",
   },
-  header: {
+  benefitsSection: {
     width: "100%",
-    alignItems: "center",
-    marginBottom: SP[5],
+    gap: 7,
+    marginBottom: 14,
   },
-  socialProofRow: {
-    minHeight: 28,
+  benefitRow: {
+    minHeight: 31,
     flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+  },
+  benefitCheck: {
+    width: 20,
+    height: 22,
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
-    marginBottom: SP[4],
+    marginTop: 1,
   },
-  socialProofPill: {
-    minHeight: 24,
-    paddingHorizontal: 10,
-    borderRadius: 999,
-    backgroundColor: ORANGE_SOFT,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  socialProofText: {
-    fontFamily: FONT_DIN,
-    fontSize: 12,
-    lineHeight: 16,
-    color: "#888888",
-  },
-  socialProofStrong: {
-    fontFamily: FONT_DIN,
-    fontSize: 12,
-    lineHeight: 16,
-    color: ORANGE_DARK,
-  },
-  title: {
-    fontFamily: FONT_DIN,
-    fontSize: 24,
-    lineHeight: 30,
-    color: "#111111",
-    textAlign: "center",
-  },
-  titleAccent: {
-    color: ORANGE,
-  },
-  subtitle: {
-    fontFamily: FONT_DIN,
-    fontSize: 13,
-    lineHeight: 20,
-    marginTop: SP[2],
-    color: "#888888",
-    textAlign: "center",
-    maxWidth: 282,
+  benefitText: {
+    flex: 1,
+    fontFamily: FONT_REGULAR,
+    fontSize: 14,
+    lineHeight: 19,
+    color: PARROT_GREEN_TEXT,
   },
   pricingColumn: {
     width: "100%",
-    gap: 10,
+    gap: 8,
   },
   planCard: {
     width: "100%",
-    minHeight: 106,
-    borderRadius: 14,
-    borderWidth: 1.5,
-    backgroundColor: "#FFFFFF",
+    minHeight: 90,
+    borderRadius: 16,
+    borderCurve: "continuous",
+    borderWidth: 1,
+    borderColor: "#E1E1E3",
+    backgroundColor: "#F3F3F4",
     overflow: "hidden",
-    shadowColor: "#000000",
-    shadowOpacity: 0,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 5 },
   },
   planCardSelected: {
-    borderWidth: 2,
+    borderColor: "#0A0A0A",
+    backgroundColor: "#0A0A0A",
   },
   planHeader: {
-    minHeight: 92,
+    minHeight: 90,
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    gap: 10,
+    paddingHorizontal: 13,
+    paddingVertical: 11,
   },
-  planIcon: {
+  planGemSlot: {
     width: 40,
-    height: 40,
-    borderRadius: 11,
-    backgroundColor: "#F4F4F4",
+    height: 48,
     alignItems: "center",
     justifyContent: "center",
   },
   planIconImage: {
-    width: 31,
-    height: 31,
+    width: 37,
+    height: 44,
   },
   planMeta: {
     flex: 1,
@@ -1081,57 +1137,76 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     alignItems: "center",
     gap: 6,
-    marginTop: 5,
+    marginTop: 4,
   },
   planLabel: {
-    fontFamily: FONT_DIN,
-    fontSize: 16,
+    fontFamily: FONT_SEMIBOLD,
+    fontSize: 15,
     lineHeight: 19,
     color: "#111111",
   },
   planTagline: {
-    fontFamily: FONT_DIN,
+    fontFamily: FONT_REGULAR,
     fontSize: 12,
-    lineHeight: 15,
-    color: "#9B9B9B",
+    lineHeight: 16,
+    color: "#6D6D72",
+  },
+  planPrimaryTextSelected: {
+    color: "#FFFFFF",
+  },
+  planSecondaryTextSelected: {
+    color: "#C4C4C7",
   },
   planPrice: {
-    fontFamily: FONT_DIN,
-    fontSize: 23,
-    lineHeight: 26,
+    fontFamily: FONT_BOLD,
+    fontSize: 20,
+    lineHeight: 23,
     color: "#111111",
     textAlign: "right",
+    fontVariant: ["tabular-nums"],
   },
   planPeriod: {
-    fontFamily: FONT_DIN,
+    fontFamily: FONT_REGULAR,
     fontSize: 11,
     lineHeight: 14,
-    color: "#9B9B9B",
+    color: "#6D6D72",
     textAlign: "right",
+    fontVariant: ["tabular-nums"],
+  },
+  planTrailing: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
   },
   planPriceColumn: {
-    alignItems: "center",
-    minWidth: 80,
+    alignItems: "flex-end",
+    minWidth: 68,
   },
   planBadge: {
-    paddingHorizontal: 9,
-    paddingVertical: 3,
-    borderRadius: 20,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 999,
+    backgroundColor: "#E3E3E5",
   },
   planBadgeText: {
-    fontFamily: FONT_DIN,
-    fontSize: 10,
-    lineHeight: 13,
-    color: "#27500A",
+    fontFamily: FONT_SEMIBOLD,
+    fontSize: 9,
+    lineHeight: 12,
+    color: "#525257",
     textTransform: "uppercase",
+  },
+  planBadgeSelected: {
+    backgroundColor: "rgba(255,255,255,0.14)",
+  },
+  planBadgeTextSelected: {
+    color: "#FFFFFF",
   },
   radioDot: {
     width: 20,
     height: 20,
     borderRadius: 10,
     borderWidth: 1.5,
-    borderColor: "#DDDDDD",
-    marginTop: 8,
+    borderColor: "#D8D1CA",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1139,171 +1214,102 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#0A0A0A",
   },
   savingsBadge: {
-    paddingHorizontal: 9,
-    paddingVertical: 3,
-    borderRadius: 20,
-    backgroundColor: "#EAF3DE",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 999,
+    backgroundColor: "#E3E3E5",
   },
   savingsText: {
-    fontFamily: FONT_DIN,
-    fontSize: 10,
-    lineHeight: 13,
-    color: "#27500A",
-  },
-  planBody: {
-    paddingHorizontal: 16,
-    paddingBottom: 14,
-  },
-  planDivider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: "#EDEDED",
-    marginBottom: 12,
-  },
-  expandedFeatureList: {
-    gap: 8,
-  },
-  featureRow: {
-    minHeight: 42,
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 10,
-  },
-  featureIconWrap: {
-    width: 30,
-    height: 30,
-    borderRadius: 9,
-    backgroundColor: "#F7F7F7",
-    justifyContent: "center",
-    alignItems: "center",
-    marginTop: 1,
-  },
-  featureCopy: {
-    flex: 1,
-  },
-  featureTitle: {
-    fontFamily: FONT_DIN,
-    fontSize: 13,
-    lineHeight: 16,
-    color: "#111111",
-  },
-  featureSubtitle: {
-    fontFamily: FONT_DIN,
-    fontSize: 11,
-    lineHeight: 13,
-    color: "#9B9B9B",
-    marginTop: 1,
+    fontFamily: FONT_SEMIBOLD,
+    fontSize: 9,
+    lineHeight: 12,
+    color: "#525257",
   },
   primaryButtonWrap: {
     width: "100%",
-    marginTop: 18,
+    marginTop: 14,
   },
   ctaDepth: {
     width: "100%",
-    borderRadius: 17,
-    backgroundColor: ORANGE_DARK,
-    paddingBottom: 3,
-    shadowColor: ORANGE,
-    shadowOpacity: 0.22,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 10,
+    borderRadius: 16,
+    borderCurve: "continuous",
   },
   ctaDepthDisabled: {
-    backgroundColor: "#2A2A2A",
-    shadowOpacity: 0,
-    elevation: 0,
+    opacity: 0.72,
   },
   ctaButton: {
-    borderRadius: 17,
+    borderRadius: 16,
+    borderCurve: "continuous",
     overflow: "hidden",
+    backgroundColor: "#0A0A0A",
+    alignItems: "center",
+    justifyContent: "center",
   },
   ctaButtonPressed: {
-    transform: [{ translateY: 4 }],
+    opacity: 0.9,
+    transform: [{ scale: 0.985 }],
   },
   ctaButtonDisabled: {
     transform: [{ translateY: 0 }],
-  },
-  ctaGradient: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 17,
+    backgroundColor: "#D8D8DA",
   },
   ctaText: {
-    fontFamily: FONT_DIN,
-    fontSize: 18,
-    lineHeight: 22,
+    fontFamily: FONT_SEMIBOLD,
+    fontSize: 17,
+    lineHeight: 21,
     color: "#FFFFFF",
   },
   ctaSubcopy: {
-    fontFamily: FONT_DIN,
+    fontFamily: FONT_REGULAR,
     fontSize: 11,
     lineHeight: 16,
     color: "#B5B5B5",
     textAlign: "center",
     marginTop: 8,
   },
-  secondaryActions: {
+  footerArea: {
     width: "100%",
-    marginTop: 14,
-    gap: 8,
+    marginTop: 10,
+    gap: 10,
   },
-  fullSecondaryButton: {
-    minHeight: 46,
+  footerActions: {
+    width: "100%",
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: 7,
-    paddingHorizontal: 12,
-    paddingVertical: 11,
-    borderRadius: 12,
-    borderWidth: 0.5,
-    borderColor: "#E8E8E8",
-    backgroundColor: "#FAFAFA",
   },
-  secondaryRow: {
-    flexDirection: "row",
-    gap: 8,
-  },
-  secondaryButton: {
+  footerAction: {
     flex: 1,
-    minHeight: 46,
-    flexDirection: "row",
+    minHeight: 44,
     alignItems: "center",
     justifyContent: "center",
-    gap: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 11,
-    borderRadius: 12,
-    borderWidth: 0.5,
-    borderColor: "#E8E8E8",
-    backgroundColor: "#FAFAFA",
+    paddingHorizontal: 4,
+    borderRadius: 10,
+    borderCurve: "continuous",
   },
-  secondaryButtonActive: {
-    borderColor: "#FFD1AA",
-    backgroundColor: ORANGE_SOFT,
+  footerActionActive: {
+    backgroundColor: "#EEEEF0",
   },
-  secondaryButtonPressed: {
-    opacity: 0.75,
+  footerActionPressed: {
+    opacity: 0.58,
   },
-  secondaryButtonDisabled: {
-    opacity: 0.55,
+  footerActionDisabled: {
+    opacity: 0.42,
   },
-  secondaryButtonText: {
-    fontFamily: FONT_DIN,
-    fontSize: 12,
-    lineHeight: 16,
-    color: "#555555",
+  footerActionText: {
+    fontFamily: FONT_SEMIBOLD,
+    fontSize: 11,
+    lineHeight: 15,
+    color: "#6F7174",
     textAlign: "center",
   },
-  secondaryButtonTextActive: {
-    color: ORANGE_DARK,
+  footerActionTextActive: {
+    color: "#111111",
   },
   inputLabel: {
-    fontFamily: FONT_DIN,
+    fontFamily: FONT_SEMIBOLD,
     fontSize: 12,
     lineHeight: 16,
     color: "#555555",
@@ -1311,6 +1317,7 @@ const styles = StyleSheet.create({
   },
   promoSection: {
     width: "100%",
+    marginTop: 2,
   },
   promoInputWrapper: {
     flexDirection: "row",
@@ -1318,23 +1325,25 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   promoInput: {
-    fontFamily: FONT_DIN,
+    fontFamily: FONT_REGULAR,
     fontSize: 13,
     lineHeight: 18,
     flex: 1,
     minHeight: 46,
     backgroundColor: "#FFFFFF",
-    borderRadius: 10,
+    borderRadius: 12,
+    borderCurve: "continuous",
     borderWidth: 1,
-    borderColor: "#E8E8E8",
+    borderColor: "#E7E1DB",
     paddingHorizontal: 12,
     color: "#111111",
   },
   promoApplyButton: {
     minHeight: 46,
     paddingHorizontal: 16,
-    backgroundColor: ORANGE,
-    borderRadius: 10,
+    backgroundColor: "#0A0A0A",
+    borderRadius: 12,
+    borderCurve: "continuous",
     justifyContent: "center",
     alignItems: "center",
   },
@@ -1345,37 +1354,24 @@ const styles = StyleSheet.create({
     opacity: 0.55,
   },
   promoApplyText: {
-    fontFamily: FONT_DIN,
+    fontFamily: FONT_SEMIBOLD,
     fontSize: 13,
     lineHeight: 18,
     color: "#FFFFFF",
   },
-  legal: {
-    width: "100%",
-    marginTop: SP[6],
-    alignItems: "center",
+  recoveryHint: {
+    fontFamily: FONT_REGULAR,
+    fontSize: 12,
+    lineHeight: 16,
+    color: "#6F7174",
+    marginBottom: 8,
   },
   legalText: {
-    fontFamily: FONT_DIN,
+    fontFamily: FONT_REGULAR,
     fontSize: 11,
     lineHeight: 16,
     color: "#A0A0A0",
     textAlign: "center",
     marginBottom: 8,
-  },
-  legalLinks: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  legalLink: {
-    fontFamily: FONT_DIN,
-    fontSize: 11,
-    color: "#7A7A7A",
-    textDecorationLine: "underline",
-  },
-  legalSeparator: {
-    fontSize: 11,
-    color: "#C7C7C7",
   },
 });

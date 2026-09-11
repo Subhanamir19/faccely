@@ -27,6 +27,8 @@ import { hapticSelection } from "@/lib/haptics";
 const ORANGE = "#F26A13";
 const ORANGE_DARK = "#D85609";
 const ORANGE_SOFT = "#FFF1E7";
+const FONT_REGULAR = "SFProRounded-Regular";
+const FONT_SEMIBOLD = "SFProRounded-Semibold";
 const SOFT_SHADOW = {
   shadowColor: "#000000",
   shadowOpacity: 0.06,
@@ -192,7 +194,7 @@ function PillRow({
           <T
             variant="bodySemiBold"
             color="lightText"
-            style={isActive ? styles.labelActive : undefined}
+            style={[styles.label, isActive && styles.labelActive]}
           >
             {label}
           </T>
@@ -227,8 +229,9 @@ const styles = StyleSheet.create({
 
   iconWrap: { width: ms(24), alignItems: "center", justifyContent: "center" },
   textCol: { flex: 1 },
+  label: { fontFamily: FONT_SEMIBOLD },
   labelActive: { color: COLORS.lightText },
-  description: { marginTop: 2 },
+  description: { marginTop: 2, fontFamily: FONT_REGULAR },
 
   check: {
     width: ms(22),

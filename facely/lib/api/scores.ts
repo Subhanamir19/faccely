@@ -32,12 +32,12 @@ export type Scores = {
 
 type InputFile = UploadInput;
 
-type PreparedUploadPart = Awaited<ReturnType<typeof prepareUploadPart>>;
+type UploadReference = { uri: string };
 
 export type UploadMeta = {
-  single?: PreparedUploadPart;
-  front?: PreparedUploadPart;
-  side?: PreparedUploadPart;
+  single?: UploadReference;
+  front?: UploadReference;
+  side?: UploadReference;
   scanId?: string;
 };
 
@@ -146,13 +146,13 @@ export async function pingHealth(): Promise<boolean> {
 
 async function analyzePairMultipart(front: InputFile, side: InputFile): Promise<Scores> {
   const [frontPart, sidePart] = await Promise.all([
-    prepareUploadPart(front, "front.jpg"),
-    prepareUploadPart(side, "side.jpg"),
+    prepareUploadPart(front),
+    prepareUploadPart(side),
   ]);
 
   const form = new FormData();
-  form.append("frontal", frontPart as any);
-  form.append("side", sidePart as any);
+  form.append("frontal", frontPart);
+  form.append("side", sidePart);
 
   const url = `${API_BASE}/analyze/pair`;
   const start = Date.now();
@@ -283,10 +283,10 @@ export async function analyzePair(front: InputFile, side: InputFile): Promise<Sc
 /* -------------------------------------------------------------------------- */
 
 export async function analyzeImage(input: InputFile): Promise<Scores> {
-  const part = await prepareUploadPart(input, "image.jpg");
+  const part = await prepareUploadPart(input);
 
   const form = new FormData();
-  form.append("image", part as any);
+  form.append("image", part);
 
   const url = `${API_BASE}/analyze`;
   const start = Date.now();

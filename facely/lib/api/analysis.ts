@@ -91,8 +91,8 @@ export async function explainMetrics(
   signal?: AbortSignal
 ): Promise<Explanations> {
   const fd = new FormData();
-  const imagePart = await prepareUploadPart(image, "image.jpg");
-  fd.append("image", imagePart as any);
+  const imagePart = await prepareUploadPart(image);
+  fd.append("image", imagePart);
   fd.append("scores", JSON.stringify(scores));
   if (scanId) fd.append("scanId", scanId);
   const authHeaders = await buildAuthHeadersAsync({ includeLegacy: true });
@@ -123,12 +123,12 @@ export async function explainMetricsPair(
 ): Promise<Explanations> {
   const buildFormData = async () => {
     const [frontalPart, sidePart] = await Promise.all([
-      prepareUploadPart(frontal, "frontal.jpg"),
-      prepareUploadPart(side, "side.jpg"),
+      prepareUploadPart(frontal),
+      prepareUploadPart(side),
     ]);
     const fd = new FormData();
-    fd.append("frontal", frontalPart as any);
-    fd.append("side", sidePart as any);
+    fd.append("frontal", frontalPart);
+    fd.append("side", sidePart);
     fd.append("scores", JSON.stringify(scores));
     if (scanId) fd.append("scanId", scanId);
     return fd;

@@ -253,7 +253,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   sendRipple: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: COLORS.sigmaGlow,
   },
   sendDisabled: {

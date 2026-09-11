@@ -29,7 +29,7 @@ import OrangeOnboardingLayout, {
   ORANGE_ONBOARDING,
 } from "@/components/onboarding/OrangeOnboardingLayout";
 
-const FONT_BOLD = ORANGE_ONBOARDING.fontBold;
+const FONT_SEMIBOLD = ORANGE_ONBOARDING.fontSemibold;
 const ORANGE = ORANGE_ONBOARDING.orange;
 const ORANGE_SOFT = ORANGE_ONBOARDING.orangeSoft;
 const GAP = sw(12);
@@ -236,7 +236,7 @@ const styles = StyleSheet.create({
     height: "82%",
   },
   label: {
-    fontFamily: FONT_BOLD,
+    fontFamily: FONT_SEMIBOLD,
     fontSize: ms(13),
     lineHeight: ms(17),
     color: ORANGE_ONBOARDING.text,

@@ -76,7 +76,7 @@ function EmotionVeil({ sharedVal }: { sharedVal: SharedValue<number> }) {
   const style = useAnimatedStyle(() => ({
     opacity: sharedVal.value,
   }));
-  return <Animated.View style={[StyleSheet.absoluteFillObject, s.veil, style]} />;
+  return <Animated.View style={[StyleSheet.absoluteFill, s.veil, style]} />;
 }
 
 /* ─── Props ───────────────────────────────────────────────────────────────── */
@@ -190,7 +190,7 @@ const s = StyleSheet.create({
 
   // Background
   bg: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "#07080A",
   },
 

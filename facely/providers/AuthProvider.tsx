@@ -69,18 +69,15 @@ export function AuthProvider({ children }: Props) {
         }
 
         // Check and sync subscription status with RevenueCat (only if initialized)
-        // Note: This only updates revenueCatEntitlement, never touches promoActivated
         const isRevenueCatInitialized = useSubscriptionStore.getState().isRevenueCatInitialized;
         if (isRevenueCatInitialized) {
           checkSubscriptionStatus()
             .then((hasEntitlement) => {
               if (cancelled) return;
               useSubscriptionStore.getState().setRevenueCatEntitlement(hasEntitlement);
-              const state = useSubscriptionStore.getState();
               logger.log("[AuthProvider] Subscription synced:", {
                 revenueCat: hasEntitlement,
-                promo: state.promoActivated,
-                hasAccess: hasEntitlement || state.promoActivated,
+                hasAccess: hasEntitlement,
               });
             })
             .catch((error) => {

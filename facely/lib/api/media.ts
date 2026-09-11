@@ -1,32 +1,17 @@
 // facely/lib/api/media.ts
-// Single source of truth for pre-upload normalization.
-// Forces any image (HEIC/PNG/JPEG/whatever) to a ~1–2MB JPEG.
+// Shared helpers for resolving upload paths and normalizing images.
 
 import * as ImageManipulator from "expo-image-manipulator";
+import { File } from "expo-file-system";
 import * as FileSystem from "expo-file-system/legacy";
 
 export type UploadInput = string | { uri: string; name?: string; mime?: string };
-
-const JPEG_MIME = "image/jpeg";
 
 export class UploadNormalizationError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "UploadNormalizationError";
   }
-}
-
-function ensureJpegName(name: string) {
-  return /\.jpe?g$/i.test(name) ? name : `${name.replace(/\.[^./\\]+$/, "")}.jpg`;
-}
-
-function toFileMeta(input: UploadInput, fallbackName: string) {
-  if (typeof input === "string") {
-    return { uri: input, name: fallbackName, mime: JPEG_MIME };
-  }
-  const name = input.name && input.name.trim().length > 0 ? input.name : fallbackName;
-  const mime = input.mime && input.mime.trim().length > 0 ? input.mime : JPEG_MIME;
-  return { uri: input.uri, name, mime };
 }
 
 async function tryGetInfo(path: string) {
@@ -87,21 +72,19 @@ export async function resolveExistingPath(uri: string): Promise<string> {
   );
 }
 
-export async function prepareUploadPart(
-  input: UploadInput,
-  fallbackName: string
-): Promise<{ uri: string; name: string; type: string }> {
-  const meta = toFileMeta(input, fallbackName);
-  if (!meta.uri || meta.uri.trim().length === 0) {
+/**
+ * Resolve an upload URI to an Expo File. SDK 57's native fetch serializer
+ * requires a Blob-compatible part with bytes(); legacy { uri, name, type }
+ * FormData values are not supported.
+ */
+export async function prepareUploadPart(input: UploadInput): Promise<File> {
+  const uri = typeof input === "string" ? input : input.uri;
+  if (!uri || uri.trim().length === 0) {
     throw new UploadNormalizationError("Image path is empty. Please select the photo again.");
   }
 
-  const path = await resolveExistingPath(meta.uri);
-  return {
-    uri: path,
-    name: ensureJpegName(meta.name),
-    type: meta.mime || JPEG_MIME,
-  };
+  const path = await resolveExistingPath(uri);
+  return new File(path);
 }
 
 /**

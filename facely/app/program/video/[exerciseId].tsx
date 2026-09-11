@@ -13,7 +13,8 @@ import {
 import { router, useLocalSearchParams } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Video, ResizeMode, type AVPlaybackStatus } from "expo-av";
+import type { VideoPlayer } from "expo-video";
+import AppVideo from "@/components/ui/AppVideo";
 import { COLORS, RADII, SP } from "@/lib/tokens";
 import { getExerciseVideo } from "@/lib/exerciseVideos";
 import { getExerciseDetail } from "@/lib/exerciseDetails";
@@ -22,7 +23,7 @@ import { useTasksStore } from "@/store/tasks";
 export default function ExerciseVideoScreen() {
   const { exerciseId } = useLocalSearchParams<{ exerciseId: string }>();
   const insets   = useSafeAreaInsets();
-  const videoRef = useRef<Video>(null);
+  const videoRef = useRef<VideoPlayer | null>(null);
 
   const [isLoading, setIsLoading] = useState(true);
   const [isPlaying, setIsPlaying] = useState(true);
@@ -32,18 +33,12 @@ export default function ExerciseVideoScreen() {
   const source = getExerciseVideo(exerciseId ?? "");
   const detail = getExerciseDetail(exerciseId ?? "");
 
-  const handlePlaybackStatus = (status: AVPlaybackStatus) => {
-    if (!status.isLoaded) return;
-    setIsLoading(false);
-    setIsPlaying(status.isPlaying);
-  };
-
-  const handleTogglePlay = async () => {
+  const handleTogglePlay = () => {
     if (!videoRef.current) return;
     if (isPlaying) {
-      await videoRef.current.pauseAsync();
+      videoRef.current.pause();
     } else {
-      await videoRef.current.playAsync();
+      videoRef.current.play();
     }
   };
 
@@ -84,14 +79,20 @@ export default function ExerciseVideoScreen() {
 
         {/* Video */}
         <Pressable style={styles.videoTouchable} onPress={handleTogglePlay}>
-          <Video
-            ref={videoRef}
+          <AppVideo
+            onPlayerChange={(player) => {
+              videoRef.current = player;
+            }}
             source={source}
             style={styles.video}
-            resizeMode={ResizeMode.CONTAIN}
+            contentFit="contain"
             shouldPlay
-            isLooping
-            onPlaybackStatusUpdate={handlePlaybackStatus}
+            loop
+            onFirstFrameRender={() => setIsLoading(false)}
+            onStatusChange={({ status }) => {
+              if (status === "error") setIsLoading(false);
+            }}
+            onPlayingChange={({ isPlaying: playing }) => setIsPlaying(playing)}
           />
 
           {isLoading && (
@@ -242,13 +243,13 @@ const styles = StyleSheet.create({
     height: "100%",
   },
   loadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(0,0,0,0.5)",
   },
   pausedOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(0,0,0,0.35)",

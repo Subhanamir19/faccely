@@ -13,7 +13,8 @@ import {
   SafeAreaView,
 } from "react-native";
 import { router } from "expo-router";
-import { MaterialCommunityIcons, Ionicons } from "@expo/vector-icons";
+import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -27,7 +28,7 @@ import T from "@/components/ui/T";
 import { COLORS, SP, RADII } from "@/lib/tokens";
 import { ms, sh, sw } from "@/lib/responsive";
 
-const FONT_BOLD = "ProximaNova-Bold";
+const FONT_BOLD = "SFProRounded-Bold";
 const LIME = "#B4F34D";        // bright fill — connector line
 const SAGE = "#3F7A2A";        // dark readable — text & icon strokes on lime-soft
 const SAGE_SOFT = "#ECFCCB";   // pale lime — chip backgrounds
@@ -234,7 +235,7 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     color: COLORS.lightSub,
-    fontFamily: "Poppins-Regular",
+    fontFamily: "SFProRounded-Regular",
     fontSize: ms(14),
     lineHeight: ms(20),
   },
@@ -280,7 +281,7 @@ const styles = StyleSheet.create({
   },
   stepSubtitle: {
     color: COLORS.lightSub,
-    fontFamily: "Poppins-Regular",
+    fontFamily: "SFProRounded-Regular",
     fontSize: ms(13),
     lineHeight: ms(18),
   },

@@ -2,20 +2,16 @@
   "expo": {
     "name": "Sigma Max",
     "slug": "sigmamax-app",
-    "version": "1.16.0",
+    "version": "1.17.0",
     "orientation": "portrait",
-    "icon": "./assets/sigmamax-real-updatred-logo.jpeg",
+    "icon": "./assets/sigmamax-real-updatred-logo.png",
     "userInterfaceStyle": "light",
-    "splash": {
-      "image": "./assets/sigmamax-logo-for-splash screen.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#000000"
-    },
     "ios": {
       "supportsTablet": false,
-      "buildNumber": "24",
+      "buildNumber": "26",
       "bundleIdentifier": "com.sigmamax.app",
       "infoPlist": {
+        "CADisableMinimumFrameDurationOnPhone": true,
         "ITSAppUsesNonExemptEncryption": false,
         "NSCameraUsageDescription": "SigmaMax needs camera access to analyze your facial features and provide personalized recommendations.",
         "NSPhotoLibraryUsageDescription": "SigmaMax needs photo library access to analyze photos of your face."
@@ -23,12 +19,11 @@
     },
     "android": {
       "package": "com.sigmamax.app",
-      "versionCode": 15,
+      "versionCode": 16,
       "adaptiveIcon": {
-        "foregroundImage": "./assets/sigmamax-real-updatred-logo.jpeg",
+        "foregroundImage": "./assets/sigmamax-real-updatred-logo.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true,
       "blockedPermissions": [
         "android.permission.RECORD_AUDIO"
       ],
@@ -41,6 +36,15 @@
     },
     "plugins": [
       "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#000000",
+          "image": "./assets/sigmamax-logo-for-splash screen.png",
+          "imageWidth": 200,
+          "resizeMode": "contain"
+        }
+      ],
       "expo-secure-store",
       [
         "expo-camera",
@@ -55,19 +59,19 @@
           "photosPermission": "SigmaMax needs photo library access to analyze photos of your face."
         }
       ],
-      [
-        "expo-build-properties",
-        {
-          "android": {
-            "newArchEnabled": true
-          }
-        }
-      ],
       "expo-web-browser",
       "./plugins/withExcludeFromBackup",
-      "expo-asset"
+      "expo-asset",
+      "expo-font",
+      "expo-image",
+      "expo-sharing",
+      "expo-status-bar",
+      "expo-video"
     ],
     "scheme": "sigmamax",
+    "experiments": {
+      "reactCompiler": true
+    },
     "assetBundlePatterns": [
       "assets/fonts/*",
       "assets/**/*"

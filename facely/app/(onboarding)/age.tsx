@@ -252,7 +252,7 @@ const styles = StyleSheet.create({
     paddingVertical: sh(8),
   },
   ageText: {
-    fontFamily: ORANGE_ONBOARDING.font,
+    fontFamily: ORANGE_ONBOARDING.fontBold,
     fontSize: ms(48),
     lineHeight: ms(56),
     letterSpacing: 0,

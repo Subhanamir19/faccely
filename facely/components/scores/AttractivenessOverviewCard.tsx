@@ -278,7 +278,12 @@ function ExplanationPopup({
       onRequestClose={onClose}
     >
       <View style={styles.modalRoot}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={onClose}
+          accessibilityRole="button"
+          accessibilityLabel="Close"
+        />
         <View style={styles.sheet}>
           <View style={styles.sheetHeader}>
             <View style={styles.sheetIcon}>

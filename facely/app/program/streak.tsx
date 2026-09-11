@@ -17,7 +17,7 @@ import {
   View,
   useWindowDimensions,
 } from "react-native";
-import { Video, ResizeMode } from "expo-av";
+import LottieView from "lottie-react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, {
@@ -131,13 +131,12 @@ function FireHero({ streak }: { streak: number }) {
   return (
     <View style={styles.heroInner}>
       <View style={styles.fireIconWrap}>
-        <Video
-          source={require("../../fire-video.mp4")}
-          style={styles.fireVideo}
-          resizeMode={ResizeMode.COVER}
-          shouldPlay
-          isLooping
-          isMuted
+        <LottieView
+          source={require("../../assets/icons/Flame - Streak.json")}
+          style={styles.fireAnimation}
+          autoPlay
+          loop
+          resizeMode="contain"
         />
       </View>
       <SlotCounter streak={streak} />
@@ -388,7 +387,7 @@ const styles = StyleSheet.create({
     borderRadius: 55,
     overflow:     "hidden",
   },
-  fireVideo: {
+  fireAnimation: {
     width:  "100%",
     height: "100%",
   },

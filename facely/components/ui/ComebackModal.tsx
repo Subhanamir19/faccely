@@ -144,10 +144,16 @@ export default function ComebackModal({ visible, missedDays, onClose }: Props) {
 
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
-      <Pressable style={styles.overlay} onPress={onClose}>
+      <Pressable
+        style={styles.overlay}
+        onPress={onClose}
+        accessibilityRole="button"
+        accessibilityLabel="Close"
+      >
         <BlurView intensity={60} tint="dark" style={StyleSheet.absoluteFill} />
 
-        <Pressable onPress={() => undefined}>
+        {/* Swallows taps so the card itself never dismisses the modal. */}
+        <Pressable onPress={() => undefined} accessible={false}>
           <Animated.View style={[styles.card, cardStyle]}>
 
             {/* Close */}

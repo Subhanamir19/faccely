@@ -1,4 +1,4 @@
-// app/(tabs)/ten-by-ten.tsx
+// app/ten-by-ten.tsx
 // "You as a 10/10" — AI face enhancement powered by gpt-image-1.
 // Shows the user what they could look like with a chiseled jawline,
 // hunter eyes, fixed maxilla, and clear skin.
@@ -379,6 +379,8 @@ export default function TenByTenScreen() {
                   {/* Expand button */}
                   <Pressable
                     onPress={() => setFullscreenVisible(true)}
+                    accessibilityRole="button"
+                    accessibilityLabel="View comparison full screen"
                     style={({ pressed }) => [styles.sliderExpandBtn, pressed && { opacity: 0.7 }]}
                   >
                     <Maximize2 size={14} color="#FFFFFF" strokeWidth={2} />
@@ -631,6 +633,8 @@ export default function TenByTenScreen() {
             {/* Close button — top-right corner of card */}
             <Pressable
               onPress={() => setFullscreenVisible(false)}
+              accessibilityRole="button"
+              accessibilityLabel="Close full screen comparison"
               style={({ pressed }) => [styles.fsClose, pressed && { opacity: 0.7 }]}
             >
               <X size={20} color="#FFFFFF" strokeWidth={2.5} />

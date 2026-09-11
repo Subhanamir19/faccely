@@ -8,7 +8,6 @@ module.exports = function (api) {
       [
         "module-resolver",
         {
-          root: ["."],
           alias: {
             "@": "./",
             "@components": "./components",
@@ -19,9 +18,6 @@ module.exports = function (api) {
           extensions: [".ts", ".tsx", ".js", ".jsx", ".json"],
         },
       ],
-
-      // MUST stay last or Reanimated will break in production
-      "react-native-reanimated/plugin",
     ],
   };
 };

@@ -13,7 +13,7 @@ import { Image as ExpoImage } from "expo-image";
 import { useLocalSearchParams, router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, { FadeInDown } from "react-native-reanimated";
-import { Ionicons } from "@expo/vector-icons";
+import Ionicons from "@expo/vector-icons/Ionicons";
 
 import ScoringCarousel, { type ScoringMetric } from "@/components/scores/ScoringCarousel";
 import Text from "@/components/ui/T";

@@ -1,5 +1,9 @@
 // facely/lib/time/nextMidnight.ts
 
+const dailyTimerGlobal = globalThis as typeof globalThis & {
+  __dailyInterval?: ReturnType<typeof setInterval>;
+};
+
 /** Returns "YYYY-MM-DD" in the device's LOCAL timezone. */
 export function getLocalDateString(d?: Date): string {
   const now = d ?? new Date();
@@ -20,12 +24,12 @@ export function msUntilNextMidnight(): number {
     const run = () => {
       callback();
       const i = setInterval(callback, 24 * 60 * 60 * 1000);
-      (global as any).__dailyInterval = i;
+      dailyTimerGlobal.__dailyInterval = i;
     };
     const t = setTimeout(run, msUntilNextMidnight());
     return () => {
       clearTimeout(t);
-      if ((global as any).__dailyInterval) clearInterval((global as any).__dailyInterval);
+      if (dailyTimerGlobal.__dailyInterval) clearInterval(dailyTimerGlobal.__dailyInterval);
     };
   }
 

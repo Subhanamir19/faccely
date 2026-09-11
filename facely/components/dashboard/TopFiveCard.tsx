@@ -193,7 +193,7 @@ export function TopFiveCard({ result }: { result: TopFiveResult }) {
         </View>
 
         <Pressable
-          onPress={() => router.push("/(tabs)/analysis")}
+          onPress={() => router.push("/analysis")}
           style={({ pressed }) => [styles.lockedCta, pressed && styles.pressed]}
           accessibilityRole="button"
           accessibilityLabel="Run advanced analysis"

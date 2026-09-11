@@ -7,15 +7,20 @@ import UpdateModal from "@/components/ui/UpdateModal";
 import { checkForUpdate, type UpdateStatus } from "@/lib/updateCheck";
 import * as NavigationBar from "expo-navigation-bar";
 import { Stack } from "expo-router";
+import { useReducedMotion } from "react-native-reanimated";
 import * as SplashScreen from "expo-splash-screen";
-import {
-  useFonts,
-  Poppins_400Regular,
-  Poppins_500Medium,
-  Poppins_600SemiBold,
-} from "@expo-google-fonts/poppins";
-import { MaterialCommunityIcons, Ionicons } from "@expo/vector-icons";
-import "react-native-reanimated";
+// Per-weight subpaths, not the package barrel: the barrel requires every
+// weight's .ttf, so all 18 Poppins faces ship for the 3 the app renders.
+import { useFonts } from "expo-font";
+import { Poppins_400Regular } from "@expo-google-fonts/poppins/400Regular";
+import { Poppins_500Medium } from "@expo-google-fonts/poppins/500Medium";
+import { Poppins_600SemiBold } from "@expo-google-fonts/poppins/600SemiBold";
+import { Fredoka_400Regular } from "@expo-google-fonts/fredoka/400Regular";
+import { Fredoka_500Medium } from "@expo-google-fonts/fredoka/500Medium";
+import { Fredoka_600SemiBold } from "@expo-google-fonts/fredoka/600SemiBold";
+import { Fredoka_700Bold } from "@expo-google-fonts/fredoka/700Bold";
+import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import LoadingOverlay from "../components/ui/LoadingOverlay";
 import { useRoutineStore } from "../store/routineStore";
 import { scheduleDaily } from "../lib/time/nextMidnight";
@@ -27,10 +32,12 @@ import { logger } from '@/lib/logger';
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { flushSyncQueue, hasMigratedHistory, migrateLocalHistory } from "@/lib/supabase/taskSync";
 import { useTasksStore } from "@/store/tasks";
+import { APP_SCREEN_BG } from "@/components/layout/AppGradientBackground";
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
 export default function RootLayout() {
+  const reduceMotion = useReducedMotion();
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ available: false });
   const [updateDismissed, setUpdateDismissed] = useState(false);
 
@@ -38,10 +45,17 @@ export default function RootLayout() {
     "Poppins-Regular":  Poppins_400Regular,
     "Poppins-Medium":   Poppins_500Medium,
     "Poppins-SemiBold": Poppins_600SemiBold,
+    "Fredoka-Regular": Fredoka_400Regular,
+    "Fredoka-Medium": Fredoka_500Medium,
+    "Fredoka-SemiBold": Fredoka_600SemiBold,
+    "Fredoka-Bold": Fredoka_700Bold,
     "ProximaNova-Bold": require("../assets/fonts/ProximaNova-Bold.otf"),
     "DuolingoFeather-Bold": require("../assets/fonts/Duolingo Feather Bold.ttf"),
     "DINNextRounded-Regular": require("../assets/fonts/DIN Next Rounded LT W01 Regular.ttf"),
     "DINNextRounded-Bold": require("../assets/fonts/DIN Next Rounded LT W01 Bold.ttf"),
+    "SFProRounded-Regular": require("../assets/fonts/SF-Pro-Rounded-Regular.otf"),
+    "SFProRounded-Semibold": require("../assets/fonts/SF-Pro-Rounded-Semibold.otf"),
+    "SFProRounded-Bold": require("../assets/fonts/SF-Pro-Rounded-Bold.otf"),
     "Baskerville-Italic": require("../assets/fonts/Baskerville Italic.ttf"),
     ...MaterialCommunityIcons.font,
     ...Ionicons.font,
@@ -57,8 +71,7 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (Platform.OS === "android") {
-      void NavigationBar.setBackgroundColorAsync("#0E0B08");
-      void NavigationBar.setButtonStyleAsync("light");
+        NavigationBar.setStyle("dark");
     }
   }, []);
 
@@ -148,7 +161,48 @@ export default function RootLayout() {
               <Stack.Screen name="(onboarding)" />
               <Stack.Screen name="(tabs)" />
               <Stack.Screen name="loading" />
+              <Stack.Screen name="face-map-preview" options={{ animation: reduceMotion ? "none" : "slide_from_right", contentStyle: { backgroundColor: "#F8F7F2" } }} />
               <Stack.Screen name="reset-onboarding" />
+              <Stack.Screen
+                name="analysis"
+                options={{ animation: reduceMotion ? "fade" : "default", contentStyle: { backgroundColor: APP_SCREEN_BG } }}
+              />
+              <Stack.Screen
+                name="history/index"
+                options={{ animation: reduceMotion ? "fade" : "default", contentStyle: { backgroundColor: APP_SCREEN_BG } }}
+              />
+              <Stack.Screen
+                name="score"
+                options={{ animation: reduceMotion ? "fade" : "default", contentStyle: { backgroundColor: "#EEF0F1" } }}
+              />
+              <Stack.Screen
+                name="next-focus"
+                options={{ animation: reduceMotion ? "fade" : "default", contentStyle: { backgroundColor: "#FFFFFF" } }}
+              />
+              <Stack.Screen
+                name="new-exercises-preview"
+                options={{ animation: reduceMotion ? "fade" : "default", contentStyle: { backgroundColor: "#FFFFFF" } }}
+              />
+              <Stack.Screen
+                name="routine"
+                options={{ animation: reduceMotion ? "fade" : "default", contentStyle: { backgroundColor: "#0B0B0B" } }}
+              />
+              <Stack.Screen
+                name="ten-by-ten"
+                options={{ animation: reduceMotion ? "fade" : "default", contentStyle: { backgroundColor: "#111111" } }}
+              />
+              <Stack.Screen
+                name="sigma"
+                options={{ animation: reduceMotion ? "fade" : "default", contentStyle: { backgroundColor: "#000000" } }}
+              />
+              <Stack.Screen
+                name="protocols"
+                options={{ animation: reduceMotion ? "fade" : "default", contentStyle: { backgroundColor: APP_SCREEN_BG } }}
+              />
+              <Stack.Screen
+                name="_protocols"
+                options={{ animation: reduceMotion ? "fade" : "default", contentStyle: { backgroundColor: "#0B0B0B" } }}
+              />
             </Stack>
             <LoadingOverlay />
             {updateStatus.available && (

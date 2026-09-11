@@ -49,7 +49,8 @@ import OrangeOnboardingLayout, {
   ORANGE_ONBOARDING,
 } from "@/components/onboarding/OrangeOnboardingLayout";
 
-const FONT_BOLD = ORANGE_ONBOARDING.font;
+const FONT_BOLD = ORANGE_ONBOARDING.fontBold;
+const FONT_SEMIBOLD = ORANGE_ONBOARDING.fontSemibold;
 const LIME = "#35A854";
 const SAGE = "#237A3A";
 const SAGE_SOFT = "#EAF7EE";
@@ -309,7 +310,7 @@ export default function ScoreProjectionScreen() {
 
   const handleContinue = useCallback(() => {
     hapticSuccess();
-    router.push("/(onboarding)/transformation");
+    router.push("/(onboarding)/paywall");
   }, []);
 
   const progress = getProgressForStep("score-projection");
@@ -619,7 +620,7 @@ const styles = StyleSheet.create({
     borderColor: LIME,
   },
   wpLabelText: {
-    fontFamily: FONT_BOLD,
+    fontFamily: FONT_SEMIBOLD,
     fontSize: ms(11),
     color: SAGE,
     letterSpacing: 0.2,
@@ -633,7 +634,7 @@ const styles = StyleSheet.create({
   axisLabel: {
     position: "absolute",
     textAlign: "center",
-    fontFamily: FONT_BOLD,
+    fontFamily: FONT_SEMIBOLD,
     fontSize: 10,
     lineHeight: 14,
     letterSpacing: 0.8,
@@ -697,7 +698,7 @@ const styles = StyleSheet.create({
     paddingVertical: sh(14),
   },
   ctaText: {
-    fontFamily: FONT_BOLD,
+    fontFamily: FONT_SEMIBOLD,
     fontSize: ms(14),
     color: "#FFFFFF",
     letterSpacing: 1.0,

@@ -2,7 +2,7 @@
 import React from "react";
 import { Pressable, StyleSheet, View, Platform } from "react-native";
 import T from "@/components/ui/T";
-import { Ionicons } from "@expo/vector-icons";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { COLORS } from "@/lib/tokens";
 
 type Variant = "glass" | "primary";

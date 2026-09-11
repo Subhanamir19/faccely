@@ -1,12 +1,11 @@
 // store/subscription.ts
 // Zustand store for subscription state management
-// Architecture: Two independent sources of access (RevenueCat + Promo Code)
+// Access is granted solely by a RevenueCat entitlement backed by an App Store purchase.
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { PurchasesOfferings, PurchasesPackage } from "react-native-purchases";
-import { validatePromoCode } from "@/lib/api/promo";
 import { logger } from '@/lib/logger';
 
 const STORAGE_KEY = "sigma_subscription_v2"; // Bumped version for new fields
@@ -16,9 +15,8 @@ const STORAGE_KEY = "sigma_subscription_v2"; // Bumped version for new fields
 const OFFLINE_GRACE_PERIOD_MS = 7 * 24 * 60 * 60 * 1000;
 
 type SubscriptionState = {
-  // Two independent sources of access
+  // The only source of access
   revenueCatEntitlement: boolean;
-  promoActivated: boolean;
 
   // Timestamp tracking for offline grace period
   lastVerifiedAt: number | null; // Unix timestamp when subscription was last verified
@@ -37,7 +35,6 @@ type SubscriptionState = {
   setOfferings: (offerings: PurchasesOfferings | null) => void;
   setCurrentPackage: (pkg: PurchasesPackage | null) => void;
   setError: (error: string | null) => void;
-  activatePromoCode: (code: string) => Promise<boolean>;
   isEntitlementValid: () => boolean;
   reset: () => void;
 };
@@ -46,7 +43,6 @@ export const useSubscriptionStore = create<SubscriptionState>()(
   persist(
     (set, get) => ({
       revenueCatEntitlement: false,
-      promoActivated: false,
       lastVerifiedAt: null,
       isLoading: false,
       isRevenueCatInitialized: false,
@@ -56,11 +52,8 @@ export const useSubscriptionStore = create<SubscriptionState>()(
 
       setRevenueCatEntitlement: (entitled: boolean) => {
         const now = Date.now();
-        const { promoActivated } = get();
         logger.log("[Subscription] RevenueCat entitlement update:", {
           revenueCat: entitled,
-          promo: promoActivated,
-          effectiveAccess: entitled || promoActivated,
           verifiedAt: new Date(now).toISOString(),
         });
         // Update timestamp whenever we verify with RevenueCat
@@ -77,28 +70,8 @@ export const useSubscriptionStore = create<SubscriptionState>()(
 
       setError: (error) => set({ error }),
 
-      activatePromoCode: async (code: string): Promise<boolean> => {
-        set({ isLoading: true, error: null });
-        try {
-          const result = await validatePromoCode(code);
-          if (result.valid) {
-            set({ promoActivated: true, error: null, isLoading: false });
-            logger.log("[Subscription] Promo code activated via server");
-            return true;
-          }
-          set({ error: result.message || "Invalid promo code", isLoading: false });
-          return false;
-        } catch (error) {
-          set({ error: "Failed to validate promo code", isLoading: false });
-          return false;
-        }
-      },
-
       isEntitlementValid: (): boolean => {
-        const { revenueCatEntitlement, promoActivated, lastVerifiedAt } = get();
-
-        // Promo codes don't expire (validated server-side on activation)
-        if (promoActivated) return true;
+        const { revenueCatEntitlement, lastVerifiedAt } = get();
 
         // No RevenueCat entitlement = no access
         if (!revenueCatEntitlement) return false;
@@ -124,7 +97,6 @@ export const useSubscriptionStore = create<SubscriptionState>()(
       reset: () => {
         set({
           revenueCatEntitlement: false,
-          promoActivated: false,
           lastVerifiedAt: null,
           isLoading: false,
           isRevenueCatInitialized: false,
@@ -137,8 +109,16 @@ export const useSubscriptionStore = create<SubscriptionState>()(
     {
       name: STORAGE_KEY,
       storage: createJSONStorage(() => AsyncStorage),
+      // Drop any legacy persisted keys (e.g. the removed promo flag) on rehydrate.
+      merge: (persisted, current) => {
+        const saved = (persisted ?? {}) as Partial<SubscriptionState>;
+        return {
+          ...current,
+          revenueCatEntitlement: Boolean(saved.revenueCatEntitlement),
+          lastVerifiedAt: typeof saved.lastVerifiedAt === "number" ? saved.lastVerifiedAt : null,
+        };
+      },
       partialize: (state) => ({
-        promoActivated: state.promoActivated,
         revenueCatEntitlement: state.revenueCatEntitlement,
         lastVerifiedAt: state.lastVerifiedAt,
       }),

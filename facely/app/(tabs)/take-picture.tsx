@@ -1,5 +1,5 @@
 // C:\SS\facely\app\(tabs)\take-picture.tsx
-import React, { useRef, useState, useCallback, useEffect } from "react";
+import React, { useRef, useState, useCallback, useEffect, useMemo } from "react";
 import {
   View,
   Text,
@@ -9,27 +9,35 @@ import {
   Modal,
   StatusBar,
   SafeAreaView,
-  ScrollView,
   Platform,
   StyleSheet,
+  useWindowDimensions,
+  type ImageSourcePropType,
+  type LayoutChangeEvent,
 } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as ImagePicker from "expo-image-picker";
 import * as FileSystem from "expo-file-system/legacy";
 import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
-import { Camera, History as HistoryIcon } from "lucide-react-native";
+import StreakIcon from "@/assets/icons/streak-icon.svg";
+import HistoryIcon from "@/assets/icons/history-icon.svg";
 import RecoveryCodeHint from "@/components/ui/RecoveryCodeHint";
-import StreakIcon from "@/assets/icons-for-dashboard/streak-icon (1) (1).svg";
 import Animated, {
   Easing,
   cancelAnimation,
   interpolate,
+  useAnimatedProps,
   useAnimatedStyle,
+  useReducedMotion,
   useSharedValue,
+  withDelay,
   withRepeat,
+  withSequence,
   withTiming,
 } from "react-native-reanimated";
+import Svg, { Circle, Path } from "react-native-svg";
+import { LinearGradient } from "expo-linear-gradient";
 
 // NEW: shared pre-upload compressor (JPEG, max 1080px)
 import { ensureJpegCompressed } from "../../lib/api/media";
@@ -40,8 +48,12 @@ import { getWeekScanData, checkScanLimit, WEEKLY_SCAN_LIMIT } from "@/lib/supaba
 import { getNextMonday } from "@/lib/time/nextMidnight";
 import { COLORS, RADII, SP } from "@/lib/tokens";
 import { sw, sh, ms } from "@/lib/responsive";
-import { AppGradientBackground } from "@/components/layout/AppGradientBackground";
+import {
+  APP_SCREEN_BG,
+  AppGradientBackground,
+} from "@/components/layout/AppGradientBackground";
 import { FLOATING_TAB_BAR } from "@/components/layout/floatingTabBar";
+import { useTasksStore } from "@/store/tasks";
 
 // Soft drop-shadow recipe shared by all elevated surfaces — same recipe used
 // across dashboard, routine list, workout preview.
@@ -55,6 +67,642 @@ const SOFT_SHADOW = {
 
 // Shared DIN Rounded Bold face loaded once by the app root.
 const FONT = "DINNextRounded-Bold";
+
+const SCAN_FONT_MEDIUM = "Fredoka-Medium";
+const SCAN_FONT_SEMIBOLD = "Fredoka-SemiBold";
+const SCAN_FONT_BOLD = "Fredoka-Bold";
+const SCAN_ORANGE = "#FA7E03";
+const SCAN_INK = "#15130F";
+const SCAN_MUTED = "#6E685F";
+const SCAN_FAINT = "#A29C93";
+const SCAN_SURFACE = "#F4F3F1";
+const SCAN_CALLOUT_SCALE = 0.92;
+
+const AnimatedPath = Animated.createAnimatedComponent(Path);
+const AnimatedCircle = Animated.createAnimatedComponent(Circle);
+
+type ScanHeroGeometry = {
+  width: number;
+  height: number;
+  cardX: number;
+  cardY: number;
+  cardWidth: number;
+  cardHeight: number;
+  scale: number;
+};
+
+type CalloutConfig = {
+  key: "grooming" | "structure" | "skin";
+  label: string;
+  target: number;
+  icon: ImageSourcePropType;
+  landmarkX: number;
+  landmarkY: number;
+  pillY: number;
+  side: "left" | "right";
+  delayMs: number;
+  pillWidth: number;
+  iconSize: number;
+  iconLeft: number;
+  iconTop: number;
+};
+
+const SCAN_CALLOUTS: CalloutConfig[] = [
+  {
+    key: "grooming",
+    label: "GROOMING",
+    target: 7,
+    icon: require("../../assets/icons/GROOMING.png"),
+    landmarkX: 0.37,
+    landmarkY: 0.345,
+    pillY: 0.09,
+    side: "left",
+    delayMs: 750,
+    pillWidth: 128,
+    iconSize: 70,
+    iconLeft: -21,
+    iconTop: -21,
+  },
+  {
+    key: "structure",
+    label: "STRUCTURE",
+    target: 8,
+    icon: require("../../assets/icons/STRUCTURE-ICON.png"),
+    landmarkX: 0.32,
+    landmarkY: 0.5,
+    pillY: 0.8,
+    side: "left",
+    delayMs: 1450,
+    pillWidth: 128,
+    iconSize: 64,
+    iconLeft: -18,
+    iconTop: -17,
+  },
+  {
+    key: "skin",
+    label: "SKIN",
+    target: 3,
+    icon: require("../../assets/icons/SKIN-ICON.png"),
+    landmarkX: 0.64,
+    landmarkY: 0.48,
+    pillY: 0.42,
+    side: "right",
+    delayMs: 2150,
+    pillWidth: 126,
+    iconSize: 83,
+    iconLeft: -28,
+    iconTop: -28,
+  },
+];
+
+function triggerScanButtonHaptic() {
+  if (Platform.OS === "android") {
+    return Haptics.performAndroidHapticsAsync(Haptics.AndroidHaptics.Confirm);
+  }
+  if (Platform.OS === "ios") {
+    return Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Rigid);
+  }
+  return Promise.resolve();
+}
+
+function triggerScanControlHaptic() {
+  if (Platform.OS === 'android') {
+    return Haptics.performAndroidHapticsAsync(Haptics.AndroidHaptics.Segment_Tick);
+  }
+  if (Platform.OS === 'ios') {
+    return Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }
+  return Promise.resolve();
+}
+
+function ScanFrameIcon({ size = 19 }: { size?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"
+        stroke="#FAF9F7"
+        strokeWidth={1.9}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Circle cx={12} cy={12} r={3.4} stroke="#FAF9F7" strokeWidth={1.9} />
+    </Svg>
+  );
+}
+
+function ScanPrimaryButton({
+  label,
+  onPress,
+  disabled = false,
+  icon,
+}: {
+  label: string;
+  onPress: () => void;
+  disabled?: boolean;
+  icon?: React.ReactNode;
+}) {
+  return (
+    <Pressable
+      onPressIn={() => {
+        if (!disabled) void triggerScanButtonHaptic();
+      }}
+      onPress={onPress}
+      disabled={disabled}
+      hitSlop={8}
+      style={({ pressed }) => [
+        styles.scanPrimaryButton,
+        disabled && styles.scanPrimaryButtonDisabled,
+        pressed && !disabled && styles.scanCtaPressed,
+      ]}
+      accessibilityRole={'button'}
+      accessibilityState={{ disabled }}
+      accessibilityLabel={label}
+    >
+      {!disabled && (
+        <LinearGradient
+          pointerEvents={'none'}
+          colors={['#2B2B2E', '#0A0A0B', '#0A0A0B']}
+          locations={[0, 0.6, 1]}
+          start={{ x: 0.1, y: 0 }}
+          end={{ x: 0.9, y: 1 }}
+          style={styles.scanCtaGradient}
+        />
+      )}
+      {icon}
+      <Text style={[styles.scanPrimaryButtonText, disabled && styles.scanPrimaryButtonTextDisabled]}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+function ScanStepHeading({ eyebrow, title }: { eyebrow: string; title: string }) {
+  return (
+    <View style={styles.scanStepHeading}>
+      <View style={styles.scanEyebrowRow}>
+        <View style={styles.scanEyebrowDot} />
+        <Text style={styles.scanEyebrow}>{eyebrow}</Text>
+        <View style={styles.scanEyebrowDot} />
+      </View>
+      <Text style={styles.scanStepTitle}>{title}</Text>
+    </View>
+  );
+}
+
+function ScanMetricCallout({
+  config,
+  geometry,
+  reduceMotion,
+}: {
+  config: CalloutConfig;
+  geometry: ScanHeroGeometry;
+  reduceMotion: boolean;
+}) {
+  const lineProgress = useSharedValue(reduceMotion ? 1 : 0);
+  const dotProgress = useSharedValue(reduceMotion ? 1 : 0);
+  const ringProgress = useSharedValue(0);
+  const pillProgress = useSharedValue(reduceMotion ? 1 : 0);
+  const [count, setCount] = useState(reduceMotion ? config.target : 0);
+
+  const calloutScale = geometry.scale * SCAN_CALLOUT_SCALE;
+  const pillWidth = config.pillWidth * calloutScale;
+  const pillHeight = 50 * calloutScale;
+  const sideInset = geometry.width * 0.035;
+  const anchorX = geometry.cardX + geometry.cardWidth * config.landmarkX;
+  const anchorY = geometry.cardY + geometry.cardHeight * config.landmarkY;
+  const pillCenterX =
+    config.side === "left"
+      ? sideInset + pillWidth / 2
+      : geometry.width - sideInset - pillWidth / 2;
+  const pillCenterY = geometry.height * config.pillY;
+  // Preserve the reference's under-card line treatment for the two left
+  // callouts. Skin alone terminates at the near edge so its short connector
+  // cannot disappear beneath the pill.
+  const connectorX =
+    config.key === "skin" ? pillCenterX - pillWidth / 2 : pillCenterX;
+  const elbowX = anchorX + (connectorX - anchorX) * 0.32;
+  const elbowY = anchorY;
+  const pathLength =
+    Math.abs(elbowX - anchorX) +
+    Math.hypot(connectorX - elbowX, pillCenterY - elbowY);
+
+  useEffect(() => {
+    cancelAnimation(lineProgress);
+    cancelAnimation(dotProgress);
+    cancelAnimation(ringProgress);
+    cancelAnimation(pillProgress);
+
+    if (reduceMotion) {
+      lineProgress.value = 1;
+      dotProgress.value = 1;
+      ringProgress.value = 0;
+      pillProgress.value = 1;
+      setCount(config.target);
+      return;
+    }
+
+    lineProgress.value = 0;
+    dotProgress.value = 0;
+    ringProgress.value = 0;
+    pillProgress.value = 0;
+    setCount(0);
+
+    lineProgress.value = withDelay(
+      config.delayMs,
+      withTiming(1, {
+        duration: 700,
+        easing: Easing.bezier(0.4, 0.1, 0.3, 1),
+      }),
+    );
+    dotProgress.value = withDelay(
+      config.delayMs,
+      withTiming(1, { duration: 300, easing: Easing.out(Easing.cubic) }),
+    );
+    pillProgress.value = withDelay(
+      config.delayMs + 550,
+      withTiming(1, {
+        duration: 550,
+        easing: Easing.bezier(0.3, 1.6, 0.5, 1),
+      }),
+    );
+    ringProgress.value = withDelay(
+      config.delayMs + 50,
+      withRepeat(
+        withTiming(1, { duration: 1700, easing: Easing.out(Easing.quad) }),
+        -1,
+        false,
+      ),
+    );
+
+    const timer = setTimeout(() => {
+      setCount(config.target);
+    }, config.delayMs + 550);
+
+    return () => {
+      clearTimeout(timer);
+      cancelAnimation(lineProgress);
+      cancelAnimation(dotProgress);
+      cancelAnimation(ringProgress);
+      cancelAnimation(pillProgress);
+    };
+  }, [config.delayMs, config.target, dotProgress, lineProgress, pillProgress, reduceMotion, ringProgress]);
+
+  const lineProps = useAnimatedProps(() => ({
+    strokeDashoffset: pathLength * (1 - lineProgress.value),
+  }));
+  const dotProps = useAnimatedProps(() => ({ opacity: dotProgress.value }));
+  const ringProps = useAnimatedProps(() => ({
+    opacity: reduceMotion
+      ? 0.65
+      : interpolate(ringProgress.value, [0, 0.7, 1], [0.9, 0, 0]),
+    r: reduceMotion ? 7 : 7 * interpolate(ringProgress.value, [0, 1], [0.3, 2.6]),
+  }));
+  const pillStyle = useAnimatedStyle(() => ({
+    opacity: pillProgress.value,
+    transform: [{ scale: interpolate(pillProgress.value, [0, 1], [0.35, 1]) }],
+  }));
+
+  return (
+    <>
+      <Svg
+        pointerEvents="none"
+        width={geometry.width}
+        height={geometry.height}
+        style={StyleSheet.absoluteFill}
+      >
+        <AnimatedPath
+          d={`M ${anchorX} ${anchorY} L ${elbowX} ${elbowY} L ${connectorX} ${pillCenterY}`}
+          fill="none"
+          stroke={SCAN_ORANGE}
+          strokeWidth={1.7 * geometry.scale}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeDasharray={`${pathLength} ${pathLength}`}
+          animatedProps={lineProps}
+          opacity={0.9}
+        />
+        <AnimatedCircle
+          cx={anchorX}
+          cy={anchorY}
+          r={7}
+          fill="none"
+          stroke={SCAN_ORANGE}
+          strokeWidth={1.4 * geometry.scale}
+          animatedProps={ringProps}
+        />
+        <AnimatedCircle
+          cx={anchorX}
+          cy={anchorY}
+          r={3.6 * geometry.scale}
+          fill={SCAN_ORANGE}
+          animatedProps={dotProps}
+        />
+      </Svg>
+
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          styles.metricPill,
+          {
+            left: pillCenterX - pillWidth / 2,
+            top: pillCenterY - pillHeight / 2,
+            width: pillWidth,
+            minHeight: pillHeight,
+            borderRadius: 16 * calloutScale,
+            paddingVertical: 7 * calloutScale,
+            paddingLeft: 7 * calloutScale,
+            paddingRight: 10 * calloutScale,
+            gap: 8 * calloutScale,
+          },
+          pillStyle,
+        ]}
+      >
+        <View
+          style={[
+            styles.metricIconViewport,
+            {
+              width: 28 * calloutScale,
+              height: 28 * calloutScale,
+            },
+          ]}
+        >
+          <Image
+            source={config.icon}
+            style={{
+              position: "absolute",
+              width: config.iconSize * calloutScale,
+              height: config.iconSize * calloutScale,
+              left: config.iconLeft * calloutScale,
+              top: config.iconTop * calloutScale,
+            }}
+            resizeMode="contain"
+          />
+        </View>
+        <View style={styles.metricCopy}>
+          <Text
+            numberOfLines={1}
+            style={[
+              styles.metricEyebrow,
+              {
+                fontSize: 9 * calloutScale,
+                lineHeight: 11 * calloutScale,
+                letterSpacing: 1.2 * calloutScale,
+              },
+            ]}
+          >
+            {config.label}
+          </Text>
+          <Text
+            numberOfLines={1}
+            style={[
+              styles.metricValue,
+              {
+                fontSize: 14 * calloutScale,
+                lineHeight: 17 * calloutScale,
+              },
+            ]}
+          >
+            {count}+ Metrics
+          </Text>
+        </View>
+      </Animated.View>
+    </>
+  );
+}
+
+function ScanHero() {
+  const reduceMotion = useReducedMotion();
+  const [layout, setLayout] = useState({ width: 0, height: 0 });
+  const sweepProgress = useSharedValue(0);
+
+  const geometry = useMemo<ScanHeroGeometry>(() => {
+    const width = layout.width;
+    const height = layout.height;
+    const scale = Math.min(1.08, Math.max(0.86, width / 350));
+    const preferredCardWidth = width * 0.83;
+    const heightLimitedCardWidth = Math.max(0, height * 0.82 * 0.75);
+    const cardWidth = Math.min(preferredCardWidth, heightLimitedCardWidth);
+    const cardHeight = cardWidth * (4 / 3);
+
+    return {
+      width,
+      height,
+      cardX: (width - cardWidth) / 2,
+      cardY: height * 0.035,
+      cardWidth,
+      cardHeight,
+      scale,
+    };
+  }, [layout.height, layout.width]);
+
+  useEffect(() => {
+    cancelAnimation(sweepProgress);
+    sweepProgress.value = 0;
+    if (reduceMotion || geometry.cardHeight <= 0) return;
+
+    sweepProgress.value = withDelay(
+      2400,
+      withRepeat(
+        withSequence(
+          withTiming(1, {
+            duration: 1800,
+            easing: Easing.inOut(Easing.quad),
+          }),
+          withDelay(1800, withTiming(0, { duration: 0 })),
+        ),
+        -1,
+        false,
+      ),
+    );
+
+    return () => cancelAnimation(sweepProgress);
+  }, [geometry.cardHeight, reduceMotion, sweepProgress]);
+
+  const sweepStyle = useAnimatedStyle(() => ({
+    opacity: reduceMotion ? 0 : 1,
+    transform: [
+      {
+        translateY: interpolate(
+          sweepProgress.value,
+          [0, 1],
+          [-geometry.cardHeight * 0.36, geometry.cardHeight],
+        ),
+      },
+    ],
+  }));
+
+  const handleLayout = useCallback((event: LayoutChangeEvent) => {
+    const { width, height } = event.nativeEvent.layout;
+    setLayout((current) =>
+      Math.abs(current.width - width) < 0.5 && Math.abs(current.height - height) < 0.5
+        ? current
+        : { width, height },
+    );
+  }, []);
+
+  return (
+    <View style={styles.scanHero} onLayout={handleLayout}>
+      {geometry.cardWidth > 0 && (
+        <>
+          <View
+            style={[
+              styles.faceCard,
+              {
+                left: geometry.cardX,
+                top: geometry.cardY,
+                width: geometry.cardWidth,
+                height: geometry.cardHeight,
+                borderRadius: 28 * geometry.scale,
+              },
+            ]}
+          >
+            <View style={[styles.faceClip, { borderRadius: 28 * geometry.scale }]}>
+              <Image
+                source={require("../../assets/capture-guides/frontal-guide-vector.jpg")}
+                style={styles.facePortrait}
+                resizeMode="cover"
+              />
+              <Animated.View
+                pointerEvents="none"
+                style={[
+                  styles.scanSweepBand,
+                  { height: geometry.cardHeight * 0.34 },
+                  sweepStyle,
+                ]}
+              >
+                <LinearGradient
+                  colors={[
+                    "rgba(250,126,3,0)",
+                    "rgba(250,126,3,0.14)",
+                    "rgba(250,126,3,0.30)",
+                    "rgba(250,126,3,0.14)",
+                    "rgba(250,126,3,0)",
+                  ]}
+                  locations={[0, 0.45, 0.5, 0.55, 1]}
+                  style={StyleSheet.absoluteFill}
+                />
+              </Animated.View>
+              <LinearGradient
+                pointerEvents="none"
+                colors={["rgba(0,0,0,0)", "rgba(0,0,0,0.62)"]}
+                locations={[0, 1]}
+                style={styles.faceBottomFade}
+              />
+            </View>
+          </View>
+
+          {SCAN_CALLOUTS.map((config) => (
+            <ScanMetricCallout
+              key={config.key}
+              config={config}
+              geometry={geometry}
+              reduceMotion={reduceMotion}
+            />
+          ))}
+        </>
+      )}
+    </View>
+  );
+}
+
+function ScanIntroScreen({
+  onHistory,
+  onScan,
+}: {
+  onHistory: () => void;
+  onScan: () => void;
+}) {
+  const { height: windowHeight } = useWindowDimensions();
+  const currentStreak = useTasksStore((state) => state.currentStreak);
+  const reduceMotion = useReducedMotion();
+  const ctaPulse = useSharedValue(0);
+  const compact = windowHeight < 720;
+
+  useEffect(() => {
+    cancelAnimation(ctaPulse);
+    ctaPulse.value = 0;
+    if (reduceMotion) return;
+    ctaPulse.value = withRepeat(
+      withTiming(1, { duration: 2600, easing: Easing.out(Easing.cubic) }),
+      -1,
+      false,
+    );
+    return () => cancelAnimation(ctaPulse);
+  }, [ctaPulse, reduceMotion]);
+
+  const ctaRingStyle = useAnimatedStyle(() => ({
+    opacity: reduceMotion ? 0 : interpolate(ctaPulse.value, [0, 1], [0.55, 0]),
+    transform: [{ scale: interpolate(ctaPulse.value, [0, 1], [1, 1.09]) }],
+  }));
+
+  return (
+    <View style={styles.scanScreen}>
+      <StatusBar barStyle="dark-content" backgroundColor={APP_SCREEN_BG} />
+      <SafeAreaView style={styles.scanSafeArea}>
+        <View style={styles.scanContent}>
+          <View style={[styles.scanTopBar, compact && styles.scanTopBarCompact]}>
+            <View style={styles.streakPill} accessibilityLabel={`${currentStreak} day streak`}>
+              <StreakIcon width={20} height={20} />
+              <Text style={styles.streakNumber}>{currentStreak}</Text>
+              <Text style={styles.streakLabel}>day streak</Text>
+            </View>
+
+            <Pressable
+              onPress={() => {
+                void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                onHistory();
+              }}
+              hitSlop={12}
+              style={({ pressed }) => [styles.historyButton, pressed && styles.scanControlPressed]}
+              accessibilityRole="button"
+              accessibilityLabel="Scan history"
+            >
+              <HistoryIcon width={20} height={20} />
+            </Pressable>
+          </View>
+
+          <View style={[styles.scanIntroCopy, compact && styles.scanIntroCopyCompact]}>
+            <View style={styles.scanEyebrowRow}>
+              <View style={styles.scanEyebrowDot} />
+              <Text style={styles.scanEyebrow}>FACE SCAN</Text>
+              <View style={styles.scanEyebrowDot} />
+            </View>
+            <Text style={styles.scanTitle}>3 signals, one face.</Text>
+          </View>
+
+          <ScanHero />
+
+          <Text style={styles.scanFootnote}>Takes 10 seconds · stays on your device</Text>
+
+          <View style={[styles.scanCtaWrap, compact && styles.scanCtaWrapCompact]}>
+            <Pressable
+              onPressIn={() => {
+                void triggerScanButtonHaptic();
+              }}
+              onPress={onScan}
+              hitSlop={8}
+              style={({ pressed }) => [styles.scanCta, pressed && styles.scanCtaPressed]}
+              accessibilityRole="button"
+              accessibilityLabel="Scan my face"
+            >
+              <Animated.View pointerEvents="none" style={[styles.scanCtaPulseRing, ctaRingStyle]} />
+              <LinearGradient
+                pointerEvents="none"
+                colors={["#2B2B2E", "#0A0A0B", "#0A0A0B"]}
+                locations={[0, 0.6, 1]}
+                start={{ x: 0.1, y: 0 }}
+                end={{ x: 0.9, y: 1 }}
+                style={styles.scanCtaGradient}
+              />
+              <ScanFrameIcon />
+              <Text style={styles.scanCtaText}>Scan My Face</Text>
+            </Pressable>
+          </View>
+        </View>
+      </SafeAreaView>
+    </View>
+  );
+}
 
 /* ============================== HELPERS ============================== */
 function toFileUri(u: string) {
@@ -104,49 +752,6 @@ export default function TakePicture() {
   const [cameraOpen, setCameraOpen] = useState(false);
   const [chooserOpen, setChooserOpen] = useState(false);
   const [cameraFacing, setCameraFacing] = useState<"front" | "back">("front");
-  // Functional header chip — scans used this week / weekly limit
-  const [scansThisWeek, setScansThisWeek] = useState<number | null>(null);
-  const scanSweepProgress = useSharedValue(0);
-
-  useEffect(() => {
-    scanSweepProgress.value = 0;
-    scanSweepProgress.value = withRepeat(
-      withTiming(1, {
-        duration: 2300,
-        easing: Easing.inOut(Easing.cubic),
-      }),
-      -1,
-      false,
-    );
-
-    return () => cancelAnimation(scanSweepProgress);
-  }, [scanSweepProgress]);
-
-  const scanSweepStartY = -sh(22);
-  const scanSweepEndY = sh(430);
-  const scanSweepStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateY: interpolate(scanSweepProgress.value, [0, 1], [scanSweepStartY, scanSweepEndY]) },
-    ],
-    opacity: interpolate(scanSweepProgress.value, [0, 0.12, 0.82, 1], [0, 0.82, 0.72, 0]),
-  }));
-  // Fetch the user's weekly scan count on mount, and refresh whenever they
-  // return to the intro step (so the chip reflects a freshly-completed scan).
-  useEffect(() => {
-    if (step !== "intro") return;
-    const uid = useAuthStore.getState().uid;
-    if (!uid) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const { weekCount } = await getWeekScanData(uid);
-        if (!cancelled) setScansThisWeek(weekCount);
-      } catch {
-        // Silent: chip just stays at its previous value
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [step]);
   const cameraRef = useRef<CameraView>(null);
   // Prevents concurrent handleChosen calls (e.g. double-tap gallery)
   const handlingRef = useRef(false);
@@ -282,11 +887,10 @@ export default function TakePicture() {
     setSideUri(null);
     setPose("frontal");
     setStep("capture");
-    void startCamera();
   };
 
   const goToHistory = () => {
-    router.push("/(tabs)/history" as any);
+    router.push("/history" as any);
   };
 
   const useBoth = async () => {
@@ -339,87 +943,40 @@ export default function TakePicture() {
     }
   };
 
-  const renderIntro = () => {
-    const scansUsed = scansThisWeek ?? 0;
-
-    return (
-      <AppGradientBackground>
-        <StatusBar barStyle="dark-content" />
-        <SafeAreaView style={styles.introSafe}>
-          <ScrollView
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.introScroll}
-          >
-            <View style={styles.scanTopBar}>
-              <View style={styles.scanQuotaPill}>
-                <StreakIcon width={ms(17)} height={ms(17)} />
-                <Text style={styles.scanQuotaStrong}>{scansUsed}</Text>
-                <Text style={styles.scanQuotaMuted}>/ {WEEKLY_SCAN_LIMIT} this week</Text>
-              </View>
-
-              <Pressable
-                onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  goToHistory();
-                }}
-                hitSlop={16}
-                style={({ pressed }) => [styles.historyPill, pressed && styles.pressedSoft]}
-                accessibilityRole="button"
-                accessibilityLabel="Open scan history"
-              >
-                <HistoryIcon size={ms(18)} color={COLORS.lightText} strokeWidth={2.4} />
-                <Text style={styles.historyText}>History</Text>
-              </Pressable>
-            </View>
-
-            <View style={styles.scanHeroWrap}>
-              <View style={styles.scanHeroPanel}>
-                <View style={styles.faceStage}>
-                  <View style={styles.faceGlow} />
-                  <Image
-                    source={require("../../assets/capture-guides/frontal-guide-vector.png")}
-                    style={styles.faceImage}
-                    resizeMode="cover"
-                  />
-
-                  <View pointerEvents="none" style={styles.faceGrid}>
-                    {[0.18, 0.34, 0.5, 0.66, 0.82].map((left) => (
-                      <View key={`v-${left}`} style={[styles.faceGridV, { left: `${left * 100}%` }]} />
-                    ))}
-                    {[0.2, 0.36, 0.52, 0.68, 0.84].map((top) => (
-                      <View key={`h-${top}`} style={[styles.faceGridH, { top: `${top * 100}%` }]} />
-                    ))}
-                    <Animated.View style={[styles.scanSweep, scanSweepStyle]} />
-                  </View>
-                </View>
-
-                <View style={styles.scanCopyBlock}>
-                  <Text style={styles.scanPanelKicker}>FACE SCAN</Text>
-                  <Text style={styles.scanHeadline}>Ready to scan</Text>
-                </View>
-
-                <Pressable
-                  onPress={() => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                    beginScan();
-                  }}
-                  hitSlop={8}
-                  style={({ pressed }) => [styles.primaryScanButton, pressed && styles.primaryScanButtonPressed]}
-                  accessibilityRole="button"
-                  accessibilityLabel="Start face scan"
-                >
-                  <Camera size={ms(18)} color="#FFFFFF" strokeWidth={2.4} />
-                  <Text style={styles.primaryScanText}>START SCAN</Text>
-                </Pressable>
-              </View>
-            </View>
-          </ScrollView>
-        </SafeAreaView>
-      </AppGradientBackground>
-    );
+  const cancelCamera = () => {
+    void triggerScanControlHaptic();
+    if (frontalUri) {
+      Alert.alert(
+        'Cancel scan?',
+        'Your frontal photo will be lost and you will need to start over.',
+        [
+          { text: 'Keep scanning', style: 'cancel' },
+          {
+            text: 'Cancel scan',
+            style: 'destructive',
+            onPress: () => {
+              setCameraOpen(false);
+              setStep('intro');
+              setFrontalUri(null);
+              setSideUri(null);
+              setPose('frontal');
+            },
+          },
+        ],
+      );
+      return;
+    }
+    setCameraOpen(false);
   };
 
-  const renderGuide = ({
+  const renderIntro = () => (
+    <ScanIntroScreen
+      onHistory={goToHistory}
+      onScan={beginScan}
+    />
+  );
+
+  const renderLegacyGuide = ({
     guideSrc,
     title,
     overlay,
@@ -518,6 +1075,118 @@ export default function TakePicture() {
     </AppGradientBackground>
   );
 
+  const renderGuide = ({
+    guideSrc,
+    title,
+    overlay,
+  }: {
+    guideSrc: ImageSourcePropType;
+    title: string;
+    overlay: 'frontal' | 'side';
+  }) => (
+    <View style={styles.scanScreen}>
+      <StatusBar barStyle={'dark-content'} backgroundColor={APP_SCREEN_BG} />
+      <SafeAreaView style={styles.scanSafeArea}>
+        <View style={styles.scanGuidedContent}>
+          <ScanStepHeading
+            eyebrow={overlay === 'frontal' ? 'STEP 1 OF 2' : 'STEP 2 OF 2'}
+            title={title}
+          />
+
+          <View style={styles.scanGuideHero}>
+            <View style={styles.scanGuideCard}>
+              <Image source={guideSrc} style={styles.scanGuideImage} resizeMode={'cover'} />
+            </View>
+          </View>
+
+          <View style={styles.scanGuideCaptionRow}>
+            <View style={styles.scanGuideCaptionDot} />
+            <Text style={styles.scanGuideCaption}>
+              Good lighting, neutral expression, face aligned with the guide.
+            </Text>
+          </View>
+
+          <View style={styles.scanGuideFooter}>
+            <View
+              style={styles.scanStepDots}
+              accessibilityLabel={`${overlay === 'frontal' ? 1 : 2} of 2`}
+            >
+              <View style={[styles.scanStepDot, overlay === 'frontal' && styles.scanStepDotActive]} />
+              <View style={[styles.scanStepDot, overlay === 'side' && styles.scanStepDotActive]} />
+            </View>
+            <ScanPrimaryButton
+              label={'Open Camera'}
+              onPress={() => void startCamera()}
+              icon={<ScanFrameIcon />}
+            />
+          </View>
+        </View>
+      </SafeAreaView>
+    </View>
+  );
+
+  const renderReview = () => (
+    <View style={styles.scanScreen}>
+      <StatusBar barStyle={'dark-content'} backgroundColor={APP_SCREEN_BG} />
+      <SafeAreaView style={styles.scanSafeArea}>
+        <View style={styles.scanGuidedContent}>
+          <ScanStepHeading eyebrow={'PHOTOS READY'} title={'Review your photos'} />
+
+          <View style={styles.scanReviewGrid}>
+            {[
+              { label: 'FRONTAL', uri: frontalUri, retake: () => changePose('frontal') },
+              { label: 'SIDE', uri: sideUri, retake: () => changePose('side') },
+            ].map(({ label, uri, retake }) => (
+              <View key={label} style={styles.scanReviewItem}>
+                <Text style={styles.scanReviewLabel}>{label}</Text>
+                <View style={styles.scanReviewCard}>
+                  <Image source={{ uri: uri! }} style={styles.scanReviewImage} resizeMode={'cover'} />
+                </View>
+                <Pressable
+                  onPressIn={() => void triggerScanControlHaptic()}
+                  onPress={retake}
+                  hitSlop={8}
+                  style={({ pressed }) => [styles.scanSecondaryButton, pressed && styles.scanControlPressed]}
+                  accessibilityRole={'button'}
+                  accessibilityLabel={`Retake ${label.toLowerCase()} photo`}
+                >
+                  <Text style={styles.scanSecondaryButtonText}>Retake</Text>
+                </Pressable>
+              </View>
+            ))}
+          </View>
+
+          <View style={styles.scanReviewHint}>
+            <View style={styles.scanGuideCaptionDot} />
+            <Text style={styles.scanGuideCaption}>Clear, well-lit photos give the most accurate scan.</Text>
+          </View>
+
+          <View style={styles.scanReviewFooter}>
+            <ScanPrimaryButton
+              label={submitting ? 'Analyzing…' : 'Analyze Photos'}
+              onPress={() => void useBoth()}
+              disabled={!canContinue}
+            />
+            <Pressable
+              onPressIn={() => void triggerScanControlHaptic()}
+              onPress={() => {
+                setFrontalUri(null);
+                setSideUri(null);
+                setPose('frontal');
+                setStep('intro');
+              }}
+              hitSlop={10}
+              style={({ pressed }) => [styles.scanStartOverButton, pressed && styles.scanControlPressed]}
+              accessibilityRole={'button'}
+            >
+              <Text style={styles.scanStartOverText}>Start over</Text>
+            </Pressable>
+          </View>
+        </View>
+      </SafeAreaView>
+    </View>
+  );
+
   return (
     <>
       <RecoveryCodeHint />
@@ -526,13 +1195,15 @@ export default function TakePicture() {
         renderGuide({
           guideSrc:
             pose === "frontal"
-              ? require("../../assets/capture-guides/frontal-guide-vector.png")
-              : require("../../assets/capture-guides/side-guy-vector.png"),
+              ? require("../../assets/capture-guides/frontal-guide-vector.jpg")
+              : require("../../assets/capture-guides/side-guy-vector.jpg"),
           title: pose === "frontal" ? "Take Frontal Photo" : "Take Side Photo",
           overlay: pose,
         })}
 
-      {step === "review" && (
+      {step === "review" && renderReview()}
+
+      {false && step === "review" && (
         <AppGradientBackground>
           <StatusBar barStyle="dark-content" />
           <SafeAreaView style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: SP[5] }}>
@@ -637,11 +1308,53 @@ export default function TakePicture() {
         visible={chooserOpen}
         transparent
         statusBarTranslucent
+        animationType={'fade'}
+        onRequestClose={() => setChooserOpen(false)}
+      >
+        <View style={styles.scanSheetBackdrop}>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={() => setChooserOpen(false)}
+            accessibilityRole={'button'}
+            accessibilityLabel={'Close photo options'}
+          />
+          <SafeAreaView style={styles.scanSheetSafeArea}>
+            <View style={styles.scanSheet}>
+              <View style={styles.scanSheetHandle} />
+              <Text style={styles.scanSheetTitle}>Add a photo</Text>
+              <Text style={styles.scanSheetBody}>Use the camera or choose from your library.</Text>
+              <ScanPrimaryButton
+                label={'Take Photo'}
+                onPress={() => void startCamera()}
+                icon={<ScanFrameIcon />}
+              />
+              <Pressable
+                onPressIn={() => void triggerScanControlHaptic()}
+                onPress={() => void pickFromGallery()}
+                style={({ pressed }) => [styles.scanSheetSecondaryButton, pressed && styles.scanControlPressed]}
+                accessibilityRole={'button'}
+              >
+                <Text style={styles.scanSheetSecondaryText}>Choose from Library</Text>
+              </Pressable>
+            </View>
+          </SafeAreaView>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={false && chooserOpen}
+        transparent
+        statusBarTranslucent
         animationType="fade"
         onRequestClose={() => setChooserOpen(false)}
       >
         <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "flex-end" }}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={() => setChooserOpen(false)} />
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={() => setChooserOpen(false)}
+            accessibilityRole="button"
+            accessibilityLabel="Close photo options"
+          />
           <View
             style={{
               backgroundColor: COLORS.lightBg,
@@ -712,7 +1425,114 @@ export default function TakePicture() {
       </Modal>
 
       {/* Camera modal */}
-      <Modal visible={cameraOpen} animationType="fade" presentationStyle="fullScreen" onRequestClose={() => setCameraOpen(false)}>
+      <Modal
+        visible={cameraOpen}
+        animationType={'fade'}
+        presentationStyle={'fullScreen'}
+        onRequestClose={cancelCamera}
+      >
+        <StatusBar hidden />
+        <View style={styles.scanCamera}>
+          {permissionDenied ? (
+            <SafeAreaView style={styles.scanCameraPermissionSafeArea}>
+              <View style={styles.scanCameraPermissionContent}>
+                <View style={styles.scanCameraPermissionIcon}>
+                  <ScanFrameIcon size={24} />
+                </View>
+                <Text style={styles.scanCameraPermissionTitle}>Camera access needed</Text>
+                <Text style={styles.scanCameraPermissionBody}>
+                  Allow camera access to capture the two photos used for your scan.
+                </Text>
+                <Pressable
+                  onPressIn={() => void triggerScanButtonHaptic()}
+                  onPress={() => void requestPerm()}
+                  style={({ pressed }) => [styles.scanCameraPermissionButton, pressed && styles.scanCtaPressed]}
+                  accessibilityRole={'button'}
+                >
+                  <Text style={styles.scanCameraPermissionButtonText}>Allow Camera Access</Text>
+                </Pressable>
+                <Pressable
+                  onPress={cancelCamera}
+                  hitSlop={10}
+                  style={({ pressed }) => [styles.scanCameraCancelButton, pressed && styles.scanControlPressed]}
+                  accessibilityRole={'button'}
+                >
+                  <Text style={styles.scanCameraCancelText}>Not now</Text>
+                </Pressable>
+              </View>
+            </SafeAreaView>
+          ) : (
+            <>
+              <CameraView ref={cameraRef} active facing={cameraFacing} style={StyleSheet.absoluteFill} />
+              <SafeAreaView pointerEvents={'box-none'} style={styles.scanCameraSafeArea}>
+                <View pointerEvents={'none'} style={styles.scanCameraHeading}>
+                  <View style={styles.scanCameraStepPill}>
+                    <View style={styles.scanCameraStepDot} />
+                    <Text style={styles.scanCameraStepText}>
+                      {pose === 'frontal' ? 'FRONTAL PHOTO' : 'SIDE PHOTO'}
+                    </Text>
+                  </View>
+                  <Text style={styles.scanCameraTitle}>
+                    {pose === 'frontal' ? 'Hold steady' : 'Turn to your side'}
+                  </Text>
+                  <Text style={styles.scanCameraBody}>
+                    {pose === 'frontal' ? 'Keep your face centered and still' : 'Align your profile with the guide'}
+                  </Text>
+                </View>
+
+                <View style={styles.scanCameraControls}>
+                  <Pressable
+                    onPressIn={() => {
+                      if (!capturing) void triggerScanButtonHaptic();
+                    }}
+                    onPress={() => void capture()}
+                    disabled={capturing}
+                    style={({ pressed }) => [
+                      styles.scanShutter,
+                      capturing && styles.scanShutterDisabled,
+                      pressed && !capturing && styles.scanShutterPressed,
+                    ]}
+                    accessibilityRole={'button'}
+                    accessibilityLabel={'Take photo'}
+                  >
+                    <View style={styles.scanShutterInner} />
+                  </Pressable>
+
+                  <View style={styles.scanCameraActionRow}>
+                    <Pressable
+                      onPressIn={() => void triggerScanControlHaptic()}
+                      onPress={() => void pickFromGallery()}
+                      style={({ pressed }) => [styles.scanCameraActionButton, pressed && styles.scanControlPressed]}
+                      accessibilityRole={'button'}
+                    >
+                      <Text style={styles.scanCameraActionText}>Library</Text>
+                    </Pressable>
+                    <Pressable
+                      onPressIn={() => void triggerScanControlHaptic()}
+                      onPress={() => setCameraFacing((current) => (current === 'front' ? 'back' : 'front'))}
+                      style={({ pressed }) => [styles.scanCameraActionButton, pressed && styles.scanControlPressed]}
+                      accessibilityRole={'button'}
+                    >
+                      <Text style={styles.scanCameraActionText}>Flip camera</Text>
+                    </Pressable>
+                  </View>
+
+                  <Pressable
+                    onPress={cancelCamera}
+                    hitSlop={10}
+                    style={({ pressed }) => [styles.scanCameraCancelButton, pressed && styles.scanControlPressed]}
+                    accessibilityRole={'button'}
+                  >
+                    <Text style={styles.scanCameraCancelText}>Cancel</Text>
+                  </Pressable>
+                </View>
+              </SafeAreaView>
+            </>
+          )}
+        </View>
+      </Modal>
+
+      <Modal visible={false && cameraOpen} animationType="fade" presentationStyle="fullScreen" onRequestClose={() => setCameraOpen(false)}>
         <StatusBar hidden />
         <View style={{ flex: 1, backgroundColor: "#000" }}>
           {permissionDenied ? (
@@ -796,6 +1616,9 @@ export default function TakePicture() {
                 <Pressable
                   onPress={capture}
                   disabled={capturing}
+                  accessibilityRole="button"
+                  accessibilityLabel="Take photo"
+                  accessibilityState={{ disabled: capturing }}
                   style={({ pressed }) => ({
                     width: ms(80),
                     height: ms(80),
@@ -883,274 +1706,722 @@ export default function TakePicture() {
   );
 }
 const styles = StyleSheet.create({
-  introSafe: {
-    flex: 1,
-  },
-  introScroll: {
-    flexGrow: 1,
-    paddingHorizontal: SP[5],
-    paddingBottom: FLOATING_TAB_BAR.contentClearance + sh(72),
-  },
   scanTopBar: {
-    marginTop: sh(16),
-    marginBottom: sh(12),
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    gap: sw(12),
+    paddingHorizontal: 20,
+    paddingTop: 12,
   },
-  scanQuotaPill: {
-    minHeight: sh(46),
-    flexDirection: "row",
-    alignItems: "center",
-    gap: sw(7),
-    backgroundColor: COLORS.ctaBlack,
-    paddingHorizontal: sw(15),
-    paddingVertical: sh(10),
-    borderRadius: 999,
-    shadowColor: "#000",
-    shadowOpacity: 0.14,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 5,
+  scanScreen: {
+    flex: 1,
+    backgroundColor: APP_SCREEN_BG,
   },
-  scanQuotaStrong: {
-    color: "#FFFFFF",
-    fontFamily: FONT,
-    fontSize: ms(15),
-    letterSpacing: 0,
+  scanSafeArea: {
+    flex: 1,
+    backgroundColor: APP_SCREEN_BG,
   },
-  scanQuotaMuted: {
-    color: "rgba(255,255,255,0.58)",
-    fontFamily: FONT,
-    fontSize: ms(12),
-    letterSpacing: 0.1,
-  },
-  historyPill: {
-    minHeight: sh(50),
-    flexDirection: "row",
-    alignItems: "center",
-    gap: sw(8),
-    backgroundColor: "rgba(255,255,255,0.70)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.14)",
-    paddingHorizontal: sw(12),
-    paddingVertical: sh(12),
-    borderRadius: 999,
-    ...SOFT_SHADOW,
-  },
-  pressedSoft: {
-    opacity: 0.82,
-    transform: [{ scale: 0.98 }],
-  },
-  historyText: {
-    color: COLORS.lightText,
-    fontFamily: FONT,
-    fontSize: ms(16),
-    letterSpacing: 0.1,
-  },
-  scanStatusRow: {
-    minHeight: sh(36),
-    alignSelf: "stretch",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: sw(10),
-    marginBottom: sh(14),
-  },
-  statusItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: sw(6),
-  },
-  statusDivider: {
-    width: 1,
-    height: sh(18),
-    backgroundColor: "rgba(11,11,11,0.10)",
-  },
-  statusText: {
-    color: COLORS.lightMuted,
-    fontFamily: FONT,
-    fontSize: ms(12),
-    letterSpacing: 0.1,
-  },
-  scanHeroWrap: {
-    flexGrow: 1,
-    justifyContent: "center",
-    paddingTop: sh(4),
-    paddingBottom: sh(16),
-  },
-  scanHeroPanel: {
+  scanContent: {
+    flex: 1,
     width: "100%",
-    maxWidth: 410,
+    maxWidth: 430,
     alignSelf: "center",
-    borderRadius: ms(28),
-    backgroundColor: "rgba(255,255,255,0.72)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.74)",
-    paddingHorizontal: sw(12),
-    paddingTop: sh(12),
-    paddingBottom: sh(16),
-    overflow: "hidden",
-    shadowColor: "#7A3A10",
-    shadowOpacity: 0.08,
-    shadowRadius: 22,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 3,
   },
-  scanPanelHeader: {
+  scanTopBarCompact: {
+    paddingTop: 6,
+  },
+  streakPill: {
+    minHeight: 36,
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    gap: sw(12),
-    marginBottom: sh(10),
-  },
-  scanPanelKicker: {
-    color: COLORS.lightMuted,
-    fontFamily: FONT,
-    fontSize: ms(11),
-    letterSpacing: 1.1,
-  },
-  scanPanelTitle: {
-    marginTop: sh(2),
-    color: COLORS.lightText,
-    fontFamily: FONT,
-    fontSize: ms(20),
-    lineHeight: ms(25),
-    letterSpacing: -0.2,
-  },
-  faceStage: {
-    position: "relative",
-    width: "100%",
-    aspectRatio: 0.82,
-    borderRadius: ms(24),
-    backgroundColor: "#FFF4DE",
-    overflow: "hidden",
-    alignItems: "center",
-    justifyContent: "flex-end",
+    gap: 7,
+    paddingLeft: 9,
+    paddingRight: 14,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: SCAN_SURFACE,
     borderWidth: 1,
-    borderColor: "rgba(11,11,11,0.06)",
+    borderColor: "rgba(20,18,14,0.06)",
+    shadowColor: "#14120E",
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
-  faceGlow: {
-    position: "absolute",
-    top: "8%",
-    width: "72%",
-    height: "54%",
-    borderRadius: 999,
-    backgroundColor: "rgba(180,243,77,0.06)",
-    transform: [{ scaleX: 1.2 }],
+  streakNumber: {
+    color: SCAN_INK,
+    fontFamily: SCAN_FONT_BOLD,
+    fontSize: 15,
+    lineHeight: 17,
   },
-  faceImage: {
-    width: "118%",
-    height: "112%",
-    marginBottom: "-8%",
+  streakLabel: {
+    marginTop: 2,
+    color: SCAN_FAINT,
+    fontFamily: SCAN_FONT_MEDIUM,
+    fontSize: 10,
+    lineHeight: 12,
+    letterSpacing: 0.3,
   },
-  faceGrid: {
-    ...StyleSheet.absoluteFillObject,
-    overflow: "hidden",
-  },
-  faceGridV: {
-    position: "absolute",
-    top: "13%",
-    bottom: "10%",
-    width: 1,
-    backgroundColor: "rgba(11,11,11,0.055)",
-  },
-  faceGridH: {
-    position: "absolute",
-    left: "10%",
-    right: "10%",
-    height: 1,
-    backgroundColor: "rgba(11,11,11,0.045)",
-  },
-  scanSweep: {
-    position: "absolute",
-    left: "8%",
-    right: "8%",
-    top: 0,
-    height: ms(3),
-    borderRadius: 999,
-    backgroundColor: "rgba(180,243,77,0.84)",
-    shadowColor: COLORS.accent,
-    shadowOpacity: 0.42,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 0 },
-  },
-  scanCopyBlock: {
-    alignItems: "center",
-    paddingTop: sh(17),
-    paddingHorizontal: sw(10),
-  },
-  scanHeadline: {
-    color: COLORS.lightText,
-    fontFamily: FONT,
-    fontSize: ms(26),
-    lineHeight: ms(31),
-    letterSpacing: -0.5,
-    textAlign: "center",
-  },
-  scanSubhead: {
-    marginTop: sh(8),
-    color: COLORS.lightMuted,
-    fontFamily: FONT,
-    fontSize: ms(13),
-    lineHeight: ms(19),
-    textAlign: "center",
-    maxWidth: sw(300),
-  },
-  primaryScanButton: {
-    marginTop: sh(16),
-    minHeight: sh(56),
-    borderRadius: 16,
-    backgroundColor: "#0B0B0B",
-    borderBottomWidth: 6,
-    borderBottomColor: "#000000",
+  historyButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: SCAN_SURFACE,
+    borderWidth: 1,
+    borderColor: "rgba(20,18,14,0.06)",
+    shadowColor: "#14120E",
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  scanControlPressed: {
+    opacity: 0.78,
+    transform: [{ scale: 0.96 }],
+  },
+  scanIntroCopy: {
+    flexShrink: 0,
+    alignItems: "center",
+    paddingTop: 10,
+    paddingHorizontal: 20,
+  },
+  scanIntroCopyCompact: {
+    paddingTop: 5,
+  },
+  scanEyebrowRow: {
     flexDirection: "row",
-    gap: sw(10),
-    paddingVertical: sh(14),
-    paddingHorizontal: SP[6],
-    shadowColor: "#000",
-    shadowOpacity: 0.18,
-    shadowRadius: 10,
+    alignItems: "center",
+    gap: 6,
+  },
+  scanEyebrowDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: SCAN_ORANGE,
+  },
+  scanEyebrow: {
+    color: SCAN_ORANGE,
+    fontFamily: SCAN_FONT_SEMIBOLD,
+    fontSize: 11,
+    lineHeight: 14,
+    letterSpacing: 2,
+  },
+  scanTitle: {
+    marginTop: 6,
+    color: SCAN_INK,
+    fontFamily: SCAN_FONT_SEMIBOLD,
+    fontSize: 20,
+    lineHeight: 24,
+    letterSpacing: 0.1,
+    textAlign: "center",
+  },
+  scanHero: {
+    position: "relative",
+    flex: 1,
+    minHeight: 0,
+    marginHorizontal: 6,
+    marginTop: 8,
+  },
+  faceCard: {
+    position: "absolute",
+    backgroundColor: "#EEEDEB",
+    shadowColor: "#140F0A",
+    shadowOpacity: 0.28,
+    shadowRadius: 28,
+    shadowOffset: { width: 0, height: 18 },
+    elevation: 9,
+  },
+  faceClip: {
+    ...StyleSheet.absoluteFill,
+    overflow: "hidden",
+  },
+  facePortrait: {
+    width: "100%",
+    height: "100%",
+  },
+  scanSweepBand: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+  },
+  faceBottomFade: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: "42%",
+  },
+  metricPill: {
+    position: "absolute",
+    zIndex: 5,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "rgba(20,18,14,0.06)",
+    shadowColor: "#140F0A",
+    shadowOpacity: 0.17,
+    shadowRadius: 12,
     shadowOffset: { width: 0, height: 8 },
     elevation: 7,
   },
-  primaryScanButtonPressed: {
-    transform: [{ translateY: 4 }],
-    borderBottomWidth: 3,
+  metricIconViewport: {
+    flexShrink: 0,
+    overflow: "hidden",
   },
-  primaryScanText: {
-    color: "#FFFFFF",
-    fontFamily: FONT,
-    fontSize: ms(15),
-    letterSpacing: 0.8,
+  metricCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  metricEyebrow: {
+    color: SCAN_FAINT,
+    fontFamily: SCAN_FONT_SEMIBOLD,
+  },
+  metricValue: {
+    color: SCAN_INK,
+    fontFamily: SCAN_FONT_SEMIBOLD,
+    letterSpacing: 0.1,
+  },
+  scanFootnote: {
+    flexShrink: 0,
+    marginTop: 8,
+    color: SCAN_FAINT,
+    fontFamily: SCAN_FONT_MEDIUM,
+    fontSize: 11.5,
+    lineHeight: 15,
     textAlign: "center",
   },
-  scanFooterRow: {
-    minHeight: sh(26),
-    marginTop: sh(13),
+  scanCtaWrap: {
+    flexShrink: 0,
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: FLOATING_TAB_BAR.pillHeight + FLOATING_TAB_BAR.gapBottom + 12,
+  },
+  scanCtaWrapCompact: {
+    paddingTop: 7,
+    paddingBottom: FLOATING_TAB_BAR.pillHeight + FLOATING_TAB_BAR.gapBottom + 8,
+  },
+  scanCta: {
+    position: "relative",
+    minHeight: 50,
+    width: "100%",
+    borderRadius: 999,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: sw(8),
+    gap: 9,
+    paddingVertical: 15,
+    paddingHorizontal: 20,
+    shadowColor: "#000000",
+    shadowOpacity: 0.34,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 8,
   },
-  scanFootItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: sw(5),
+  scanCtaPressed: {
+    transform: [{ scale: 0.98 }],
   },
-  scanFootText: {
-    color: COLORS.lightMuted,
-    fontFamily: FONT,
-    fontSize: ms(11.5),
-    letterSpacing: 0.1,
+  scanCtaPulseRing: {
+    position: "absolute",
+    top: -6,
+    right: -6,
+    bottom: -6,
+    left: -6,
+    borderRadius: 999,
+    borderWidth: 1.5,
+    borderColor: "rgba(0,0,0,0.28)",
   },
-  scanFootDot: {
-    color: "rgba(11,11,11,0.26)",
-    fontFamily: FONT,
-    fontSize: ms(12),
+  scanCtaGradient: {
+    ...StyleSheet.absoluteFill,
+    borderRadius: 999,
+  },
+  scanCtaText: {
+    color: "#FAF9F7",
+    fontFamily: SCAN_FONT_SEMIBOLD,
+    fontSize: 16,
+    lineHeight: 20,
+    letterSpacing: 0.2,
+  },
+  scanPrimaryButton: {
+    position: 'relative',
+    minHeight: 50,
+    width: '100%',
+    borderRadius: 999,
+    overflow: 'hidden',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 9,
+    paddingVertical: 15,
+    paddingHorizontal: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    shadowColor: '#000000',
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 8,
+  },
+  scanPrimaryButtonDisabled: {
+    backgroundColor: SCAN_SURFACE,
+    borderColor: 'rgba(20,18,14,0.06)',
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  scanPrimaryButtonText: {
+    color: '#FAF9F7',
+    fontFamily: SCAN_FONT_SEMIBOLD,
+    fontSize: 16,
+    lineHeight: 20,
+    letterSpacing: 0.2,
+  },
+  scanPrimaryButtonTextDisabled: {
+    color: SCAN_FAINT,
+  },
+  scanGuidedContent: {
+    flex: 1,
+    width: '100%',
+    maxWidth: 430,
+    alignSelf: 'center',
+  },
+  scanStepHeading: {
+    flexShrink: 0,
+    alignItems: 'center',
+    paddingTop: 16,
+    paddingHorizontal: 20,
+  },
+  scanStepTitle: {
+    marginTop: 6,
+    color: SCAN_INK,
+    fontFamily: SCAN_FONT_SEMIBOLD,
+    fontSize: 22,
+    lineHeight: 27,
+    letterSpacing: 0.05,
+    textAlign: 'center',
+  },
+  scanGuideHero: {
+    flex: 1,
+    minHeight: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+    paddingTop: 14,
+    paddingBottom: 10,
+  },
+  scanGuideCard: {
+    height: '100%',
+    maxHeight: 410,
+    aspectRatio: 3 / 4,
+    borderRadius: 28,
+    overflow: 'hidden',
+    backgroundColor: '#EEEDEB',
+    borderWidth: 1,
+    borderColor: 'rgba(20,18,14,0.06)',
+    shadowColor: '#140F0A',
+    shadowOpacity: 0.2,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 14 },
+    elevation: 8,
+  },
+  scanGuideImage: {
+    width: '100%',
+    height: '100%',
+  },
+  scanGuideCaptionRow: {
+    flexShrink: 0,
+    minHeight: 42,
+    marginHorizontal: 20,
+    borderRadius: 16,
+    backgroundColor: SCAN_SURFACE,
+    borderWidth: 1,
+    borderColor: 'rgba(20,18,14,0.06)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 9,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+  },
+  scanGuideCaptionDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: SCAN_ORANGE,
+    flexShrink: 0,
+  },
+  scanGuideCaption: {
+    flexShrink: 1,
+    color: SCAN_MUTED,
+    fontFamily: SCAN_FONT_MEDIUM,
+    fontSize: 12,
+    lineHeight: 16,
+    textAlign: 'center',
+  },
+  scanGuideFooter: {
+    flexShrink: 0,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: FLOATING_TAB_BAR.pillHeight + FLOATING_TAB_BAR.gapBottom + 12,
+  },
+  scanStepDots: {
+    height: 7,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginBottom: 12,
+  },
+  scanStepDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: '#DDD9D3',
+  },
+  scanStepDotActive: {
+    width: 20,
+    backgroundColor: SCAN_ORANGE,
+  },
+  scanReviewGrid: {
+    flex: 1,
+    minHeight: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 20,
+    paddingTop: 14,
+  },
+  scanReviewItem: {
+    flex: 1,
+    minWidth: 0,
+  },
+  scanReviewLabel: {
+    marginBottom: 7,
+    color: SCAN_FAINT,
+    fontFamily: SCAN_FONT_SEMIBOLD,
+    fontSize: 10,
+    lineHeight: 13,
+    letterSpacing: 1.5,
+  },
+  scanReviewCard: {
+    width: '100%',
+    aspectRatio: 3 / 4,
+    borderRadius: 20,
+    overflow: 'hidden',
+    backgroundColor: '#EEEDEB',
+    borderWidth: 1,
+    borderColor: 'rgba(20,18,14,0.07)',
+    shadowColor: '#140F0A',
+    shadowOpacity: 0.16,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 6,
+  },
+  scanReviewImage: {
+    width: '100%',
+    height: '100%',
+  },
+  scanSecondaryButton: {
+    alignSelf: 'flex-start',
+    minHeight: 38,
+    marginTop: 10,
+    borderRadius: 999,
+    backgroundColor: SCAN_SURFACE,
+    borderWidth: 1,
+    borderColor: 'rgba(20,18,14,0.06)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+  },
+  scanSecondaryButtonText: {
+    color: SCAN_INK,
+    fontFamily: SCAN_FONT_SEMIBOLD,
+    fontSize: 13,
+    lineHeight: 16,
+  },
+  scanReviewHint: {
+    flexShrink: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 9,
+    marginHorizontal: 20,
+    paddingTop: 12,
+  },
+  scanReviewFooter: {
+    flexShrink: 0,
+    paddingHorizontal: 20,
+    paddingTop: 14,
+    paddingBottom: FLOATING_TAB_BAR.pillHeight + FLOATING_TAB_BAR.gapBottom + 8,
+  },
+  scanStartOverButton: {
+    alignSelf: 'center',
+    minHeight: 36,
+    justifyContent: 'center',
+    marginTop: 8,
+    paddingHorizontal: 14,
+  },
+  scanStartOverText: {
+    color: SCAN_MUTED,
+    fontFamily: SCAN_FONT_MEDIUM,
+    fontSize: 13,
+    lineHeight: 17,
+  },
+  scanSheetBackdrop: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(21,19,15,0.48)',
+  },
+  scanSheetSafeArea: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+  },
+  scanSheet: {
+    width: '100%',
+    maxWidth: 430,
+    alignSelf: 'center',
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    borderWidth: 1,
+    borderBottomWidth: 0,
+    borderColor: 'rgba(20,18,14,0.07)',
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 20,
+  },
+  scanSheetHandle: {
+    alignSelf: 'center',
+    width: 42,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#D8D4CE',
+    marginBottom: 18,
+  },
+  scanSheetTitle: {
+    color: SCAN_INK,
+    fontFamily: SCAN_FONT_SEMIBOLD,
+    fontSize: 22,
+    lineHeight: 27,
+  },
+  scanSheetBody: {
+    color: SCAN_MUTED,
+    fontFamily: SCAN_FONT_MEDIUM,
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 4,
+    marginBottom: 18,
+  },
+  scanSheetSecondaryButton: {
+    minHeight: 50,
+    width: '100%',
+    marginTop: 10,
+    borderRadius: 999,
+    backgroundColor: SCAN_SURFACE,
+    borderWidth: 1,
+    borderColor: 'rgba(20,18,14,0.06)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+  },
+  scanSheetSecondaryText: {
+    color: SCAN_INK,
+    fontFamily: SCAN_FONT_SEMIBOLD,
+    fontSize: 16,
+    lineHeight: 20,
+  },
+  scanCamera: {
+    flex: 1,
+    backgroundColor: SCAN_INK,
+  },
+  scanCameraSafeArea: {
+    ...StyleSheet.absoluteFill,
+    justifyContent: 'space-between',
+  },
+  scanCameraHeading: {
+    alignItems: 'center',
+    paddingTop: 14,
+    paddingHorizontal: 20,
+  },
+  scanCameraStepPill: {
+    minHeight: 32,
+    borderRadius: 999,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    paddingHorizontal: 13,
+    paddingVertical: 7,
+    backgroundColor: 'rgba(21,19,15,0.62)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.16)',
+  },
+  scanCameraStepDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: SCAN_ORANGE,
+  },
+  scanCameraStepText: {
+    color: '#FAF9F7',
+    fontFamily: SCAN_FONT_SEMIBOLD,
+    fontSize: 10,
+    lineHeight: 13,
+    letterSpacing: 1.4,
+  },
+  scanCameraTitle: {
+    color: '#FAF9F7',
+    fontFamily: SCAN_FONT_SEMIBOLD,
+    fontSize: 22,
+    lineHeight: 27,
+    marginTop: 10,
+    textAlign: 'center',
+    textShadowColor: 'rgba(0,0,0,0.6)',
+    textShadowRadius: 6,
+    textShadowOffset: { width: 0, height: 1 },
+  },
+  scanCameraBody: {
+    color: 'rgba(250,249,247,0.74)',
+    fontFamily: SCAN_FONT_MEDIUM,
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 3,
+    textAlign: 'center',
+    textShadowColor: 'rgba(0,0,0,0.6)',
+    textShadowRadius: 4,
+    textShadowOffset: { width: 0, height: 1 },
+  },
+  scanCameraControls: {
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 12,
+    backgroundColor: 'rgba(21,19,15,0.42)',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.1)',
+  },
+  scanShutter: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    borderWidth: 3,
+    borderColor: 'rgba(250,249,247,0.72)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(21,19,15,0.22)',
+  },
+  scanShutterInner: {
+    width: 62,
+    height: 62,
+    borderRadius: 31,
+    backgroundColor: '#FAF9F7',
+    borderWidth: 1,
+    borderColor: 'rgba(21,19,15,0.08)',
+  },
+  scanShutterPressed: {
+    transform: [{ scale: 0.94 }],
+  },
+  scanShutterDisabled: {
+    opacity: 0.45,
+  },
+  scanCameraActionRow: {
+    width: '100%',
+    maxWidth: 330,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 10,
+    marginTop: 16,
+  },
+  scanCameraActionButton: {
+    minHeight: 42,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    backgroundColor: 'rgba(250,249,247,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(250,249,247,0.16)',
+  },
+  scanCameraActionText: {
+    color: '#FAF9F7',
+    fontFamily: SCAN_FONT_SEMIBOLD,
+    fontSize: 13,
+    lineHeight: 17,
+  },
+  scanCameraCancelButton: {
+    minHeight: 36,
+    justifyContent: 'center',
+    marginTop: 8,
+    paddingHorizontal: 16,
+  },
+  scanCameraCancelText: {
+    color: 'rgba(250,249,247,0.68)',
+    fontFamily: SCAN_FONT_MEDIUM,
+    fontSize: 13,
+    lineHeight: 17,
+  },
+  scanCameraPermissionSafeArea: {
+    flex: 1,
+  },
+  scanCameraPermissionContent: {
+    flex: 1,
+    width: '100%',
+    maxWidth: 430,
+    alignSelf: 'center',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+  },
+  scanCameraPermissionIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(250,249,247,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(250,249,247,0.14)',
+    marginBottom: 16,
+  },
+  scanCameraPermissionTitle: {
+    color: '#FAF9F7',
+    fontFamily: SCAN_FONT_SEMIBOLD,
+    fontSize: 22,
+    lineHeight: 27,
+    textAlign: 'center',
+  },
+  scanCameraPermissionBody: {
+    maxWidth: 310,
+    color: 'rgba(250,249,247,0.68)',
+    fontFamily: SCAN_FONT_MEDIUM,
+    fontSize: 13,
+    lineHeight: 19,
+    textAlign: 'center',
+    marginTop: 6,
+    marginBottom: 20,
+  },
+  scanCameraPermissionButton: {
+    minHeight: 50,
+    width: '100%',
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    backgroundColor: '#FAF9F7',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+  },
+  scanCameraPermissionButtonText: {
+    color: SCAN_INK,
+    fontFamily: SCAN_FONT_SEMIBOLD,
+    fontSize: 16,
+    lineHeight: 20,
   },
 });
 async function ensurePersistentImageDir(): Promise<string> {

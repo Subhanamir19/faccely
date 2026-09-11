@@ -10,7 +10,8 @@ import {
   View,
   useWindowDimensions,
 } from "react-native";
-import { ResizeMode, Video, type AVPlaybackStatus } from "expo-av";
+import type { VideoPlayer } from "expo-video";
+import * as Haptics from "expo-haptics";
 import { StatusBar } from "expo-status-bar";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -32,6 +33,7 @@ import {
   getNewExerciseTitle,
   NEW_EXERCISE_VIDEO_PREVIEWS,
 } from "@/lib/newExerciseVideoPreviews";
+import AppVideo from "@/components/ui/AppVideo";
 
 const FONT = "ProximaNova-Bold";
 const BODY_FONT = "Poppins-Regular";
@@ -68,8 +70,8 @@ function formatMillis(ms: number) {
 export default function NewExercisesPreviewScreen() {
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
-  const videoRef = useRef<Video>(null);
-  const sequenceVideoRefs = useRef<Array<Video | null>>([]);
+  const videoRef = useRef<VideoPlayer | null>(null);
+  const sequenceVideoRefs = useRef<Array<VideoPlayer | null>>([]);
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(true);
@@ -124,39 +126,30 @@ export default function NewExercisesPreviewScreen() {
   const goToIndex = (nextIndex: number) => {
     if (exercises.length === 0) return;
     const wrapped = (nextIndex + exercises.length) % exercises.length;
+    void Haptics.selectionAsync();
     setCurrentIndex(wrapped);
   };
 
-  const handlePlaybackStatus = (status: AVPlaybackStatus) => {
-    if (!status.isLoaded) {
-      if (status.error) setIsLoading(false);
-      return;
-    }
-
-    setIsLoading(false);
-    setPositionMillis(status.positionMillis ?? 0);
-    setDurationMillis(status.durationMillis ?? 0);
-
-    if (isVideoSequence && status.didJustFinish && sequenceSources.length > 1) {
-      setIsPlaying(true);
-      setSequenceFrameIndex((index) => {
-        const nextIndex = (index + 1) % sequenceSources.length;
-        sequenceVideoRefs.current[nextIndex]?.setPositionAsync(0).catch(() => {});
-        return nextIndex;
-      });
-      return;
-    }
-
-    setIsPlaying(status.isPlaying);
+  const handleVideoSequenceEnd = () => {
+    if (!isVideoSequence || sequenceSources.length < 2) return;
+    setIsPlaying(true);
+    setSequenceFrameIndex((index) => {
+      const nextIndex = (index + 1) % sequenceSources.length;
+      const nextPlayer = sequenceVideoRefs.current[nextIndex];
+      if (nextPlayer) nextPlayer.currentTime = 0;
+      return nextIndex;
+    });
   };
 
-  const togglePlayback = async () => {
+  const togglePlayback = () => {
     if (isStaticImage) {
+      void Haptics.selectionAsync();
       setPickerVisible(true);
       return;
     }
 
     if (isImageSequence) {
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       setIsPlaying((playing) => !playing);
       return;
     }
@@ -166,10 +159,11 @@ export default function NewExercisesPreviewScreen() {
       : videoRef.current;
     if (!player) return;
 
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (isPlaying) {
-      await player.pauseAsync();
+      player.pause();
     } else {
-      await player.playAsync();
+      player.play();
     }
   };
 
@@ -187,8 +181,11 @@ export default function NewExercisesPreviewScreen() {
 
       <View style={styles.header}>
         <Pressable
-          onPress={() => router.back()}
-          style={styles.backButton}
+          onPress={() => {
+            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            router.back();
+          }}
+          style={({ pressed }) => [styles.backButton, pressed && styles.controlPressed]}
           accessibilityRole="button"
           accessibilityLabel="Back to developer tools"
         >
@@ -200,8 +197,11 @@ export default function NewExercisesPreviewScreen() {
         </Text>
 
         <Pressable
-          onPress={() => setPickerVisible(true)}
-          style={styles.counterPill}
+          onPress={() => {
+            void Haptics.selectionAsync();
+            setPickerVisible(true);
+          }}
+          style={({ pressed }) => [styles.counterPill, pressed && styles.controlPressed]}
           accessibilityRole="button"
           accessibilityLabel="Choose exercise preview"
         >
@@ -244,34 +244,62 @@ export default function NewExercisesPreviewScreen() {
             {sequenceSources.map((source, index) => {
               const isActivePose = index === sequenceFrameIndex % sequenceSources.length;
               return (
-                <Video
+                <AppVideo
                   key={`${current.id}-pose-${index}`}
-                  ref={(ref) => {
-                    sequenceVideoRefs.current[index] = ref;
+                  onPlayerChange={(player) => {
+                    sequenceVideoRefs.current[index] = player;
                   }}
                   source={source}
                   style={[styles.video, { width }, !isActivePose && styles.hiddenVideo]}
-                  resizeMode={ResizeMode.CONTAIN}
+                  contentFit="contain"
                   shouldPlay={isPlaying && isActivePose}
-                  isLooping={false}
-                  isMuted
-                  progressUpdateIntervalMillis={16}
-                  onPlaybackStatusUpdate={isActivePose ? handlePlaybackStatus : undefined}
+                  muted
+                  surfaceType="textureView"
+                  timeUpdateEventInterval={1 / 60}
+                  onFirstFrameRender={isActivePose ? () => setIsLoading(false) : undefined}
+                  onStatusChange={isActivePose ? ({ status }) => {
+                    if (status === "error") setIsLoading(false);
+                  } : undefined}
+                  onSourceLoad={isActivePose ? ({ duration }) => {
+                    setIsLoading(false);
+                    setDurationMillis(duration * 1000);
+                  } : undefined}
+                  onTimeUpdate={isActivePose ? ({ currentTime }) => {
+                    setPositionMillis(currentTime * 1000);
+                  } : undefined}
+                  onPlayingChange={isActivePose ? ({ isPlaying: playing }) => {
+                    setIsPlaying(playing);
+                  } : undefined}
+                  onPlayToEnd={isActivePose ? handleVideoSequenceEnd : undefined}
                 />
               );
             })}
           </>
         ) : (
-          <Video
+          <AppVideo
             key={current.id}
-            ref={videoRef}
+            onPlayerChange={(player) => {
+              videoRef.current = player;
+            }}
             source={videoSource}
             style={[styles.video, { width }]}
-            resizeMode={ResizeMode.CONTAIN}
+            contentFit="contain"
             shouldPlay={isPlaying}
-            isLooping
-            isMuted
-            onPlaybackStatusUpdate={handlePlaybackStatus}
+            loop
+            muted
+            timeUpdateEventInterval={1 / 60}
+            onFirstFrameRender={() => setIsLoading(false)}
+            onStatusChange={({ status }) => {
+              if (status === "error") setIsLoading(false);
+            }}
+            onSourceLoad={({ duration }) => {
+              setIsLoading(false);
+              setDurationMillis(duration * 1000);
+            }}
+            onTimeUpdate={({ currentTime }) => {
+              setPositionMillis(currentTime * 1000);
+            }}
+            onPlayingChange={({ isPlaying: playing }) => setIsPlaying(playing)}
           />
         )}
 
@@ -309,7 +337,7 @@ export default function NewExercisesPreviewScreen() {
       <View style={[styles.controls, { paddingBottom: Math.max(insets.bottom, 10) }]}>
         <Pressable
           onPress={() => goToIndex(currentIndex - 1)}
-          style={styles.sideControl}
+          style={({ pressed }) => [styles.sideControl, pressed && styles.controlPressed]}
           accessibilityRole="button"
           accessibilityLabel="Previous exercise"
         >
@@ -318,7 +346,7 @@ export default function NewExercisesPreviewScreen() {
 
         <Pressable
           onPress={togglePlayback}
-          style={styles.playControl}
+          style={({ pressed }) => [styles.playControl, pressed && styles.playControlPressed]}
           accessibilityRole="button"
           accessibilityLabel={
             isStaticImage
@@ -339,7 +367,7 @@ export default function NewExercisesPreviewScreen() {
 
         <Pressable
           onPress={() => goToIndex(currentIndex + 1)}
-          style={styles.sideControl}
+          style={({ pressed }) => [styles.sideControl, pressed && styles.controlPressed]}
           accessibilityRole="button"
           accessibilityLabel="Next exercise"
         >
@@ -363,8 +391,11 @@ export default function NewExercisesPreviewScreen() {
                   <Text style={styles.sheetSubtitle}>{exercises.length} bundled previews</Text>
                 </View>
                 <Pressable
-                  onPress={() => setPickerVisible(false)}
-                  style={styles.sheetClose}
+                  onPress={() => {
+                    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setPickerVisible(false);
+                  }}
+                  style={({ pressed }) => [styles.sheetClose, pressed && styles.controlPressed]}
                   accessibilityRole="button"
                   accessibilityLabel="Close exercise picker"
                 >
@@ -379,10 +410,15 @@ export default function NewExercisesPreviewScreen() {
                     <Pressable
                       key={exercise.id}
                       onPress={() => {
+                        void Haptics.selectionAsync();
                         setCurrentIndex(index);
                         setPickerVisible(false);
                       }}
-                      style={[styles.sheetRow, isSelected && styles.sheetRowActive]}
+                      style={({ pressed }) => [
+                        styles.sheetRow,
+                        isSelected && styles.sheetRowActive,
+                        pressed && styles.sheetRowPressed,
+                      ]}
                       accessibilityRole="button"
                       accessibilityState={isSelected ? { selected: true } : undefined}
                       accessibilityLabel={`Preview ${getNewExerciseTitle(exercise)}`}
@@ -507,7 +543,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
   },
   hiddenVideo: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     opacity: 0,
   },
   poseLabelPill: {
@@ -533,7 +569,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   loadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(255,255,255,0.7)",
@@ -599,6 +635,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  controlPressed: {
+    opacity: 0.68,
+    transform: [{ scale: 0.96 }],
+  },
   playControl: {
     width: 78,
     height: 78,
@@ -607,6 +647,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     ...SOFT_SHADOW,
+  },
+  playControlPressed: {
+    opacity: 0.84,
+    transform: [{ scale: 0.96 }],
   },
   sheetScrim: {
     flex: 1,
@@ -677,6 +721,9 @@ const styles = StyleSheet.create({
   sheetRowActive: {
     backgroundColor: "#EFEFEF",
     borderColor: "#D5D7DC",
+  },
+  sheetRowPressed: {
+    opacity: 0.74,
   },
   sheetRowIcon: {
     width: 34,

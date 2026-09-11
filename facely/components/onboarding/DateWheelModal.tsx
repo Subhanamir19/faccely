@@ -91,7 +91,12 @@ export default function DateWheelModal({
       onRequestClose={onCancel}
     >
       <View style={styles.backdrop}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={onCancel} />
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={onCancel}
+          accessibilityRole="button"
+          accessibilityLabel="Close"
+        />
         <View style={[styles.sheet, { paddingBottom: insets.bottom + SP[4] }]}>
           <View style={styles.header}>
             <Pressable onPress={onCancel} hitSlop={12}>

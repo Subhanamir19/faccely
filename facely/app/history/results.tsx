@@ -11,7 +11,7 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { Image as ExpoImage } from "expo-image";
-import { Ionicons } from "@expo/vector-icons";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, { FadeInDown, FadeIn } from "react-native-reanimated";
@@ -21,7 +21,7 @@ import Text from "@/components/ui/T";
 import { COLORS, SP, RADII } from "@/lib/tokens";
 import { ms, sh, sw } from "@/lib/responsive";
 
-const goToArchive = () => router.push("/(tabs)/history");
+const goToArchive = () => router.push("/history");
 
 const FONT = "DINNextRounded-Regular";
 const SAGE = "#3F7A2A";

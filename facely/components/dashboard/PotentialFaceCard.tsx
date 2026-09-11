@@ -251,9 +251,9 @@ function CompareCell({
         ]}
       >
         {uri ? (
-          <Image source={{ uri }} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
+          <Image source={{ uri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
         ) : (
-          <View style={[StyleSheet.absoluteFillObject, styles.imagePlaceholder]} />
+          <View style={[StyleSheet.absoluteFill, styles.imagePlaceholder]} />
         )}
       </View>
       <T style={[styles.imageLabel, accent && styles.imageLabelAccent]}>{label}</T>
@@ -356,6 +356,8 @@ function DetailModal({
       <Pressable
         style={[StyleSheet.absoluteFill, styles.modalBackdrop]}
         onPress={onClose}
+        accessibilityRole="button"
+        accessibilityLabel="Close"
       />
       <View style={styles.sheetWrap} pointerEvents="box-none">
         <View style={styles.sheet} onStartShouldSetResponder={() => true}>
@@ -370,7 +372,12 @@ function DetailModal({
                 {overallPct === null ? "Your potential" : `${overallPct}% closer`}
               </T>
             </View>
-            <Pressable onPress={onClose} hitSlop={12}>
+            <Pressable
+              onPress={onClose}
+              hitSlop={12}
+              accessibilityRole="button"
+              accessibilityLabel="Close"
+            >
               <X size={ms(20)} color={COLORS.lightText} />
             </Pressable>
           </View>

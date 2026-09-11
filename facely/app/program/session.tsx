@@ -9,7 +9,6 @@ import {
   Image,
   Modal,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -19,7 +18,7 @@ import {
 import { Image as ExpoImage, type ImageContentPosition } from "expo-image";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Video, ResizeMode, type AVPlaybackStatus } from "expo-av";
+import type { VideoPlayer } from "expo-video";
 import LottieView from "lottie-react-native";
 import Svg, { Circle, Path, Rect } from "react-native-svg";
 import Animated, {
@@ -31,12 +30,12 @@ import Animated, {
   useSharedValue,
   useAnimatedStyle,
   useAnimatedProps,
-  withSpring,
   withTiming,
   withSequence,
   withRepeat,
   cancelAnimation,
   Easing,
+  useReducedMotion,
 } from "react-native-reanimated";
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 import * as Haptics from "expo-haptics";
@@ -71,8 +70,11 @@ import { getExerciseGuide } from "@/lib/exerciseGuideData";
 import { getExerciseIcon } from "@/lib/exerciseIcons";
 import { useTasksStore, type DailyTask } from "@/store/tasks";
 import { EXERCISE_CATALOG } from "@/lib/taskSelection";
+import AppVideo from "@/components/ui/AppVideo";
 
-const GUIDE_FONT = "DINNextRounded-Regular";
+const SESSION_FONT_REGULAR = "DINNextRounded-Regular";
+const SESSION_FONT_BOLD = "DINNextRounded-Bold";
+const GUIDE_FONT = SESSION_FONT_REGULAR;
 
 // ---------------------------------------------------------------------------
 // Exercises that use image pair animation instead of video
@@ -155,6 +157,18 @@ const VIDEO_SUB_TEXT = "#767A83";
 const VIDEO_SURFACE = "#F3F4F6";
 const VIDEO_TRACK = "#E5E7EB";
 
+function playSelectionHaptic() {
+  void Haptics.selectionAsync();
+}
+
+function playImpactHaptic(style: Haptics.ImpactFeedbackStyle) {
+  void Haptics.impactAsync(style);
+}
+
+function playNotificationHaptic(type: Haptics.NotificationFeedbackType) {
+  void Haptics.notificationAsync(type);
+}
+
 const VIDEO_MEDIA_FRAMES: Record<string, { scale: number; translateX: number; translateY: number }> = {
   "chin-tucks-v2": { scale: 1.45, translateX: 0.1, translateY: 0 },
   "fish-face-v2": { scale: 1.18, translateX: 0, translateY: 0.04 },
@@ -173,89 +187,104 @@ function clamp(value: number, min: number, max: number) {
 function createVideoTimerLayout({
   width,
   height,
+  topInset,
   bottomInset,
   exerciseId,
 }: {
   width: number;
   height: number;
+  topInset: number;
   bottomInset: number;
   exerciseId: string;
 }) {
-  const baseWidth = 390;
-  const baseHeight = 844;
   const shortEdge = Math.max(1, Math.min(width, height));
-  const viewportScale = clamp(Math.min(width / baseWidth, height / baseHeight), 0.86, 1.18);
-  const unit = shortEdge / 100;
-  const scale = (value: number) => Math.round(value * viewportScale);
-
-  const gutter = clamp(width * 0.052, scale(16), scale(24));
-  const headerHeight = clamp(height * 0.112, scale(78), scale(104));
-  const headerButtonSize = clamp(shortEdge * 0.145, scale(48), scale(58));
-  const counterWidth = clamp(shortEdge * 0.24, scale(78), scale(96));
-  const counterHeight = clamp(shortEdge * 0.135, scale(44), scale(54));
-  const transportButtonSize = clamp(shortEdge * 0.145, scale(48), scale(58));
-  const playButtonSize = clamp(shortEdge * 0.215, scale(72), scale(88));
-  const bottomButtonSize = clamp(shortEdge * 0.13, scale(46), scale(54));
-  const bottomBarHeight = clamp(height * 0.088, scale(64), scale(80)) + bottomInset;
-  const transportHeight = clamp(height * 0.11, scale(82), scale(100));
-  const infoPaddingX = clamp(width * 0.097, scale(28), scale(40));
-  const infoGap = clamp(unit * 3.6, scale(10), scale(15));
-  const instructionFont = clamp(unit * 4.3, scale(15), scale(18));
+  const safeContentHeight = Math.max(1, height - topInset - bottomInset);
+  const heightScale = clamp(safeContentHeight / 763, 0.8, 1.12);
+  const compact = safeContentHeight < 690;
+  const gutter = clamp(width * 0.05, 16, 24);
+  const mediaWidth = Math.min(width - gutter * 2, 520);
+  const headerContentHeight = clamp(64 * heightScale, 52, 68);
+  const headerHeight = topInset + headerContentHeight;
+  const headerButtonSize = clamp(52 * heightScale, 48, 56);
+  const counterWidth = clamp(shortEdge * 0.23, 80, 96);
+  const counterHeight = clamp(50 * heightScale, 46, 54);
+  const transportButtonSize = clamp(54 * heightScale, 48, 58);
+  const playButtonSize = clamp(82 * heightScale, 72, 88);
+  const bottomButtonSize = clamp(48 * heightScale, 44, 52);
+  const bottomContentHeight = clamp(68 * heightScale, 60, 74);
+  const bottomBarHeight = bottomContentHeight + bottomInset;
+  const transportHeight = clamp(90 * heightScale, 76, 96);
+  const transportMarginBottom = compact ? 8 : 12;
+  const infoPaddingX = clamp(width * 0.08, 24, 40);
+  const infoGap = clamp(12 * heightScale, 8, 14);
+  const infoPaddingTop = clamp(14 * heightScale, 8, 16);
+  const instructionFont = clamp(16 * heightScale, 14, 18);
   const instructionLine = Math.round(instructionFont * 1.48);
-  const timerFont = clamp(unit * 14.7, scale(48), scale(60));
-  const targetFont = clamp(unit * 3.1, scale(10), scale(12));
-  const titleFont = clamp(unit * 6.1, scale(19), scale(24));
-  const progressHeight = clamp(unit * 1.8, scale(6), scale(8));
+  const timerFont = clamp(58 * heightScale, 46, 62);
+  const timerLineHeight = Math.round(timerFont * 1.08);
+  const targetFont = clamp(11 * heightScale, 10, 12);
+  const targetLineHeight = Math.round(targetFont * 1.35);
+  const titleFont = clamp(20 * heightScale, 17, 22);
+  const progressHeight = clamp(7 * heightScale, 6, 8);
   const counterTrackWidth = counterWidth * 0.62;
-  const mediaRatio = exerciseId === "chin-tucks-v2" ? 0.48 : 0.42;
-  const reservedHeight =
-    headerHeight +
-    bottomBarHeight +
-    transportHeight +
-    timerFont * 1.2 +
-    instructionLine * 2.8 +
-    infoGap * 5;
-  const minMediaHeight = shortEdge * 0.62;
-  const maxMediaHeight = Math.max(minMediaHeight, height - reservedHeight);
-  const mediaHeight = clamp(height * mediaRatio, minMediaHeight, maxMediaHeight);
+  const estimatedInfoHeight =
+    infoPaddingTop +
+    timerLineHeight +
+    progressHeight +
+    instructionLine * 3 +
+    targetLineHeight +
+    infoGap * 4;
+  const mediaBudget = Math.max(
+    168,
+    safeContentHeight -
+      headerContentHeight -
+      bottomContentHeight -
+      transportHeight -
+      transportMarginBottom -
+      estimatedInfoHeight,
+  );
+  const desiredMediaHeight = mediaWidth * (exerciseId === "chin-tucks-v2" ? 0.98 : 0.9);
+  const mediaHeight = Math.min(desiredMediaHeight, mediaBudget);
 
   return {
     gutter,
     headerHeight,
-    headerGap: unit * 3,
+    headerPaddingTop: topInset,
+    headerGap: clamp(gutter * 0.6, 8, 12),
     headerButtonSize,
-    headerIconSize: headerButtonSize * 0.54,
-    headerIconStroke: clamp(unit * 0.84, 2.6, 3.4),
+    headerIconSize: headerButtonSize * 0.5,
+    headerIconStroke: clamp(shortEdge * 0.008, 2.6, 3.2),
     titleFont,
     titleLineHeight: titleFont * 1.2,
     counterWidth,
     counterHeight,
-    counterRadius: counterHeight / 2,
+    counterRadius: RADII.lg,
     counterFont: titleFont * 0.84,
     counterTrackWidth,
     counterTrackHeight: progressHeight,
-    mediaWidth: width,
+    mediaWidth,
     mediaHeight,
+    mediaRadius: RADII.xl,
     prepFont: shortEdge * 0.24,
     infoPaddingX,
-    infoPaddingTop: unit * 3.6,
+    infoPaddingTop,
     infoGap,
     timerFont,
-    timerLineHeight: timerFont * 1.1,
+    timerLineHeight,
     progressHeight,
     instructionFont,
     instructionLine,
     targetFont,
-    targetLineHeight: targetFont * 1.35,
+    targetLineHeight,
     transportHeight,
-    transportGap: unit * 7.6,
-    transportMarginBottom: unit * 4.6,
+    transportGap: clamp(shortEdge * 0.07, 24, 32),
+    transportMarginBottom,
     transportButtonSize,
     transportIconSize: transportButtonSize * 0.48,
     playButtonSize,
     playIconSize: playButtonSize * 0.49,
     bottomBarHeight,
-    bottomBarPaddingX: width * 0.14,
+    bottomBarPaddingX: clamp(width * 0.12, 36, 56),
     bottomButtonSize,
     bottomIconSize: bottomButtonSize * 0.58,
     bottomInset,
@@ -420,7 +449,7 @@ function CircleFrame({
           <ExpoImage
             key={`${exerciseKey}-${poseIndex}`}
             source={imagePair[poseIndex]}
-            style={StyleSheet.absoluteFillObject}
+            style={StyleSheet.absoluteFill}
             contentFit="cover"
             contentPosition={imagePairPosition ?? "center"}
           />
@@ -438,7 +467,7 @@ function CircleFrame({
         ) : videoSrc ? (
           // Always mounted so it preloads during the prep countdown;
           // shouldPlay is gated so it only starts after prep ends.
-          <Video
+          <AppVideo
             key={exerciseKey}
             source={videoSrc}
             style={[
@@ -447,10 +476,10 @@ function CircleFrame({
                 ? { top: videoOffset, bottom: -videoOffset }
                 : undefined,
             ]}
-            resizeMode={ResizeMode.COVER}
+            contentFit="cover"
             shouldPlay={prepCountdown <= 0 && !isPaused}
-            isLooping
-            isMuted
+            loop
+            muted
           />
         ) : (
           <View style={{ flex: 1, backgroundColor: "#1C1C1C", width: "100%" }} />
@@ -471,7 +500,7 @@ function CircleFrame({
               style={{
                 color: COLORS.accent,
                 fontSize: Math.round(innerSize * 0.42),
-                fontFamily: "Poppins-SemiBold",
+                fontFamily: SESSION_FONT_BOLD,
                 lineHeight: Math.round(innerSize * 0.50),
               }}
             >
@@ -521,6 +550,11 @@ function HowToSheet({
   const durationCopy = detail?.reps ?? guide?.holdTime ?? guide?.reps ?? timingLabel;
   const tipCopy = detail?.tip ?? guide?.tips?.[0];
   const metaCopy = [targetCopy, durationCopy].filter(Boolean).join(" - ");
+  const handleButtonClose = useCallback(() => {
+    playSelectionHaptic();
+    onClose();
+  }, [onClose]);
+
   return (
     <Modal
       transparent
@@ -538,7 +572,12 @@ function HowToSheet({
                 <Text style={styles.howToEyebrow}>How to perform</Text>
                 <Text style={styles.howToTitle} numberOfLines={1}>{title}</Text>
               </View>
-              <Pressable onPress={onClose} style={styles.howToCloseBtn}>
+              <Pressable
+                onPress={handleButtonClose}
+                style={styles.howToCloseBtn}
+                accessibilityRole="button"
+                accessibilityLabel="Close instructions"
+              >
                 <X size={18} color="rgba(255,255,255,0.72)" strokeWidth={2.4} />
               </Pressable>
             </View>
@@ -620,7 +659,7 @@ function HowToSheet({
               )}
             </ScrollView>
             <Pressable
-              onPress={onClose}
+              onPress={handleButtonClose}
               style={({ pressed }) => [styles.howToGotItBtn, pressed && styles.howToGotItBtnPressed]}
               accessibilityRole="button"
               accessibilityLabel="Close exercise guide"
@@ -648,6 +687,7 @@ export default function SessionScreen() {
   const { today, completeTask, skipTask } = useTasksStore();
   const getEffectiveDuration = useExerciseSettings((s) => s.getDuration);
   const params = useLocalSearchParams<{ previewExerciseIds?: string }>();
+  const reduceMotion = useReducedMotion();
 
   // Snapshot pending tasks at session start — never re-read from store during session.
   // Dev preview mode: if previewExerciseIds param is provided, build fake tasks for those IDs.
@@ -674,7 +714,7 @@ export default function SessionScreen() {
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [sequenceFrameIndex, setSequenceFrameIndex] = useState(0);
-  const sequenceVideoRefs = useRef<Array<Video | null>>([]);
+  const sequenceVideoRefs = useRef<Array<VideoPlayer | null>>([]);
   // Initialize with the real duration of the first exercise so timeLeft is never
   // 0 on mount. The auto-complete effect fires when timeLeft === 0, so starting
   // at 0 would incorrectly credit the first exercise before the user does anything.
@@ -716,13 +756,20 @@ export default function SessionScreen() {
   useEffect(() => { skipTaskRef.current = skipTask; }, [skipTask]);
   useEffect(() => { timeLeftRef.current = timeLeft; }, [timeLeft]);
 
-  // Timer tick: subtle slide-in on each second, no bounce
+  // Animate only meaningful timer state changes. Animating every second makes
+  // the most frequently-read text feel restless during a workout.
   useEffect(() => {
-    timerY.value = -8;
+    timerY.value = reduceMotion ? 0 : -6;
     timerOpacity.value = 0;
-    timerY.value = withTiming(0, { duration: 200 });
-    timerOpacity.value = withTiming(1, { duration: 180 });
-  }, [timeLeft]); // eslint-disable-line react-hooks/exhaustive-deps
+    timerY.value = withTiming(0, {
+      duration: 140,
+      easing: Easing.bezier(0.23, 1, 0.32, 1),
+    });
+    timerOpacity.value = withTiming(1, {
+      duration: 140,
+      easing: Easing.bezier(0.23, 1, 0.32, 1),
+    });
+  }, [currentIndex, isPaused, reduceMotion]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Always-fresh helpers used by interval callbacks and event handlers
   const markCompleteRef = useRef<(id: string) => void>(() => {});
@@ -765,10 +812,11 @@ export default function SessionScreen() {
       createVideoTimerLayout({
         width,
         height,
+        topInset: insets.top,
         bottomInset: insets.bottom,
         exerciseId: resolvedExerciseId,
       }),
-    [width, height, insets.bottom, resolvedExerciseId],
+    [width, height, insets.top, insets.bottom, resolvedExerciseId],
   );
   const timerInstruction = current ? getNewExerciseInstruction(current.exerciseId) || current.reason : "";
   const timerTitle = current ? getNewExerciseTitle(current.exerciseId) : "";
@@ -803,11 +851,12 @@ export default function SessionScreen() {
     return () => clearInterval(id);
   }, [exerciseMedia?.mediaType, isPaused, prepCountdown, sequenceSources.length, currentIndex]);
 
-  const handleVideoSequenceStatus = useCallback((status: AVPlaybackStatus) => {
-    if (!status.isLoaded || !status.didJustFinish || !isVideoSequence || sequenceSources.length < 2) return;
+  const handleVideoSequenceEnd = useCallback(() => {
+    if (!isVideoSequence || sequenceSources.length < 2) return;
     setSequenceFrameIndex((index) => {
       const nextIndex = (index + 1) % sequenceSources.length;
-      sequenceVideoRefs.current[nextIndex]?.setPositionAsync(0).catch(() => {});
+      const nextPlayer = sequenceVideoRefs.current[nextIndex];
+      if (nextPlayer) nextPlayer.currentTime = 0;
       return nextIndex;
     });
   }, [isVideoSequence, sequenceSources.length]);
@@ -885,7 +934,7 @@ export default function SessionScreen() {
 
     const cur = exercises[currentIndexRef.current];
     if (cur) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      playNotificationHaptic(Haptics.NotificationFeedbackType.Success);
       markCompleteRef.current(cur.exerciseId);
     }
 
@@ -905,7 +954,7 @@ export default function SessionScreen() {
   // ---------------------------------------------------------------------------
   useEffect(() => {
     if (phase !== "complete") return;
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    if (timeLeft > 0) playNotificationHaptic(Haptics.NotificationFeedbackType.Success);
     const t = setTimeout(() => router.back(), 2800);
     return () => clearTimeout(t);
   }, [phase]);
@@ -914,25 +963,29 @@ export default function SessionScreen() {
   // Controls
   // ---------------------------------------------------------------------------
   const handlePause = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    playSelectionHaptic();
     playScale.value = withSequence(
-      withSpring(0.86, { damping: 15, stiffness: 420 }),
-      withSpring(1, { damping: 12, stiffness: 200 })
+      withTiming(0.97, { duration: 100 }),
+      withTiming(1, {
+        duration: 120,
+        easing: Easing.bezier(0.23, 1, 0.32, 1),
+      })
     );
     setIsPaused((p) => !p);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSkip = useCallback(() => {
+    if (timeLeft === 0) return;
+
+    playSelectionHaptic();
+
     // During prep countdown: skip prep, start exercise immediately
     if (prepCountdown > 0) {
       setPrepCountdown(0);
       return;
     }
-    // Timer already done (at 0) — advance already fired, nothing to do
-    if (timeLeft === 0) return;
 
     // Active exercise with time remaining → pause + show confirmation modal
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (intervalRef.current) clearInterval(intervalRef.current);
     setIsPaused(true);
     setShowSkipModal(true);
@@ -947,6 +1000,7 @@ export default function SessionScreen() {
     if (nextIdx >= exercisesRef.current.length) {
       setPhase("complete");
     } else {
+      playNotificationHaptic(Haptics.NotificationFeedbackType.Success);
       setSlideDir("right");
       setCurrentIndex(nextIdx);
       setPrepCountdown(PREP_SECONDS);
@@ -964,6 +1018,7 @@ export default function SessionScreen() {
     if (nextIdx >= exercisesRef.current.length) {
       setPhase("complete");
     } else {
+      playSelectionHaptic();
       setSlideDir("right");
       setCurrentIndex(nextIdx);
       setPrepCountdown(PREP_SECONDS);
@@ -975,7 +1030,7 @@ export default function SessionScreen() {
   const handlePrev = useCallback(() => {
     if (currentIndex === 0) return;
     if (intervalRef.current) clearInterval(intervalRef.current);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    playSelectionHaptic();
 
     // Clear any active prep countdown — going back starts the exercise immediately
     setPrepCountdown(0);
@@ -1011,18 +1066,27 @@ export default function SessionScreen() {
   }, [currentIndex, phase, prepCountdown, timeLeft, duration, doneInSession, exercises]);
 
   const handleExit = useCallback(() => {
+    playImpactHaptic(Haptics.ImpactFeedbackStyle.Light);
     setIsPaused(true);
     setShowLeaveModal(true);
   }, []);
 
   const handleLeaveConfirm = useCallback(() => {
+    playImpactHaptic(Haptics.ImpactFeedbackStyle.Medium);
     setShowLeaveModal(false);
     router.back();
   }, []);
 
   const handleLeaveCancel = useCallback(() => {
+    playSelectionHaptic();
     setShowLeaveModal(false);
     setIsPaused(false);
+  }, []);
+
+  const handleOpenHowTo = useCallback(() => {
+    playImpactHaptic(Haptics.ImpactFeedbackStyle.Light);
+    setIsPaused(true);
+    setShowHowTo(true);
   }, []);
 
   // ---------------------------------------------------------------------------
@@ -1060,20 +1124,21 @@ export default function SessionScreen() {
 
   if (phase === "complete") {
     // Blank screen while navigation is deferred
-    return <SafeAreaView style={styles.safe} />;
+    return <View style={styles.safe} />;
   }
 
   // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
   return (
-    <SafeAreaView style={styles.safe}>
+    <View style={styles.safe}>
       <View style={styles.videoOverlayRoot}>
         <View
           style={[
             styles.videoHeader,
             {
               height: timerLayout.headerHeight,
+              paddingTop: timerLayout.headerPaddingTop,
               paddingHorizontal: timerLayout.gutter,
               gap: timerLayout.headerGap,
             },
@@ -1081,13 +1146,14 @@ export default function SessionScreen() {
         >
           <Pressable
             onPress={handleExit}
-            style={[
+            style={({ pressed }) => [
               styles.videoBackButton,
               {
                 width: timerLayout.headerButtonSize,
                 height: timerLayout.headerButtonSize,
                 borderRadius: timerLayout.headerButtonSize / 2,
               },
+              pressed && styles.videoControlPressed,
             ]}
             accessibilityRole="button"
             accessibilityLabel="Leave session"
@@ -1106,8 +1172,8 @@ export default function SessionScreen() {
             {(timerTitle || current?.name || "").toUpperCase()}
           </Text>
           <Pressable
-            onPress={() => { setIsPaused(true); setShowHowTo(true); }}
-            style={[
+            onPress={handleOpenHowTo}
+            style={({ pressed }) => [
               styles.videoCounterPill,
               {
                 width: timerLayout.counterWidth,
@@ -1115,6 +1181,7 @@ export default function SessionScreen() {
                 borderRadius: timerLayout.counterRadius,
                 gap: timerLayout.counterTrackHeight,
               },
+              pressed && styles.videoControlPressed,
             ]}
             accessibilityRole="button"
             accessibilityLabel="How to perform this exercise"
@@ -1140,8 +1207,15 @@ export default function SessionScreen() {
 
         <Animated.View
           key={`video-media-${currentIndex}`}
-          entering={slideDir === "right" ? FadeInRight.duration(280).springify() : FadeInLeft.duration(280).springify()}
-          style={[styles.videoMediaStage, { height: timerLayout.mediaHeight }]}
+          entering={reduceMotion ? FadeIn.duration(160) : slideDir === "right" ? FadeInRight.duration(220) : FadeInLeft.duration(220)}
+          style={[
+            styles.videoMediaStage,
+            {
+              width: timerLayout.mediaWidth,
+              height: timerLayout.mediaHeight,
+              borderRadius: timerLayout.mediaRadius,
+            },
+          ]}
         >
           <View
             style={[
@@ -1163,32 +1237,31 @@ export default function SessionScreen() {
                 {sequenceSources.map((source, index) => {
                   const isActivePose = index === sequenceFrameIndex % Math.max(1, sequenceSources.length);
                   return (
-                    <Video
+                    <AppVideo
                       key={`${current?.exerciseId}-pose-${index}`}
-                      ref={(ref) => {
-                        sequenceVideoRefs.current[index] = ref;
+                      onPlayerChange={(player) => {
+                        sequenceVideoRefs.current[index] = player;
                       }}
                       source={source}
                       style={[styles.videoMedia, !isActivePose && styles.videoMediaHidden]}
-                      resizeMode={ResizeMode.CONTAIN}
+                      contentFit="contain"
                       shouldPlay={prepCountdown <= 0 && !isPaused && isActivePose}
-                      isLooping={false}
-                      isMuted
-                      progressUpdateIntervalMillis={16}
-                      onPlaybackStatusUpdate={isActivePose ? handleVideoSequenceStatus : undefined}
+                      muted
+                      surfaceType="textureView"
+                      onPlayToEnd={isActivePose ? handleVideoSequenceEnd : undefined}
                     />
                   );
                 })}
               </>
             ) : videoSrc ? (
-              <Video
+              <AppVideo
                 key={current?.exerciseId}
                 source={videoSrc}
                 style={styles.videoMedia}
-                resizeMode={ResizeMode.CONTAIN}
+                contentFit="contain"
                 shouldPlay={prepCountdown <= 0 && !isPaused}
-                isLooping
-                isMuted
+                loop
+                muted
               />
             ) : isImageMedia && currentImageSource ? (
               <Image
@@ -1231,7 +1304,7 @@ export default function SessionScreen() {
               styles.videoRedoBanner,
               {
                 marginHorizontal: timerLayout.infoPaddingX,
-                borderRadius: timerLayout.gutter * 0.76,
+                borderRadius: RADII.md,
                 paddingVertical: timerLayout.infoGap * 0.74,
               },
             ]}
@@ -1242,7 +1315,7 @@ export default function SessionScreen() {
 
         <Animated.View
           key={`video-info-${currentIndex}`}
-          entering={slideDir === "right" ? FadeInRight.duration(280).springify() : FadeInLeft.duration(280).springify()}
+          entering={reduceMotion ? FadeIn.duration(160) : slideDir === "right" ? FadeInRight.duration(220) : FadeInLeft.duration(220)}
           style={[
             styles.videoInfo,
             {
@@ -1253,6 +1326,7 @@ export default function SessionScreen() {
           ]}
         >
           <Animated.Text
+            accessibilityRole="timer"
             style={[
               styles.videoTime,
               {
@@ -1262,7 +1336,7 @@ export default function SessionScreen() {
               timerAnimStyle,
             ]}
           >
-            {formatSessionSeconds(timeLeft)}
+            {isPaused ? "PAUSED" : formatSessionSeconds(timeLeft)}
           </Animated.Text>
           <View style={[styles.videoProgressTrack, { height: timerLayout.progressHeight }]}>
             <View style={[styles.videoProgressFill, { width: `${Math.max(0.03, Math.min(1, progress)) * 100}%` }]} />
@@ -1272,6 +1346,7 @@ export default function SessionScreen() {
               styles.videoInstruction,
               { fontSize: timerLayout.instructionFont, lineHeight: timerLayout.instructionLine },
             ]}
+            numberOfLines={3}
           >
             {timerInstruction}
           </Text>
@@ -1299,7 +1374,7 @@ export default function SessionScreen() {
           <Pressable
             onPress={handlePrev}
             disabled={currentIndex === 0}
-            style={[
+            style={({ pressed }) => [
               styles.videoTransportBtn,
               {
                 width: timerLayout.transportButtonSize,
@@ -1307,6 +1382,7 @@ export default function SessionScreen() {
                 borderRadius: timerLayout.transportButtonSize / 2,
               },
               currentIndex === 0 && styles.videoTransportBtnDisabled,
+              pressed && styles.videoControlPressed,
             ]}
             accessibilityRole="button"
             accessibilityLabel="Previous exercise"
@@ -1316,13 +1392,14 @@ export default function SessionScreen() {
           <Animated.View style={playBtnAnimStyle}>
             <Pressable
               onPress={handlePause}
-              style={[
+              style={({ pressed }) => [
                 styles.videoPlayBtn,
                 {
                   width: timerLayout.playButtonSize,
                   height: timerLayout.playButtonSize,
                   borderRadius: timerLayout.playButtonSize / 2,
                 },
+                pressed && styles.videoPlayPressed,
               ]}
               accessibilityRole="button"
               accessibilityLabel={isPaused ? "Play exercise" : "Pause exercise"}
@@ -1336,13 +1413,14 @@ export default function SessionScreen() {
           </Animated.View>
           <Pressable
             onPress={handleSkip}
-            style={[
+            style={({ pressed }) => [
               styles.videoTransportBtn,
               {
                 width: timerLayout.transportButtonSize,
                 height: timerLayout.transportButtonSize,
                 borderRadius: timerLayout.transportButtonSize / 2,
               },
+              pressed && styles.videoControlPressed,
             ]}
             accessibilityRole="button"
             accessibilityLabel="Next exercise"
@@ -1363,44 +1441,53 @@ export default function SessionScreen() {
         >
           <Pressable
             onPress={handleExit}
-            style={[
+            style={({ pressed }) => [
               styles.videoBottomBtn,
               {
                 width: timerLayout.bottomButtonSize,
                 height: timerLayout.bottomButtonSize,
                 borderRadius: timerLayout.bottomButtonSize / 2,
               },
+              pressed && styles.videoBottomPressed,
             ]}
+            hitSlop={4}
+            pressRetentionOffset={12}
             accessibilityRole="button"
             accessibilityLabel="Leave session"
           >
             <X color={VIDEO_TEXT} size={timerLayout.bottomIconSize} strokeWidth={3} />
           </Pressable>
           <Pressable
-            onPress={() => { setIsPaused(true); setShowHowTo(true); }}
-            style={[
+            onPress={handleOpenHowTo}
+            style={({ pressed }) => [
               styles.videoBottomBtn,
               {
                 width: timerLayout.bottomButtonSize,
                 height: timerLayout.bottomButtonSize,
                 borderRadius: timerLayout.bottomButtonSize / 2,
               },
+              pressed && styles.videoBottomPressed,
             ]}
+            hitSlop={4}
+            pressRetentionOffset={12}
             accessibilityRole="button"
             accessibilityLabel="How to perform"
           >
             <Info color={VIDEO_TEXT} size={timerLayout.bottomIconSize} strokeWidth={2.8} />
           </Pressable>
           <Pressable
-            onPress={() => { setIsPaused(true); setShowHowTo(true); }}
-            style={[
+            onPress={handleOpenHowTo}
+            style={({ pressed }) => [
               styles.videoBottomBtn,
               {
                 width: timerLayout.bottomButtonSize,
                 height: timerLayout.bottomButtonSize,
                 borderRadius: timerLayout.bottomButtonSize / 2,
               },
+              pressed && styles.videoBottomPressed,
             ]}
+            hitSlop={4}
+            pressRetentionOffset={12}
             accessibilityRole="button"
             accessibilityLabel="Open exercise guide"
           >
@@ -1415,7 +1502,13 @@ export default function SessionScreen() {
       <View style={styles.topBar}>
 
         {/* Exit button */}
-        <Pressable onPress={handleExit} style={styles.topBarIconBtn} hitSlop={12}>
+        <Pressable
+          onPress={handleExit}
+          style={styles.topBarIconBtn}
+          hitSlop={12}
+          accessibilityRole="button"
+          accessibilityLabel="Exit session"
+        >
           <Svg width={14} height={14} viewBox="0 0 14 14" fill="none">
             <Path
               d="M1.5 1.5 L12.5 12.5 M12.5 1.5 L1.5 12.5"
@@ -1450,9 +1543,11 @@ export default function SessionScreen() {
             {currentIndex + 1}<Text style={styles.topBarCountOf}> / {total}</Text>
           </Text>
           <Pressable
-            onPress={() => { setIsPaused(true); setShowHowTo(true); }}
+            onPress={handleOpenHowTo}
             style={styles.topBarIconBtn}
             hitSlop={12}
+            accessibilityRole="button"
+            accessibilityLabel="How to do this exercise"
           >
             <Svg width={18} height={5} viewBox="0 0 18 5" fill="none">
               <Path
@@ -1515,7 +1610,7 @@ export default function SessionScreen() {
             {current?.name ?? ""}
           </Text>
           <Pressable
-            onPress={() => { setIsPaused(true); setShowHowTo(true); }}
+            onPress={handleOpenHowTo}
             style={styles.infoBtn}
             hitSlop={10}
           >
@@ -1529,7 +1624,9 @@ export default function SessionScreen() {
         </Text>
 
         {/* Big countdown timer */}
-        <Animated.Text style={[styles.timerText, timerAnimStyle]}>{timeDisplay}</Animated.Text>
+        <Animated.Text style={[styles.timerText, timerAnimStyle]}>
+          {isPaused ? "PAUSED" : timeDisplay}
+        </Animated.Text>
 
         </Animated.View>
       </View>
@@ -1541,6 +1638,9 @@ export default function SessionScreen() {
         <Pressable
           onPress={handlePrev}
           disabled={currentIndex === 0}
+          accessibilityRole="button"
+          accessibilityLabel="Previous exercise"
+          accessibilityState={{ disabled: currentIndex === 0 }}
           style={[styles.controlBtn, currentIndex === 0 && styles.controlBtnDisabled]}
           hitSlop={10}
         >
@@ -1552,7 +1652,13 @@ export default function SessionScreen() {
 
         {/* Play / Pause — animated spring wrapper */}
         <Animated.View style={playBtnAnimStyle}>
-          <Pressable onPress={handlePause} style={[styles.controlBtn, styles.controlBtnCenter]} hitSlop={10}>
+          <Pressable
+            onPress={handlePause}
+            style={[styles.controlBtn, styles.controlBtnCenter]}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel={isPaused ? "Resume exercise" : "Pause exercise"}
+          >
             {isPaused ? (
               <Svg width={38} height={38} viewBox="0 0 24 24" fill="none">
                 <Path d="M7 4.5 L20 12 L7 19.5 Z" fill="#B0B0B0" />
@@ -1567,7 +1673,13 @@ export default function SessionScreen() {
         </Animated.View>
 
         {/* Skip forward */}
-        <Pressable onPress={handleSkip} style={styles.controlBtn} hitSlop={10}>
+        <Pressable
+          onPress={handleSkip}
+          style={styles.controlBtn}
+          hitSlop={10}
+          accessibilityRole="button"
+          accessibilityLabel="Skip exercise"
+        >
           <Svg width={28} height={28} viewBox="0 0 24 24" fill="none">
             <Path d="M5 4 L16 12 L5 20 Z" fill="#9A9A9A" />
             <Rect x="17" y="4" width="3" height="16" rx="1.5" fill="#9A9A9A" />
@@ -1690,7 +1802,7 @@ export default function SessionScreen() {
         />
       )}
 
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -1700,7 +1812,7 @@ export default function SessionScreen() {
 
 const styles = StyleSheet.create({
   videoOverlayRoot: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     zIndex: 50,
     elevation: 50,
     backgroundColor: "#FFFFFF",
@@ -1709,30 +1821,33 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    paddingBottom: SP[2],
   },
   videoBackButton: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: VIDEO_SURFACE,
+    borderWidth: 1,
+    borderColor: "#E9EAED",
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#000000",
-    shadowOpacity: 0.12,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 6,
+    boxShadow: "0 4px 14px rgba(0, 0, 0, 0.10)",
   },
   videoHeaderTitle: {
     flex: 1,
-    textAlign: "center",
-    fontFamily: "ProximaNova-Bold",
+    textAlign: "left",
+    fontFamily: SESSION_FONT_BOLD,
     color: VIDEO_TEXT,
+    letterSpacing: 0.2,
   },
   videoCounterPill: {
     backgroundColor: VIDEO_SURFACE,
+    borderWidth: 1,
+    borderColor: "#E9EAED",
+    borderCurve: "continuous",
     alignItems: "center",
     justifyContent: "center",
   },
   videoCounterText: {
-    fontFamily: "ProximaNova-Bold",
+    fontFamily: SESSION_FONT_BOLD,
     color: VIDEO_TEXT,
   },
   videoCounterTrack: {
@@ -1746,7 +1861,11 @@ const styles = StyleSheet.create({
     backgroundColor: VIDEO_TEXT,
   },
   videoMediaStage: {
-    width: "100%",
+    alignSelf: "center",
+    borderCurve: "continuous",
+    borderWidth: 1,
+    borderColor: "#EEEFF1",
+    backgroundColor: "#F8F8F9",
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
@@ -1761,7 +1880,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
   },
   videoMediaHidden: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     opacity: 0,
   },
   videoPoseLabelPill: {
@@ -1775,7 +1894,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   videoPoseLabelText: {
-    fontFamily: "ProximaNova-Bold",
+    fontFamily: SESSION_FONT_BOLD,
     color: "#FFFFFF",
     fontSize: 13,
     lineHeight: 16,
@@ -1788,13 +1907,13 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
   },
   videoPrepOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "rgba(255,255,255,0.72)",
     alignItems: "center",
     justifyContent: "center",
   },
   videoPrepText: {
-    fontFamily: "ProximaNova-Bold",
+    fontFamily: SESSION_FONT_BOLD,
     color: VIDEO_TEXT,
   },
   videoRedoBanner: {
@@ -1803,18 +1922,23 @@ const styles = StyleSheet.create({
     borderColor: "#F7D58A",
   },
   videoRedoText: {
-    fontFamily: "ProximaNova-Bold",
+    fontFamily: SESSION_FONT_BOLD,
     fontSize: 13,
     color: "#9A6500",
     textAlign: "center",
   },
   videoInfo: {
+    width: "100%",
+    maxWidth: 560,
+    alignSelf: "center",
     alignItems: "center",
   },
   videoTime: {
-    fontFamily: "ProximaNova-Bold",
+    fontFamily: SESSION_FONT_BOLD,
     color: VIDEO_TEXT,
     textAlign: "center",
+    fontVariant: ["tabular-nums"],
+    letterSpacing: -1,
   },
   videoProgressTrack: {
     width: "100%",
@@ -1828,13 +1952,13 @@ const styles = StyleSheet.create({
     backgroundColor: VIDEO_TEXT,
   },
   videoInstruction: {
-    fontFamily: "Poppins-Regular",
+    fontFamily: SESSION_FONT_REGULAR,
     color: VIDEO_SUB_TEXT,
     textAlign: "center",
   },
   videoTarget: {
     alignSelf: "stretch",
-    fontFamily: "ProximaNova-Bold",
+    fontFamily: SESSION_FONT_BOLD,
     color: "#A1A4AA",
     textAlign: "center",
   },
@@ -1847,7 +1971,9 @@ const styles = StyleSheet.create({
   videoTransportBtn: {
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#F4F4F5",
+    backgroundColor: VIDEO_SURFACE,
+    borderWidth: 1,
+    borderColor: "#E9EAED",
   },
   videoTransportBtnDisabled: {
     opacity: 0.35,
@@ -1856,13 +1982,10 @@ const styles = StyleSheet.create({
     backgroundColor: VIDEO_TEXT,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#000000",
-    shadowOpacity: 0.22,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 10,
+    boxShadow: "0 10px 24px rgba(0, 0, 0, 0.22)",
   },
   videoBottomBar: {
+    paddingTop: SP[1],
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: "#EEEEF0",
     flexDirection: "row",
@@ -1873,6 +1996,18 @@ const styles = StyleSheet.create({
   videoBottomBtn: {
     alignItems: "center",
     justifyContent: "center",
+  },
+  videoControlPressed: {
+    opacity: 0.72,
+    transform: [{ scale: 0.96 }],
+  },
+  videoPlayPressed: {
+    opacity: 0.88,
+    transform: [{ scale: 0.97 }],
+  },
+  videoBottomPressed: {
+    backgroundColor: VIDEO_SURFACE,
+    opacity: 0.72,
   },
   safe: {
     flex: 1,
@@ -1907,13 +2042,13 @@ const styles = StyleSheet.create({
   topBarCount: {
     color: COLORS.text,
     fontSize: 13,
-    fontFamily: "Poppins-SemiBold",
+    fontFamily: SESSION_FONT_BOLD,
     letterSpacing: -0.2,
   },
   topBarCountOf: {
     color: COLORS.sub,
     fontSize: 12,
-    fontFamily: "Poppins-Regular",
+    fontFamily: SESSION_FONT_REGULAR,
   },
 
   // ── Progress dots ─────────────────────────────────────────────────────────────
@@ -1957,7 +2092,7 @@ const styles = StyleSheet.create({
   redoBannerText: {
     color: "#F59E0B",
     fontSize: 13,
-    fontFamily: "Poppins-SemiBold",
+    fontFamily: SESSION_FONT_BOLD,
     textAlign: "center",
   },
 
@@ -1980,7 +2115,7 @@ const styles = StyleSheet.create({
   exerciseName: {
     color: COLORS.text,
     fontSize: 22,
-    fontFamily: "Poppins-SemiBold",
+    fontFamily: SESSION_FONT_BOLD,
     letterSpacing: -0.3,
     flexShrink: 1,
   },
@@ -2001,7 +2136,7 @@ const styles = StyleSheet.create({
   targetLabel: {
     color: COLORS.sub,
     fontSize: 13,
-    fontFamily: "Poppins-SemiBold",
+    fontFamily: SESSION_FONT_BOLD,
     textTransform: "capitalize",
     letterSpacing: 0.3,
   },
@@ -2010,7 +2145,7 @@ const styles = StyleSheet.create({
   timerText: {
     color: COLORS.text,
     fontSize: 56,
-    fontFamily: "Poppins-SemiBold",
+    fontFamily: SESSION_FONT_BOLD,
     letterSpacing: -2,
     lineHeight: 62,
     marginTop: SP[2],
@@ -2079,14 +2214,14 @@ const styles = StyleSheet.create({
   completeTitle: {
     color: COLORS.text,
     fontSize: 28,
-    fontFamily: "Poppins-SemiBold",
+    fontFamily: SESSION_FONT_BOLD,
     textAlign: "center",
     letterSpacing: -0.5,
   },
   completeSub: {
     color: COLORS.sub,
     fontSize: 16,
-    fontFamily: "Poppins-SemiBold",
+    fontFamily: SESSION_FONT_BOLD,
     textAlign: "center",
   },
   completeStreakPill: {
@@ -2101,7 +2236,7 @@ const styles = StyleSheet.create({
   completeStreakText: {
     color: COLORS.accent,
     fontSize: 14,
-    fontFamily: "Poppins-SemiBold",
+    fontFamily: SESSION_FONT_BOLD,
   },
 
   // Leave modal
@@ -2130,14 +2265,14 @@ const styles = StyleSheet.create({
   modalTitle: {
     color: COLORS.text,
     fontSize: 20,
-    fontFamily: "Poppins-SemiBold",
+    fontFamily: SESSION_FONT_BOLD,
     textAlign: "center",
     marginBottom: SP[2],
   },
   modalBody: {
     color: COLORS.sub,
     fontSize: 14,
-    fontFamily: "Poppins-SemiBold",
+    fontFamily: SESSION_FONT_BOLD,
     textAlign: "center",
     lineHeight: 22,
     marginBottom: SP[5],
@@ -2171,7 +2306,7 @@ const styles = StyleSheet.create({
   modalBtnPrimaryText: {
     color: "#0B0B0B",
     fontSize: 16,
-    fontFamily: "Poppins-SemiBold",
+    fontFamily: SESSION_FONT_BOLD,
   },
   modalBtnGhost: {
     height: 48,
@@ -2184,7 +2319,7 @@ const styles = StyleSheet.create({
   modalBtnGhostText: {
     color: COLORS.sub,
     fontSize: 15,
-    fontFamily: "Poppins-SemiBold",
+    fontFamily: SESSION_FONT_BOLD,
   },
 
   // How to sheet

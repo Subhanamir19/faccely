@@ -36,7 +36,7 @@ export default function TimeDedicationScreen() {
   return (
     <OrangeQuestionScreen
       stepKey="time-dedication"
-      heroImage={require("@/assets/bg-assets-for-onbaording-screens/time.png")}
+      heroImage={require("@/assets/bg-assets-for-onbaording-screens/time.jpg")}
       title="How much time can you commit?"
       subtitle="We'll build a routine that fits your schedule."
       onContinue={handleNext}

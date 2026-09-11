@@ -164,14 +164,14 @@ export async function fetchAdvancedAnalysis(
   signal?: AbortSignal
 ): Promise<AdvancedAnalysis> {
   const fd = new FormData();
-  const imagePart = await prepareUploadPart(image, "image.jpg");
-  fd.append("image", imagePart as any);
+  const imagePart = await prepareUploadPart(image);
+  fd.append("image", imagePart);
 
   // Side image is optional — single-scan users won't have it.
   if (sideImage) {
     try {
-      const sidePart = await prepareUploadPart(sideImage, "side.jpg");
-      fd.append("side_image", sidePart as any);
+      const sidePart = await prepareUploadPart(sideImage);
+      fd.append("side_image", sidePart);
     } catch (e) {
       // Non-fatal: if side image fails to prepare, proceed without it.
       logger.warn("[advancedAnalysis] side image preparation failed — proceeding without ramus:", e);

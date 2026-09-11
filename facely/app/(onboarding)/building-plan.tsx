@@ -353,13 +353,13 @@ const styles = StyleSheet.create({
   },
   itemText: { flex: 1 },
   itemLabel: {
-    fontFamily: "Poppins-SemiBold",
+    fontFamily: "SFProRounded-Semibold",
     fontSize: 15,
     lineHeight: 21,
     color: COLORS.textHigh,
   },
   itemSub: {
-    fontFamily: "Poppins-SemiBold",
+    fontFamily: "SFProRounded-Semibold",
     fontSize: 12,
     lineHeight: 17,
     color: COLORS.sub,
@@ -381,7 +381,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   statusText: {
-    fontFamily: "Poppins-SemiBold",
+    fontFamily: "SFProRounded-Semibold",
     fontSize: 13,
     lineHeight: 19,
     color: COLORS.sub,
@@ -410,6 +410,6 @@ const styles = StyleSheet.create({
   ctaText: {
     color: COLORS.bgTop,
     fontSize: 17,
-    fontFamily: "Poppins-SemiBold",
+    fontFamily: "SFProRounded-Semibold",
   },
 });

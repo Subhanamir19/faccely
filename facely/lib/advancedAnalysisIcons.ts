@@ -1,7 +1,8 @@
 import type { ImageStyle } from "react-native";
 
-export const ADVANCED_ANALYSIS_FONT = "DINNextRounded-Regular";
-export const ADVANCED_ANALYSIS_FONT_BOLD = "DINNextRounded-Bold";
+export const ADVANCED_ANALYSIS_FONT = "SFProRounded-Regular";
+export const ADVANCED_ANALYSIS_FONT_SEMIBOLD = "SFProRounded-Semibold";
+export const ADVANCED_ANALYSIS_FONT_BOLD = "SFProRounded-Bold";
 
 export type AdvancedAnalysisIconId =
   | "cheekbones.width"
@@ -56,8 +57,13 @@ const DEFAULT_FIT: IconFit = { scale: 1 };
 // narrow/extra-padded illustrations visually balanced without changing the
 // surrounding card layouts.
 const ICON_FIT: Partial<Record<AdvancedAnalysisIconId, IconFit>> = {
+  // Portrait artwork has a tighter crop than the diagram assets. Pull it back
+  // slightly so the torso does not visually collide with the card divider.
+  "cheekbones.width": { scale: 0.9, translateY: -2 },
   "cheekbones.maxilla": { scale: 1.26 },
-  "cheekbones.bone_structure": { scale: 1.08 },
+  // The skull has more transparent canvas around it and needs a larger
+  // optical size to carry the same weight as the portrait illustrations.
+  "cheekbones.bone_structure": { scale: 1.16 },
   "cheekbones.fwhr": { scale: 0.98 },
   "jawline.development": { scale: 1.06 },
   "jawline.gonial_angle": { scale: 1.06 },

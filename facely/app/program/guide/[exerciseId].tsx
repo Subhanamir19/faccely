@@ -13,7 +13,8 @@ import {
 import { useLocalSearchParams, router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, { FadeInDown, Easing } from "react-native-reanimated";
-import { Ionicons } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { COLORS, RADII, SP, TYPE } from "@/lib/tokens";
 import { getExerciseGuide } from "@/lib/exerciseGuideData";
 import { POSE_FRAMES, FALLBACK_FRAME } from "@/lib/programAssets";
@@ -106,6 +107,11 @@ export default function ExerciseGuideScreen() {
   const hasFrames = !!rawFrames;
   const frames = rawFrames ?? [FALLBACK_FRAME];
 
+  const handleBack = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    router.back();
+  };
+
   const onCarouselScroll = useRef(
     (e: NativeSyntheticEvent<NativeScrollEvent>) => {
       const offsetX = e.nativeEvent.contentOffset.x;
@@ -120,7 +126,7 @@ export default function ExerciseGuideScreen() {
       <View style={[styles.root, { paddingTop: insets.top }]}>
         <View style={styles.fallbackCenter}>
           <Text style={styles.fallbackText}>No guide available.</Text>
-          <Pressable onPress={() => router.back()} style={styles.fallbackBack}>
+          <Pressable onPress={handleBack} style={styles.fallbackBack}>
             <Text style={styles.fallbackBackText}>Go back</Text>
           </Pressable>
         </View>
@@ -132,7 +138,7 @@ export default function ExerciseGuideScreen() {
     <View style={styles.root}>
       {/* Close (X) button — outside ScrollView so it's always visible */}
       <Pressable
-        onPress={() => router.back()}
+        onPress={handleBack}
         style={({ pressed }) => [
           styles.closeBtn,
           { top: insets.top + SP[2] + (hasFrames ? SP[3] : 0) },

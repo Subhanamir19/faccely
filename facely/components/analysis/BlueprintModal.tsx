@@ -394,7 +394,12 @@ export function BlueprintModal({ data, imageUri, visible, onDismiss }: Blueprint
     >
       {/* Backdrop — tap to dismiss */}
       <Animated.View style={[StyleSheet.absoluteFill, m.backdrop, backdropStyle]}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={dismiss} />
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={dismiss}
+          accessibilityRole="button"
+          accessibilityLabel="Close"
+        />
       </Animated.View>
 
       {/* Sheet */}

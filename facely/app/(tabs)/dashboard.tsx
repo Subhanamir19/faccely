@@ -16,10 +16,18 @@ import {
   type ImageSourcePropType,
   Modal,
   TextInput,
+  AccessibilityInfo,
+  type StyleProp,
+  type ViewStyle,
 } from "react-native";
 import { Image as ExpoImage } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
+import {
+  GlassView,
+  isGlassEffectAPIAvailable,
+  isLiquidGlassAvailable,
+} from "expo-glass-effect";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import Animated, {
@@ -64,9 +72,15 @@ import {
   Target,
   TriangleAlert,
   X,
+  Maximize2,
 } from "lucide-react-native";
 import Text from "@/components/ui/T";
+import { APP_SCREEN_BG } from "@/components/layout/AppGradientBackground";
 import InsightPulseCard from "@/components/ui/InsightPulseCard";
+import {
+  MetricDetailCard,
+  type DetailMetric,
+} from "@/components/analysis/MetricDetailCard";
 import { COLORS, SP, RADII, TYPE, SHADOWS } from "@/lib/tokens";
 import { useInsights } from "@/store/insights";
 import { useNotifications } from "@/store/notifications";
@@ -95,6 +109,7 @@ import {
   type NextFocusRecommendation,
 } from "@/lib/nextFocusRecommendations";
 import { TopFiveCard } from "@/components/dashboard/TopFiveCard";
+import { FaceMapEntry } from "@/components/dashboard/face-map-entry";
 import ProblemsIcon from "@/assets/icons/problems.svg";
 import ProgressIcon from "@/assets/icons/progress.svg";
 import FocusIcon from "@/assets/icons/next-foucs.svg";
@@ -399,8 +414,6 @@ const METRIC_IMAGES: Record<string, any> = {
   sexual_dimorphism: require("@/assets/analysis-image-new/fullface-vector.png"),
 };
 
-const POTENTIAL_STAGE_IMAGE = require("@/assets/icons/potential-stage.png");
-const PROGRESS_MILESTONE_IMAGE = require("@/assets/icons/milestone.png");
 
 const PROGRESS_FOCUS_FALLBACK_IMAGE = require("@/assets/icons/next-foucs.png");
 
@@ -446,6 +459,50 @@ const PROGRESS_FOCUS_ICON_MAP: Record<string, ProgressFocusIconMeta> = {
 function getProgressFocusIconId(item: NextFocusRecommendation | null) {
   if (!item) return "cheekbones.bone_structure";
   return PROGRESS_FOCUS_ICON_MAP[item.id]?.iconId ?? "cheekbones.bone_structure";
+}
+
+type ProgressFocusStatus = {
+  label: "Alert" | "Moderate" | "Good";
+  status: DetailMetric["status"];
+  section: DetailMetric["section"];
+  accent: string;
+  soft: string;
+};
+
+function getProgressFocusStatus(score: number | null): ProgressFocusStatus {
+  if (score !== null && score >= 72) {
+    return {
+      label: "Good",
+      status: "fine",
+      section: "working",
+      accent: "#1C1C1E",
+      soft: "rgba(28,28,30,0.12)",
+    };
+  }
+  if (score !== null && score >= 55) {
+    return {
+      label: "Moderate",
+      status: "neutral",
+      section: "okay",
+      accent: "#FF9F0A",
+      soft: "rgba(255,159,10,0.20)",
+    };
+  }
+  return {
+    label: "Alert",
+    status: "alarming",
+    section: "needs_work",
+    accent: "#FF453A",
+    soft: "rgba(255,69,58,0.18)",
+  };
+}
+
+function getProgressFocusCategory(iconId: string): DetailMetric["category"] {
+  if (iconId.startsWith("jawline.")) return "JAW";
+  if (iconId.startsWith("eyes.")) return "EYES";
+  if (iconId.startsWith("skin.")) return "SKIN";
+  if (iconId.startsWith("haircut.")) return "HAIR";
+  return "CHEEKS";
 }
 type DashboardModuleKey = "problems" | "progress" | "focus";
 type SvgIconSource = React.ComponentType<SvgProps> | ImageSourcePropType;
@@ -536,7 +593,12 @@ function MetricDetailSheet({
   return (
     <Modal transparent animationType="none" onRequestClose={onClose}>
       {/* Backdrop */}
-      <Pressable style={styles.sheetBackdrop} onPress={onClose} />
+      <Pressable
+        style={styles.sheetBackdrop}
+        onPress={onClose}
+        accessibilityRole="button"
+        accessibilityLabel="Close"
+      />
 
       {/* Sheet */}
       <Animated.View entering={FadeInDown.duration(320)} style={styles.sheetContainer}>
@@ -1615,12 +1677,14 @@ function ProgressGraphDetail({
   overallDelta,
   graphPoints,
   daysSinceLastScan,
+  onExploreFaceMap,
 }: {
   scanCount: number;
   joinedDaysAgo: number;
   overallDelta: number;
   graphPoints: number[];
   daysSinceLastScan: number | null;
+  onExploreFaceMap: () => void;
 }) {
   const currentScore = graphPoints[graphPoints.length - 1] ?? 0;
   const tier = getScoreTier(currentScore);
@@ -1686,6 +1750,8 @@ function ProgressGraphDetail({
         overallDelta={overallDelta}
         graphPoints={graphPoints}
       />
+
+      <FaceMapEntry onPress={onExploreFaceMap} />
 
       <View style={styles.progressInsightCard}>
         <View style={styles.progressInsightRow}>
@@ -1957,114 +2023,6 @@ function OverviewFaceImage({
   );
 }
 
-function ProgressRollingDigit({
-  digit,
-  delay,
-  style,
-  height,
-}: {
-  digit: string;
-  delay: number;
-  style: any;
-  height: number;
-}) {
-  const previous = useRef(digit);
-  const [fromDigit, setFromDigit] = useState(digit);
-  const motion = useSharedValue(1);
-
-  useEffect(() => {
-    setFromDigit(previous.current);
-    previous.current = digit;
-    motion.value = 0;
-    motion.value = withDelay(delay, withTiming(1, { duration: 420, easing: Easing.out(Easing.cubic) }));
-  }, [delay, digit, motion]);
-
-  const outgoing = useAnimatedStyle(() => ({
-    transform: [{ translateY: -height * motion.value }],
-    opacity: 1 - motion.value,
-  }));
-
-  const incoming = useAnimatedStyle(() => ({
-    transform: [{ translateY: height * (1 - motion.value) }],
-    opacity: motion.value,
-  }));
-
-  return (
-    <View style={[styles.progressRollingDigitClip, { height }]}>
-      <Animated.Text style={[style, styles.progressRollingDigit, outgoing]}>{fromDigit}</Animated.Text>
-      <Animated.Text style={[style, styles.progressRollingDigit, incoming]}>{digit}</Animated.Text>
-    </View>
-  );
-}
-
-function ProgressRollingNumber({
-  value,
-  style,
-  height,
-}: {
-  value: number;
-  style: any;
-  height: number;
-}) {
-  const chars = String(Math.max(0, Math.round(value))).split("");
-
-  return (
-    <View style={styles.progressRollingNumber} accessibilityLabel={`${value}`}>
-      {chars.map((digit, index) => (
-        <ProgressRollingDigit
-          key={`${chars.length}-${index}`}
-          digit={digit}
-          delay={index * 55}
-          style={style}
-          height={height}
-        />
-      ))}
-    </View>
-  );
-}
-
-function ProgressTypewriterText({
-  text,
-  style,
-  delay = 260,
-  speedMs = 24,
-}: {
-  text: string;
-  style: any;
-  delay?: number;
-  speedMs?: number;
-}) {
-  const [visible, setVisible] = useState("");
-
-  useEffect(() => {
-    setVisible("");
-    let index = 0;
-    let interval: ReturnType<typeof setInterval> | null = null;
-    const timeout = setTimeout(() => {
-      interval = setInterval(() => {
-        index += 1;
-        setVisible(text.slice(0, index));
-        if (index >= text.length && interval) clearInterval(interval);
-      }, speedMs);
-    }, delay);
-
-    return () => {
-      clearTimeout(timeout);
-      if (interval) clearInterval(interval);
-    };
-  }, [delay, speedMs, text]);
-
-  return <Text style={style}>{visible}</Text>;
-}
-
-function ProgressHeadline({ pointsAway }: { pointsAway: number }) {
-  return (
-    <View style={styles.progressMockHeadlineRow} accessibilityLabel={`${pointsAway} points away`}>
-      <ProgressRollingNumber value={pointsAway} height={40} style={styles.progressMockHeadline} />
-      <ProgressTypewriterText text=" points away!" style={styles.progressMockHeadline} delay={360} />
-    </View>
-  );
-}
 function GapBadge({ pointsAway }: { pointsAway: number }) {
   const reveal = useSharedValue(0);
 
@@ -2339,6 +2297,8 @@ function UnifiedProgressHero({
             <Pressable
               disabled={!currentImageUri}
               onPress={() => openPreview(currentImageUri, "Current face")}
+              accessibilityRole="button"
+              accessibilityLabel="View current face photo"
               style={({ pressed }) => [
                 styles.heroCurrentImage,
                 pressed && currentImageUri && { opacity: 0.9, transform: [{ scale: 0.96 }] },
@@ -2347,7 +2307,7 @@ function UnifiedProgressHero({
               {currentImageUri ? (
                 <Image
                   source={{ uri: currentImageUri }}
-                  style={StyleSheet.absoluteFillObject}
+                  style={StyleSheet.absoluteFill}
                   resizeMode="cover"
                 />
               ) : (
@@ -2375,7 +2335,7 @@ function UnifiedProgressHero({
               {potentialUri ? (
                 <Image
                   source={{ uri: potentialUri }}
-                  style={StyleSheet.absoluteFillObject}
+                  style={StyleSheet.absoluteFill}
                   resizeMode="cover"
                 />
               ) : (
@@ -2428,6 +2388,78 @@ function UnifiedProgressHero({
   );
 }
 
+const PROGRESS_LIQUID_GLASS =
+  Platform.OS === "ios" &&
+  isLiquidGlassAvailable() &&
+  isGlassEffectAPIAvailable();
+
+function useProgressReduceTransparency() {
+  const [reduced, setReduced] = useState(false);
+
+  useEffect(() => {
+    void AccessibilityInfo.isReduceTransparencyEnabled().then(setReduced);
+    const subscription = AccessibilityInfo.addEventListener(
+      "reduceTransparencyChanged",
+      setReduced,
+    );
+    return () => subscription.remove();
+  }, []);
+
+  return reduced;
+}
+
+function ProgressGlass({
+  children,
+  style,
+  interactive = false,
+  reduced = false,
+}: {
+  children: React.ReactNode;
+  style?: StyleProp<ViewStyle>;
+  interactive?: boolean;
+  reduced?: boolean;
+}) {
+  if (PROGRESS_LIQUID_GLASS && !reduced) {
+    return (
+      <GlassView
+        glassEffectStyle="clear"
+        isInteractive={interactive}
+        tintColor="rgba(255,255,255,0.18)"
+        style={[styles.progressGlassClip, style]}
+      >
+        {children}
+      </GlassView>
+    );
+  }
+
+  return (
+    <View style={[styles.progressGlassClip, reduced && styles.progressGlassSolid, style]}>
+      {!reduced && (
+        <BlurView
+          tint="systemUltraThinMaterialLight"
+          intensity={Platform.OS === "android" ? 28 : 62}
+          blurMethod="dimezisBlurView"
+          blurReductionFactor={3}
+          style={StyleSheet.absoluteFill}
+        />
+      )}
+      <View
+        pointerEvents="none"
+        style={[
+          StyleSheet.absoluteFill,
+          {
+            backgroundColor: reduced
+              ? "rgba(250,250,250,0.96)"
+              : "rgba(255,255,255,0.34)",
+          },
+        ]}
+      />
+      <View pointerEvents="none" style={styles.progressGlassRim} />
+      {children}
+    </View>
+  );
+}
+
 function ProgressOverview({
   overall,
   currentImageUri,
@@ -2446,30 +2478,20 @@ function ProgressOverview({
   onSeeProgress: () => void;
 }) {
   const router = useRouter();
+  const reduceTransparency = useProgressReduceTransparency();
   const [preview, setPreview] = useState<null | { target: "current" | "potential"; label: string }>(null);
+  const [heroTarget, setHeroTarget] = useState<"current" | "potential">("potential");
   const [remoteCurrentImageUri, setRemoteCurrentImageUri] = useState<string | null>(null);
   const [remoteCurrentLoading, setRemoteCurrentLoading] = useState(false);
   const [showProgressPlan, setShowProgressPlan] = useState(false);
+  const [selectedFocusMetric, setSelectedFocusMetric] = useState<DetailMetric | null>(null);
   const [currentImageRetryTick, setCurrentImageRetryTick] = useState(0);
   const currentImageRetryRef = useRef(0);
   const potentialImageRetryRef = useRef(0);
-  const summaryProgress = useSharedValue(0);
-  const summaryMarkerProgress = useSharedValue(0);
   const potentialFace = usePotentialFace((s) => s.data);
   const potentialLoading = usePotentialFace((s) => s.loading);
   const loadPotentialFace = usePotentialFace((s) => s.load);
   const retryPotentialFace = usePotentialFace((s) => s.retryGeneration);
-  const currentStreak = useTasksStore((s) => s.currentStreak);
-  const potentialScore = getProgressPreviewPotentialScore(overall.current);
-  const currentRounded = Math.round(overall.current);
-  const potentialRounded = Math.max(Math.round(potentialScore), currentRounded);
-  const pointsAway = Math.max(0, potentialRounded - currentRounded);
-  const progressPct = Math.max(FACE_PROGRESS_SCORE_MIN, Math.min(FACE_PROGRESS_SCORE_MAX, currentRounded));
-  const potentialMarkerPct = Math.max(FACE_PROGRESS_SCORE_MIN, Math.min(FACE_PROGRESS_SCORE_MAX, potentialRounded));
-  const visualPotentialMarkerPct = Math.min(
-    FACE_PROGRESS_MARKER_VISUAL_MAX,
-    Math.max(potentialMarkerPct, progressPct + FACE_PROGRESS_MARKER_MIN_GAP),
-  );
   const potentialReady = potentialFace?.status === "ready";
   const potentialPending = potentialFace?.status === "pending" || potentialLoading;
   const potentialFailed = potentialFace?.status === "failed";
@@ -2479,6 +2501,8 @@ function ProgressOverview({
       ? `potential-face:${potentialFace.id}:primary:${potentialFace.generatedAt ?? potentialFace.updatedAt}`
       : null;
   const displayCurrentImageUri = currentImageUri ?? remoteCurrentImageUri;
+  const showingCurrent = heroTarget === "current" && !!displayCurrentImageUri;
+  const heroImageUri = showingCurrent ? displayCurrentImageUri : potentialUri;
   const topFocus = useMemo(
     () =>
       selectNextFocusRecommendations({
@@ -2492,7 +2516,40 @@ function ProgressOverview({
   );
   const topFocusIconId = getProgressFocusIconId(topFocus);
   const topFocusIcon = getAdvancedAnalysisIcon(topFocusIconId);
-  const topFocusScore = topFocus ? Math.round(topFocus.score) : null;
+  const topFocusEvidenceMatch = topFocus?.evidence.match(/^(.*?)\s+(\d+)\/100$/);
+  const topFocusMetricLabel = topFocusEvidenceMatch?.[1] ?? topFocus?.title ?? "Current score";
+  const topFocusCurrentScore = topFocusEvidenceMatch
+    ? Number(topFocusEvidenceMatch[2])
+    : null;
+  const topFocusStatus = getProgressFocusStatus(topFocusCurrentScore);
+  const topFocusDetailMetric = useMemo<DetailMetric | null>(() => {
+    if (!topFocus) return null;
+
+    return {
+      id: topFocusIconId,
+      label: topFocusMetricLabel,
+      category: getProgressFocusCategory(topFocusIconId),
+      score: topFocusCurrentScore ?? Math.round(overall.current),
+      verdict: topFocusStatus.label,
+      commentary: `${topFocus.reason} ${topFocus.action}`,
+      idealRange: "",
+      status: topFocusStatus.status,
+      section: topFocusStatus.section,
+      icon: topFocusIcon,
+      emoji: "◉",
+    };
+  }, [
+    overall.current,
+    topFocus,
+    topFocusCurrentScore,
+    topFocusIcon,
+    topFocusIconId,
+    topFocusMetricLabel,
+    topFocusStatus.label,
+    topFocusStatus.section,
+    topFocusStatus.status,
+  ]);
+
   useEffect(() => {
     void loadPotentialFace();
   }, [loadPotentialFace]);
@@ -2549,26 +2606,6 @@ function ProgressOverview({
     const id = setInterval(() => void loadPotentialFace(), POTENTIAL_FACE_POLL_MS);
     return () => clearInterval(id);
   }, [potentialFace?.status, loadPotentialFace]);
-
-  useEffect(() => {
-    summaryProgress.value = 0;
-    summaryMarkerProgress.value = 0;
-    summaryProgress.value = withDelay(180, withTiming(progressPct, { duration: 900, easing: Easing.out(Easing.cubic) }));
-    summaryMarkerProgress.value = withDelay(260, withTiming(visualPotentialMarkerPct, { duration: 900, easing: Easing.out(Easing.cubic) }));
-  }, [progressPct, summaryMarkerProgress, summaryProgress, visualPotentialMarkerPct]);
-  const summaryFillStyle = useAnimatedStyle(() => ({
-    width: `${summaryProgress.value}%`,
-  } as any));
-  const summaryTrackStyle = useAnimatedStyle(() => {
-    const progress = Math.max(0, Math.min(1, summaryProgress.value / 100));
-    return {
-      opacity: 0.5 + progress * 0.5,
-      transform: [{ scaleX: 0.94 + progress * 0.06 }],
-    } as any;
-  });
-  const summaryMarkerStyle = useAnimatedStyle(() => ({
-    left: `${summaryMarkerProgress.value}%`,
-  } as any));
 
   const missingPotentialCopy = potentialPending
     ? "Generating your potential face..."
@@ -2634,222 +2671,277 @@ function ProgressOverview({
   const closePreview = () => {
     setPreview(null);
   };
-  const handleBack = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    if (router.canGoBack()) router.back();
-  };
 
   return (
     <>
-      <Animated.View entering={FadeInDown.duration(420)} style={styles.progressMockWrap}>
-        <View style={styles.progressMockTopBar}>
-          <Text style={styles.progressScreenTitle}>Progress</Text>
-
-          <View style={styles.progressFire3dPill} accessibilityLabel={`${currentStreak} day streak`}>
-            <View style={styles.progressFire3dFace}>
-              <Flame size={22} color="#FF8A00" fill="#FF8A00" strokeWidth={2.4} />
-              <Text style={styles.progressMockStreakText}>{currentStreak}</Text>
-            </View>
-          </View>
-        </View>
-
-        <View style={styles.progressMockHeaderCopy}>
-          <ProgressHeadline pointsAway={pointsAway} />
-          <ProgressTypewriterText text="Keep your streak going with a quick check-in." style={styles.progressMockSubhead} delay={780} speedMs={18} />
-        </View>
-
-        <View style={styles.progressLevelCard}>
-          <View style={styles.progressLevelHeader}>
-            <Image source={PROGRESS_MILESTONE_IMAGE} style={styles.progressLevelIcon} resizeMode="contain" />
-            <View style={styles.progressLevelCopy}>
-              <Text style={styles.progressLevelEyebrow}>LEVEL PROGRESS</Text>
-              <Text style={styles.progressLevelTitle}>You are {Math.round((currentRounded / Math.max(1, potentialRounded)) * 100)}% there</Text>
-            </View>
-
-
-          </View>
-
-          <View style={styles.progressLevelTrackWrap}>
-            <Animated.View style={[styles.progressLevelTrack, summaryTrackStyle]} accessibilityRole="progressbar" accessibilityValue={{ min: 0, max: FACE_PROGRESS_SCORE_MAX, now: currentRounded }}>
-              <Animated.View style={[styles.progressLevelFill, summaryFillStyle]} />
-              <Animated.View style={[styles.progressLevelMarker, summaryMarkerStyle]}>
-                <Text style={styles.progressLevelMarkerText}>{potentialRounded}</Text>
-              </Animated.View>
-            </Animated.View>
-          </View>
-
-          <View style={styles.progressLevelFooter}>
-            <View>
-              <Text style={styles.progressLevelCurrentLabel}>CURRENT {currentRounded}</Text>
-            </View>
-            <Text style={styles.progressLevelToGo}>{pointsAway} TO GO</Text>
-          </View>
-        </View>
-
-        <View style={styles.progressPotentialCard}>
-          <View style={styles.progressPotentialHeader}>
-            <Text style={styles.progressPotentialTitle}>Your potential</Text>
+      <Animated.View entering={FadeIn.duration(220)} style={styles.progressMockWrap}>
+        <View style={styles.progressNativeHeader}>
+          <View style={styles.progressHeaderSpacer} />
+          <Text style={styles.progressNativeTitle}>Progress</Text>
+          <ProgressGlass
+            interactive
+            reduced={reduceTransparency}
+            style={styles.progressHeaderInfoGlass}
+          >
             <Pressable
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 setShowProgressPlan((open) => !open);
               }}
               accessibilityRole="button"
-              accessibilityLabel="How progress works"
+              accessibilityLabel="About your potential face"
               accessibilityState={{ expanded: showProgressPlan }}
-              style={({ pressed }) => [styles.progressHowItWorksButton, pressed && styles.overviewPressed]}
+              hitSlop={6}
+              style={({ pressed }) => [
+                styles.progressHeaderInfoPress,
+                pressed && styles.progressNativePressed,
+              ]}
             >
-              <Text style={styles.progressHowItWorksText}>HOW IT WORKS</Text>
+              <Info size={18} color="#15130F" strokeWidth={2} />
             </Pressable>
-          </View>
-
-          {showProgressPlan && (
-            <Animated.View entering={FadeInDown.duration(220)} style={styles.progressHowItWorksPanel}>
-              <View style={styles.progressHowBulletRow}>
-                <View style={styles.progressHowBulletDot} />
-                <Text style={styles.progressHowBulletText}>Your latest scan sets the current score and strongest gaps.</Text>
-              </View>
-              <View style={styles.progressHowBulletRow}>
-                <View style={styles.progressHowBulletDot} />
-                <Text style={styles.progressHowBulletText}>The plan ranks the highest-impact focus first, then updates as your trend changes.</Text>
-              </View>
-              <View style={styles.progressHowBulletRow}>
-                <View style={styles.progressHowBulletDot} />
-                <Text style={styles.progressHowBulletText}>Consistent check-ins move the target from guesswork to a measurable path.</Text>
-              </View>
-            </Animated.View>
-          )}
-
-          <View style={styles.progressPotentialScoreRow}>
-            <View style={styles.progressPotentialColumn}>
-              <View style={styles.progressNowPill}><Text style={styles.progressNowPillText}>NOW</Text></View>
-              <Text style={styles.progressNowScore}>{currentRounded}</Text>
-            </View>
-            <View style={styles.progressPotentialColumn}>
-              <View style={styles.progressGoalPill}><Text style={styles.progressGoalPillText}>GOAL</Text></View>
-              <Text style={styles.progressGoalScore}>{potentialRounded}</Text>
-            </View>
-          </View>
-
-          <View style={styles.progressPotentialImagesRow}>
-            <View style={styles.progressPotentialImageCol}>
-              <Pressable
-                disabled={!displayCurrentImageUri}
-                onPress={() => openPreview("current", "Current face")}
-                style={({ pressed }) => [styles.progressPotentialImageFrame, pressed && displayCurrentImageUri && styles.overviewPressed]}
-              >
-                <OverviewFaceImage
-                  uri={displayCurrentImageUri}
-                  loading={remoteCurrentLoading}
-                  onError={handleCurrentImageError}
-                  imageStyle={styles.progressPotentialInnerImage}
-                  wrapStyle={styles.progressPotentialImageWrap}
-                  contentFit="cover"
-                />
-              </Pressable>
-
-            </View>
-
-            <View style={styles.progressPotentialImageCol}>
-              <Pressable
-                disabled={!potentialUri && (potentialPending || !latestScanId)}
-                onPress={() => {
-                  if (potentialUri) {
-                    openPreview("potential", "Potential face");
-                    return;
-                  }
-                  void handleGeneratePotential();
-                }}
-                style={({ pressed }) => [styles.progressPotentialImageFrame, styles.progressPotentialGoalFrame, pressed && styles.overviewPressed]}
-              >
-                {potentialUri ? (
-                  <OverviewFaceImage
-                    uri={potentialUri}
-                    accent
-                    cacheKey={potentialCacheKey}
-                    onError={handlePotentialImageError}
-                    imageStyle={styles.progressPotentialInnerImage}
-                    wrapStyle={styles.progressPotentialImageWrap}
-                    contentFit="cover"
-                  />
-                ) : potentialPending && displayCurrentImageUri ? (
-                  <View style={[styles.overviewPotentialDraft, styles.progressPotentialDraftWrap]}>
-                    <ExpoImage
-                      source={{ uri: displayCurrentImageUri }}
-                      style={styles.progressPotentialDraftImage}
-                      contentFit="cover"
-                      cachePolicy="memory-disk"
-                      transition={180}
-                    />
-                    <View style={styles.overviewPotentialDraftScrim} />
-                    <View style={styles.overviewPotentialDraftBadge}>
-                      <RefreshCw size={18} color={COLORS.accentDepth} strokeWidth={2.4} />
-                      <Text style={styles.overviewPotentialDraftText}>Generating</Text>
-                    </View>
-                  </View>
-                ) : (
-                  <View style={styles.overviewPotentialFallback}>
-
-                    {potentialPending ? (
-                      <RefreshCw size={22} color={COLORS.accentDepth} strokeWidth={2.4} />
-                    ) : (
-                      <Sparkles size={24} color={COLORS.accentDepth} strokeWidth={2.4} />
-                    )}
-                    <Text style={styles.overviewFallbackText}>{missingPotentialCopy}</Text>
-                  </View>
-                )}
-              </Pressable>
-
-            </View>
-          </View>
-
-          <View style={styles.progressPotentialNotice}>
-            <Info size={19} color="#12A9E5" strokeWidth={3} />
-            <Text style={styles.progressPotentialNoticeText}>Results may vary by plan consistency</Text>
-          </View>
+          </ProgressGlass>
         </View>
 
-        <Pressable
-          onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            router.push("/(tabs)/next-focus");
-          }}
-          accessibilityRole="button"
-          accessibilityLabel={`Open next focus: ${topFocus?.title ?? "top focus metric"}`}
-          style={({ pressed }) => [styles.progressQuestCard, pressed && styles.progressQuestPressed]}
-        >
-          <View style={styles.progressQuestIconWrap}>
-            <Image
-              source={topFocusIcon ?? PROGRESS_FOCUS_FALLBACK_IMAGE}
-              style={[
-                styles.progressQuestMetricIcon,
-                topFocusIcon ? getAdvancedAnalysisIconStyle(topFocusIconId) : null,
-              ]}
-              resizeMode="contain"
-            />
-          </View>
-          <View style={styles.progressQuestCopy}>
-            <Text style={styles.progressQuestEyebrow}>NEXT FOCUS</Text>
-            <Text style={styles.progressQuestName} numberOfLines={1}>{topFocus?.title ?? "Run advanced analysis"}</Text>
-            <Text style={styles.progressQuestReason} numberOfLines={1}>{topFocus?.evidence ?? "Unlock your top focus metric"}</Text>
-          </View>
-          <View style={styles.progressQuestRewardPill}>
-            <Text style={styles.progressQuestRewardText}>{topFocusScore ?? "--"}</Text>
-          </View>
-        </Pressable>
+        <View style={styles.progressIntro}>
+          <Text style={styles.progressIntroTitle}>Your potential, in focus.</Text>
+          <Text style={styles.progressIntroBody}>
+            A visual direction based on your latest analysis.
+          </Text>
+        </View>
 
-        <Pressable
-          onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-            router.push("/(tabs)/next-focus");
-          }}
-          accessibilityRole="button"
-          accessibilityLabel="Check in progress"
-          style={({ pressed }) => [styles.progressStartButton, pressed && styles.progressStartButtonPressed]}
-        >
-          <ScanLine size={30} color="#FFFFFF" strokeWidth={3.2} />
-          <Text style={styles.progressStartText}>CHECK IN PROGRESS</Text>
-        </Pressable>
+        <Animated.View entering={FadeIn.duration(220)} style={styles.progressPreviewHeroCard}>
+          <Pressable
+            disabled={!showingCurrent && !potentialUri && (potentialPending || !latestScanId)}
+            onPress={() => {
+              if (showingCurrent) {
+                openPreview("current", "Current face");
+                return;
+              }
+              if (potentialUri) {
+                openPreview("potential", "Potential face");
+                return;
+              }
+              void handleGeneratePotential();
+            }}
+            accessibilityRole="imagebutton"
+            accessibilityLabel={
+              showingCurrent
+                ? "Current face. Open full screen."
+                : potentialUri
+                  ? "Potential face. Open full screen."
+                  : missingPotentialCopy
+            }
+            style={({ pressed }) => [
+              styles.progressHeroPress,
+              pressed && styles.progressHeroPressed,
+            ]}
+          >
+            {heroImageUri ? (
+              <OverviewFaceImage
+                uri={heroImageUri}
+                accent={!showingCurrent}
+                cacheKey={showingCurrent ? null : potentialCacheKey}
+                loading={showingCurrent ? remoteCurrentLoading : false}
+                onError={showingCurrent ? handleCurrentImageError : handlePotentialImageError}
+                imageStyle={styles.progressHeroImage}
+                wrapStyle={styles.progressHeroImageWrap}
+                contentFit="cover"
+              />
+            ) : (potentialPending || potentialFailed) && displayCurrentImageUri ? (
+              <View style={styles.progressHeroStateImage}>
+                <ExpoImage
+                  source={{ uri: displayCurrentImageUri }}
+                  style={StyleSheet.absoluteFill}
+                  contentFit="cover"
+                  cachePolicy="memory-disk"
+                  transition={180}
+                />
+                <View style={styles.progressHeroStateScrim} />
+                <View style={styles.progressHeroStateCenter}>
+                  {potentialPending ? (
+                    <ActivityIndicator color="#FFFFFF" />
+                  ) : (
+                    <TriangleAlert size={24} color="#FFFFFF" strokeWidth={2.2} />
+                  )}
+                  <Text style={styles.progressHeroStateText}>
+                    {potentialPending ? "Building preview" : "Preview unavailable"}
+                  </Text>
+                </View>
+              </View>
+            ) : (
+              <View style={styles.progressHeroFallback}>
+                {potentialPending ? (
+                  <ActivityIndicator color="#FA7E03" />
+                ) : (
+                  <Sparkles size={26} color="#FA7E03" strokeWidth={2.1} />
+                )}
+                <Text style={styles.progressHeroFallbackTitle}>{missingPotentialCopy}</Text>
+                <Text style={styles.progressHeroFallbackBody}>
+                  Based on the areas identified in your latest facial analysis.
+                </Text>
+              </View>
+            )}
+          </Pressable>
+
+          {heroImageUri && (
+            <ProgressGlass
+              interactive
+              reduced={reduceTransparency}
+              style={styles.progressHeroExpandGlass}
+            >
+              <Pressable
+                onPress={() =>
+                  openPreview(
+                    showingCurrent ? "current" : "potential",
+                    showingCurrent ? "Current face" : "Potential face",
+                  )
+                }
+                accessibilityRole="button"
+                accessibilityLabel="Open full-screen image"
+                hitSlop={6}
+                style={({ pressed }) => [
+                  styles.progressHeroExpandPress,
+                  pressed && styles.progressNativePressed,
+                ]}
+              >
+                <Maximize2 size={16} color="#15130F" strokeWidth={2.2} />
+              </Pressable>
+            </ProgressGlass>
+          )}
+        </Animated.View>
+
+        {potentialUri && displayCurrentImageUri && (
+          <ProgressGlass
+            interactive
+            reduced={reduceTransparency}
+            style={styles.progressCompareGlass}
+          >
+            <Pressable
+              onPress={() => {
+                Haptics.selectionAsync();
+                setHeroTarget((target) => (target === "potential" ? "current" : "potential"));
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={showingCurrent ? "View potential face" : "View current photo"}
+              style={({ pressed }) => [
+                styles.progressCompareAction,
+                pressed && styles.progressNativePressed,
+              ]}
+            >
+              <Text style={styles.progressCompareActionText}>
+                {showingCurrent ? "View potential" : "View current photo"}
+              </Text>
+              <ArrowRight size={16} color="#6E685F" strokeWidth={2} />
+            </Pressable>
+          </ProgressGlass>
+        )}
+
+        <View style={styles.progressTrustRow}>
+          <Text style={styles.progressTrustText}>Results can vary.</Text>
+        </View>
+
+        {showProgressPlan && (
+          <Animated.View entering={FadeIn.duration(180)}>
+            <ProgressGlass reduced={reduceTransparency} style={styles.progressAboutGlass}>
+              <Text style={styles.progressAboutTitle}>How this preview works</Text>
+              <Text style={styles.progressAboutBody}>
+                Your potential face reflects selected opportunities in your analysis. It is a visual direction, not a guaranteed outcome.
+              </Text>
+            </ProgressGlass>
+          </Animated.View>
+        )}
+
+        <View style={styles.progressQuestSectionHeader}>
+          <Text style={styles.progressQuestSectionTitle}>Next Focus</Text>
+        </View>
+
+        <Animated.View entering={FadeIn.duration(180).delay(60)}>
+          <View style={styles.progressQuestSurface}>
+            <Pressable
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setSelectedFocusMetric(topFocusDetailMetric);
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={`Explain ${topFocusMetricLabel}, ${topFocusStatus.label}`}
+              accessibilityHint="Opens the metric explainer"
+              style={({ pressed }) => [
+                styles.progressQuestCard,
+                pressed && styles.progressQuestPressed,
+              ]}
+            >
+              <View style={styles.progressQuestIconWrap}>
+                <Image
+                  source={topFocusIcon ?? PROGRESS_FOCUS_FALLBACK_IMAGE}
+                  style={[
+                    styles.progressQuestMetricIcon,
+                    topFocusIcon ? getAdvancedAnalysisIconStyle(topFocusIconId) : null,
+                  ]}
+                  resizeMode="contain"
+                />
+              </View>
+              <View style={styles.progressQuestCopy}>
+                <Text style={styles.progressQuestName} numberOfLines={1}>
+                  {topFocus?.title ?? "Run advanced analysis"}
+                </Text>
+                <Text style={styles.progressQuestReason} numberOfLines={2}>
+                  {topFocus ? `Based on ${topFocusMetricLabel}` : "Unlock your top focus metric"}
+                </Text>
+              </View>
+              <View
+                style={[
+                  styles.progressQuestStatus,
+                  { backgroundColor: topFocusStatus.soft },
+                ]}
+              >
+                <View
+                  style={[
+                    styles.progressQuestStatusDot,
+                    { backgroundColor: topFocusStatus.accent },
+                  ]}
+                />
+                <Text
+                  style={[
+                    styles.progressQuestStatusText,
+                    { color: topFocusStatus.accent },
+                  ]}
+                >
+                  {topFocusStatus.label}
+                </Text>
+              </View>
+            </Pressable>
+          </View>
+        </Animated.View>
+
+        <View style={styles.progressStartButtonWrap}>
+          <Pressable
+            onPressIn={() => {
+              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            }}
+            onPress={() => {
+              router.push("/next-focus");
+            }}
+            hitSlop={8}
+            pressRetentionOffset={16}
+            accessibilityRole="button"
+            accessibilityLabel="View my next focus"
+            style={({ pressed }) => [
+              styles.progressStartButton,
+              pressed && styles.progressStartButtonPressed,
+            ]}
+          >
+            <LinearGradient
+              pointerEvents="none"
+              colors={["#2B2B2E", "#0A0A0B", "#0A0A0B"]}
+              locations={[0, 0.6, 1]}
+              start={{ x: 0.1, y: 0 }}
+              end={{ x: 0.9, y: 1 }}
+              style={styles.progressStartGradient}
+            />
+            <Text style={styles.progressStartText}>View My Next Focus</Text>
+            <ArrowRight size={18} color="#FAF9F7" strokeWidth={2.25} />
+          </Pressable>
+        </View>
       </Animated.View>
       <HeroImagePreview
         uri={previewUri}
@@ -2858,6 +2950,10 @@ function ProgressOverview({
         visible={preview !== null}
         onClose={closePreview}
         onImageError={handlePreviewImageError}
+      />
+      <MetricDetailCard
+        metric={selectedFocusMetric}
+        onDismiss={() => setSelectedFocusMetric(null)}
       />
     </>
   );
@@ -3545,6 +3641,11 @@ export default function DashboardScreen() {
   const [progressView, setProgressView] = useState<"overview" | "details">("overview");
   const [openDashboardModule, setOpenDashboardModule] = useState<DashboardModuleKey | null>(null);
 
+  const openFaceMap = () => {
+    setOpenDashboardModule(null);
+    router.push("/face-map-preview");
+  };
+
   // UUID pattern — Supabase leaks the auth UUID into name/email fields on some flows.
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   const isUuid = (s: string) => UUID_RE.test(s.trim());
@@ -3725,12 +3826,16 @@ export default function DashboardScreen() {
                 overallDelta={overallDelta}
                 graphPoints={graphPoints}
                 daysSinceLastScan={daysSinceLastScan}
+                onExploreFaceMap={openFaceMap}
               />
             ) : (
-              <DashboardModuleEmptyCard
-                title="Progress graph is almost ready"
-                body="Add another scan to unlock your trend line."
-              />
+              <>
+                <DashboardModuleEmptyCard
+                  title="Progress graph is almost ready"
+                  body="Add another scan to unlock your trend line."
+                />
+                <FaceMapEntry onPress={openFaceMap} />
+              </>
             )
           )}
 
@@ -3832,7 +3937,15 @@ export default function DashboardScreen() {
 
 
   return (
-    <View style={[styles.root, { paddingTop: insets.top }]}>
+    <View
+      style={[
+        styles.root,
+        {
+          paddingTop: insets.top,
+          backgroundColor: APP_SCREEN_BG,
+        },
+      ]}
+    >
       {/* Atmospheric lime glow behind header — gives the top section warmth */}
       <LinearGradient
         colors={["rgba(180,243,77,0.10)", "rgba(180,243,77,0.00)"]}
@@ -3898,7 +4011,7 @@ const SOFT_SHADOW = {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: "#FEF5E4",
+    backgroundColor: APP_SCREEN_BG,
   },
 
   // Atmospheric glow — kept as an empty no-op so existing JSX doesn't need
@@ -4336,11 +4449,11 @@ const styles = StyleSheet.create({
     height: "100%",
   },
   overviewFaceImageWrap: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: COLORS.iconTileLavender,
   },
   overviewFaceImageOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(250,251,252,0.58)",
@@ -4360,13 +4473,13 @@ const styles = StyleSheet.create({
     backgroundColor: "#F4FAEA",
   },
   overviewPotentialDraft: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#F4FAEA",
   },
   overviewPotentialDraftScrim: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "rgba(244,250,234,0.50)",
   },
   overviewPotentialDraftBadge: {
@@ -4502,477 +4615,345 @@ const styles = StyleSheet.create({
     opacity: 0.88,
     transform: [{ scale: 0.98 }],
   },
-  progressMockWrap: {
-    gap: 8,
-    marginHorizontal: -4,
-    paddingBottom: 18,
+  progressGlassClip: {
+    overflow: "hidden",
+    backgroundColor: "rgba(255,255,255,0.22)",
   },
-  progressMockTopBar: {
-    minHeight: 42,
+  progressGlassSolid: {
+    backgroundColor: "rgba(250,250,250,0.98)",
+  },
+  progressGlassRim: {
+    ...StyleSheet.absoluteFill,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(255,255,255,0.86)",
+  },
+  progressMockWrap: {
+    gap: 14,
+    marginHorizontal: -4,
+    paddingBottom: 20,
+  },
+  progressNativeHeader: {
+    minHeight: 48,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
-  progressScreenTitle: {
-    fontFamily: DETAIL_FONT_BOLD,
-    fontSize: 24,
-    lineHeight: 29,
-    color: COLORS.lightText,
-    letterSpacing: 0,
+  progressHeaderSpacer: {
+    width: 44,
+    height: 44,
   },
-  progressMockBack: {
+  progressNativeTitle: {
+    flex: 1,
+    textAlign: "center",
+    fontFamily: DETAIL_FONT_BOLD,
+    fontSize: 17,
+    lineHeight: 21,
+    color: "#15130F",
+    letterSpacing: -0.2,
+  },
+  progressHeaderInfoGlass: {
     width: 44,
     height: 44,
     borderRadius: 22,
+    borderCurve: "continuous",
+  },
+  progressHeaderInfoPress: {
+    flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.52)",
+    borderRadius: 22,
+    borderCurve: "continuous",
   },
-  progressMockStreakPill: {
-    minWidth: 70,
+  progressNativePressed: {
+    opacity: 0.72,
+    transform: [{ scale: 0.96 }],
+  },
+  progressIntro: {
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingTop: 2,
+    paddingBottom: 4,
+  },
+  progressIntroTitle: {
+    maxWidth: 340,
+    textAlign: "center",
+    fontFamily: DETAIL_FONT_BOLD,
+    fontSize: 27,
+    lineHeight: 32,
+    color: "#15130F",
+    letterSpacing: -0.35,
+  },
+  progressIntroBody: {
+    maxWidth: 316,
+    textAlign: "center",
+    fontFamily: DETAIL_FONT,
+    fontSize: 13.5,
+    lineHeight: 19,
+    color: "#6E685F",
+    letterSpacing: 0.05,
+  },
+  progressPreviewHeroCard: {
+    position: "relative",
+    width: "100%",
+    aspectRatio: 0.8,
+    borderRadius: 28,
+    borderCurve: "continuous",
+    overflow: "hidden",
+    backgroundColor: "#ECEAE6",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(20,18,14,0.08)",
+    boxShadow: "0 18px 38px rgba(28, 20, 12, 0.16)",
+  },
+  progressHeroPress: {
+    flex: 1,
+    overflow: "hidden",
+  },
+  progressHeroPressed: {
+    opacity: 0.97,
+    transform: [{ scale: 0.995 }],
+  },
+  progressHeroImageWrap: {
+    width: "100%",
+    height: "100%",
+    backgroundColor: "#ECEAE6",
+  },
+  progressHeroImage: {
+    width: "100%",
+    height: "100%",
+  },
+  progressHeroStateImage: {
+    flex: 1,
+    backgroundColor: "#D8D5D0",
+  },
+  progressHeroStateScrim: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: "rgba(15,13,10,0.34)",
+  },
+  progressHeroStateCenter: {
+    ...StyleSheet.absoluteFill,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+  },
+  progressHeroStateText: {
+    fontFamily: DETAIL_FONT_BOLD,
+    fontSize: 13,
+    lineHeight: 17,
+    color: "#FFFFFF",
+    letterSpacing: 0.2,
+  },
+  progressHeroFallback: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 9,
+    paddingHorizontal: 36,
+    backgroundColor: "#F4F3F1",
+  },
+  progressHeroFallbackTitle: {
+    textAlign: "center",
+    fontFamily: DETAIL_FONT_BOLD,
+    fontSize: 18,
+    lineHeight: 22,
+    color: "#15130F",
+  },
+  progressHeroFallbackBody: {
+    maxWidth: 260,
+    textAlign: "center",
+    fontFamily: DETAIL_FONT,
+    fontSize: 13,
+    lineHeight: 18,
+    color: "#6E685F",
+  },
+  progressHeroExpandGlass: {
+    position: "absolute",
+    top: 12,
+    right: 12,
+    width: 44,
     height: 44,
     borderRadius: 22,
-    paddingHorizontal: 13,
+    borderCurve: "continuous",
+  },
+  progressHeroExpandPress: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 22,
+    borderCurve: "continuous",
+  },
+  progressCompareGlass: {
+    alignSelf: "center",
+    minHeight: 44,
+    borderRadius: 22,
+    borderCurve: "continuous",
+  },
+  progressCompareAction: {
+    minHeight: 44,
+    paddingHorizontal: 14,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 7,
-    backgroundColor: "rgba(255,255,255,0.56)",
+    borderRadius: 22,
   },
-  progressFire3dPill: {
-    minWidth: 72,
-    height: 46,
-    borderRadius: 23,
-    padding: 3,
-    backgroundColor: "rgba(255,255,255,0.72)",
-    shadowColor: "#D8B775",
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 3,
-  },
-  progressFire3dFace: {
-    flex: 1,
-    borderRadius: 20,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    backgroundColor: "#FFFDF8",
-    borderBottomWidth: 3,
-    borderBottomColor: "#EFE5D0",
-  },
-  progressMockStreakText: {
+  progressCompareActionText: {
     fontFamily: DETAIL_FONT_BOLD,
-    fontSize: 16,
-    lineHeight: 22,
-    color: COLORS.lightText,
-  },
-  progressMockHeaderCopy: {
-    marginTop: 0,
-    marginBottom: 4,
-  },
-  progressMockHeadlineRow: {
-    minHeight: 38,
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  progressRollingNumber: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  progressRollingDigitClip: {
-    overflow: "hidden",
-    minWidth: 18,
-  },
-  progressRollingDigit: {
-    position: "absolute",
-    left: 0,
-    top: 0,
-  },
-  progressMockHeadline: {
-    fontFamily: DETAIL_FONT_BOLD,
-    fontSize: 31,
-    lineHeight: 38,
-    color: COLORS.lightText,
-    letterSpacing: 0,
-  },
-  progressMockSubhead: {
-    marginTop: 0,
-    fontFamily: DETAIL_FONT,
-    fontSize: 16,
-    lineHeight: 21,
-    color: COLORS.lightText,
-  },
-  progressLevelCard: {
-    borderRadius: 20,
-    borderWidth: 2,
-    borderColor: "#DEDEDA",
-    borderBottomWidth: 5,
-    borderBottomColor: "#D3CEC3",
-    backgroundColor: "#FFFFFF",
-    paddingHorizontal: 12,
-    paddingTop: 8,
-    paddingBottom: 9,
-  },
-  progressLevelHeader: {
-    minHeight: 72,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  progressLevelIcon: {
-    width: 78,
-    height: 78,
-  },
-  progressLevelCopy: {
-    flex: 1,
-    minWidth: 0,
-  },
-  progressLevelEyebrow: {
-    fontFamily: DETAIL_FONT_BOLD,
-    fontSize: 12,
-    lineHeight: 15,
-    color: "#A5A5AA",
-    letterSpacing: 2.4,
-  },
-  progressLevelTitle: {
-    marginTop: 3,
-    fontFamily: DETAIL_FONT,
-    fontSize: 16,
-    lineHeight: 20,
-    color: COLORS.lightText,
-  },
-  progressLevelGainPill: {
-    minWidth: 0,
-    minHeight: 0,
-  },
-  progressLevelGainText: {
-    fontFamily: DETAIL_FONT_BOLD,
-    fontSize: 1,
-    lineHeight: 1,
-    color: "transparent",
-  },
-  progressLevelTrackWrap: {
-    paddingHorizontal: 8,
-    paddingTop: 3,
-    paddingBottom: 15,
-  },
-  progressLevelTrack: {
-    height: 14,
-    borderRadius: 999,
-    backgroundColor: "#E1E1E1",
-    overflow: "visible",
-  },
-  progressLevelFill: {
-    height: "100%",
-    borderRadius: 999,
-    backgroundColor: "#39D400",
-  },
-  progressLevelMarker: {
-    position: "absolute",
-    top: -8,
-    width: 30,
-    height: 30,
-    marginLeft: -15,
-    borderRadius: 15,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#FFFFFF",
-    borderWidth: 4,
-    borderColor: "#2DCD12",
-    zIndex: 4,
-  },
-  progressLevelMarkerText: {
-    fontFamily: DETAIL_FONT_BOLD,
-    fontSize: 12,
-    lineHeight: 15,
-    color: "#35BF12",
-  },
-  progressLevelFooter: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  progressLevelCurrentLabel: {
-    fontFamily: DETAIL_FONT_BOLD,
-    fontSize: 14,
+    fontSize: 13,
     lineHeight: 17,
-    color: "#13AEE8",
+    color: "#6E685F",
   },
-  progressLevelToGo: {
-    fontFamily: DETAIL_FONT_BOLD,
-    fontSize: 14,
-    lineHeight: 17,
-    color: COLORS.lightText,
-  },
-  progressPotentialCard: {
-    borderRadius: 20,
-    borderWidth: 2,
-    borderColor: "#DEDEDA",
-    borderBottomWidth: 5,
-    borderBottomColor: "#D3CEC3",
-    backgroundColor: "#FFFFFF",
-    paddingHorizontal: 12,
-    paddingTop: 13,
-    paddingBottom: 13,
-  },
-  progressPotentialHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 10,
-  },
-  progressPotentialTitle: {
-    flex: 1,
-    fontFamily: DETAIL_FONT_BOLD,
-    fontSize: 25,
-    lineHeight: 30,
-    color: COLORS.lightText,
-  },
-  progressHowItWorksButton: {
-    minHeight: 32,
-    justifyContent: "center",
-  },
-  progressHowItWorksText: {
-    fontFamily: DETAIL_FONT_BOLD,
-    fontSize: 14,
-    lineHeight: 17,
-    color: "#12A9E5",
-  },
-  progressHowItWorksPanel: {
-    marginTop: 8,
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    gap: 7,
-    backgroundColor: "#F2FBEE",
-    borderWidth: 1,
-    borderColor: "#C8F2B4",
-  },
-  progressHowBulletRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 8,
-  },
-  progressHowBulletDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    marginTop: 6,
-    backgroundColor: "#35D20A",
-  },
-  progressHowBulletText: {
-    flex: 1,
-    fontFamily: DETAIL_FONT,
-    fontSize: 12,
-    lineHeight: 17,
-    color: COLORS.lightText,
-  },
-  progressPotentialScoreRow: {
-    marginTop: 10,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 2,
-  },
-  progressPotentialColumn: {
-    width: "47%",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 8,
-  },
-  progressNowPill: {
-    minWidth: 60,
-    height: 29,
-    borderRadius: 15,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#E6FAFF",
-  },
-  progressNowPillText: {
-    fontFamily: DETAIL_FONT_BOLD,
-    fontSize: 12,
-    color: "#13AEE8",
-  },
-  progressGoalPill: {
-    minWidth: 60,
-    height: 29,
-    borderRadius: 15,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#B8F58C",
-  },
-  progressGoalPillText: {
-    fontFamily: DETAIL_FONT_BOLD,
-    fontSize: 12,
-    color: "#31A800",
-  },
-  progressNowScore: {
-    fontFamily: DETAIL_FONT_BOLD,
-    fontSize: 24,
-    lineHeight: 28,
-    color: "#13AEE8",
-  },
-  progressGoalScore: {
-    fontFamily: DETAIL_FONT_BOLD,
-    fontSize: 24,
-    lineHeight: 28,
-    color: "#26BC0B",
-  },
-  progressPotentialImagesRow: {
-    marginTop: 8,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    gap: 16,
-  },
-  progressPotentialImageCol: {
-    flex: 1,
-    minWidth: 0,
-  },
-  progressPotentialImageFrame: {
-    aspectRatio: 1,
-    borderRadius: 14,
-    overflow: "hidden",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#FFFFFF",
-    borderWidth: 0,
-  },
-  progressPotentialGoalFrame: {
-    backgroundColor: "#FFFFFF",
-    borderWidth: 0,
-  },
-  progressPotentialImageWrap: {
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#FFFFFF",
-  },
-  progressPotentialInnerImage: {
-    width: "100%",
-    height: "100%",
-    alignSelf: "center",
-  },
-  progressPotentialDraftImage: {
-    width: "100%",
-    height: "100%",
-    alignSelf: "center",
-  },
-  progressPotentialDraftWrap: {
-    backgroundColor: "#FFFFFF",
-  },
-  progressImageCaption: {
-    display: "none",
-  },
-  progressPotentialNotice: {
-    marginTop: 10,
-    minHeight: 41,
-    borderRadius: 14,
-    paddingHorizontal: 12,
+  progressTrustRow: {
+    minHeight: 20,
+    paddingHorizontal: 6,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
-    backgroundColor: "#D5F6FF",
   },
-  progressPotentialNoticeText: {
+  progressTrustText: {
     flexShrink: 1,
-    fontFamily: DETAIL_FONT_BOLD,
-    fontSize: 12,
+    textAlign: "center",
+    fontFamily: DETAIL_FONT,
+    fontSize: 11,
     lineHeight: 15,
-    color: "#0B88B3",
+    color: "#7C766E",
+    letterSpacing: 0.15,
+  },
+  progressAboutGlass: {
+    borderRadius: 20,
+    borderCurve: "continuous",
+    gap: 5,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  progressAboutTitle: {
+    fontFamily: DETAIL_FONT_BOLD,
+    fontSize: 14,
+    lineHeight: 18,
+    color: "#15130F",
+  },
+  progressAboutBody: {
+    fontFamily: DETAIL_FONT,
+    fontSize: 12.5,
+    lineHeight: 18,
+    color: "#6E685F",
+  },
+  progressQuestSectionHeader: {
+    minHeight: 24,
+    paddingHorizontal: 2,
+    alignItems: "flex-start",
+  },
+  progressQuestSectionTitle: {
+    fontFamily: DETAIL_FONT_BOLD,
+    fontSize: 18,
+    lineHeight: 23,
+    color: "#15130F",
+    letterSpacing: -0.15,
+  },
+  progressQuestSurface: {
+    borderRadius: 18,
+    borderCurve: "continuous",
+    backgroundColor: "#FFFFFF",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "#E8E4DE",
+    boxShadow: "0 5px 16px rgba(20, 15, 10, 0.06)",
   },
   progressQuestCard: {
-    minHeight: 96,
-    borderRadius: 20,
-    borderWidth: 3,
-    borderColor: "#39D400",
-    backgroundColor: "#FFFFFF",
+    minHeight: 84,
     paddingHorizontal: 12,
-    paddingVertical: 11,
+    paddingVertical: 12,
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    gap: 8,
+    borderRadius: 18,
+    borderCurve: "continuous",
   },
   progressQuestPressed: {
-    opacity: 0.9,
-    transform: [{ translateY: 2 }],
+    opacity: 0.84,
+    transform: [{ scale: 0.99 }],
   },
   progressQuestIconWrap: {
-    width: 60,
-    height: 60,
-    borderRadius: 18,
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    borderCurve: "continuous",
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
-    backgroundColor: "#39D400",
+    backgroundColor: "#FFF4EA",
   },
   progressQuestMetricIcon: {
-    width: 54,
-    height: 54,
+    width: 38,
+    height: 38,
   },
   progressQuestCopy: {
     flex: 1,
     minWidth: 0,
+    gap: 2,
   },
-  progressQuestEyebrow: {
-    fontFamily: DETAIL_FONT_BOLD,
-    fontSize: 11,
-    lineHeight: 14,
-    letterSpacing: 2.4,
-    color: "#239300",
-  },
-
   progressQuestName: {
-    marginTop: 0,
     fontFamily: DETAIL_FONT_BOLD,
-    fontSize: 14,
-    lineHeight: 17,
-    color: COLORS.lightText,
+    fontSize: 15.5,
+    lineHeight: 19,
+    color: "#15130F",
+    letterSpacing: -0.05,
   },
   progressQuestReason: {
-    marginTop: 1,
-    fontFamily: DETAIL_FONT_BOLD,
-    fontSize: 12,
-    lineHeight: 15,
-    color: COLORS.lightSub,
+    fontFamily: DETAIL_FONT,
+    fontSize: 12.5,
+    lineHeight: 17,
+    color: "#77716A",
   },
-  progressQuestRewardPill: {
-    minWidth: 52,
-    minHeight: 52,
-    borderRadius: 17,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#E9FFD9",
-  },
-  progressQuestRewardText: {
-    fontFamily: DETAIL_FONT_BOLD,
-    fontSize: 20,
-    lineHeight: 24,
-    color: "#24B900",
-  },
-  progressStartButton: {
-    minHeight: 58,
-    borderRadius: 17,
-    borderBottomWidth: 5,
-    borderBottomColor: "#000000",
-    backgroundColor: "#0B0B0B",
+  progressQuestStatus: {
+    minHeight: 30,
+    paddingHorizontal: 11,
+    borderRadius: 999,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 10,
+    gap: 7,
+    flexShrink: 0,
+  },
+  progressQuestStatusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  progressQuestStatusText: {
+    fontFamily: DETAIL_FONT_BOLD,
+    fontSize: 12,
+    lineHeight: 16,
+    letterSpacing: 0.05,
+  },
+  progressStartButtonWrap: {
+    paddingTop: 2,
+  },
+  progressStartButton: {
+    position: "relative",
+    minHeight: 50,
+    width: "100%",
+    borderRadius: 999,
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 9,
+    boxShadow: "0 8px 20px rgba(0, 0, 0, 0.18)",
   },
   progressStartButtonPressed: {
-    transform: [{ translateY: 3 }],
-    borderBottomWidth: 2,
+    transform: [{ scale: 0.98 }],
+  },
+  progressStartGradient: {
+    ...StyleSheet.absoluteFill,
+    borderRadius: 999,
   },
   progressStartText: {
     fontFamily: DETAIL_FONT_BOLD,
-    fontSize: 20,
-    lineHeight: 24,
-    color: "#FFFFFF",
-    letterSpacing: 0,
+    fontSize: 15,
+    lineHeight: 20,
+    color: "#FAF9F7",
+    letterSpacing: 0.2,
   },
   detailBackRow: {
     display: "none",
@@ -5221,7 +5202,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#000000",
   },
   heroPreviewShade: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "#000000",
   },
   heroPreviewCard: {
@@ -5243,7 +5224,7 @@ const styles = StyleSheet.create({
     height: "100%",
   },
   heroPreviewStateOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: "center",
     justifyContent: "center",
     gap: SP[2],
@@ -5840,7 +5821,7 @@ const styles = StyleSheet.create({
   },
 
   cardInner: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     borderRadius: RADII.lg,
     backgroundColor: COLORS.lightCard,
   },
@@ -6142,7 +6123,7 @@ const styles = StyleSheet.create({
   },
   dashModuleOverlayRoot: {
     flex: 1,
-    backgroundColor: "#FEF5E4",
+    backgroundColor: APP_SCREEN_BG,
   },
   dashModuleOverlayHeader: {
     minHeight: 78,
@@ -6454,7 +6435,7 @@ const styles = StyleSheet.create({
 
   /* Metric detail bottom sheet — light, matches Edit/Targets sheets */
   sheetBackdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "rgba(0,0,0,0.45)",
   },
   sheetContainer: {

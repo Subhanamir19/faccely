@@ -1,34 +1,48 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
+  AccessibilityInfo,
+  ActivityIndicator,
   Alert,
   Image,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
-  SafeAreaView,
   ScrollView,
+  StatusBar,
   StyleSheet,
   TextInput,
   View,
 } from "react-native";
+import { BlurView } from "expo-blur";
 import * as Clipboard from "expo-clipboard";
+import {
+  GlassView,
+  isGlassEffectAPIAvailable,
+  isLiquidGlassAvailable,
+} from "expo-glass-effect";
 import * as ImagePicker from "expo-image-picker";
 import * as WebBrowser from "expo-web-browser";
 import { router } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   Camera,
+  Check,
   Copy,
+  ExternalLink,
   KeyRound,
   LogOut,
   ReceiptText,
+  RefreshCw,
   ShieldCheck,
   Trash2,
   UserRound,
 } from "lucide-react-native";
 
-import { AppGradientBackground } from "@/components/layout/AppGradientBackground";
 import { FLOATING_TAB_BAR } from "@/components/layout/floatingTabBar";
+import { APP_SCREEN_BG } from "@/components/layout/AppGradientBackground";
 import T from "@/components/ui/T";
-import { COLORS, RADII, SP } from "@/lib/tokens";
-import { ms, sh, sw } from "@/lib/responsive";
+import { COLORS, SP } from "@/lib/tokens";
+import { ms } from "@/lib/responsive";
 import { persistAvatarFromUri } from "@/lib/media/avatar";
 import { logger } from "@/lib/logger";
 import { checkSubscriptionStatus, logoutUser as logoutRevenueCatUser, restorePurchases } from "@/lib/revenuecat";
@@ -47,61 +61,167 @@ import { useSubscriptionStore } from "@/store/subscription";
 
 const FONT = "DINNextRounded-Bold";
 const DETAIL_FONT = "DINNextRounded-Regular";
-const GREEN = "#67C900";
+const GREEN = "#4D9800";
+const INK = "#171512";
+const SECONDARY = "#736E67";
+const GROUP_BG = "#F7F6F3";
+const SEPARATOR = "rgba(23,21,18,0.09)";
 
-const SOFT_SHADOW = {
-  shadowColor: "#000000",
-  shadowOpacity: 0.09,
-  shadowRadius: 22,
-  shadowOffset: { width: 0, height: 8 },
-  elevation: 4,
-} as const;
+const PROFILE_LIQUID_GLASS =
+  Platform.OS === "ios" &&
+  isLiquidGlassAvailable() &&
+  isGlassEffectAPIAvailable();
 
-function LightCard({ children, style }: { children: React.ReactNode; style?: any }) {
-  return <View style={[styles.card, style]}>{children}</View>;
+function useReduceTransparency() {
+  const [reduced, setReduced] = useState(false);
+
+  useEffect(() => {
+    void AccessibilityInfo.isReduceTransparencyEnabled().then(setReduced);
+    const subscription = AccessibilityInfo.addEventListener(
+      "reduceTransparencyChanged",
+      setReduced,
+    );
+    return () => subscription.remove();
+  }, []);
+
+  return reduced;
 }
 
-function IconTile({ children, tone = "neutral" }: { children: React.ReactNode; tone?: "neutral" | "green" | "danger" }) {
-  return <View style={[styles.iconTile, tone === "green" && styles.iconTileGreen, tone === "danger" && styles.iconTileDanger]}>{children}</View>;
+function CameraMaterial({
+  children,
+  reduced,
+}: {
+  children: React.ReactNode;
+  reduced: boolean;
+}) {
+  if (PROFILE_LIQUID_GLASS && !reduced) {
+    return (
+      <GlassView
+        glassEffectStyle="clear"
+        tintColor="rgba(255,255,255,0.18)"
+        pointerEvents="none"
+        style={styles.cameraMaterial}
+      >
+        {children}
+      </GlassView>
+    );
+  }
+
+  return (
+    <View
+      pointerEvents="none"
+      style={[styles.cameraMaterial, reduced && styles.cameraMaterialSolid]}
+    >
+      {!reduced && (
+        <BlurView
+          tint="systemUltraThinMaterialLight"
+          intensity={Platform.OS === "android" ? 28 : 64}
+          blurMethod="dimezisBlurView"
+          blurReductionFactor={3}
+          style={StyleSheet.absoluteFill}
+        />
+      )}
+      <View pointerEvents="none" style={styles.cameraMaterialTint} />
+      {children}
+    </View>
+  );
 }
 
-function ActionButton({
+function SettingsSection({
   label,
-  onPress,
-  disabled,
-  variant = "primary",
-  icon,
+  footer,
+  children,
 }: {
   label: string;
+  footer?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <View style={styles.section}>
+      <T style={styles.sectionLabel}>{label}</T>
+      <View style={styles.group}>{children}</View>
+      {footer ? <T style={styles.sectionFooter}>{footer}</T> : null}
+    </View>
+  );
+}
+
+function GroupDivider({ inset = 16 }: { inset?: number }) {
+  return <View style={[styles.divider, { marginLeft: inset }]} />;
+}
+
+function RowIcon({
+  children,
+  tone = "neutral",
+}: {
+  children: React.ReactNode;
+  tone?: "neutral" | "green" | "danger";
+}) {
+  return (
+    <View
+      style={[
+        styles.rowIcon,
+        tone === "green" && styles.rowIconGreen,
+        tone === "danger" && styles.rowIconDanger,
+      ]}
+    >
+      {children}
+    </View>
+  );
+}
+
+function SettingsRow({
+  label,
+  value,
+  caption,
+  icon,
+  trailing,
+  onPress,
+  disabled = false,
+  danger = false,
+  accessibilityRole = "button",
+}: {
+  label: string;
+  value?: string;
+  caption?: string;
+  icon?: React.ReactNode;
+  trailing?: React.ReactNode;
   onPress?: () => void;
   disabled?: boolean;
-  variant?: "primary" | "secondary" | "danger";
-  icon?: React.ReactNode;
+  danger?: boolean;
+  accessibilityRole?: "button" | "link";
 }) {
-  const bg = disabled
-    ? COLORS.lightSurfaceAlt
-    : variant === "danger"
-      ? COLORS.declineRedSoft
-      : variant === "secondary"
-        ? COLORS.lightSurfaceAlt
-        : COLORS.ctaBlack;
-  const fg = disabled
-    ? COLORS.lightSub
-    : variant === "danger"
-      ? COLORS.declineRed
-      : variant === "secondary"
-        ? COLORS.lightText
-        : "#FFFFFF";
+  const content = (
+    <>
+      {icon}
+      <View style={styles.rowCopy}>
+        <T style={[styles.rowLabel, danger && styles.dangerText]}>{label}</T>
+        {caption ? <T style={styles.rowCaption}>{caption}</T> : null}
+      </View>
+      {value ? (
+        <T style={styles.rowValue} numberOfLines={2} selectable>
+          {value}
+        </T>
+      ) : null}
+      {trailing}
+    </>
+  );
+
+  if (!onPress) return <View style={styles.settingsRow}>{content}</View>;
 
   return (
     <Pressable
-      onPress={disabled ? undefined : onPress}
+      onPress={onPress}
       disabled={disabled}
-      accessibilityRole="button"
-      style={({ pressed }) => [styles.actionButton, { backgroundColor: bg }, pressed && !disabled && styles.pressed]}
+      accessibilityRole={accessibilityRole}
+      accessibilityLabel={value ? `${label}, ${value}` : label}
+      accessibilityState={{ disabled }}
+      style={({ pressed }) => [
+        styles.settingsRow,
+        disabled && styles.rowDisabled,
+        pressed && !disabled && styles.rowPressed,
+      ]}
     >
-      {icon ? <View style={styles.actionIcon}>{icon}</View> : null}
-      <T style={[styles.actionButtonText, { color: fg }]}>{label}</T>
+      {content}
     </Pressable>
   );
 }
@@ -110,7 +230,7 @@ function InfoRow({ label, value }: { label: string; value: string }) {
   return (
     <View style={styles.infoRow}>
       <T style={styles.infoLabel}>{label}</T>
-      <T style={styles.infoValue}>{value}</T>
+      <T style={styles.infoValue} numberOfLines={2} selectable>{value}</T>
     </View>
   );
 }
@@ -129,6 +249,8 @@ async function resetLocalUserData() {
 }
 
 export default function ProfileScreen() {
+  const insets = useSafeAreaInsets();
+  const reduceTransparency = useReduceTransparency();
   const authUser = useAuthStore((state) => state.user);
   const onboardingData = useOnboarding((state) => state.data);
   const hydrateOnboarding = useOnboarding((state) => state.hydrate);
@@ -138,7 +260,6 @@ export default function ProfileScreen() {
   const setProfileAvatar = useProfile((state) => state.setAvatar);
   const setDisplayName = useProfile((state) => state.setDisplayName);
   const revenueCatEntitlement = useSubscriptionStore((state) => state.revenueCatEntitlement);
-  const promoActivated = useSubscriptionStore((state) => state.promoActivated);
   const setRevenueCatEntitlement = useSubscriptionStore((state) => state.setRevenueCatEntitlement);
   const recoveryCode = useRecoveryCodeStore((s) => s.code);
   const generating = useRecoveryCodeStore((s) => s.generating);
@@ -189,9 +310,8 @@ export default function ProfileScreen() {
     (authUser as any)?.emailAddress ??
     (authUser as any)?.emailAddresses?.[0]?.emailAddress ??
     "Email unavailable";
-  const hasAccess = Boolean(revenueCatEntitlement || promoActivated);
-  const accessLabel = hasAccess ? (promoActivated ? "Promo active" : "Sigma Max Pro") : "Free plan";
-  const avatarSource = avatarUri ? { uri: avatarUri } : require("../../assets/sigmamax-real-updatred-logo.jpeg");
+  const hasAccess = Boolean(revenueCatEntitlement);
+  const accessLabel = hasAccess ? "Sigma Max Pro" : "Free plan";
   const gender = onboardingData.gender || "Not set";
   const ethnicity = onboardingData.ethnicity || "Not set";
   const age = typeof onboardingData.age === "number" ? String(onboardingData.age) : "Not set";
@@ -304,103 +424,188 @@ export default function ProfileScreen() {
   };
 
   return (
-    <AppGradientBackground>
-      <SafeAreaView style={styles.safe}>
-        <ScrollView
-          contentContainerStyle={[styles.scrollContent, { paddingBottom: FLOATING_TAB_BAR.contentClearance + SP[5] }]}
-          showsVerticalScrollIndicator={false}
-        >
-          <View style={styles.header}>
-            <T style={styles.eyebrow}>ACCOUNT</T>
-            <T style={styles.title}>Profile</T>
-            <T style={styles.subtitle}>Manage your identity, plan, and recovery access.</T>
+    <View style={styles.root}>
+      <StatusBar barStyle="dark-content" backgroundColor={APP_SCREEN_BG} />
+      {/* The name field sits mid-list; without this the keyboard covers it. */}
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      >
+      <ScrollView
+        contentInsetAdjustmentBehavior="automatic"
+        contentContainerStyle={[
+          styles.scrollContent,
+          {
+            paddingTop: Platform.OS === "android" ? insets.top + 12 : 12,
+            paddingBottom: FLOATING_TAB_BAR.contentClearance + SP[6],
+          },
+        ]}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.contentColumn}>
+          <T style={styles.title}>Profile</T>
+
+          <View style={styles.identity}>
+            <Pressable
+              onPress={handleChangePhoto}
+              disabled={changingPhoto || deletingAccount || isHydrating}
+              accessibilityRole="button"
+              accessibilityLabel={changingPhoto ? "Changing profile photo" : "Change profile photo"}
+              accessibilityState={{ disabled: changingPhoto || deletingAccount || isHydrating }}
+              style={({ pressed }) => [
+                styles.avatarButton,
+                pressed && styles.avatarPressed,
+              ]}
+            >
+              <View style={styles.avatarFrame}>
+                {avatarUri ? (
+                  <Image
+                    source={{ uri: avatarUri }}
+                    style={styles.avatarImage}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <View style={styles.avatarFallback}>
+                    <UserRound size={42} color="#8B867F" strokeWidth={1.8} />
+                  </View>
+                )}
+              </View>
+              <CameraMaterial reduced={reduceTransparency}>
+                <View style={styles.cameraMaterialContent}>
+                  {changingPhoto ? (
+                    <ActivityIndicator size="small" color={INK} />
+                  ) : (
+                    <Camera size={17} color={INK} strokeWidth={2.35} />
+                  )}
+                </View>
+              </CameraMaterial>
+            </Pressable>
+
+            <View style={styles.identityCopy}>
+              <T style={styles.identityName} numberOfLines={2}>{name}</T>
+              <T style={styles.identityEmail} numberOfLines={1} selectable>{email}</T>
+            </View>
+
+            <View style={[styles.planPill, hasAccess && styles.planPillActive]}>
+              {isHydrating ? (
+                <ActivityIndicator size="small" color={SECONDARY} />
+              ) : (
+                <T style={[styles.planPillText, hasAccess && styles.planPillTextActive]}>
+                  {accessLabel}
+                </T>
+              )}
+            </View>
           </View>
 
-          <LightCard style={styles.heroCard}>
-            <View style={styles.avatarRing}>
-              <View style={styles.avatarInner}>
-                <Image source={avatarSource} style={styles.avatarImage} resizeMode={avatarUri ? "cover" : "contain"} />
-              </View>
-            </View>
-            <View style={styles.heroCopy}>
-              <View style={styles.nameRow}>
-                <T style={styles.heroName} numberOfLines={1}>{name}</T>
-                <View style={[styles.statusPill, hasAccess && styles.statusPillActive]}>
-                  <T style={[styles.statusText, hasAccess && styles.statusTextActive]}>{accessLabel}</T>
-                </View>
-              </View>
-              <T style={styles.heroEmail} numberOfLines={1}>{email}</T>
-              <ActionButton
-                label={changingPhoto ? "Changing photo" : "Change photo"}
-                onPress={handleChangePhoto}
-                disabled={changingPhoto || deletingAccount || isHydrating}
-                icon={<Camera size={17} color="#FFFFFF" strokeWidth={2.5} />}
-              />
-            </View>
-          </LightCard>
-
-          {isHydrating ? <T style={styles.hydratingLabel}>Loading profile...</T> : null}
-
-          <LightCard>
-            <View style={styles.sectionHeader}>
-              <IconTile><UserRound size={22} color={COLORS.lightText} strokeWidth={2.4} /></IconTile>
-              <View style={styles.sectionCopy}>
-                <T style={styles.cardLabel}>Demographics</T>
-                <T style={styles.cardSubtext}>Basic details used for your plan.</T>
-              </View>
-            </View>
+          <SettingsSection label="PERSONAL">
             <View style={styles.nameEditorRow}>
-              <TextInput
-                ref={nameInputRef}
-                style={styles.nameInput}
-                value={nameInput}
-                onChangeText={(v) => { setNameInput(v); setNameSaved(false); }}
-                placeholder="Your name"
-                placeholderTextColor={COLORS.lightSub}
-                returnKeyType="done"
-                onSubmitEditing={saveName}
-                maxLength={30}
-              />
-              <Pressable onPress={saveName} style={({ pressed }) => [styles.saveChip, pressed && styles.pressed]}>
-                <T style={styles.saveChipText}>{nameSaved ? "Saved" : "Save"}</T>
+              <View style={styles.nameEditorCopy}>
+                <T style={styles.inputLabel}>Name</T>
+                <TextInput
+                  ref={nameInputRef}
+                  style={styles.nameInput}
+                  value={nameInput}
+                  onChangeText={(v) => { setNameInput(v); setNameSaved(false); }}
+                  placeholder="Your name"
+                  placeholderTextColor={SECONDARY}
+                  returnKeyType="done"
+                  onSubmitEditing={saveName}
+                  maxLength={30}
+                  editable={!isHydrating}
+                  accessibilityLabel="Name"
+                  accessibilityState={{ disabled: isHydrating }}
+                  selectionColor={INK}
+                />
+              </View>
+              <Pressable
+                onPress={saveName}
+                disabled={isHydrating}
+                accessibilityRole="button"
+                accessibilityLabel={nameSaved ? "Name saved" : "Save name"}
+                accessibilityState={{ disabled: isHydrating }}
+                hitSlop={4}
+                style={({ pressed }) => [
+                  styles.saveButton,
+                  nameSaved && styles.saveButtonComplete,
+                  isHydrating && styles.rowDisabled,
+                  pressed && styles.compactPressed,
+                ]}
+              >
+                {nameSaved ? <Check size={15} color={GREEN} strokeWidth={2.6} /> : null}
+                <T style={[styles.saveButtonText, nameSaved && styles.saveButtonTextComplete]}>
+                  {nameSaved ? "Saved" : "Save"}
+                </T>
               </Pressable>
             </View>
+            <GroupDivider />
             <InfoRow label="Gender" value={gender} />
+            <GroupDivider />
             <InfoRow label="Ethnicity" value={ethnicity} />
+            <GroupDivider />
             <InfoRow label="Age" value={age} />
-          </LightCard>
+          </SettingsSection>
 
-          <LightCard>
-            <View style={styles.sectionHeader}>
-              <IconTile tone={hasAccess ? "green" : "neutral"}>
-                <ReceiptText size={22} color={hasAccess ? GREEN : COLORS.lightText} strokeWidth={2.4} />
-              </IconTile>
-              <View style={styles.sectionCopy}>
-                <T style={styles.cardLabel}>Subscription</T>
-                <T style={styles.cardSubtext}>{hasAccess ? "Your access is active." : "No active subscription."}</T>
-              </View>
-            </View>
-            <ActionButton
-              label={restoringPurchases ? "Restoring purchases" : "Restore purchases"}
+          <SettingsSection
+            label="MEMBERSHIP"
+            footer="Restoring purchases never creates a new charge."
+          >
+            <SettingsRow
+              label="Current plan"
+              value={accessLabel}
+              icon={
+                <RowIcon tone={hasAccess ? "green" : "neutral"}>
+                  <ReceiptText size={17} color={hasAccess ? GREEN : INK} strokeWidth={2.2} />
+                </RowIcon>
+              }
+            />
+            <GroupDivider inset={62} />
+            <SettingsRow
+              label={restoringPurchases ? "Restoring purchases…" : "Restore purchases"}
+              caption={hasAccess ? "Check this account for previous purchases" : undefined}
+              icon={
+                <RowIcon>
+                  <RefreshCw size={17} color={INK} strokeWidth={2.2} />
+                </RowIcon>
+              }
+              trailing={
+                restoringPurchases ? (
+                  <ActivityIndicator size="small" color={SECONDARY} />
+                ) : null
+              }
               onPress={handleRestorePurchases}
               disabled={restoringPurchases || isHydrating}
-              icon={<ReceiptText size={17} color="#FFFFFF" strokeWidth={2.5} />}
             />
-          </LightCard>
+          </SettingsSection>
 
-          <LightCard>
-            <View style={styles.sectionHeader}>
-              <IconTile tone="green"><KeyRound size={22} color={GREEN} strokeWidth={2.4} /></IconTile>
-              <View style={styles.sectionCopy}>
-                <T style={styles.cardLabel}>Recovery Code</T>
-                <T style={styles.cardSubtext}>Use it to restore access after reinstalling.</T>
+          <SettingsSection
+            label="SECURITY"
+            footer="Keep your recovery code somewhere private."
+          >
+            <View style={styles.recoveryRow}>
+              <RowIcon tone="green">
+                <KeyRound size={17} color={GREEN} strokeWidth={2.2} />
+              </RowIcon>
+              <View style={styles.recoveryCopy}>
+                <T style={styles.rowLabel}>Recovery code</T>
+                {recoveryCode ? (
+                  <T style={styles.recoveryCode} numberOfLines={1} selectable>{recoveryCode}</T>
+                ) : (
+                  <T style={styles.rowCaption}>
+                    {generating ? "Generating your code…" : "Loading…"}
+                  </T>
+                )}
               </View>
-            </View>
-            {recoveryCode ? (
-              <View style={styles.recoveryRow}>
-                <T style={styles.recoveryCode} numberOfLines={1}>{recoveryCode}</T>
+              {recoveryCode ? (
                 <Pressable
-                  style={({ pressed }) => [styles.copyBtn, pressed && styles.pressed]}
+                  accessibilityRole="button"
+                  accessibilityLabel={codeCopied ? "Recovery code copied" : "Copy recovery code"}
+                  hitSlop={4}
+                  style={({ pressed }) => [
+                    styles.copyButton,
+                    codeCopied && styles.copyButtonComplete,
+                    pressed && styles.compactPressed,
+                  ]}
                   onPress={async () => {
                     try {
                       await Clipboard.setStringAsync(recoveryCode);
@@ -409,339 +614,412 @@ export default function ProfileScreen() {
                     } catch {}
                   }}
                 >
-                  <Copy size={16} color={COLORS.lightText} strokeWidth={2.4} />
-                  <T style={styles.copyBtnText}>{codeCopied ? "Copied" : "Copy"}</T>
+                  {codeCopied ? (
+                    <Check size={16} color={GREEN} strokeWidth={2.5} />
+                  ) : (
+                    <Copy size={16} color={INK} strokeWidth={2.3} />
+                  )}
+                  <T style={[styles.copyButtonText, codeCopied && styles.copyButtonTextComplete]}>
+                    {codeCopied ? "Copied" : "Copy"}
+                  </T>
                 </Pressable>
-              </View>
-            ) : (
-              <T style={styles.generatingLabel}>{generating ? "Generating your code..." : "Loading..."}</T>
-            )}
-          </LightCard>
+              ) : (
+                <ActivityIndicator size="small" color={SECONDARY} />
+              )}
+            </View>
+            <GroupDivider inset={62} />
+            <SettingsRow
+              label="Privacy Policy"
+              caption="How your data and account are handled"
+              icon={
+                <RowIcon>
+                  <ShieldCheck size={17} color={INK} strokeWidth={2.2} />
+                </RowIcon>
+              }
+              trailing={<ExternalLink size={17} color="#8A857E" strokeWidth={2.1} />}
+              onPress={() => WebBrowser.openBrowserAsync("https://third-tamarillo-756.notion.site/Privacy-Policy-30266c2b427680a29ba5e586b5913999")}
+              accessibilityRole="link"
+            />
+          </SettingsSection>
 
-          <Pressable
-            accessibilityRole="link"
-            onPress={() => WebBrowser.openBrowserAsync("https://third-tamarillo-756.notion.site/Privacy-Policy-30266c2b427680a29ba5e586b5913999")}
-            style={({ pressed }) => [styles.privacyCard, pressed && styles.pressed]}
-          >
-            <IconTile><ShieldCheck size={21} color={COLORS.lightText} strokeWidth={2.4} /></IconTile>
-            <View style={styles.sectionCopy}>
-              <T style={styles.privacyTitle}>Privacy Policy</T>
-              <T style={styles.cardSubtext}>Review data and account terms.</T>
-            </View>
-          </Pressable>
-
-          <LightCard style={styles.dangerCard}>
-            <View style={styles.sectionHeader}>
-              <IconTile tone="danger"><Trash2 size={22} color={COLORS.declineRed} strokeWidth={2.4} /></IconTile>
-              <View style={styles.sectionCopy}>
-                <T style={styles.cardLabel}>Account actions</T>
-                <T style={styles.cardSubtext}>Sign out or clear this device.</T>
-              </View>
-            </View>
-            <View style={styles.actionStack}>
-              <ActionButton
-                label="Delete account"
-                variant="danger"
-                onPress={handleDeleteAccount}
-                disabled={deletingAccount || loggingOut || isHydrating}
-                icon={<Trash2 size={17} color={COLORS.declineRed} strokeWidth={2.5} />}
-              />
-              <ActionButton
-                label={loggingOut ? "Logging out" : "Log out"}
-                onPress={handleLogout}
-                disabled={loggingOut || deletingAccount || isHydrating}
-                icon={<LogOut size={17} color="#FFFFFF" strokeWidth={2.5} />}
-              />
-            </View>
-          </LightCard>
-        </ScrollView>
-      </SafeAreaView>
-    </AppGradientBackground>
+          <SettingsSection label="ACCOUNT">
+            <SettingsRow
+              label={loggingOut ? "Signing out…" : "Sign Out"}
+              icon={
+                <RowIcon tone="danger">
+                  <LogOut size={17} color={COLORS.declineRed} strokeWidth={2.2} />
+                </RowIcon>
+              }
+              trailing={loggingOut ? <ActivityIndicator size="small" color={COLORS.declineRed} /> : null}
+              onPress={handleLogout}
+              disabled={loggingOut || deletingAccount || isHydrating}
+              danger
+            />
+            <GroupDivider inset={62} />
+            <SettingsRow
+              label={deletingAccount ? "Deleting account…" : "Delete Account"}
+              caption="Removes local app data from this device"
+              icon={
+                <RowIcon tone="danger">
+                  <Trash2 size={17} color={COLORS.declineRed} strokeWidth={2.2} />
+                </RowIcon>
+              }
+              trailing={deletingAccount ? <ActivityIndicator size="small" color={COLORS.declineRed} /> : null}
+              onPress={handleDeleteAccount}
+              disabled={deletingAccount || loggingOut || isHydrating}
+              danger
+            />
+          </SettingsSection>
+        </View>
+      </ScrollView>
+      </KeyboardAvoidingView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: {
+  root: {
     flex: 1,
-    backgroundColor: "transparent",
+    backgroundColor: APP_SCREEN_BG,
+  },
+  flex: {
+    flex: 1,
   },
   scrollContent: {
     paddingHorizontal: SP[5],
-    paddingTop: SP[5],
-    gap: SP[4],
   },
-  header: {
-    alignItems: "center",
-    paddingHorizontal: SP[5],
-    gap: SP[1],
-  },
-  eyebrow: {
-    fontFamily: DETAIL_FONT,
-    fontSize: ms(11),
-    color: COLORS.lightSub,
-    letterSpacing: 1,
+  contentColumn: {
+    width: "100%",
+    maxWidth: 520,
+    alignSelf: "center",
+    gap: 28,
   },
   title: {
+    color: INK,
     fontFamily: FONT,
     fontSize: ms(34),
-    lineHeight: ms(38),
-    color: COLORS.lightText,
-    letterSpacing: 0,
+    lineHeight: ms(39),
+    letterSpacing: -0.65,
   },
-  subtitle: {
-    fontFamily: DETAIL_FONT,
-    fontSize: ms(14),
-    lineHeight: ms(20),
-    color: COLORS.lightSub,
-    textAlign: "center",
-  },
-  card: {
-    backgroundColor: COLORS.lightCard,
-    borderRadius: RADII.lg,
-    padding: SP[4],
-    ...SOFT_SHADOW,
-  },
-  heroCard: {
-    minHeight: sh(148),
-    flexDirection: "row",
+  identity: {
     alignItems: "center",
-    gap: SP[4],
-    padding: SP[5],
+    gap: 10,
+    paddingBottom: 2,
   },
-  avatarRing: {
-    width: ms(106),
-    height: ms(106),
-    borderRadius: ms(53),
+  avatarButton: {
+    position: "relative",
+    width: 108,
+    height: 108,
     alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: COLORS.lightSurfaceAlt,
+    justifyContent: "flex-start",
   },
-  avatarInner: {
-    width: ms(92),
-    height: ms(92),
-    borderRadius: ms(46),
+  avatarPressed: {
+    opacity: 0.86,
+    transform: [{ scale: 0.975 }],
+  },
+  avatarFrame: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
     overflow: "hidden",
-    backgroundColor: COLORS.lightSurfaceAlt,
-    alignItems: "center",
-    justifyContent: "center",
+    backgroundColor: "#ECEAE6",
+    borderWidth: 1,
+    borderColor: "rgba(23,21,18,0.08)",
+    boxShadow: "0 9px 22px rgba(23, 18, 12, 0.13)",
   },
   avatarImage: {
     width: "100%",
     height: "100%",
   },
-  heroCopy: {
+  avatarFallback: {
     flex: 1,
-    minWidth: 0,
-    gap: SP[2],
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#F0EEEA",
   },
-  nameRow: {
-    gap: SP[2],
+  cameraMaterial: {
+    position: "absolute",
+    right: 1,
+    bottom: 4,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderCurve: "continuous",
+    overflow: "hidden",
+    backgroundColor: "rgba(255,255,255,0.56)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(255,255,255,0.92)",
+    boxShadow: "0 5px 12px rgba(23, 18, 12, 0.16)",
   },
-  heroName: {
-    color: COLORS.lightText,
+  cameraMaterialSolid: {
+    backgroundColor: "#FFFFFF",
+  },
+  cameraMaterialTint: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: "rgba(255,255,255,0.34)",
+  },
+  cameraMaterialContent: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  identityCopy: {
+    maxWidth: "92%",
+    alignItems: "center",
+    gap: 2,
+  },
+  identityName: {
+    color: INK,
     fontFamily: FONT,
-    fontSize: ms(25),
+    fontSize: ms(24),
     lineHeight: ms(29),
-    letterSpacing: 0,
-  },
-  heroEmail: {
-    color: COLORS.lightSub,
-    fontFamily: DETAIL_FONT,
-    fontSize: ms(13),
-  },
-  statusPill: {
-    alignSelf: "flex-start",
-    borderRadius: RADII.circle,
-    backgroundColor: COLORS.lightSurfaceAlt,
-    paddingHorizontal: SP[3],
-    paddingVertical: 5,
-  },
-  statusPillActive: {
-    backgroundColor: "#EEF8DE",
-  },
-  statusText: {
-    fontFamily: FONT,
-    fontSize: ms(11),
-    color: COLORS.lightSub,
-    letterSpacing: 0.2,
-  },
-  statusTextActive: {
-    color: GREEN,
-  },
-  hydratingLabel: {
-    color: COLORS.lightSub,
-    fontFamily: DETAIL_FONT,
-    fontSize: ms(13),
+    letterSpacing: -0.25,
     textAlign: "center",
   },
-  sectionHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SP[3],
-    marginBottom: SP[4],
+  identityEmail: {
+    color: SECONDARY,
+    fontFamily: DETAIL_FONT,
+    fontSize: ms(14),
+    lineHeight: ms(19),
+    textAlign: "center",
   },
-  iconTile: {
-    width: 48,
-    height: 48,
-    borderRadius: RADII.md,
-    backgroundColor: COLORS.lightSurfaceAlt,
+  planPill: {
+    minHeight: 28,
+    minWidth: 72,
+    borderRadius: 999,
+    paddingHorizontal: 11,
+    paddingVertical: 5,
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: "#EFEDE9",
   },
-  iconTileGreen: {
-    backgroundColor: "#EEF8DE",
+  planPillActive: {
+    backgroundColor: "#EDF6E4",
   },
-  iconTileDanger: {
+  planPillText: {
+    color: SECONDARY,
+    fontFamily: FONT,
+    fontSize: ms(11.5),
+    lineHeight: ms(15),
+    letterSpacing: 0.08,
+  },
+  planPillTextActive: {
+    color: GREEN,
+  },
+  section: {
+    gap: 8,
+  },
+  sectionLabel: {
+    paddingHorizontal: 12,
+    color: SECONDARY,
+    fontFamily: FONT,
+    fontSize: ms(11.5),
+    lineHeight: ms(15),
+    letterSpacing: 0.85,
+  },
+  group: {
+    overflow: "hidden",
+    borderRadius: 18,
+    borderCurve: "continuous",
+    backgroundColor: GROUP_BG,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(23,21,18,0.07)",
+  },
+  sectionFooter: {
+    paddingHorizontal: 12,
+    color: SECONDARY,
+    fontFamily: DETAIL_FONT,
+    fontSize: ms(12),
+    lineHeight: ms(17),
+  },
+  divider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: SEPARATOR,
+  },
+  settingsRow: {
+    minHeight: 60,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  rowPressed: {
+    backgroundColor: "#ECEAE6",
+  },
+  rowDisabled: {
+    opacity: 0.48,
+  },
+  rowIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    borderCurve: "continuous",
+    flexShrink: 0,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#EAE8E4",
+  },
+  rowIconGreen: {
+    backgroundColor: "#EAF4DF",
+  },
+  rowIconDanger: {
     backgroundColor: COLORS.declineRedSoft,
   },
-  sectionCopy: {
+  rowCopy: {
     flex: 1,
     minWidth: 0,
+    gap: 2,
   },
-  cardLabel: {
-    color: COLORS.lightText,
-    fontFamily: FONT,
-    fontSize: ms(19),
-    lineHeight: ms(23),
-    letterSpacing: 0,
-  },
-  cardSubtext: {
-    marginTop: 3,
-    color: COLORS.lightSub,
-    fontFamily: DETAIL_FONT,
-    fontSize: ms(13),
-    lineHeight: ms(18),
-  },
-  nameEditorRow: {
-    minHeight: 54,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SP[2],
-    borderTopWidth: 1,
-    borderTopColor: COLORS.lightHairline,
-  },
-  nameInput: {
-    flex: 1,
-    color: COLORS.lightText,
+  rowLabel: {
+    color: INK,
     fontFamily: DETAIL_FONT,
     fontSize: ms(16),
-    paddingVertical: 0,
+    lineHeight: ms(21),
   },
-  saveChip: {
-    minHeight: 36,
-    minWidth: 68,
-    borderRadius: RADII.circle,
-    backgroundColor: COLORS.lightSurfaceAlt,
+  rowCaption: {
+    color: SECONDARY,
+    fontFamily: DETAIL_FONT,
+    fontSize: ms(12.5),
+    lineHeight: ms(17),
+  },
+  rowValue: {
+    maxWidth: "44%",
+    color: SECONDARY,
+    fontFamily: DETAIL_FONT,
+    fontSize: ms(14.5),
+    lineHeight: ms(19),
+    textAlign: "right",
+  },
+  dangerText: {
+    color: COLORS.declineRed,
+  },
+  nameEditorRow: {
+    minHeight: 72,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  nameEditorCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 1,
+  },
+  inputLabel: {
+    color: SECONDARY,
+    fontFamily: DETAIL_FONT,
+    fontSize: ms(12),
+    lineHeight: ms(16),
+  },
+  nameInput: {
+    minHeight: 30,
+    color: INK,
+    fontFamily: DETAIL_FONT,
+    fontSize: ms(16),
+    lineHeight: ms(21),
+    paddingHorizontal: 0,
+    paddingVertical: 2,
+  },
+  saveButton: {
+    minWidth: 70,
+    minHeight: 44,
+    borderRadius: 22,
+    paddingHorizontal: 12,
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: SP[3],
+    gap: 5,
+    backgroundColor: "#FFFFFF",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(23,21,18,0.10)",
   },
-  saveChipText: {
-    color: COLORS.lightText,
+  saveButtonComplete: {
+    backgroundColor: "#EDF6E4",
+    borderColor: "rgba(77,152,0,0.14)",
+  },
+  saveButtonText: {
+    color: INK,
     fontFamily: FONT,
     fontSize: ms(13),
+    lineHeight: ms(17),
+  },
+  saveButtonTextComplete: {
+    color: GREEN,
+  },
+  compactPressed: {
+    opacity: 0.72,
+    transform: [{ scale: 0.96 }],
   },
   infoRow: {
-    minHeight: 48,
+    minHeight: 54,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    borderTopWidth: 1,
-    borderTopColor: COLORS.lightHairline,
-    gap: SP[3],
+    gap: 16,
   },
   infoLabel: {
-    color: COLORS.lightSub,
+    color: INK,
     fontFamily: DETAIL_FONT,
-    fontSize: ms(14),
+    fontSize: ms(16),
+    lineHeight: ms(21),
   },
   infoValue: {
     flex: 1,
-    color: COLORS.lightText,
+    color: SECONDARY,
     fontFamily: DETAIL_FONT,
-    fontSize: ms(15),
+    fontSize: ms(14.5),
+    lineHeight: ms(19),
     textAlign: "right",
   },
-  actionButton: {
-    minHeight: 52,
-    borderRadius: RADII.circle,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: SP[2],
-    paddingHorizontal: SP[5],
-  },
-  actionIcon: {
-    width: 20,
-    alignItems: "center",
-  },
-  actionButtonText: {
-    fontFamily: FONT,
-    fontSize: ms(14),
-    letterSpacing: 0.5,
-    textTransform: "uppercase",
-  },
-  pressed: {
-    opacity: 0.78,
-  },
   recoveryRow: {
-    minHeight: 58,
+    minHeight: 70,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     flexDirection: "row",
     alignItems: "center",
-    gap: SP[3],
-    borderTopWidth: 1,
-    borderTopColor: COLORS.lightHairline,
+    gap: 12,
+  },
+  recoveryCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
   },
   recoveryCode: {
-    flex: 1,
-    color: COLORS.lightText,
+    color: SECONDARY,
     fontFamily: DETAIL_FONT,
-    fontSize: ms(18),
-    letterSpacing: 2,
+    fontSize: ms(14),
+    lineHeight: ms(18),
+    letterSpacing: 1.15,
+    fontVariant: ["tabular-nums"],
   },
-  copyBtn: {
-    minHeight: 40,
-    borderRadius: RADII.circle,
-    backgroundColor: COLORS.lightSurfaceAlt,
+  copyButton: {
+    minHeight: 44,
+    minWidth: 76,
+    borderRadius: 22,
+    paddingHorizontal: 11,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: SP[1],
-    paddingHorizontal: SP[3],
+    gap: 6,
+    backgroundColor: "#FFFFFF",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(23,21,18,0.10)",
   },
-  copyBtnText: {
-    color: COLORS.lightText,
+  copyButtonComplete: {
+    backgroundColor: "#EDF6E4",
+    borderColor: "rgba(77,152,0,0.14)",
+  },
+  copyButtonText: {
+    color: INK,
     fontFamily: FONT,
-    fontSize: ms(13),
+    fontSize: ms(12.5),
+    lineHeight: ms(16),
   },
-  generatingLabel: {
-    color: COLORS.lightSub,
-    fontFamily: DETAIL_FONT,
-    fontSize: ms(13),
-    borderTopWidth: 1,
-    borderTopColor: COLORS.lightHairline,
-    paddingTop: SP[3],
-  },
-  privacyCard: {
-    minHeight: 82,
-    backgroundColor: COLORS.lightCard,
-    borderRadius: RADII.lg,
-    padding: SP[4],
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SP[3],
-    ...SOFT_SHADOW,
-  },
-  privacyTitle: {
-    color: COLORS.lightText,
-    fontFamily: FONT,
-    fontSize: ms(17),
-  },
-  dangerCard: {
-    marginTop: SP[1],
-  },
-  actionStack: {
-    gap: SP[3],
+  copyButtonTextComplete: {
+    color: GREEN,
   },
 });
-

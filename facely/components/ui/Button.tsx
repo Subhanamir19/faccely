@@ -17,7 +17,7 @@ import Animated, {
   withTiming,
   Easing,
 } from "react-native-reanimated";
-import { Ionicons } from "@expo/vector-icons";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import T from "@/components/ui/T";
 import { COLORS, RADII, SHADOWS, ELEVATION, SP } from "@/lib/tokens";
 import { hapticLight, hapticMedium } from "@/lib/haptics";
@@ -206,6 +206,7 @@ export default function Button({
         onPressOut={handlePressOut}
         disabled={isDisabled}
         accessibilityRole="button"
+        accessibilityLabel={label}
         accessibilityState={{ disabled: isDisabled }}
         android_ripple={null}
         focusable={false}

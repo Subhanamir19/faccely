@@ -1,11 +1,11 @@
-﻿// app/(tabs)/routine.tsx
+﻿// app/routine.tsx
 import React, { useEffect, useState } from "react";
 import { SafeAreaView, ScrollView, View, StyleSheet, Alert } from "react-native";
 import Text from "@/components/ui/T";
 import GlassBtn from "@/components/ui/GlassBtn";
-import { useRoutineStore } from "../../store/routineStore";
-import { useScores } from "../../store/scores";
-import { fetchRoutine } from "../../lib/api/routine";
+import { useRoutineStore } from "../store/routineStore";
+import { useScores } from "../store/scores";
+import { fetchRoutine } from "../lib/api/routine";
 
 export default function RoutineScreen() {
   const {

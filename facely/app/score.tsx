@@ -1,4 +1,4 @@
-// app/(tabs)/score.tsx
+// app/score.tsx
 // Scoring screen — swipeable stacked deck of 8 metric cards.
 //
 // Data sources:
@@ -10,30 +10,32 @@ import {
   View,
   StyleSheet,
   Alert,
-  Image,
   Pressable,
   ActivityIndicator,
   ScrollView,
   useWindowDimensions,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { LinearGradient } from "expo-linear-gradient";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { router } from "expo-router";
+import { ChevronRight } from "lucide-react-native";
 
 import type { ScoringMetric } from "@/components/scores/ScoringCarousel";
 import StackedScoreDeckPreview from "@/components/scores/StackedScoreDeckPreview";
 import Text from "@/components/ui/T";
-import { COLORS, RADII, SP } from "@/lib/tokens";
+import { COLORS, SP } from "@/lib/tokens";
 import { ms, sh, sw } from "@/lib/responsive";
-import { useScores } from "../../store/scores";
-import { useInsights } from "../../store/insights";
+import { useScores } from "../store/scores";
+import { useInsights } from "../store/insights";
 import { useAdvancedAnalysisConsent } from "@/hooks/useAdvancedAnalysisConsent";
-import { ADVANCED_ANALYSIS_FONT_BOLD } from "@/lib/advancedAnalysisIcons";
-import { AppGradientBackground } from "@/components/layout/AppGradientBackground";
 import { FLOATING_TAB_BAR } from "@/components/layout/floatingTabBar";
+import { hapticLight } from "@/lib/haptics";
 
-const FONT = ADVANCED_ANALYSIS_FONT_BOLD;
-const SCREEN_BG = "#FEF5E4";
+const FONT_REGULAR = "SFProRounded-Regular";
+const FONT_SEMIBOLD = "SFProRounded-Semibold";
+const FONT_BOLD = "SFProRounded-Bold";
+const SCREEN_BG = "#EEF0F1";
 
 // ─── Metric definitions ───────────────────────────────────────────────────────
 type MetricDef = { apiKey: string; label: string; defaultScore: number };
@@ -61,66 +63,55 @@ function computeOverall(metrics: ScoringMetric[]): number {
   return Math.round(metrics.reduce((sum, m) => sum + m.score, 0) / metrics.length);
 }
 
-// ─── Local light buttons (replace dark PillNavButton) ────────────────────────
+// ─── Advanced analysis CTA ───────────────────────────────────────────────
 
-function LightPillButton({
-  label,
-  onPress,
-  variant = "secondary",
-  disabled,
-  loading,
-  fill = false,
-}: {
-  label: string;
+type AdvancedAnalysisButtonProps = {
   onPress: () => void;
-  variant?: "primary" | "secondary";
   disabled?: boolean;
   loading?: boolean;
-  /** When true, button stretches to fill remaining row width. */
-  fill?: boolean;
-}) {
-  const isPrimary = variant === "primary";
-  const bg = disabled
-    ? COLORS.lightSurfaceAlt
-    : isPrimary
-      ? COLORS.ctaBlack
-      : COLORS.lightSurfaceAlt;
-  const fg = disabled
-    ? COLORS.lightSub
-    : isPrimary
-      ? "#FFFFFF"
-      : COLORS.lightText;
+};
+
+function AdvancedAnalysisButton({ onPress, disabled, loading }: AdvancedAnalysisButtonProps) {
+  const inactive = Boolean(disabled || loading);
+
   return (
-    <Pressable
-      onPress={disabled ? undefined : onPress}
-      disabled={disabled}
-      style={({ pressed }) => ({
-        ...(fill ? { flex: 1 } : {}),
-        minHeight: Math.max(44, sh(54)),
-        borderRadius: 999,
-        backgroundColor: bg,
-        alignItems: "center",
-        justifyContent: "center",
-        flexDirection: "row",
-        gap: sw(8),
-        paddingVertical: sh(14),
-        paddingHorizontal: SP[5],
-        opacity: pressed && !disabled ? 0.85 : 1,
-      })}
-    >
-      {loading && <ActivityIndicator color={fg} />}
-      <Text style={{ color: fg, fontFamily: FONT, fontSize: ms(13), letterSpacing: 0.4 }}>
-        {label.toUpperCase()}
-      </Text>
-    </Pressable>
+    <View style={[styles.advancedButtonBase, inactive && styles.advancedButtonBaseDisabled]}>
+      <Pressable
+        accessibilityRole="button"
+        disabled={inactive}
+        onPress={onPress}
+        style={({ pressed }) => [
+          styles.advancedButtonFace,
+          pressed && !inactive && styles.advancedButtonFacePressed,
+          inactive && styles.advancedButtonFaceDisabled,
+        ]}
+      >
+        <LinearGradient
+          colors={inactive ? [COLORS.lightSurfaceAlt, COLORS.lightSurfaceAlt] : ["#FF6A00", "#F4510B"]}
+          locations={[0, 1]}
+          start={{ x: 0.5, y: 0 }}
+          end={{ x: 0.5, y: 1 }}
+          style={styles.advancedButtonGradient}
+        >
+          {loading ? (
+            <ActivityIndicator color={inactive ? COLORS.lightSub : "#FFFFFF"} />
+          ) : (
+            <View style={styles.ctaContent}>
+              <Text style={[styles.advancedButtonText, inactive && styles.advancedButtonTextDisabled]}>
+                ADVANCED ANALYSIS
+              </Text>
+              <ChevronRight size={ms(17)} color={inactive ? COLORS.lightSub : "#FFFFFF"} strokeWidth={2.5} />
+            </View>
+          )}
+        </LinearGradient>
+      </Pressable>
+    </View>
   );
 }
 
-// ─── Screen ───────────────────────────────────────────────────────────────────
-
 export default function ScoreScreen() {
   const insets = useSafeAreaInsets();
-  const { width: SW, height: SH } = useWindowDimensions();
+  const { width: SW } = useWindowDimensions();
 
   const { imageUri, sideImageUri, scores, explLoading } = useScores();
   const { data: insightData } = useInsights();
@@ -143,17 +134,8 @@ export default function ScoreScreen() {
   const HORIZONTAL_PAD = SP[5];
   const viewportWidth  = SW - HORIZONTAL_PAD * 2;
 
-  // Avatar must shrink on shorter screens so it can't crash into the header
-  // when the centerStack contents exceed the available vertical space.
-  const avatarSize = Math.round(
-    Math.min(ms(128), Math.max(64, SH * 0.13))
-  );
-  const avatarPad = Math.max(2, Math.round(avatarSize * 0.03));
-  const compactLayout = SH < 720;
-
-  const handleBack = () => router.back();
-
   const handleAdvanced = async () => {
+    hapticLight();
     if (!scores || !imageUri || !sideImageUri) {
       Alert.alert(
         "Advanced analysis unavailable",
@@ -167,7 +149,13 @@ export default function ScoreScreen() {
   };
 
   return (
-    <AppGradientBackground style={styles.screen}>
+    <LinearGradient
+      colors={["#FEFFFF", "#F4F5F6", "#EEF0F1"]}
+      locations={[0, 0.42, 1]}
+      start={{ x: 0.5, y: 0 }}
+      end={{ x: 0.5, y: 1 }}
+      style={styles.screen}
+    >
       <ConsentModal />
 
       <View
@@ -186,52 +174,25 @@ export default function ScoreScreen() {
           showsVerticalScrollIndicator={false}
           bounces={false}
         >
-          <Animated.View entering={FadeInDown.duration(400).delay(100)} style={styles.header}>
-            <Text style={styles.title}>Your Scores</Text>
-            <Text style={styles.subtitle}>Facial analysis breakdown — all 8 metrics</Text>
-          </Animated.View>
+          <View style={styles.header}>
+            <Animated.View entering={FadeInDown.duration(420).delay(80)}>
+              <Text style={styles.title}>Your Scores</Text>
+            </Animated.View>
+            <Animated.View entering={FadeInDown.duration(420).delay(150)}>
+              <Text style={styles.subtitle}>A quick read of your current scan</Text>
+            </Animated.View>
+          </View>
 
-        {/* Centered stack: avatar + stacked score deck + counter */}
+        {/* Centered stack: stacked score deck + counter */}
         <View
           style={[
             styles.centerStack,
             {
-              gap: compactLayout ? sh(10) : sh(16),
-              marginTop: compactLayout ? sh(4) : sh(8),
+              gap: sh(12),
+              marginTop: sh(8),
             },
           ]}
         >
-          {/* User avatar — circular, top of the stack */}
-          <Animated.View entering={FadeInDown.duration(420).delay(160)}>
-            <View
-              style={[
-                styles.avatarRing,
-                {
-                  width: avatarSize,
-                  height: avatarSize,
-                  borderRadius: avatarSize / 2,
-                  padding: avatarPad,
-                },
-              ]}
-            >
-              {imageUri ? (
-                <Image
-                  source={{ uri: imageUri }}
-                  style={[styles.avatarImg, { borderRadius: avatarSize / 2 }]}
-                  resizeMode="cover"
-                />
-              ) : (
-                <View
-                  style={[
-                    styles.avatarImg,
-                    styles.avatarPlaceholder,
-                    { borderRadius: avatarSize / 2 },
-                  ]}
-                />
-              )}
-            </View>
-          </Animated.View>
-
           {/* Stacked score deck + counter */}
           <Animated.View entering={FadeInDown.duration(500).delay(220)} style={{ width: "100%" }}>
             <StackedScoreDeckPreview
@@ -250,20 +211,16 @@ export default function ScoreScreen() {
 
         </ScrollView>
 
-        {/* Action buttons — docked at bottom */}
+        {/* Action button - docked at bottom */}
         <Animated.View entering={FadeInDown.duration(400).delay(320)} style={styles.buttonRow}>
-          <LightPillButton label="Back" onPress={handleBack} />
-          <LightPillButton
-            label="Advanced Analysis"
-            variant="primary"
+          <AdvancedAnalysisButton
             onPress={handleAdvanced}
             disabled={explLoading}
             loading={explLoading}
-            fill
           />
         </Animated.View>
       </View>
-    </AppGradientBackground>
+    </LinearGradient>
   );
 }
 
@@ -286,24 +243,26 @@ const styles = StyleSheet.create({
     paddingBottom: sh(12),
   },
   header: {
+    width: "100%",
     gap: sh(4),
   },
   title: {
-    fontFamily: FONT,
-    fontSize: ms(28),
-    color: COLORS.lightText,
-    lineHeight: ms(32),
-    letterSpacing: -0.5,
+    fontFamily: FONT_BOLD,
+    fontSize: ms(26, 0.2),
+    color: "#1C1C1E",
+    lineHeight: ms(31),
+    letterSpacing: -0.3,
+    includeFontPadding: false,
   },
   subtitle: {
-    fontFamily: FONT,
-    fontSize: ms(13),
-    color: COLORS.lightSub,
-    marginTop: sh(2),
+    fontFamily: FONT_REGULAR,
+    fontSize: ms(12.5, 0.2),
+    color: "rgba(28,28,30,0.58)",
+    lineHeight: ms(17),
+    includeFontPadding: false,
   },
 
-  // Center column: avatar + stacked score deck + counter, vertically centered in
-  // the available space between header and buttons.
+  // Score deck gets the primary vertical space below the compact header.
   centerStack: {
     flex: 1,
     alignItems: "center",
@@ -311,29 +270,58 @@ const styles = StyleSheet.create({
     gap: sh(16),
     marginTop: sh(8),
   },
-  avatarRing: {
-    backgroundColor: COLORS.lightCard, // frame colour — barely off-white
-    borderWidth: 1,
-    borderColor: COLORS.lightBorder,
+  advancedButtonBase: {
+    width: "100%",
+    maxWidth: sw(520),
+    borderRadius: 17,
+    backgroundColor: "#C94308",
+    paddingBottom: sh(4),
+    shadowColor: "#F4510B",
+    shadowOpacity: 0.28,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 7 },
+    elevation: 6,
+  },
+  advancedButtonBaseDisabled: {
+    backgroundColor: COLORS.lightBorder,
+    shadowOpacity: 0.08,
+    elevation: 2,
+  },
+  advancedButtonFace: {
+    height: Math.max(54, sh(56)),
+    borderRadius: 17,
+    overflow: "hidden",
+  },
+  advancedButtonFacePressed: {
+    transform: [{ translateY: sh(4) }],
+  },
+  advancedButtonFaceDisabled: {
+    opacity: 0.86,
+  },
+  advancedButtonGradient: {
+    flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#000000",
-    shadowOpacity: 0.10,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 5,
+    borderRadius: 17,
   },
-  avatarImg: {
-    width:  "100%",
-    height: "100%",
-  },
-  avatarPlaceholder: {
-    backgroundColor: COLORS.iconTileLavender,
-  },
-
-  buttonRow: {
+  ctaContent: {
     flexDirection: "row",
-    gap: SP[3],
-    paddingTop: sh(6),
+    alignItems: "center",
+    justifyContent: "center",
+    gap: sw(5),
+  },
+  advancedButtonText: {
+    fontFamily: FONT_SEMIBOLD,
+    fontSize: ms(14, 0.2),
+    letterSpacing: 0.7,
+    color: "#FFFFFF",
+  },
+  advancedButtonTextDisabled: {
+    color: COLORS.lightSub,
+  },
+  buttonRow: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingTop: sh(10),
   },
 });

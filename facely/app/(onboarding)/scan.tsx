@@ -41,8 +41,8 @@ import { logger } from "@/lib/logger";
 import { COLORS, SP, RADII } from "@/lib/tokens";
 import { ms, sh, sw, useResponsiveScale } from "@/lib/responsive";
 
-const FONT_BOLD = "DINNextRounded-Bold";
-const FONT_REGULAR = "DINNextRounded-Regular";
+const FONT_BOLD = "SFProRounded-Bold";
+const FONT_REGULAR = "SFProRounded-Regular";
 const SOFT_SCREEN_BG = "#FEF5E4";
 const LIME = "#B4F34D";        // bright fill — scan line, live dot, perm btn, active step dot
 const SAGE = "#3F7A2A";        // dark readable — text on white / lime-soft
@@ -102,7 +102,7 @@ function ScanHeroCard() {
           slide across it without overlapping the LIVE chip. */}
       <View style={heroStyles.imageWrap} onLayout={onLayoutImg}>
         <Image
-          source={require("../../assets/capture-guides/frontal-guide-vector.png")}
+          source={require("../../assets/capture-guides/frontal-guide-vector.jpg")}
           style={heroStyles.image}
           resizeMode="contain"
         />
@@ -312,7 +312,7 @@ export default function OnboardingScanScreen() {
   };
 
   const skipScan = () => {
-    router.push("/(onboarding)/trust");
+    router.push("/(onboarding)/studies");
   };
 
   const beginScan = () => {
@@ -349,7 +349,7 @@ export default function OnboardingScanScreen() {
       ]);
 
       setScanPhotos(fFinal.uri, sFinal.uri);
-      router.push("/(onboarding)/trust");
+      router.push("/(onboarding)/studies");
     } catch (err) {
       logger.error("[SCAN] submit failed", err);
       Alert.alert("Couldn't proceed", err instanceof Error ? err.message : "Unknown error");
@@ -443,6 +443,8 @@ export default function OnboardingScanScreen() {
             >
               <Pressable
                 onPress={capture}
+                accessibilityRole="button"
+                accessibilityLabel="Take photo"
                 style={({ pressed }) => [
                   camStyles.shutter,
                   { transform: [{ scale: pressed ? 0.93 : 1 }] },

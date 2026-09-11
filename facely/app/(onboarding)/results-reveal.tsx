@@ -180,14 +180,14 @@ function BeforeAfterSlider({
 
 const sl = StyleSheet.create({
   handle: { width: 44, height: 44, borderRadius: 22, backgroundColor: "rgba(255,255,255,0.95)", justifyContent: "center", alignItems: "center", shadowColor: "#000", shadowOpacity: 0.3, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 8 },
-  handleText: { fontSize: 13, color: "#111", fontFamily: "Poppins-SemiBold", letterSpacing: -1 },
+  handleText: { fontSize: 13, color: "#111", fontFamily: "SFProRounded-Semibold", letterSpacing: -1 },
   beforeBadge: { position: "absolute", top: 16, left: 14, backgroundColor: "rgba(18,18,18,0.85)", borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8, borderWidth: 1, borderColor: "rgba(255,255,255,0.1)" },
-  badgeLabel: { color: "rgba(255,255,255,0.55)", fontSize: 10, fontFamily: "Poppins-SemiBold", letterSpacing: 1.2 },
-  beforeScore: { color: "#fff", fontFamily: "Poppins-SemiBold", fontSize: 26, lineHeight: 31, marginTop: 1 },
+  badgeLabel: { color: "rgba(255,255,255,0.55)", fontSize: 10, fontFamily: "SFProRounded-Semibold", letterSpacing: 1.2 },
+  beforeScore: { color: "#fff", fontFamily: "SFProRounded-Bold", fontSize: 26, lineHeight: 31, marginTop: 1 },
   scoreDenom: { fontSize: 13, color: "rgba(255,255,255,0.5)" },
   afterBadge: { position: "absolute", top: 16, right: 14, backgroundColor: "rgba(91,162,255,0.18)", borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8, borderWidth: 1, borderColor: "rgba(91,162,255,0.4)" },
-  afterLabel: { color: "rgba(91,190,255,0.75)", fontSize: 10, fontFamily: "Poppins-SemiBold", letterSpacing: 1.2 },
-  afterScore: { color: "#5BBFFF", fontFamily: "Poppins-SemiBold", fontSize: 26, lineHeight: 31, marginTop: 1 },
+  afterLabel: { color: "rgba(91,190,255,0.75)", fontSize: 10, fontFamily: "SFProRounded-Semibold", letterSpacing: 1.2 },
+  afterScore: { color: "#5BBFFF", fontFamily: "SFProRounded-Bold", fontSize: 26, lineHeight: 31, marginTop: 1 },
   afterDenom: { fontSize: 13, color: "rgba(91,190,255,0.5)" },
   lockWrap: { position: "absolute", right: SW * 0.25 - 24, top: COMPARE_H / 2 - 24, width: 48, height: 48, borderRadius: 24, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "center", alignItems: "center" },
 });
@@ -242,11 +242,11 @@ function HowItWorksCarousel({ area1, area2, currentTier, afterTier }: { area1: s
 const cr = StyleSheet.create({
   card: { width: CARD_W, backgroundColor: "#161616", borderRadius: 16, borderWidth: 1, borderColor: "rgba(255,255,255,0.07)", padding: 18, flexDirection: "row", alignItems: "center", gap: 14 },
   numCircle: { width: 44, height: 44, borderRadius: 22, backgroundColor: "rgba(74,158,255,0.15)", justifyContent: "center", alignItems: "center" },
-  numText: { color: "#fff", fontFamily: "Poppins-SemiBold", fontSize: 16 },
+  numText: { color: "#fff", fontFamily: "SFProRounded-Bold", fontSize: 16 },
   cardBody: { flex: 1 },
-  when: { color: STEP_BLUE, fontFamily: "Poppins-SemiBold", fontSize: 11, letterSpacing: 0.8 },
-  title: { color: "#fff", fontFamily: "Poppins-SemiBold", fontSize: 15, marginTop: 2 },
-  subtitle: { color: "rgba(255,255,255,0.5)", fontFamily: "Poppins-Regular", fontSize: 12, lineHeight: 17, marginTop: 3 },
+  when: { color: STEP_BLUE, fontFamily: "SFProRounded-Semibold", fontSize: 11, letterSpacing: 0.8 },
+  title: { color: "#fff", fontFamily: "SFProRounded-Semibold", fontSize: 15, marginTop: 2 },
+  subtitle: { color: "rgba(255,255,255,0.5)", fontFamily: "SFProRounded-Regular", fontSize: 12, lineHeight: 17, marginTop: 3 },
   dots: { flexDirection: "row", justifyContent: "center", marginTop: 12, gap: 6 },
   dot: { height: 6, borderRadius: 3 },
   dotActive: { width: 20, backgroundColor: "#fff" },
@@ -281,8 +281,8 @@ function UnlockGrid() {
 const gr = StyleSheet.create({
   tile: { backgroundColor: "#161616", borderRadius: 16, borderWidth: 1, borderColor: "rgba(255,255,255,0.07)", padding: 16 },
   iconCircle: { width: 44, height: 44, borderRadius: 22, backgroundColor: "rgba(58,84,180,0.35)", justifyContent: "center", alignItems: "center", marginBottom: 12 },
-  tileTitle: { color: "#fff", fontFamily: "Poppins-SemiBold", fontSize: 14, lineHeight: 18 },
-  tileSub: { color: "rgba(255,255,255,0.5)", fontFamily: "Poppins-Regular", fontSize: 12, lineHeight: 17, marginTop: 4 },
+  tileTitle: { color: "#fff", fontFamily: "SFProRounded-Semibold", fontSize: 14, lineHeight: 18 },
+  tileSub: { color: "rgba(255,255,255,0.5)", fontFamily: "SFProRounded-Regular", fontSize: 12, lineHeight: 17, marginTop: 4 },
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -334,9 +334,9 @@ function TestimonialCarousel() {
 const tm = StyleSheet.create({
   card: { backgroundColor: "#1C1C1C", borderRadius: 16, borderWidth: 1, borderColor: "rgba(255,255,255,0.07)", padding: 18, flexDirection: "row", gap: 14, alignItems: "flex-start" },
   avatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: "rgba(255,255,255,0.08)", justifyContent: "center", alignItems: "center" },
-  name: { color: "#fff", fontFamily: "Poppins-SemiBold", fontSize: 14 },
+  name: { color: "#fff", fontFamily: "SFProRounded-Semibold", fontSize: 14 },
   stars: { color: "#FFB800", fontSize: 13 },
-  quote: { color: "rgba(255,255,255,0.6)", fontFamily: "Poppins-Regular", fontSize: 13, lineHeight: 19, marginTop: 6 },
+  quote: { color: "rgba(255,255,255,0.6)", fontFamily: "SFProRounded-Regular", fontSize: 13, lineHeight: 19, marginTop: 6 },
   dots: { flexDirection: "row", justifyContent: "center", marginTop: 14, gap: 6 },
   dot: { width: 8, height: 8, borderRadius: 4 },
   dotActive: { backgroundColor: "#fff" },
@@ -371,8 +371,8 @@ const fq = StyleSheet.create({
   wrap: { borderRadius: 14, backgroundColor: "#161616", borderWidth: 1, borderColor: "rgba(255,255,255,0.07)", overflow: "hidden", marginBottom: 10 },
   row: { flexDirection: "row", alignItems: "center", padding: 16, gap: 12 },
   iconWrap: { width: 36, height: 36, borderRadius: 18, backgroundColor: "rgba(58,84,180,0.22)", justifyContent: "center", alignItems: "center" },
-  question: { flex: 1, color: "#fff", fontFamily: "Poppins-SemiBold", fontSize: 14 },
-  answer: { color: "rgba(255,255,255,0.55)", fontFamily: "Poppins-Regular", fontSize: 13, lineHeight: 20, paddingHorizontal: 16, paddingBottom: 16 },
+  question: { flex: 1, color: "#fff", fontFamily: "SFProRounded-Semibold", fontSize: 14 },
+  answer: { color: "rgba(255,255,255,0.55)", fontFamily: "SFProRounded-Regular", fontSize: 13, lineHeight: 20, paddingHorizontal: 16, paddingBottom: 16 },
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -484,7 +484,7 @@ export default function ResultsRevealScreen() {
                 <Text style={s.bulletText}>
                   {parts.map((part, j) =>
                     j % 2 === 1
-                      ? <Text key={j} style={{ fontFamily: "Poppins-SemiBold", color: "#fff" }}>{part}</Text>
+                      ? <Text key={j} style={{ fontFamily: "SFProRounded-Semibold", color: "#fff" }}>{part}</Text>
                       : <Text key={j}>{part}</Text>
                   )}
                 </Text>
@@ -530,37 +530,37 @@ export default function ResultsRevealScreen() {
 const s = StyleSheet.create({
   section:      { paddingHorizontal: 24, paddingTop: 28 },
   sectionNoPad: { paddingTop: 28 },
-  sectionTitle: { fontFamily: "Poppins-SemiBold", fontSize: 20, lineHeight: 26, color: "#fff" },
+  sectionTitle: { fontFamily: "SFProRounded-Bold", fontSize: 20, lineHeight: 26, color: "#fff" },
 
   tierPill:       { flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: "#161616", borderRadius: 16, borderWidth: 1, borderColor: "rgba(255,255,255,0.08)", paddingHorizontal: 20, paddingVertical: 14 },
-  tierNowLabel:   { color: "rgba(255,255,255,0.4)", fontFamily: "Poppins-SemiBold", fontSize: 11, letterSpacing: 0.8 },
-  tierCurrent:    { color: "#fff", fontFamily: "Poppins-SemiBold", fontSize: 16 },
+  tierNowLabel:   { color: "rgba(255,255,255,0.4)", fontFamily: "SFProRounded-Semibold", fontSize: 11, letterSpacing: 0.8 },
+  tierCurrent:    { color: "#fff", fontFamily: "SFProRounded-Semibold", fontSize: 16 },
   tierArrow:      { color: "rgba(255,255,255,0.35)", fontSize: 20 },
-  tierWeeksLabel: { color: COLORS.accent, fontFamily: "Poppins-SemiBold", fontSize: 11, letterSpacing: 0.8 },
-  tierAfter:      { color: COLORS.accent, fontFamily: "Poppins-SemiBold", fontSize: 16 },
+  tierWeeksLabel: { color: COLORS.accent, fontFamily: "SFProRounded-Semibold", fontSize: 11, letterSpacing: 0.8 },
+  tierAfter:      { color: COLORS.accent, fontFamily: "SFProRounded-Semibold", fontSize: 16 },
 
   metricRow:   { flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 14 },
   metricPill:  { flexDirection: "row", alignItems: "center", backgroundColor: "#1A1A1A", borderRadius: 10, borderWidth: 1, borderColor: "rgba(255,255,255,0.08)", paddingHorizontal: 14, paddingVertical: 10 },
   metricIcon:  { color: "rgba(255,255,255,0.55)", fontSize: 14, marginRight: 7 },
-  metricLabel: { color: "#fff", fontFamily: "Poppins-SemiBold", fontSize: 14 },
-  metricScore: { color: "rgba(255,255,255,0.45)", fontFamily: "Poppins-Regular", fontSize: 13 },
+  metricLabel: { color: "#fff", fontFamily: "SFProRounded-Semibold", fontSize: 14 },
+  metricScore: { color: "rgba(255,255,255,0.45)", fontFamily: "SFProRounded-Regular", fontSize: 13 },
 
   infoPill:     { backgroundColor: "#1A1A1A", borderRadius: 10, borderWidth: 1, borderColor: "rgba(255,255,255,0.07)", paddingHorizontal: 16, paddingVertical: 11, alignItems: "center" },
-  infoPillText: { color: "rgba(255,255,255,0.6)", fontFamily: "Poppins-Regular", fontSize: 13 },
+  infoPillText: { color: "rgba(255,255,255,0.6)", fontFamily: "SFProRounded-Regular", fontSize: 13 },
 
   ratingBadge: { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: "#1A1A1A", borderRadius: 14, borderWidth: 1, borderColor: "rgba(255,255,255,0.08)", paddingHorizontal: 20, paddingVertical: 12 },
-  ratingText:  { color: "#fff", fontFamily: "Poppins-SemiBold", fontSize: 15 },
+  ratingText:  { color: "#fff", fontFamily: "SFProRounded-Semibold", fontSize: 15 },
 
   transformCard:  { backgroundColor: "#161616", borderRadius: 20, borderWidth: 1, borderColor: "rgba(255,255,255,0.07)", padding: 20 },
-  transformTitle: { color: "#fff", fontFamily: "Poppins-SemiBold", fontSize: 18, marginBottom: 14 },
+  transformTitle: { color: "#fff", fontFamily: "SFProRounded-Bold", fontSize: 18, marginBottom: 14 },
   bulletRow:      { flexDirection: "row", gap: 10, marginBottom: 10, alignItems: "flex-start" },
-  bulletCheck:    { color: COLORS.accent, fontFamily: "Poppins-SemiBold", fontSize: 15, marginTop: 1 },
-  bulletText:     { flex: 1, color: "rgba(255,255,255,0.7)", fontFamily: "Poppins-Regular", fontSize: 14, lineHeight: 20 },
+  bulletCheck:    { color: COLORS.accent, fontFamily: "SFProRounded-Semibold", fontSize: 15, marginTop: 1 },
+  bulletText:     { flex: 1, color: "rgba(255,255,255,0.7)", fontFamily: "SFProRounded-Regular", fontSize: 14, lineHeight: 20 },
 
   stickyBottom: { position: "absolute", bottom: 0, left: 0, right: 0, paddingTop: 36 },
   stickyInner:  { gap: 12 },
   socialRow:    { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
   greenDot:     { width: 8, height: 8, borderRadius: 4, backgroundColor: "#22C55E" },
-  socialText:   { color: "rgba(255,255,255,0.65)", fontFamily: "Poppins-Regular", fontSize: 13 },
-  socialCount:  { color: "#fff", fontFamily: "Poppins-SemiBold" },
+  socialText:   { color: "rgba(255,255,255,0.65)", fontFamily: "SFProRounded-Regular", fontSize: 13 },
+  socialCount:  { color: "#fff", fontFamily: "SFProRounded-Semibold" },
 });

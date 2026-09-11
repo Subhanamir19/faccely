@@ -1,4 +1,4 @@
-// app/(tabs)/analysis.tsx
+// app/analysis.tsx
 // Advanced Analysis — flat 3-section accordion list (What's Working / Just Okay / Needs Work).
 // Design ref: new-advanced analysis-refernce.md
 
@@ -16,6 +16,8 @@ import { Image as ExpoImage } from "expo-image";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
+import * as NavigationBar from "expo-navigation-bar";
+import { StatusBar } from "expo-status-bar";
 import Animated, {
   FadeInDown,
   useSharedValue,
@@ -27,9 +29,10 @@ import Animated, {
   interpolate,
   Easing,
 } from "react-native-reanimated";
-import { Sparkles, Target, AlertCircle, ChevronDown, ChevronRight, Microscope, ScanFace, LineChart, ShieldCheck } from "lucide-react-native";
+import { Sparkles, Target, AlertCircle, ChevronDown, ChevronLeft, ChevronRight, Info, Microscope, ScanFace, LineChart, ShieldCheck } from "lucide-react-native";
 import { MetricDetailCard } from "@/components/analysis/MetricDetailCard";
 import AnalysisCarousel from "@/components/analysis/AnalysisCarousel";
+import RefinedAnalysisDeck from "@/components/analysis/RefinedAnalysisDeck";
 
 import Text from "@/components/ui/T";
 import { COLORS, SP, RADII } from "@/lib/tokens";
@@ -297,7 +300,8 @@ function flattenData(data: AdvancedAnalysis, options: { includeRamus?: boolean }
     .map((def, i) => {
       const group      = data[def.group] as Record<string, any>;
       const score      = (group[`${def.key}_score`]   as number | undefined) ?? 50;
-      const commentary = (group[def.key]               as string | undefined) ?? "";
+      const rawCommentary = (group[def.key]             as string | undefined) ?? "";
+      const commentary = rawCommentary.trim() || "Focus on this metric: " + def.idealRange;
       const rawVerdict = (group[`${def.key}_verdict`]  as string | undefined) ?? "";
       const verdict    = resolveVerdict(def, score, rawVerdict);
       const { section, status } = classifyScore(score);
@@ -670,12 +674,16 @@ export function AnalysisContent({
   imageUri,
   onboardingFlow = false,
   includeRamus = true,
+  refinedLayout = false,
+  bottomInset = 0,
 }: {
   data: AdvancedAnalysis;
   viewportWidth: number;
   imageUri?: string | null;
   onboardingFlow?: boolean;
   includeRamus?: boolean;
+  refinedLayout?: boolean;
+  bottomInset?: number;
 }) {
   const currentStreak = useTasksStore((s) => s.currentStreak);
   const metrics   = useMemo(() => flattenData(data, { includeRamus }), [data, includeRamus]);
@@ -698,6 +706,31 @@ export function AnalysisContent({
   return (
     <>
       {/* ── Page header ── */}
+      {refinedLayout ? (
+        <RefinedAnalysisDeck
+          metrics={metrics}
+          viewportWidth={viewportWidth}
+          bottomInset={bottomInset}
+          onCardPress={(card) => {
+            const full = metrics.find((metric) => metric.id === card.id) ?? null;
+            if (full) handleCardPress(full);
+          }}
+          footer={(
+            <Animated.View entering={FadeInDown.duration(340).delay(600)} style={sx.footerCta}>
+              <Pressable
+                onPress={() => router.push(onboardingFlow ? "/(onboarding)/plan-intro" : "/(tabs)/program")}
+                style={({ pressed }) => [sx.ctaBtn, pressed && { opacity: 0.9, transform: [{ scale: 0.985 }] }]}
+                accessibilityRole="button"
+                accessibilityLabel={onboardingFlow ? "Next" : "Start your routine"}
+              >
+                <Text style={sx.ctaBtnText}>{onboardingFlow ? "NEXT" : "START YOUR ROUTINE"}</Text>
+                <ChevronRight size={ms(16)} color="#FFFFFF" strokeWidth={2.5} />
+              </Pressable>
+            </Animated.View>
+          )}
+        />
+      ) : (
+        <>
       <Animated.View entering={FadeInDown.duration(340)} style={sx.refHeader}>
         <View style={sx.refTopRow}>
           <View style={sx.refPillDepth}>
@@ -746,9 +779,11 @@ export function AnalysisContent({
           }}
         />
       </Animated.View>
+        </>
+      )}
 
       {/* ── Footer CTA — black pill, matches START ROUTINE elsewhere ── */}
-      <Animated.View
+      {!refinedLayout && <Animated.View
         entering={FadeInDown.duration(340).delay(600)}
         style={sx.footerCta}
       >
@@ -761,7 +796,7 @@ export function AnalysisContent({
           <Text style={sx.ctaBtnText}>{onboardingFlow ? "NEXT" : "START YOUR ROUTINE"}</Text>
           <ChevronRight size={ms(16)} color="#FFFFFF" strokeWidth={2.5} />
         </Pressable>
-      </Animated.View>
+      </Animated.View>}
 
       {/* ── Detail card modal ── */}
       <MetricDetailCard
@@ -870,11 +905,19 @@ export default function AnalysisScreen() {
     !!data && (scanId !== null ? cachedScanId === scanId : cachedScanId === null);
   // Carousel viewport — screen width minus the scroll's horizontal padding
   // (sw(16) on each side, see sx.scrollContent).
-  const viewportWidth = SW - sw(16) * 2;
+  const viewportWidth = SW;
 
-  // Bump on every focus so AnalysisContent remounts and re-animates.
   // Data is cached in Zustand so there's no loading flash — just fresh entrance.
-  const [focusKey, setFocusKey] = useState(0);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (Platform.OS !== "android") return;
+      NavigationBar.setStyle("light");
+      return () => {
+        NavigationBar.setStyle("dark");
+      };
+    }, []),
+  );
 
   // Blueprint modal — shown once per scan (keyed to cachedScanId).
   // Marks the scan id only AFTER the user dismisses, so the modal becomes
@@ -892,7 +935,6 @@ export default function AnalysisScreen() {
   // Fetch on every focus — consent gate runs once per install (Apple 5.1.1/5.1.2)
   useFocusEffect(
     useCallback(() => {
-      setFocusKey((k) => k + 1);
       if (hasScores && !loading && (!hasCurrentData || needsHaircutRefresh)) {
         const forceHaircutRefresh = needsHaircutRefresh;
         if (forceHaircutRefresh) {
@@ -926,10 +968,39 @@ export default function AnalysisScreen() {
   // Hide the carousel until the blueprint is dismissed for this scan.
   const showContent  = !!data && !needsFirstSurface;
 
+  const handleBack = useCallback(() => {
+    if (router.canGoBack()) router.back();
+    else router.replace("/(tabs)/dashboard");
+  }, []);
+
   return (
     <AppGradientBackground style={sx.screen}>
+      {showContent && <StatusBar style="dark" />}
+      {showContent && (
+        <LinearGradient
+          pointerEvents="none"
+          colors={["#FEFFFF", "#F4F5F6", "#EEF0F1"]}
+          locations={[0, 0.42, 1]}
+          start={{ x: 0.5, y: 0 }}
+          end={{ x: 0.5, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
+      )}
+
       {/* Safe-area container */}
       <View style={[sx.safeArea, { paddingTop: insets.top }]}>
+
+        {showContent && (
+          <Animated.View entering={FadeInDown.duration(550).delay(50).easing(Easing.bezier(0.22, 0.8, 0.2, 1))} style={sx.resultsHeader}>
+            <Pressable onPress={handleBack} accessibilityRole="button" accessibilityLabel="Back" hitSlop={6} style={({ pressed }) => [sx.headerIconButton, pressed && sx.headerIconPressed]}>
+              <ChevronLeft size={ms(20)} color="#1C1C1E" strokeWidth={2.1} />
+            </Pressable>
+            <Text style={sx.resultsHeaderTitle}>Advanced Analysis</Text>
+            <Pressable onPress={() => setBlueprintVisible(true)} accessibilityRole="button" accessibilityLabel="About this analysis" hitSlop={6} style={({ pressed }) => [sx.headerIconButton, pressed && sx.headerIconPressed]}>
+              <Info size={ms(18)} color="#1C1C1E" strokeWidth={1.8} />
+            </Pressable>
+          </Animated.View>
+        )}
 
         {/* ── Header — only shown for non-content states ── */}
         {!showContent && !onboardingFlow && (
@@ -943,6 +1014,19 @@ export default function AnalysisScreen() {
         )}
 
         {/* ── Body ── */}
+        {showContent ? (
+          <View style={sx.refinedBody}>
+            <AnalysisContent
+              data={data!}
+              viewportWidth={viewportWidth}
+              imageUri={imageUri}
+              onboardingFlow={onboardingFlow}
+              includeRamus={!!sideImageUri}
+              refinedLayout
+              bottomInset={insets.bottom}
+            />
+          </View>
+        ) : (
         <ScrollView
           style={sx.scroll}
           contentContainerStyle={[
@@ -968,17 +1052,8 @@ export default function AnalysisScreen() {
             </View>
           )}
 
-          {showContent && (
-            <AnalysisContent
-              key={focusKey}
-              data={data!}
-              viewportWidth={viewportWidth}
-              imageUri={imageUri}
-              onboardingFlow={onboardingFlow}
-              includeRamus={!!sideImageUri}
-            />
-          )}
         </ScrollView>
+        )}
       </View>
 
       {/* Consent modal — shown once before first fetch */}
@@ -1010,6 +1085,35 @@ const PILL_RADIUS   = ms(999);
 const sx = StyleSheet.create({
   screen: { flex: 1 },
   safeArea: { flex: 1 },
+  refinedBody: { flex: 1, minHeight: 0 },
+  resultsHeader: {
+    height: sh(52),
+    paddingHorizontal: sw(16),
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    flexShrink: 0,
+  },
+  resultsHeaderTitle: {
+    color: "#1C1C1E",
+    fontFamily: ADVANCED_ANALYSIS_FONT_BOLD,
+    fontSize: ms(15, 0.2),
+    lineHeight: ms(19),
+    letterSpacing: 0.1,
+    includeFontPadding: false,
+  },
+  headerIconButton: {
+    width: ms(44),
+    height: ms(44),
+    borderRadius: ms(14),
+    borderCurve: "continuous",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerIconPressed: {
+    backgroundColor: "rgba(255,255,255,0.70)",
+    transform: [{ scale: 0.96 }],
+  },
 
   // ── Header ──
   header: {

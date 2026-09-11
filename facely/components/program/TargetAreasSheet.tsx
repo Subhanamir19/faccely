@@ -65,7 +65,12 @@ export default function TargetAreasSheet({
       onRequestClose={onDismiss}
     >
       <Animated.View entering={FadeIn.duration(160).easing(Easing.out(Easing.quad))} style={s.backdrop}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={onDismiss} />
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={onDismiss}
+          accessibilityRole="button"
+          accessibilityLabel="Close"
+        />
         <Animated.View
           entering={SlideInDown.duration(260).easing(Easing.out(Easing.cubic))}
           exiting={SlideOutDown.duration(200).easing(Easing.in(Easing.cubic))}

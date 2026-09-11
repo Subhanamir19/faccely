@@ -284,7 +284,13 @@ export default function ExerciseListScreen() {
     return (
       <SafeAreaView style={styles.safe}>
         <View style={styles.loadingHeader}>
-          <Pressable onPress={handleBack} style={styles.backBtn} hitSlop={12}>
+          <Pressable
+            onPress={handleBack}
+            style={styles.backBtn}
+            hitSlop={12}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
+          >
             <ChevronLeft size={26} color={COLORS.lightText} strokeWidth={2.4} />
           </Pressable>
           <Text style={styles.headerTitle}>Today's Routine</Text>
@@ -313,7 +319,13 @@ export default function ExerciseListScreen() {
 
       {/* ── Header ── */}
       <Animated.View entering={FadeIn.duration(260)} style={styles.header}>
-        <Pressable onPress={handleBack} style={styles.backBtn} hitSlop={12}>
+        <Pressable
+          onPress={handleBack}
+          style={styles.backBtn}
+          hitSlop={12}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+        >
           <ChevronLeft size={26} color={COLORS.lightText} strokeWidth={2.4} />
         </Pressable>
         <Text style={styles.headerTitle}>Today's Routine</Text>

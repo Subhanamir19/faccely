@@ -35,7 +35,7 @@ export default function GenderScreen() {
   return (
     <OrangeQuestionScreen
       stepKey="gender"
-      heroImage={require("@/assets/bg-assets-for-onbaording-screens/gender.png")}
+      heroImage={require("@/assets/bg-assets-for-onbaording-screens/gender.jpg")}
       title="What's your gender?"
       subtitle="This helps us provide more accurate analysis results."
       onContinue={handleNext}

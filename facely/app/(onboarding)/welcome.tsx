@@ -2,7 +2,6 @@
 import React, { useCallback, useEffect, useRef } from "react";
 import {
   AccessibilityInfo,
-  Platform,
   StyleSheet,
   Text,
   View,
@@ -416,11 +415,7 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     textAlign: "center",
     color: SUBTEXT,
-    fontFamily: Platform.select({
-      ios: "Poppins-Medium",
-      android: "Poppins-Medium",
-      default: "Poppins-Medium",
-    }),
+    fontFamily: "SFProRounded-Regular",
     marginTop: 12,
   },
   ctaContainer: {

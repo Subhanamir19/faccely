@@ -19,7 +19,6 @@ import {
 import InsightRevealCard from "@/components/scores/InsightRevealCard";
 import StackedScoreDeckPreview from "@/components/scores/StackedScoreDeckPreview";
 import DietDevPreview from "@/components/dev/DietDevPreview";
-import DevTopPreview from "@/components/dev/DevTopPreview";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -51,12 +50,11 @@ import { usePotentialFace } from "@/store/potentialFace";
 import type { AdvancedAnalysis } from "@/lib/api/advancedAnalysis";
 import ProgramHero from "@/components/program/ProgramHero";
 import ProgramLoadingScreen, { PROGRAM_LOADING_BG } from "@/components/program/ProgramLoadingScreen";
-import InsightPulseCard, { PulseType } from "@/components/ui/InsightPulseCard";
-import { useNotifications } from "@/store/notifications";
 import RingLoader, { type RingLoaderKind } from "@/components/ui/RingLoader";
 import { Image as RNImage } from "react-native";
 import { API_BASE } from "@/lib/api/config";
 import { buildAuthHeadersAsync } from "@/lib/api/authHeaders";
+import { prepareUploadPart } from "@/lib/api/media";
 import { EXERCISE_CATALOG } from "@/lib/taskSelection";
 import { EXERCISE_ICONS, getExerciseIcon } from "@/lib/exerciseIcons";
 import {
@@ -88,6 +86,7 @@ import Svg, {
 } from "react-native-svg";
 import SpeechBubble from "@/components/program/SpeechBubble";
 import { CARD_FACE_IMAGES } from "@/lib/faceTargets";
+import { LOTTIE_PREVIEWS, type LottiePreviewId } from "@/lib/devLottiePreviews";
 
 const FONT = "ProximaNova-Bold";
 
@@ -133,11 +132,11 @@ const ONBOARDING_FLOW_SCREENS: { label: string; route: string }[] = [
   { label: "Gender",            route: "/(onboarding)/gender" },           // → age
   { label: "Birthday",          route: "/(onboarding)/age" },              // → ethnicity
   { label: "Ethnicity",         route: "/(onboarding)/ethnicity" },        // → scan
-  { label: "Scan",              route: "/(onboarding)/scan" },             // → trust
-  { label: "Trust",             route: "/(onboarding)/trust" },            // → time-dedication
+  { label: "Scan",              route: "/(onboarding)/scan" },             // → studies
+  { label: "Studies",           route: "/(onboarding)/studies" },          // → plan impact
+  { label: "Plan Impact",       route: "/(onboarding)/plan-impact" },      // → time dedication
   { label: "Time Dedication",   route: "/(onboarding)/time-dedication" },  // → score-projection
-  { label: "Score Projection",  route: "/(onboarding)/score-projection" }, // -> transformation
-  { label: "Transformation",    route: "/(onboarding)/transformation" },   // → paywall
+  { label: "Score Projection",  route: "/(onboarding)/score-projection" }, // → paywall
   { label: "Paywall",           route: "/(onboarding)/paywall" },          // → potential face workflow
   { label: "Potential Face",    route: "/(onboarding)/potential-face-reveal" }, // → analysis intro
   { label: "Analysis Intro",    route: "/(onboarding)/analysis-intro" },    // → bridge
@@ -151,7 +150,6 @@ const ONBOARDING_FLOW_SCREENS: { label: string; route: string }[] = [
 const ONBOARDING_ORPHANS: { label: string; route: string; note: string }[] = [
   { label: "Hook",            route: "/(onboarding)/hook",           note: "alt entry — only used by loading.tsx for returning users" },
   { label: "Intro",           route: "/(onboarding)/intro",          note: "routes to goals, but nothing routes to intro except hook" },
-  { label: "Improve Areas",   route: "/(onboarding)/improve-areas",  note: "removed from live flow — duplicated goals selection" },
   { label: "Features",        route: "/(onboarding)/features",        note: "removed from live flow - plan preview moved into feature sequence" },
   { label: "Welcome",         route: "/(onboarding)/welcome",        note: "legacy entry — no inbound route" },
   { label: "Experience",      route: "/(onboarding)/experience",     note: "no inbound route" },
@@ -298,7 +296,7 @@ function AsymmetryExerciseDevPreviewCard() {
         />
         <DevButton
           label="Preview Catalog"
-          onPress={() => router.push("/(tabs)/new-exercises-preview" as any)}
+          onPress={() => router.push("/new-exercises-preview" as any)}
         />
       </View>
     </GlassCard>
@@ -847,383 +845,6 @@ function ExerciseChoosingPreviewScreen({
 }
 
 // ---------------------------------------------------------------------------
-// Progress Dashboard Mockups
-// ---------------------------------------------------------------------------
-
-const MOCK_METRICS = [
-  { label: "Jawline Definition", score: 61, delta: -0.8 },
-  { label: "Cheek Hollows", score: 58, delta: 1.2 },
-  { label: "Skin Clarity", score: 74, delta: 2.4 },
-  { label: "Eye Symmetry", score: 79, delta: 3.1 },
-  { label: "Maxilla Projection", score: 55, delta: 0.9 },
-];
-
-function DashCard({
-  children,
-  style,
-}: {
-  children: React.ReactNode;
-  style?: object;
-}) {
-  return <View style={[mockStyles.dashCard, style]}>{children}</View>;
-}
-
-function MiniFace({ label, accent }: { label: string; accent?: boolean }) {
-  return (
-    <View style={mockStyles.faceCol}>
-      <View style={[mockStyles.faceBox, accent && mockStyles.faceBoxAccent]}>
-        <View style={mockStyles.faceHead} />
-        <View style={mockStyles.faceNeck} />
-      </View>
-      <T style={[mockStyles.faceLabel, accent && mockStyles.faceLabelAccent]}>{label}</T>
-    </View>
-  );
-}
-
-function Sparkline() {
-  return (
-    <View style={mockStyles.sparkWrap}>
-      {[18, 28, 23, 42, 36, 58, 64, 72].map((h, i) => (
-        <View key={i} style={[mockStyles.sparkBar, { height: h }]} />
-      ))}
-    </View>
-  );
-}
-
-function WeekRibbon() {
-  return (
-    <View style={mockStyles.weekRow}>
-      {["M", "T", "W", "T", "F", "S", "S"].map((d, i) => (
-        <View key={`${d}-${i}`} style={mockStyles.weekCell}>
-          <View
-            style={[
-              mockStyles.weekDot,
-              i < 4 && mockStyles.weekDotDone,
-              i === 4 && mockStyles.weekDotToday,
-            ]}
-          />
-          <T style={[mockStyles.weekText, i === 4 && mockStyles.weekTextToday]}>{d}</T>
-        </View>
-      ))}
-    </View>
-  );
-}
-
-function MetricLine({
-  label,
-  score,
-  delta,
-  index,
-  compact,
-}: {
-  label: string;
-  score: number;
-  delta: number;
-  index?: number;
-  compact?: boolean;
-}) {
-  const positive = delta >= 0;
-  return (
-    <View style={[mockStyles.metricLine, compact && mockStyles.metricLineCompact]}>
-      {typeof index === "number" && (
-        <View style={mockStyles.rankPill}>
-          <T style={mockStyles.rankText}>{String(index).padStart(2, "0")}</T>
-        </View>
-      )}
-      <View style={{ flex: 1 }}>
-        <T style={mockStyles.metricName} numberOfLines={1}>{label.toUpperCase()}</T>
-        {!compact && (
-          <T style={mockStyles.metricMeta}>
-            {positive ? "+" : ""}{delta.toFixed(1)} since baseline
-          </T>
-        )}
-      </View>
-      <T style={[mockStyles.metricDelta, !positive && { color: COLORS.declineRed }]}>
-        {positive ? "+" : ""}{delta.toFixed(1)}
-      </T>
-      <T style={mockStyles.metricScore}>{score}</T>
-    </View>
-  );
-}
-
-function BlackPill({ label }: { label: string }) {
-  return (
-    <View style={mockStyles.blackPill}>
-      <T style={mockStyles.blackPillText}>{label}</T>
-    </View>
-  );
-}
-
-function MockupShell({
-  number,
-  title,
-  thesis,
-  children,
-}: {
-  number: string;
-  title: string;
-  thesis: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <View style={mockStyles.mockupShell}>
-      <View style={mockStyles.mockupHeader}>
-        <View style={mockStyles.mockupNum}>
-          <T style={mockStyles.mockupNumText}>{number}</T>
-        </View>
-        <View style={{ flex: 1 }}>
-          <T style={mockStyles.mockupTitle}>{title}</T>
-          <T style={mockStyles.mockupThesis}>{thesis}</T>
-        </View>
-      </View>
-      <View style={mockStyles.phoneFrame}>
-        {children}
-      </View>
-    </View>
-  );
-}
-
-function CommandCenterMockup() {
-  return (
-    <MockupShell
-      number="01"
-      title="Command Center"
-      thesis="One transformation state, one action stack."
-    >
-      <View style={mockStyles.identityRow}>
-        <T style={mockStyles.identityText}>Day 18 - Alex's transformation</T>
-        <View style={mockStyles.streakPill}><T style={mockStyles.streakText}>4</T></View>
-      </View>
-      <WeekRibbon />
-      <DashCard style={mockStyles.heroMock}>
-        <View style={mockStyles.heroTopRow}>
-          <View>
-            <T style={mockStyles.heroEyebrow}>OVERALL RATING</T>
-            <T style={mockStyles.heroScore}>72</T>
-            <T style={mockStyles.heroTier}>S T R O N G</T>
-          </View>
-          <Sparkline />
-        </View>
-        <View style={mockStyles.heroBottomRow}>
-          <View>
-            <T style={mockStyles.heroSmallNum}>+4.2</T>
-            <T style={mockStyles.heroSmallLabel}>FROM START</T>
-          </View>
-          <View style={{ alignItems: "flex-end" }}>
-            <T style={mockStyles.heroSmallNum}>+8</T>
-            <T style={mockStyles.heroSmallLabel}>TO ELITE</T>
-          </View>
-        </View>
-        <View style={mockStyles.compareMiniRow}>
-          <MiniFace label="Today" />
-          <T style={mockStyles.arrowText}>{"->"}</T>
-          <MiniFace label="Potential" accent />
-        </View>
-        <View style={mockStyles.progressTrack}>
-          <View style={[mockStyles.progressFill, { width: "38%" }]} />
-        </View>
-        <T style={mockStyles.progressCaption}>38% closer to stage 1</T>
-      </DashCard>
-      <DashCard>
-        <T style={mockStyles.sectionKicker}>TODAY'S MOVE</T>
-        <MetricLine label="Jawline Definition" score={61} delta={-0.8} />
-        <BlackPill label="TRAIN THIS METRIC" />
-        <View style={mockStyles.dividerLight} />
-        {MOCK_METRICS.slice(1, 4).map((m, i) => (
-          <MetricLine key={m.label} {...m} index={i + 1} compact />
-        ))}
-      </DashCard>
-    </MockupShell>
-  );
-}
-
-function ProgressStoryMockup() {
-  return (
-    <MockupShell
-      number="02"
-      title="Progress Story"
-      thesis="A vertical narrative: now, next, potential, evidence."
-    >
-      <View style={mockStyles.storyLine} />
-      <DashCard style={mockStyles.storyCard}>
-        <T style={mockStyles.sectionKicker}>NOW</T>
-        <T style={mockStyles.storyBig}>72 STRONG</T>
-        <T style={mockStyles.storySub}>+4.2 since baseline - strongest gain: Eyes</T>
-      </DashCard>
-      <DashCard style={mockStyles.storyCard}>
-        <T style={mockStyles.sectionKicker}>NEXT INFLECTION</T>
-        <T style={mockStyles.storyBig}>+8 to Elite band</T>
-        <T style={mockStyles.storySub}>Focus: Jawline Definition</T>
-        <BlackPill label="START SESSION" />
-      </DashCard>
-      <DashCard style={mockStyles.storyCard}>
-        <T style={mockStyles.sectionKicker}>POTENTIAL STAGE</T>
-        <View style={mockStyles.compareMiniRow}>
-          <MiniFace label="Today" />
-          <T style={mockStyles.arrowText}>{"->"}</T>
-          <MiniFace label="Stage 1" accent />
-        </View>
-      </DashCard>
-      <DashCard style={mockStyles.storyCard}>
-        <T style={mockStyles.sectionKicker}>EVIDENCE</T>
-        <MetricLine label="Top sub-metrics" score={5} delta={3.1} compact />
-        <Sparkline />
-      </DashCard>
-    </MockupShell>
-  );
-}
-
-function PriorityStackMockup() {
-  return (
-    <MockupShell
-      number="03"
-      title="Priority Stack"
-      thesis="Training-first. One ranked queue replaces scattered cards."
-    >
-      <DashCard style={mockStyles.compactHero}>
-        <View>
-          <T style={mockStyles.heroScoreSmall}>72 STRONG</T>
-          <T style={mockStyles.storySub}>Day 18 - 6 scans - streak 4</T>
-        </View>
-        <Sparkline />
-      </DashCard>
-      <DashCard>
-        <T style={mockStyles.sectionKicker}>PRIORITY STACK</T>
-        {MOCK_METRICS.map((m, i) => (
-          <MetricLine key={m.label} {...m} index={i + 1} compact={i !== 0} />
-        ))}
-        <BlackPill label="TRAIN PRIORITY 01" />
-      </DashCard>
-      <DashCard>
-        <View style={mockStyles.inlinePotential}>
-          <MiniFace label="Today" />
-          <View style={{ flex: 1 }}>
-            <T style={mockStyles.metricName}>POTENTIAL PREVIEW</T>
-            <T style={mockStyles.metricMeta}>Stage 1 - 38% closer</T>
-            <View style={mockStyles.progressTrack}>
-              <View style={[mockStyles.progressFill, { width: "38%" }]} />
-            </View>
-          </View>
-        </View>
-      </DashCard>
-    </MockupShell>
-  );
-}
-
-function TransformationSplitMockup() {
-  return (
-    <MockupShell
-      number="04"
-      title="Transformation Split"
-      thesis="Makes potential face the emotional centerpiece."
-    >
-      <DashCard>
-        <T style={mockStyles.sectionKicker}>TRANSFORMATION</T>
-        <View style={mockStyles.compareLargeRow}>
-          <MiniFace label="Today" />
-          <MiniFace label="Potential" accent />
-        </View>
-        <View style={mockStyles.heroBottomRow}>
-          <View>
-            <T style={mockStyles.heroSmallNum}>72 now</T>
-            <T style={mockStyles.heroSmallLabel}>CURRENT</T>
-          </View>
-          <View style={{ alignItems: "flex-end" }}>
-            <T style={mockStyles.heroSmallNum}>38%</T>
-            <T style={mockStyles.heroSmallLabel}>CLOSER</T>
-          </View>
-        </View>
-      </DashCard>
-      <DashCard>
-        <T style={mockStyles.sectionKicker}>WHAT CHANGED</T>
-        <MetricLine label="Eye Symmetry" score={79} delta={3.1} compact />
-        <MetricLine label="Skin Quality" score={74} delta={2.4} compact />
-        <MetricLine label="Jawline" score={61} delta={-0.8} compact />
-      </DashCard>
-      <DashCard>
-        <T style={mockStyles.sectionKicker}>WHAT TO DO</T>
-        <MetricLine label="Jawline Definition" score={61} delta={-0.8} />
-        <BlackPill label="START WORKOUT" />
-      </DashCard>
-    </MockupShell>
-  );
-}
-
-function AnalystModeMockup() {
-  return (
-    <MockupShell
-      number="05"
-      title="Compact Analyst Mode"
-      thesis="Power-user density with the least card chrome."
-    >
-      <View style={mockStyles.analystHeader}>
-        <View>
-          <T style={mockStyles.heroScoreSmall}>72 STRONG</T>
-          <T style={mockStyles.storySub}>+4.2 - 6 scans tracked</T>
-        </View>
-        <Sparkline />
-      </View>
-      <DashCard style={mockStyles.heatmapCard}>
-        <T style={mockStyles.sectionKicker}>METRIC HEATMAP</T>
-        {MOCK_METRICS.map((m) => (
-          <View key={m.label} style={mockStyles.heatRow}>
-            <T style={mockStyles.heatName}>{m.label}</T>
-            <T style={mockStyles.heatScore}>{m.score}</T>
-            <T style={[mockStyles.heatDelta, m.delta < 0 && { color: COLORS.declineRed }]}>
-              {m.delta >= 0 ? "+" : ""}{m.delta.toFixed(1)}
-            </T>
-            <View style={[mockStyles.heatDot, m.delta < 0 && { backgroundColor: COLORS.declineRedSoft }]} />
-          </View>
-        ))}
-      </DashCard>
-      <DashCard>
-        <T style={mockStyles.sectionKicker}>SELECTED: JAWLINE</T>
-        <T style={mockStyles.storySub}>Definition - Gonial angle - Chin projection</T>
-        <BlackPill label="TRAIN THIS METRIC" />
-      </DashCard>
-    </MockupShell>
-  );
-}
-
-function ProgressDashboardMockupsModal({
-  visible,
-  onClose,
-}: {
-  visible: boolean;
-  onClose: () => void;
-}) {
-  return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      presentationStyle="fullScreen"
-      onRequestClose={onClose}
-    >
-      <SafeAreaView style={mockStyles.modalRoot}>
-        <View style={mockStyles.modalHeader}>
-          <View style={{ flex: 1 }}>
-            <T style={mockStyles.modalTitle}>Progress UI Mockups</T>
-            <T style={mockStyles.modalSub}>Static previews using current dashboard language</T>
-          </View>
-          <Pressable onPress={onClose} hitSlop={12} style={mockStyles.closeBtn}>
-            <T style={mockStyles.closeText}>Close</T>
-          </Pressable>
-        </View>
-        <ScrollView
-          contentContainerStyle={mockStyles.modalContent}
-          showsVerticalScrollIndicator={false}
-        >
-          <CommandCenterMockup />
-          <ProgressStoryMockup />
-          <PriorityStackMockup />
-          <TransformationSplitMockup />
-          <AnalystModeMockup />
-        </ScrollView>
-      </SafeAreaView>
-    </Modal>
-  );
-}
-
 const STORY_GREEN = "#58BF19";
 const STORY_GREEN_SOFT = "#EFFAE9";
 const STORY_TEXT = "#111111";
@@ -1942,113 +1563,7 @@ type PotentialDevPayload = {
   providerMessage?: string;
 };
 const POTENTIAL_PROMPT_MODES: PotentialPromptMode[] = ["aggressive", "balanced", "conservative"];
-const LOTTIE_PREVIEWS = {
-  neck1: {
-    title: "neck1.lottie",
-    detail: "neck1.embedded.json",
-    source: require("../../assets/new-exercises-images/neck1.embedded.json"),
-  },
-  nose1: {
-    title: "nose1-slimnose.lottie",
-    detail: "nose1-slimnose.embedded.json",
-    source: require("../../assets/new-exercises-images/nose1-slimnose.embedded.json"),
-  },
-  noseSlim2: {
-    title: "Slim Nose 2",
-    detail: "nose-slim2.embedded.json",
-    source: require("../../assets/new-exercises-images/nose-slim2.embedded.json"),
-  },
-  slimNose3: {
-    title: "Slim Nose 3",
-    detail: "slim-nose3.embedded.json",
-    source: require("../../assets/new-exercises-images/slim-nose3.embedded.json"),
-  },
-  chinTucksBasic: {
-    title: "chin-tucks-basic.lottie",
-    detail: "chin-tucks-basic.embedded.json",
-    source: require("../../assets/new-exercises-images/chin-tucks-basic.embedded.json"),
-  },
-  neck2: {
-    title: "neck2.lottie",
-    detail: "neck2.embedded.json",
-    source: require("../../assets/new-exercises-images/neck2.embedded.json"),
-  },
-  neck3: {
-    title: "neck3.lottie",
-    detail: "neck3.embedded.json",
-    source: require("../../assets/new-exercises-images/neck3.embedded.json"),
-  },
-  eyeArea1: {
-    title: "eye-area1.lottie",
-    detail: "eye-area1.embedded.json",
-    source: require("../../assets/new-exercises-images/eye-area1.embedded.json"),
-  },
-  eyeBrowsLifting: {
-    title: "Eye Brow Lifting",
-    detail: "eye-brows-lifting.embedded.json",
-    source: require("../../assets/new-exercises-images/eye-brows-lifting.embedded.json"),
-  },
-  jawForcing: {
-    title: "jaw-forcing.lottie",
-    detail: "jaw-forcing.embedded.json",
-    source: require("../../assets/new-exercises-images/jaw-forcing.embedded.json"),
-  },
-  tongueTouching1: {
-    title: "tongue-touching-1.lottie",
-    detail: "tongue-touching-1.embedded.json",
-    source: require("../../assets/new-exercises-images/tongue-touching-1.embedded.json"),
-  },
-  chinTraining: {
-    title: "Chin Ball Press",
-    detail: "chin-ball-pressing.embedded.json",
-    source: require("../../assets/new-exercises-images/chin-ball-pressing.embedded.json"),
-  },
-  cheekPuffs: {
-    title: "cheek-puffs",
-    detail: "cheek-puffs.embedded.json",
-    source: require("../../assets/new-exercises-images/cheek-puffs.embedded.json"),
-  },
-  chinStretch: {
-    title: "chin-stretch",
-    detail: "chin-stretch.embedded.json",
-    source: require("../../assets/new-exercises-images/chin-stretch.embedded.json"),
-  },
-  upwardChinStretch: {
-    title: "Upward Chin Stretch",
-    detail: "upward-chin-stretch.embedded.json",
-    source: require("../../assets/new-exercises-images/upward-chin-stretch.embedded.json"),
-  },
-  chinBallPressing: {
-    title: "Chin Ball Pressing",
-    detail: "chin-ball-pressing.embedded.json",
-    source: require("../../assets/new-exercises-images/chin-ball-pressing.embedded.json"),
-  },
-  midfaceLift: {
-    title: "midface-lift",
-    detail: "midface-lift.embedded.json",
-    source: require("../../assets/new-exercises-images/midface-lift.embedded.json"),
-  },
-} as const;
-type LottiePreviewId = keyof typeof LOTTIE_PREVIEWS;
-const LOTTIE_PREVIEW_OPTIONS: { id: LottiePreviewId; label: string }[] = [
-  { id: "neck1", label: "Neck 1" },
-  { id: "nose1", label: "Nose 1" },
-  { id: "noseSlim2", label: "Slim Nose 2" },
-  { id: "slimNose3", label: "Slim Nose 3" },
-  { id: "chinTucksBasic", label: "Chin Tucks" },
-  { id: "neck2", label: "Neck 2" },
-  { id: "neck3", label: "Neck 3" },
-  { id: "eyeArea1", label: "Eye Area 1" },
-  { id: "eyeBrowsLifting", label: "Eye Brow Lifting" },
-  { id: "jawForcing", label: "Jaw Forcing" },
-  { id: "tongueTouching1", label: "Tongue Touching" },
-  { id: "chinTraining", label: "Chin Training" },
-  { id: "cheekPuffs", label: "Cheek Puffs" },
-  { id: "chinStretch", label: "Chin Stretch" },
-  { id: "upwardChinStretch", label: "Upward Chin Stretch" },
-  { id: "chinBallPressing", label: "Chin Ball Pressing" },
-  { id: "midfaceLift", label: "Midface Lift" },
-];
+
 
 type TimerExercisePreview = {
   id: LottiePreviewId;
@@ -2753,7 +2268,7 @@ function ExerciseTimerDesignPreview({
   const mediaWidth = Math.min(width - 44, 410);
   const mediaHeight = Math.min(Math.max(height * 0.36, 280), 360);
   const mediaLayout = TIMER_MEDIA_LAYOUTS[exercise.id];
-  const lottieSource = useResolvedLottieSource(LOTTIE_PREVIEWS[exercise.id].source, visible);
+  const lottieSource = useResolvedLottieSource(LOTTIE_PREVIEWS[exercise.id]?.source ?? null, visible);
 
   useEffect(() => {
     if (!visible) return;
@@ -2914,21 +2429,7 @@ function ExerciseTimerDesignPreview({
 export default function DevScreen() {
   const [consentValue, setConsentValue] = useState<string | null | "…">("…");
   const [previewVisible, setPreviewVisible] = useState(false);
-  const [lottiePreviewVisible, setLottiePreviewVisible] = useState(false);
-  const [lottiePreviewKey, setLottiePreviewKey] = useState(0);
-  const [lottiePreviewStatus, setLottiePreviewStatus] = useState("Ready");
-  const [lottiePreviewId, setLottiePreviewId] = useState<LottiePreviewId>("neck1");
-  const [timerDesignPreviewVisible, setTimerDesignPreviewVisible] = useState(false);
-  const [exerciseIntroPreviewVisible, setExerciseIntroPreviewVisible] = useState(false);
-  const [exerciseIntroPreviewStep, setExerciseIntroPreviewStep] = useState<ExercisePreviewStep>("focus");
-  const lottiePreviewSource = useResolvedLottieSource(
-    LOTTIE_PREVIEWS[lottiePreviewId].source,
-    lottiePreviewVisible
-  );
   const [dashboardStoryPreviewVisible, setDashboardStoryPreviewVisible] = useState(false);
-  const [progressMockupsVisible, setProgressMockupsVisible] = useState(false);
-  const [progressPreviewScreenVisible, setProgressPreviewScreenVisible] = useState(false);
-  const [progressStoryPreviewVisible, setProgressStoryPreviewVisible] = useState(false);
   const [potentialSourceUri, setPotentialSourceUri] = useState<string | null>(null);
   const [potentialResultUri, setPotentialResultUri] = useState<string | null>(null);
   const [potentialGenerating, setPotentialGenerating] = useState(false);
@@ -2970,47 +2471,6 @@ export default function DevScreen() {
     skin:       { color: "", color_score: 73, color_verdict: "", quality: "", quality_score: 60, quality_verdict: "" },
     haircut:    { density: "", density_score: 52, density_verdict: "", styling: "", styling_score: 46, styling_verdict: "", facial_hair: "", facial_hair_score: 58, facial_hair_verdict: "" },
   };
-
-  // Insight Pulse preview
-  const PULSE_VARIANTS: {
-    type: PulseType;
-    message: string;
-    detail: string;
-    ctaLabel: string;
-  }[] = [
-    {
-      type: "momentum",
-      message: "Jawline definition improved 4.1% this week",
-      detail: "Based on your last 3 scans. Your best streak yet — mewing + posture work is showing.",
-      ctaLabel: "View Full Breakdown",
-    },
-    {
-      type: "alert",
-      message: "Facial symmetry dipped 2.3% since last scan",
-      detail: "Could be sleep, hydration, or lighting. Don't sweat it — scan again tomorrow.",
-      ctaLabel: "See What Changed",
-    },
-    {
-      type: "milestone",
-      message: "New personal best — overall score: 8.3 / 10",
-      detail: "Top 18% in facial harmony this month. You're trending up across 5 metrics.",
-      ctaLabel: "See Full Report",
-    },
-    {
-      type: "insight",
-      message: "Your cheekbone score has improved 3 weeks in a row",
-      detail: "Consistent gains suggest your routine is working. Keep the mewing pressure consistent.",
-      ctaLabel: "View Trend",
-    },
-    {
-      type: "nudge",
-      message: "It's been 4 days since your last scan",
-      detail: "",
-      ctaLabel: "",
-    },
-  ];
-  const [pulseVariantIdx, setPulseVariantIdx] = useState(0);
-  const [pulseKey, setPulseKey] = useState(0); // bump to remount
 
   // Life modal previews
   type LifeModal = "comeback" | "streak" | "halfway" | "didyouknow";
@@ -3072,12 +2532,9 @@ export default function DevScreen() {
     setPotentialMeta(null);
 
     try {
+      const imagePart = await prepareUploadPart(potentialSourceUri);
       const form = new FormData();
-      form.append("image", {
-        uri: potentialSourceUri,
-        name: "potential-face-source.jpg",
-        type: "image/jpeg",
-      } as any);
+      form.append("image", imagePart);
       form.append("promptMode", potentialPromptMode);
 
       const headers = await buildAuthHeadersAsync({ includeLegacy: true });
@@ -3161,125 +2618,13 @@ export default function DevScreen() {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        <DevTopPreview
-          onPreviewScoreDeck={() => {
-            setScoreDeckPreviewKey((k) => k + 1);
-            setScoreDeckPreviewVisible(true);
-          }}
-          onPreviewProgressStory={() => setProgressStoryPreviewVisible(true)}
-          onPreviewExerciseIntro={() => {
-            setExerciseIntroPreviewStep("focus");
-            setExerciseIntroPreviewVisible(true);
-          }}
-        />
+
 
         <DietDevPreview />
 
         <DashboardStoryLaunchCard onPress={() => setDashboardStoryPreviewVisible(true)} />
 
         <T style={styles.screenTitle}>Dev Tools</T>
-
-        <GlassCard style={styles.card}>
-          <SectionHeader
-            title="Progress Preview Screen"
-            subtitle="Premium playful version of the first Progress tab screen"
-          />
-          <DevButton
-            label="Preview Progress Overview"
-            accent
-            onPress={() => setProgressPreviewScreenVisible(true)}
-          />
-        </GlassCard>
-
-        <GlassCard style={styles.card}>
-          <SectionHeader
-            title="Progress Story Preview"
-            subtitle="Duolingo-style progress dashboard concept"
-          />
-          <DevButton
-            label="Preview Progress Story Screen"
-            accent
-            onPress={() => setProgressStoryPreviewVisible(true)}
-          />
-        </GlassCard>
-
-        <GlassCard style={styles.card}>
-          <SectionHeader
-            title="Exercise Preview Redesign"
-            subtitle="New low-cognitive-load intro screen for the exercise tab"
-          />
-          <DevButton
-            label="Preview Exercise Intro Screen"
-            accent
-            onPress={() => {
-              setExerciseIntroPreviewStep("focus");
-              setExerciseIntroPreviewVisible(true);
-            }}
-          />
-        </GlassCard>
-
-        <GlassCard style={styles.card}>
-          <SectionHeader
-            title="New Exercise Video Preview"
-            subtitle="Open the production-style player for assets/new-exercises-videos"
-          />
-          <DevButton
-            label="Preview New Exercise Videos"
-            accent
-            onPress={() => router.push("/(tabs)/new-exercises-preview" as any)}
-          />
-        </GlassCard>
-
-        <GlassCard style={styles.card}>
-          <SectionHeader
-            title="Exercise Timer Redesign"
-            subtitle="Production-style preview using the exercise Lottie animations"
-          />
-          <DevButton
-            label="Preview Timer Screen"
-            accent
-            onPress={() => setTimerDesignPreviewVisible(true)}
-          />
-        </GlassCard>
-
-        <GlassCard style={styles.card}>
-          <SectionHeader
-            title="Lottie Animation Preview"
-            subtitle="Preview exercise animation files from assets/new-exercises-images"
-          />
-          <View style={styles.lottieButtonGrid}>
-            {LOTTIE_PREVIEW_OPTIONS.map((option) => (
-              <TouchableOpacity
-                key={option.id}
-                onPress={() => {
-                  setLottiePreviewId(option.id);
-                  setLottiePreviewKey((key) => key + 1);
-                  setLottiePreviewStatus("Loading");
-                  setLottiePreviewVisible(true);
-                }}
-                activeOpacity={0.7}
-                accessibilityRole="button"
-                accessibilityLabel={`Preview ${option.label}`}
-                style={[styles.devBtn, styles.lottieGridBtn, styles.devBtnAccent]}
-              >
-                <T style={[styles.devBtnText, styles.devBtnTextAccent]}>{option.label}</T>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </GlassCard>
-
-        {/* Progress Dashboard Mockups */}
-        <GlassCard style={styles.card}>
-          <SectionHeader
-            title="Progress Dashboard Mockups"
-            subtitle="Five layout directions for reducing tracking-screen cognitive load"
-          />
-          <DevButton
-            label="Preview All Variations"
-            onPress={() => setProgressMockupsVisible(true)}
-          />
-        </GlassCard>
-
         {/* ── Insight Pulse Preview ─────────────────────────────────── */}
         <GlassCard style={styles.card}>
           <SectionHeader
@@ -3363,62 +2708,6 @@ export default function DevScreen() {
           </T>
         </GlassCard>
 
-        <GlassCard style={styles.card}>
-          <SectionHeader
-            title="Insight Pulse Card"
-            subtitle="In-app notification banner — tap card to expand, × to dismiss"
-          />
-
-          {/* Live preview inline */}
-          <InsightPulseCard
-            key={pulseKey}
-            type={PULSE_VARIANTS[pulseVariantIdx].type}
-            message={PULSE_VARIANTS[pulseVariantIdx].message}
-            detail={PULSE_VARIANTS[pulseVariantIdx].detail || undefined}
-            ctaLabel={PULSE_VARIANTS[pulseVariantIdx].ctaLabel || undefined}
-            autoDismissMs={0}
-            onDismiss={() => setPulseKey((k) => k + 1)}
-          />
-
-          {/* Variant switcher */}
-          <View style={styles.row}>
-            <DevButton
-              label="◀  Prev"
-              onPress={() => {
-                setPulseVariantIdx((i) => (i - 1 + PULSE_VARIANTS.length) % PULSE_VARIANTS.length);
-                setPulseKey((k) => k + 1);
-              }}
-            />
-            <DevButton
-              label="Next  ▶"
-              onPress={() => {
-                setPulseVariantIdx((i) => (i + 1) % PULSE_VARIANTS.length);
-                setPulseKey((k) => k + 1);
-              }}
-            />
-          </View>
-
-          <DevButton
-            label="↺  Replay Animation"
-            accent
-            onPress={() => setPulseKey((k) => k + 1)}
-          />
-
-          <T style={styles.sectionSubtitle} variant="small" color="sub">
-            {pulseVariantIdx + 1} / {PULSE_VARIANTS.length} — {PULSE_VARIANTS[pulseVariantIdx].type.toUpperCase()}
-          </T>
-
-          <View style={styles.divider} />
-
-          <DevButton
-            label="🗑  Reset All Notification Cooldowns"
-            onPress={async () => {
-              await useNotifications.getState().resetCooldowns();
-              Alert.alert("Reset", "All cooldowns cleared — notifications will re-evaluate on next dashboard focus.");
-            }}
-          />
-        </GlassCard>
-
         {/* ── Onboarding Flow ────────────────────────────────────────── */}
         <GlassCard style={styles.card}>
           <SectionHeader
@@ -3455,29 +2744,6 @@ export default function DevScreen() {
         </GlassCard>
 
         {/* ── Orphan Onboarding Screens ──────────────────────────────── */}
-        <GlassCard style={styles.card}>
-          <SectionHeader
-            title="Orphan Screens"
-            subtitle="Exist but not reachable from the main onboarding flow"
-          />
-          <View style={styles.screenGrid}>
-            {ONBOARDING_ORPHANS.map(({ label, route, note }) => (
-              <TouchableOpacity
-                key={route}
-                style={styles.orphanChip}
-                onPress={() => router.push(route as any)}
-                activeOpacity={0.7}
-              >
-                <View style={{ flex: 1 }}>
-                  <T style={styles.screenChipText}>{label}</T>
-                  <T style={styles.orphanNote}>{note}</T>
-                </View>
-                <T style={styles.screenChipArrow}>→</T>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </GlassCard>
-
         {/* ── Advanced Analysis UI Preview ─────────────────────────── */}
         <GlassCard style={styles.card}>
           <SectionHeader
@@ -3487,7 +2753,7 @@ export default function DevScreen() {
           <DevButton
             label="▶  Preview UI"
             accent
-            onPress={() => router.push("/(tabs)/analysis")}
+            onPress={() => router.push("/analysis")}
           />
         </GlassCard>
 
@@ -3866,123 +3132,10 @@ export default function DevScreen() {
 
         <AsymmetryExerciseDevPreviewCard />
       </ScrollView>
-
-      <ProgressDashboardMockupsModal
-        visible={progressMockupsVisible}
-        onClose={() => setProgressMockupsVisible(false)}
-      />
       <DashboardStoryScreenPreview
         visible={dashboardStoryPreviewVisible}
         onClose={() => setDashboardStoryPreviewVisible(false)}
       />
-      <ProgressPreviewScreenModal
-        visible={progressPreviewScreenVisible}
-        onClose={() => setProgressPreviewScreenVisible(false)}
-      />
-      <ProgressStoryDashboardPreview
-        visible={progressStoryPreviewVisible}
-        onClose={() => setProgressStoryPreviewVisible(false)}
-      />
-
-      <ExerciseTimerDesignPreview
-        visible={timerDesignPreviewVisible}
-        onClose={() => setTimerDesignPreviewVisible(false)}
-      />
-
-      <Modal
-        visible={exerciseIntroPreviewVisible}
-        animationType="slide"
-        presentationStyle="fullScreen"
-        onRequestClose={() => setExerciseIntroPreviewVisible(false)}
-      >
-        {exerciseIntroPreviewStep === "focus" ? (
-          <ExerciseIntroPreviewCard
-            currentStreak={currentStreak}
-            onClose={() => setExerciseIntroPreviewVisible(false)}
-            onContinue={() => setExerciseIntroPreviewStep("benefits")}
-          />
-        ) : exerciseIntroPreviewStep === "benefits" ? (
-          <ExerciseBenefitsPreviewScreen
-            currentStreak={currentStreak}
-            onClose={() => setExerciseIntroPreviewVisible(false)}
-            onContinue={() => setExerciseIntroPreviewStep("choice")}
-          />
-        ) : exerciseIntroPreviewStep === "choice" ? (
-          <ExerciseChoicePreviewScreen
-            currentStreak={currentStreak}
-            onClose={() => setExerciseIntroPreviewVisible(false)}
-            onChooseForMe={() => setExerciseIntroPreviewStep("choosing")}
-            onChooseMyself={() => {
-              setExerciseIntroPreviewVisible(false);
-              router.push("/(tabs)/program?openList=1&openEdit=1" as any);
-            }}
-          />
-        ) : (
-          <ExerciseChoosingPreviewScreen
-            currentStreak={currentStreak}
-            onClose={() => setExerciseIntroPreviewVisible(false)}
-            onContinue={() => {
-              setExerciseIntroPreviewVisible(false);
-              router.push("/(tabs)/program?openList=1" as any);
-            }}
-          />
-        )}
-      </Modal>
-
-      <Modal
-        visible={lottiePreviewVisible}
-        animationType="slide"
-        presentationStyle="fullScreen"
-        onRequestClose={() => setLottiePreviewVisible(false)}
-      >
-        <SafeAreaView style={styles.lottieModalRoot}>
-          <View style={styles.previewHeader}>
-            <View style={{ flex: 1 }}>
-              <T style={styles.previewTitle}>{LOTTIE_PREVIEWS[lottiePreviewId].title}</T>
-              <T style={styles.lottieModalSub}>
-                {lottiePreviewStatus} - {LOTTIE_PREVIEWS[lottiePreviewId].detail}
-              </T>
-            </View>
-            <View style={styles.previewActions}>
-              <Pressable
-                onPress={() => {
-                  setLottiePreviewStatus("Loading");
-                  setLottiePreviewKey((key) => key + 1);
-                }}
-                hitSlop={12}
-                style={styles.previewBtn}
-                accessibilityRole="button"
-                accessibilityLabel="Replay lottie animation"
-              >
-                <T style={styles.previewBtnText}>Replay</T>
-              </Pressable>
-              <Pressable
-                onPress={() => setLottiePreviewVisible(false)}
-                hitSlop={12}
-                style={[styles.previewBtn, styles.previewBtnClose]}
-                accessibilityRole="button"
-                accessibilityLabel="Close lottie preview"
-              >
-                <T style={styles.previewBtnText}>Close</T>
-              </Pressable>
-            </View>
-          </View>
-
-          <View style={styles.lottieStage}>
-            <LottieView
-              key={lottiePreviewKey}
-              source={lottiePreviewSource}
-              autoPlay
-              loop
-              resizeMode="contain"
-              renderMode="SOFTWARE"
-              onAnimationLoaded={() => setLottiePreviewStatus("Loaded")}
-              onAnimationFailure={(error) => setLottiePreviewStatus(`Failed: ${error}`)}
-              style={styles.lottieAnimation}
-            />
-          </View>
-        </SafeAreaView>
-      </Modal>
 
       <Modal
         visible={!!potentialPreview}
@@ -4229,7 +3382,7 @@ export default function DevScreen() {
         onRequestClose={() => setInsightPreviewVisible(false)}
       >
         <View style={{ flex: 1, backgroundColor: COLORS.bgBottom }}>
-          <View style={{ ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.55)" }} />
+          <View style={{ ...StyleSheet.absoluteFill, backgroundColor: "rgba(0,0,0,0.55)" }} />
           <SafeAreaView style={{ flex: 1 }}>
             {/* Close + replay header */}
             <View style={styles.previewHeader}>
@@ -6009,7 +5162,7 @@ const mockStyles = StyleSheet.create({
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: COLORS.bgBottom,
+    backgroundColor: "#FFF8EC",
   },
   content: {
     paddingHorizontal: SP[4],

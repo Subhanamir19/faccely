@@ -4,9 +4,9 @@ import { useAuthStore } from "@/store/auth";
 import { useOnboarding } from "@/store/onboarding";
 import { useSubscriptionStore } from "@/store/subscription";
 import { checkSubscriptionStatus } from "@/lib/revenuecat";
-import VideoSplash from "@/components/ui/VideoSplash";
+import VideoSplash, { SPLASH_DURATION_MS } from "@/components/ui/VideoSplash";
 
-const MIN_SPLASH_DURATION = 2500;
+const MIN_SPLASH_DURATION = SPLASH_DURATION_MS;
 const SUBSCRIPTION_CHECK_TIMEOUT_MS = 8000;
 const SUBSCRIPTION_STATUS_CACHE_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -19,10 +19,9 @@ export default function IndexGate() {
   const onboardingCompleted = useAuthStore((state) => state.onboardingCompleted);
 
   const revenueCatEntitlement = useSubscriptionStore((state) => state.revenueCatEntitlement);
-  const promoActivated = useSubscriptionStore((state) => state.promoActivated);
   const lastVerifiedAt = useSubscriptionStore((state) => state.lastVerifiedAt);
   const isRevenueCatInitialized = useSubscriptionStore((state) => state.isRevenueCatInitialized);
-  const hasAccess = revenueCatEntitlement || promoActivated;
+  const hasAccess = revenueCatEntitlement;
 
   const [onboardingHydrated, setOnboardingHydrated] = useState(false);
   const [minSplashElapsed, setMinSplashElapsed] = useState(initialized);

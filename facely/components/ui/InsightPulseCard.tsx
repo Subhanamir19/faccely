@@ -174,12 +174,12 @@ export default function InsightPulseCard({
       <View style={[styles.card, { borderColor: cfg.border }]}>
 
         {/* White glass blur layer */}
-        <BlurView intensity={80} tint="light" style={StyleSheet.absoluteFillObject} />
+        <BlurView intensity={80} tint="light" style={StyleSheet.absoluteFill} />
 
         {/* White base + subtle type tint */}
         <View
           pointerEvents="none"
-          style={[StyleSheet.absoluteFillObject, { backgroundColor: "rgba(255,255,255,0.92)" }]}
+          style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(255,255,255,0.92)" }]}
         />
 
         {/* ── Content ─────────────────────────────────────────────────── */}
@@ -205,6 +205,8 @@ export default function InsightPulseCard({
               <Pressable
                 onPress={dismiss}
                 hitSlop={10}
+                accessibilityRole="button"
+                accessibilityLabel="Dismiss insight"
                 style={({ pressed }) => [styles.closeBtn, pressed && styles.closeBtnPressed]}
               >
                 <X size={12} color="rgba(0,0,0,0.45)" strokeWidth={2.5} />

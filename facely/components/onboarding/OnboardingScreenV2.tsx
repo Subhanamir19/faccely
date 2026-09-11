@@ -25,8 +25,9 @@ import { getProgressForStep, SP } from "@/lib/tokens";
 import { hapticLight } from "@/lib/haptics";
 import { ms, sh, sw } from "@/lib/responsive";
 
-const FONT_BOLD = "DINNextRounded-Bold";
-const FONT_REGULAR = "DINNextRounded-Regular";
+const FONT_BOLD = "SFProRounded-Bold";
+const FONT_SEMIBOLD = "SFProRounded-Semibold";
+const FONT_REGULAR = "SFProRounded-Regular";
 const PAPER = "#FFFCF7";
 const TEXT = "#050505";
 const MUTED = "#3E454B";
@@ -280,7 +281,7 @@ const styles = StyleSheet.create({
     elevation: 0,
   },
   ctaText: {
-    fontFamily: FONT_BOLD,
+    fontFamily: FONT_SEMIBOLD,
     fontSize: ms(24, 0.16),
     lineHeight: ms(29, 0.16),
     color: "#FFFFFF",

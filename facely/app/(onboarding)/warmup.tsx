@@ -18,7 +18,7 @@ import { hapticSelection } from "@/lib/haptics";
 import { COLORS, SP } from "@/lib/tokens";
 import { ms } from "@/lib/responsive";
 
-const FONT_BOLD = "DINNextRounded-Bold";
+const FONT_BOLD = "SFProRounded-Bold";
 const ORANGE = "#F26A13";
 
 const LINES = [
@@ -103,7 +103,12 @@ export default function WarmupScreen() {
   }));
 
   return (
-    <Pressable style={styles.screen} onPress={goNext}>
+    <Pressable
+      style={styles.screen}
+      onPress={goNext}
+      accessibilityRole="button"
+      accessibilityLabel="Continue"
+    >
       <StatusBar barStyle="dark-content" />
       <ScrollView
         style={styles.scroll}

@@ -12,7 +12,6 @@ import {
   SafeAreaView,
   useWindowDimensions,
 } from "react-native";
-import { Video, ResizeMode } from "expo-av";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import Animated, {
@@ -24,10 +23,11 @@ import Animated, {
 } from "react-native-reanimated";
 
 import T from "@/components/ui/T";
+import AppVideo from "@/components/ui/AppVideo";
 import { COLORS, SP } from "@/lib/tokens";
 import { ms, sh } from "@/lib/responsive";
 
-const FONT_BOLD = "ProximaNova-Bold";
+const FONT_BOLD = "SFProRounded-Bold";
 const SAGE = "#3F7A2A";
 
 export default function HookScreen() {
@@ -68,12 +68,12 @@ export default function HookScreen() {
 
       {/* Video hero */}
       <View style={[styles.videoWrap, { width: W, height: videoHeight }]}>
-        <Video
+        <AppVideo
           source={require("@/assets/first screen onboarding.mp4")}
           style={StyleSheet.absoluteFill}
-          resizeMode={ResizeMode.COVER}
-          isLooping
-          isMuted
+          contentFit="cover"
+          loop
+          muted
           shouldPlay
         />
         {/* Feather into white sheet for a clean seam */}
@@ -150,7 +150,7 @@ const styles = StyleSheet.create({
   },
   sub: {
     color: COLORS.lightSub,
-    fontFamily: "Poppins-Regular",
+    fontFamily: "SFProRounded-Regular",
     fontSize: ms(16),
     lineHeight: ms(24),
   },

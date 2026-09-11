@@ -327,7 +327,7 @@ export function ProgressPreviewRoute({ data, loading, onRefresh }: ProgressPrevi
             </View>
 
             <Pressable
-              onPress={() => router.push("/(tabs)/history")}
+              onPress={() => router.push("/history")}
               accessibilityRole="button"
               accessibilityLabel="View full progress history"
               style={({ pressed }) => [styles.levelCard, pressed && styles.pressed]}

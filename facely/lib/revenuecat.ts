@@ -7,6 +7,7 @@ import Purchases, {
   CustomerInfo,
   LOG_LEVEL,
 } from "react-native-purchases";
+import Constants, { ExecutionEnvironment } from "expo-constants";
 import { Platform } from "react-native";
 import { useSubscriptionStore } from "@/store/subscription";
 import { logger } from "@/lib/logger";
@@ -14,7 +15,22 @@ import { logger } from "@/lib/logger";
 // Read API keys from environment variables
 const REVENUECAT_API_KEY_IOS = process.env.EXPO_PUBLIC_REVENUECAT_API_KEY_IOS;
 const REVENUECAT_API_KEY_ANDROID = process.env.EXPO_PUBLIC_REVENUECAT_API_KEY_ANDROID;
+const REVENUECAT_TEST_STORE_API_KEY =
+  process.env.EXPO_PUBLIC_REVENUECAT_API_KEY_TEST ??
+  [REVENUECAT_API_KEY_IOS, REVENUECAT_API_KEY_ANDROID].find((key) =>
+    key?.startsWith("test_")
+  );
 const ENTITLEMENT_ID = "Sigma-max Pro";
+
+const isExpoGo =
+  Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
+
+function getRevenueCatApiKey(): string | undefined {
+  if (isExpoGo) return REVENUECAT_TEST_STORE_API_KEY;
+  return Platform.OS === "ios"
+    ? REVENUECAT_API_KEY_IOS
+    : REVENUECAT_API_KEY_ANDROID;
+}
 
 // Validate API keys are configured
 if (!REVENUECAT_API_KEY_IOS || !REVENUECAT_API_KEY_ANDROID) {
@@ -31,12 +47,11 @@ if (!REVENUECAT_API_KEY_IOS || !REVENUECAT_API_KEY_ANDROID) {
 export async function initializeRevenueCat(appUserId?: string): Promise<void> {
   try {
     // Initialize with the appropriate API key
-    const apiKey =
-      Platform.OS === "ios" ? REVENUECAT_API_KEY_IOS : REVENUECAT_API_KEY_ANDROID;
+    const apiKey = getRevenueCatApiKey();
 
     if (!apiKey) {
       throw new Error(
-        `RevenueCat API key not configured for ${Platform.OS}. ` +
+        `RevenueCat ${isExpoGo ? "Test Store" : Platform.OS} API key is not configured. ` +
         "Please check your .env file."
       );
     }

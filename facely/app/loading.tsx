@@ -256,7 +256,7 @@ export default function LoadingScreen() {
           }
           if (cancelled) return;
           setIsLoading(false);
-          router.replace("/(tabs)/analysis");
+          router.replace("/analysis");
           return;
         }
 
@@ -266,7 +266,7 @@ export default function LoadingScreen() {
 
         setIsLoading(false);
         router.replace({
-          pathname: "/(tabs)/score",
+          pathname: "/score",
           params: { scoresPayload: JSON.stringify(scores) } as any,
         });
         
@@ -307,8 +307,8 @@ export default function LoadingScreen() {
         }
         router.replace(
           onboardingFlow
-            ? { pathname: "/(tabs)/analysis", params: { onboardingFlow: "1" } }
-            : "/(tabs)/analysis"
+            ? { pathname: "/analysis", params: { onboardingFlow: "1" } }
+            : "/analysis"
         );
       } catch (error) {
         handleError(error, "Advanced analysis failed");

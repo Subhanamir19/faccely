@@ -1,7 +1,7 @@
 // app/(onboarding)/features.tsx
 // "Here's what the app does for you" screen — 3 gradient-washed cards, each
 // with a tilted phone mockup + side result chip + footer (icon, title, desc).
-// Sits between score-projection and transformation.
+// Legacy preview screen; continues directly to the paywall.
 import React, { useCallback } from "react";
 import {
   View,
@@ -39,7 +39,8 @@ import OrangeOnboardingLayout, {
   ORANGE_ONBOARDING,
 } from "@/components/onboarding/OrangeOnboardingLayout";
 
-const FONT_BOLD = ORANGE_ONBOARDING.font;
+const FONT_BOLD = ORANGE_ONBOARDING.fontBold;
+const FONT_SEMIBOLD = ORANGE_ONBOARDING.fontSemibold;
 const LIME = ORANGE_ONBOARDING.orange;
 const SAGE = ORANGE_ONBOARDING.orangeDark;
 const SAGE_SOFT = ORANGE_ONBOARDING.orangeSoft;
@@ -125,7 +126,7 @@ export default function FeaturesScreen() {
 
   const handleContinue = useCallback(() => {
     hapticSuccess();
-    router.push("/(onboarding)/transformation");
+    router.push("/(onboarding)/paywall");
   }, []);
 
   return (
@@ -360,7 +361,7 @@ const styles = StyleSheet.create({
     backgroundColor: SAGE_SOFT,
   },
   pillText: {
-    fontFamily: FONT_BOLD,
+    fontFamily: FONT_SEMIBOLD,
     fontSize: ms(11),
     color: SAGE,
     letterSpacing: 1.2,
@@ -425,7 +426,7 @@ const styles = StyleSheet.create({
   },
   chipLabel: {
     fontSize: ms(10),
-    fontFamily: FONT_BOLD,
+    fontFamily: FONT_SEMIBOLD,
     letterSpacing: 1.2,
   },
   chipHeadline: {
@@ -470,7 +471,7 @@ const styles = StyleSheet.create({
   },
   cardText: { flex: 1 },
   cardTitle: {
-    fontFamily: FONT_BOLD,
+    fontFamily: FONT_SEMIBOLD,
     fontSize: ms(16),
     color: COLORS.lightText,
     letterSpacing: -0.2,
@@ -510,7 +511,7 @@ const styles = StyleSheet.create({
     paddingVertical: sh(14),
   },
   ctaText: {
-    fontFamily: FONT_BOLD,
+    fontFamily: FONT_SEMIBOLD,
     fontSize: ms(14),
     color: "#FFFFFF",
     letterSpacing: 1.0,

@@ -11,6 +11,7 @@ import * as FileSystem from "expo-file-system/legacy";
 import { API_BASE } from "@/lib/api/config";
 import { buildAuthHeadersAsync } from "@/lib/api/authHeaders";
 import { fetchWithRetry, LONG_REQUEST_TIMEOUT_MS } from "@/lib/api/client";
+import { prepareUploadPart } from "@/lib/api/media";
 
 export type GenerationMetadata = {
   gender?: string | null;
@@ -96,12 +97,9 @@ export const useTenByTen = create<TenByTenState>()(
         set({ loading: true, error: null });
 
         try {
+          const imagePart = await prepareUploadPart(imageUri);
           const form = new FormData();
-          form.append("image", {
-            uri: imageUri,
-            name: "face.jpg",
-            type: "image/jpeg",
-          } as any);
+          form.append("image", imagePart);
           if (metadata.gender) form.append("gender", metadata.gender);
           if (metadata.ethnicity) form.append("ethnicity", metadata.ethnicity);
           if (metadata.age != null) form.append("age", String(metadata.age));

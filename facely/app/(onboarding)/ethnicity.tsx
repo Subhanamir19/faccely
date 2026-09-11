@@ -38,7 +38,7 @@ export default function EthnicityScreen() {
   return (
     <OrangeQuestionScreen
       stepKey="ethnicity"
-      heroImage={require("@/assets/bg-assets-for-onbaording-screens/ethnicity.png")}
+      heroImage={require("@/assets/bg-assets-for-onbaording-screens/ethnicity.jpg")}
       title="What's your ethnicity?"
       subtitle="Optional. We use this to calibrate benchmarks; it doesn't affect your score."
       onContinue={handleNext}

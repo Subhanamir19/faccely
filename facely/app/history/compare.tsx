@@ -14,7 +14,7 @@ import {
 import { useLocalSearchParams, router } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { MaterialCommunityIcons } from "@expo/vector-icons";
+import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { fetchScanDetail, type ScanDetail } from "@/lib/api/history";
 import type { Scores } from "@/lib/api/scores";
 import Text from "@/components/ui/T";

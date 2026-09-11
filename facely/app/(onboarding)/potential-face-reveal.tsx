@@ -38,7 +38,9 @@ import { labelForMetric } from "@/lib/potentialFaceLabels";
 import { usePotentialFace, type PotentialFace } from "@/store/potentialFace";
 import { useScores } from "@/store/scores";
 
-const FONT = ORANGE_ONBOARDING.font;
+const FONT_REGULAR = ORANGE_ONBOARDING.fontRegular;
+const FONT_SEMIBOLD = ORANGE_ONBOARDING.fontSemibold;
+const FONT_BOLD = ORANGE_ONBOARDING.fontBold;
 
 const CHIP = {
   bg: ORANGE_ONBOARDING.orangeSoft,
@@ -228,9 +230,9 @@ function PolishingView({
       <View style={styles.centerColumn}>
         <View style={styles.polishingPreview}>
           {currentImageUri ? (
-            <Image source={{ uri: currentImageUri }} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
+            <Image source={{ uri: currentImageUri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
           ) : (
-            <View style={[StyleSheet.absoluteFillObject, styles.imagePlaceholder]} />
+            <View style={[StyleSheet.absoluteFill, styles.imagePlaceholder]} />
           )}
           <View style={styles.polishingPreviewScrim} />
           <View style={styles.polishingPreviewBadge}>
@@ -471,9 +473,9 @@ function HeroPotentialCard({
       >
         <Animated.View style={[styles.heroCard, { width, height }, cardStyle]}>
           {potentialUri ? (
-            <Image source={{ uri: potentialUri }} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
+            <Image source={{ uri: potentialUri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
           ) : (
-            <View style={[StyleSheet.absoluteFillObject, styles.imagePlaceholder]} />
+            <View style={[StyleSheet.absoluteFill, styles.imagePlaceholder]} />
           )}
           <View style={styles.heroScrim} />
           <View style={styles.heroLabel}>
@@ -498,9 +500,9 @@ function HeroPotentialCard({
         ]}
       >
         {currentUri ? (
-          <Image source={{ uri: currentUri }} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
+          <Image source={{ uri: currentUri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
         ) : (
-          <View style={[StyleSheet.absoluteFillObject, styles.imagePlaceholder]} />
+          <View style={[StyleSheet.absoluteFill, styles.imagePlaceholder]} />
         )}
         <View style={styles.thumbLabel}>
           <T style={styles.thumbLabelText}>TODAY</T>
@@ -523,7 +525,12 @@ function ImagePreviewModal({
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
       <View style={styles.previewBackdrop}>
         <SafeAreaView style={styles.previewSafe}>
-          <Pressable onPress={onClose} style={styles.previewImageWrap}>
+          <Pressable
+            onPress={onClose}
+            accessibilityRole="button"
+            accessibilityLabel="Close full image"
+            style={styles.previewImageWrap}
+          >
             {uri ? (
               <Image source={{ uri }} style={styles.previewImage} resizeMode="cover" />
             ) : null}
@@ -583,13 +590,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: SP[1],
   },
   eyebrow: {
-    fontFamily: FONT,
+    fontFamily: FONT_SEMIBOLD,
     fontSize: ms(11),
     color: ORANGE_ONBOARDING.orangeDark,
     letterSpacing: 1.6,
   },
   title: {
-    fontFamily: FONT,
+    fontFamily: FONT_BOLD,
     fontSize: ms(29, 0.18),
     color: ORANGE_ONBOARDING.text,
     lineHeight: ms(35, 0.18),
@@ -597,7 +604,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   subtitle: {
-    fontFamily: FONT,
+    fontFamily: FONT_REGULAR,
     fontSize: ms(15, 0.18),
     color: ORANGE_ONBOARDING.muted,
     lineHeight: ms(22, 0.18),
@@ -620,7 +627,7 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   heroScrim: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "rgba(0,0,0,0.08)",
   },
   heroLabel: {
@@ -633,7 +640,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.56)",
   },
   heroLabelText: {
-    fontFamily: FONT,
+    fontFamily: FONT_SEMIBOLD,
     fontSize: ms(10),
     color: "#FFFFFF",
     letterSpacing: 1.2,
@@ -674,7 +681,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.55)",
   },
   thumbLabelText: {
-    fontFamily: FONT,
+    fontFamily: FONT_SEMIBOLD,
     fontSize: ms(9),
     color: "#FFFFFF",
     letterSpacing: 1,
@@ -687,7 +694,7 @@ const styles = StyleSheet.create({
     gap: sh(10),
   },
   improvementsLabel: {
-    fontFamily: FONT,
+    fontFamily: FONT_SEMIBOLD,
     fontSize: ms(11),
     color: ORANGE_ONBOARDING.muted,
     letterSpacing: 1.4,
@@ -718,7 +725,7 @@ const styles = StyleSheet.create({
     backgroundColor: ORANGE_ONBOARDING.orange,
   },
   chipText: {
-    fontFamily: FONT,
+    fontFamily: FONT_SEMIBOLD,
     fontSize: ms(11.5, 0.2),
     color: CHIP.text,
     letterSpacing: 0,
@@ -744,7 +751,7 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   primaryPillText: {
-    fontFamily: FONT,
+    fontFamily: FONT_SEMIBOLD,
     fontSize: ms(17, 0.18),
     color: "#FFFFFF",
     letterSpacing: 0.4,
@@ -756,7 +763,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: SP[3],
   },
   secondaryText: {
-    fontFamily: FONT,
+    fontFamily: FONT_REGULAR,
     fontSize: ms(12),
     color: ORANGE_ONBOARDING.muted,
     letterSpacing: 0,
@@ -785,7 +792,7 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   polishingPreviewScrim: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "rgba(0,0,0,0.22)",
   },
   polishingPreviewBadge: {
@@ -802,19 +809,19 @@ const styles = StyleSheet.create({
     gap: sw(7),
   },
   polishingPreviewText: {
-    fontFamily: FONT,
+    fontFamily: FONT_SEMIBOLD,
     fontSize: ms(10),
     color: "#FFFFFF",
     letterSpacing: 1.2,
   },
   polishingTitle: {
-    fontFamily: FONT,
+    fontFamily: FONT_BOLD,
     fontSize: ms(20),
     color: ORANGE_ONBOARDING.text,
     textAlign: "center",
   },
   polishingSubtitle: {
-    fontFamily: FONT,
+    fontFamily: FONT_REGULAR,
     fontSize: ms(13),
     color: ORANGE_ONBOARDING.muted,
     textAlign: "center",
@@ -836,7 +843,7 @@ const styles = StyleSheet.create({
     maxWidth: ms(310),
   },
   fallbackTitle: {
-    fontFamily: FONT,
+    fontFamily: FONT_BOLD,
     fontSize: ms(24),
     color: ORANGE_ONBOARDING.text,
     textAlign: "center",
@@ -844,7 +851,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0,
   },
   fallbackBody: {
-    fontFamily: FONT,
+    fontFamily: FONT_REGULAR,
     fontSize: ms(13),
     color: ORANGE_ONBOARDING.muted,
     textAlign: "center",

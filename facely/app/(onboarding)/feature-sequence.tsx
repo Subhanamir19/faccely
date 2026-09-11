@@ -23,9 +23,9 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 
-const HEADING_FONT = "DINNextRounded-Bold";
-const BODY_FONT = "DINNextRounded-Regular";
-const BUTTON_FONT = "DINNextRounded-Bold";
+const HEADING_FONT = "SFProRounded-Bold";
+const BODY_FONT = "SFProRounded-Regular";
+const BUTTON_FONT = "SFProRounded-Semibold";
 const ORANGE = "#F26A13";
 const TEXT = "#050505";
 const COPY = "#3E454B";
@@ -56,7 +56,7 @@ const DIET_ITEMS: Array<{
   label: string;
 }> = [
   {
-    source: require("../../assets/ASSETS-FOR-DIET/plate-only/sweet-potato.png"),
+    source: require("../../assets/ASSETS-FOR-DIET/plate-only/sweet-potato.jpg"),
     x: 0.27,
     y: 0.17,
     size: 0.27,
@@ -64,7 +64,7 @@ const DIET_ITEMS: Array<{
     label: "Sweet potato",
   },
   {
-    source: require("../../assets/ASSETS-FOR-DIET/plate-only/beef-steak.png"),
+    source: require("../../assets/ASSETS-FOR-DIET/plate-only/beef-steak.jpg"),
     x: 0.67,
     y: 0.20,
     size: 0.30,
@@ -72,7 +72,7 @@ const DIET_ITEMS: Array<{
     label: "Beef steak",
   },
   {
-    source: require("../../assets/ASSETS-FOR-DIET/plate-only/whole-eggs.png"),
+    source: require("../../assets/ASSETS-FOR-DIET/plate-only/whole-eggs.jpg"),
     x: 0.34,
     y: 0.50,
     size: 0.29,
@@ -80,7 +80,7 @@ const DIET_ITEMS: Array<{
     label: "Eggs",
   },
   {
-    source: require("../../assets/ASSETS-FOR-DIET/plate-only/carrot.png"),
+    source: require("../../assets/ASSETS-FOR-DIET/plate-only/carrot.jpg"),
     x: 0.70,
     y: 0.50,
     size: 0.27,
@@ -88,7 +88,7 @@ const DIET_ITEMS: Array<{
     label: "Carrot",
   },
   {
-    source: require("../../assets/ASSETS-FOR-DIET/plate-only/avocado-halves.png"),
+    source: require("../../assets/ASSETS-FOR-DIET/plate-only/avocado-halves.jpg"),
     x: 0.52,
     y: 0.78,
     size: 0.30,
@@ -630,7 +630,7 @@ const styles = StyleSheet.create({
     overflow: "visible",
   },
   visualLayer: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: "center",
     justifyContent: "center",
   },

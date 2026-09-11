@@ -1,5 +1,5 @@
 // app/(onboarding)/face-scan.tsx
-// Onboarding face scan — frontal + side photos, then fires analyzePair and navigates to trust.
+// Onboarding face scan — frontal + side photos, then fires analyzePair and continues to studies.
 // No guiding screens — straight to camera/gallery chooser after "Begin Scan".
 import React, { useRef, useState } from "react";
 import {
@@ -332,7 +332,7 @@ export default function OnboardingFaceScan() {
         )
         .catch(() => {});
 
-      router.push("/(onboarding)/trust");
+      router.push("/(onboarding)/studies");
     } catch (err) {
       logger.error("[SCAN] analyze failed", err);
       Alert.alert(
@@ -378,6 +378,8 @@ export default function OnboardingFaceScan() {
             >
               <Pressable
                 onPress={capture}
+                accessibilityRole="button"
+                accessibilityLabel="Take photo"
                 style={{
                   width: 82,
                   height: 82,
@@ -412,7 +414,7 @@ export default function OnboardingFaceScan() {
             <Text
               style={{
                 color: TEXT,
-                fontFamily: "Poppins-SemiBold",
+                fontFamily: "SFProRounded-Semibold",
                 fontSize: headingFontSize,
                 lineHeight: headingFontSize + 6,
                 letterSpacing: -0.3,

@@ -22,7 +22,8 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 
-const HEADING_FONT = "DINNextRounded-Bold";
+const HEADING_FONT = "SFProRounded-Bold";
+const BUTTON_FONT = "SFProRounded-Semibold";
 const ORANGE = "#F26A13";
 const TEXT = "#050505";
 const PAPER = "#FFFCF7";
@@ -375,7 +376,7 @@ const styles = StyleSheet.create({
   },
   ctaText: {
     color: "#FFFFFF",
-    fontFamily: HEADING_FONT,
+    fontFamily: BUTTON_FONT,
     fontSize: 23,
     lineHeight: 29,
     letterSpacing: 0,

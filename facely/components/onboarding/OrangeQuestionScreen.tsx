@@ -27,7 +27,8 @@ import OrangeOnboardingLayout, {
 import { SP } from "@/lib/tokens";
 import { ms, sh, useResponsiveScale } from "@/lib/responsive";
 
-const FONT_ROUNDED = ORANGE_ONBOARDING.font;
+const FONT_REGULAR = ORANGE_ONBOARDING.fontRegular;
+const FONT_SEMIBOLD = ORANGE_ONBOARDING.fontSemibold;
 const ORANGE = ORANGE_ONBOARDING.orange;
 const ORANGE_DARK = ORANGE_ONBOARDING.orangeDark;
 const ORANGE_SOFT = ORANGE_ONBOARDING.orangeSoft;
@@ -325,7 +326,6 @@ const styles = StyleSheet.create({
   },
   optionRowPressable: {
     flex: 1,
-    minHeight: "100%",
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: SP[4],
@@ -359,7 +359,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   optionLabel: {
-    fontFamily: FONT_ROUNDED,
+    fontFamily: FONT_SEMIBOLD,
     fontSize: ms(16, 0.18),
     lineHeight: ms(20, 0.18),
     color: TEXT,
@@ -384,7 +384,7 @@ const styles = StyleSheet.create({
     backgroundColor: ORANGE,
   },
   optionCaption: {
-    fontFamily: FONT_ROUNDED,
+    fontFamily: FONT_REGULAR,
     fontSize: ms(13, 0.18),
     lineHeight: ms(17, 0.18),
     color: MUTED,
@@ -440,7 +440,7 @@ const styles = StyleSheet.create({
     width: "100%",
   },
   gridLabel: {
-    fontFamily: FONT_ROUNDED,
+    fontFamily: FONT_SEMIBOLD,
     fontSize: ms(16, 0.18),
     lineHeight: ms(20, 0.18),
     color: TEXT,

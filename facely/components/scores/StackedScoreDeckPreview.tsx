@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Image,
   Pressable,
@@ -12,27 +12,54 @@ import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   Easing,
   Extrapolation,
+  FadeIn,
   cancelAnimation,
   interpolate,
-  runOnJS,
   type SharedValue,
   useAnimatedStyle,
-  useDerivedValue,
+  useReducedMotion,
   useSharedValue,
+  withDelay,
+  withSequence,
   withSpring,
   withTiming,
 } from "react-native-reanimated";
+import { scheduleOnRN } from "react-native-worklets";
 
 import Text from "@/components/ui/T";
-import { COLORS, RADII, SP } from "@/lib/tokens";
+import { COLORS, SP } from "@/lib/tokens";
 import { ms, sh, sw } from "@/lib/responsive";
-import { getScoreColor } from "./MetricGridCard";
 import { getTierLabel } from "./ScoringGrid";
 import type { DashboardMetric } from "@/lib/api/insights";
 import { useOnboarding } from "@/store/onboarding";
-import { ADVANCED_ANALYSIS_FONT_BOLD } from "@/lib/advancedAnalysisIcons";
+import { hapticLight } from "@/lib/haptics";
 
-const FONT = ADVANCED_ANALYSIS_FONT_BOLD;
+const FONT_REGULAR = "SFProRounded-Regular";
+const FONT_SEMIBOLD = "SFProRounded-Semibold";
+const FONT_BOLD = "SFProRounded-Bold";
+
+const RECYCLE_DURATION_MS = 430;
+const PROGRESS_DURATION_MS = 720;
+const PROGRESS_DELAY_MS = 90;
+const EASE_OUT = Easing.bezier(0.23, 1, 0.32, 1);
+const EASE_IN_OUT = Easing.bezier(0.77, 0, 0.175, 1);
+
+const SCORE_COLORS = {
+  extremelyBad: "#F1495C",
+  bad: "#FF9F45",
+  average: "#FFD966",
+  good: "#8FD14F",
+  excellent: "#3DB4F2",
+} as const;
+
+function getScoreColor(score: number) {
+  const clamped = Math.max(0, Math.min(100, score));
+  if (clamped <= 25) return SCORE_COLORS.extremelyBad;
+  if (clamped <= 40) return SCORE_COLORS.bad;
+  if (clamped <= 63) return SCORE_COLORS.average;
+  if (clamped <= 81) return SCORE_COLORS.good;
+  return SCORE_COLORS.excellent;
+}
 
 const CARD_IMAGES: Record<string, any> = {
   Overall: require("@/assets/scoring-images/fullface-vector.png"),
@@ -56,7 +83,6 @@ const API_KEY_TO_LABEL: Record<string, string> = {
 };
 
 const CARD_ORDER = [
-  "Overall",
   "Jawline",
   "Cheekbones",
   "Eye Symmetry",
@@ -64,6 +90,7 @@ const CARD_ORDER = [
   "Masculinity/Femininity",
   "Skin Quality",
   "Nose Balance",
+  "Overall",
 ] as const;
 
 type ScoreDeckCard = {
@@ -72,6 +99,8 @@ type ScoreDeckCard = {
   score: number;
   tier: string;
   image: any;
+  delta: number | null;
+  direction?: "up" | "down" | "flat";
 };
 
 const PREVIEW_CARDS: ScoreDeckCard[] = [
@@ -94,6 +123,7 @@ const PREVIEW_CARDS: ScoreDeckCard[] = [
       score,
       tier: getTierLabel(label, score),
       image: CARD_IMAGES[label],
+      delta: null,
     };
   }),
 ];
@@ -111,24 +141,85 @@ type Props = {
   showReset?: boolean;
   showControls?: boolean;
   showBackground?: boolean;
+  onActiveCardChange?: (card: { label: string; score: number; index: number; count: number }) => void;
 };
 
 function getWrappedIndex(index: number, count: number) {
+  "worklet";
   return ((index % count) + count) % count;
+}
+
+function ScoreProgress({
+  score,
+  color,
+  active,
+  reduceMotion,
+  maxWidth,
+}: {
+  score: number;
+  color: string;
+  active: boolean;
+  reduceMotion: boolean;
+  maxWidth: number;
+}) {
+  const clampedScore = Math.max(0, Math.min(100, Math.round(score)));
+  const targetWidth = Math.max(0, maxWidth * (clampedScore / 100));
+  const progress = useSharedValue(active ? 0 : targetWidth);
+
+  useEffect(() => {
+    cancelAnimation(progress);
+
+    if (!active) {
+      progress.set(0);
+      return;
+    }
+
+    progress.set(0);
+    progress.set(
+      withDelay(
+        reduceMotion ? 0 : PROGRESS_DELAY_MS,
+        withTiming(targetWidth, {
+          duration: reduceMotion ? 140 : PROGRESS_DURATION_MS,
+          easing: EASE_OUT,
+        }),
+      ),
+    );
+
+    return () => cancelAnimation(progress);
+  }, [active, progress, reduceMotion, targetWidth]);
+
+  const fillStyle = useAnimatedStyle(() => ({
+    width: progress.get(),
+  }));
+
+  return (
+    <View
+      style={styles.progressTrack}
+      accessibilityLabel={`${clampedScore} percent`}
+    >
+      <Animated.View
+        pointerEvents="none"
+        style={[styles.progressFill, { backgroundColor: color }, fillStyle]}
+      />
+      <Text style={styles.progressValue}>{clampedScore}%</Text>
+    </View>
+  );
 }
 
 function ScoreCard({
   card,
-  barFillStyle,
   embedded,
   imageSize,
-  bottomSpacerHeight,
+  active,
+  reduceMotion,
+  progressWidth,
 }: {
   card: ScoreDeckCard;
-  barFillStyle?: any;
   embedded?: boolean;
   imageSize: number;
-  bottomSpacerHeight: number;
+  active: boolean;
+  reduceMotion: boolean;
+  progressWidth: number;
 }) {
   const scoreColor = getScoreColor(card.score);
 
@@ -138,43 +229,38 @@ function ScoreCard({
         styles.card,
         embedded && styles.cardEmbedded,
         styles.cardBehind,
-        { borderColor: "rgba(255,255,255,0.64)" },
       ]}
       accessibilityRole="summary"
-      accessibilityLabel={`${card.label} score ${card.score} out of 100`}
+      accessibilityLabel={`${card.displayLabel}, ${card.tier}, ${Math.round(card.score)} percent`}
     >
       <View style={styles.cardContent}>
-        <Image
-          source={card.image}
-          style={[
-            styles.image,
-            embedded && styles.imageEmbedded,
-            { width: imageSize, height: imageSize },
-          ]}
-          resizeMode="contain"
-        />
-
-        <Text style={styles.label}>{card.displayLabel.toUpperCase()}</Text>
-        <Text style={[styles.tier, embedded && styles.tierEmbedded]}>{card.tier}</Text>
-
-        <View style={styles.barTrack}>
-          <Animated.View
+        <View style={[styles.imageWell, embedded && styles.imageWellEmbedded]}>
+          <Image
+            source={card.image}
             style={[
-              styles.barFill,
-              {
-                backgroundColor: scoreColor,
-              },
-              barFillStyle,
+              styles.image,
+              embedded && styles.imageEmbedded,
+              { width: imageSize, height: imageSize },
             ]}
+            resizeMode="contain"
           />
         </View>
 
-        <View style={styles.scoreRow}>
-          <Text style={styles.scoreNum}>{Math.round(card.score)}</Text>
-          <Text style={styles.scoreUnit}> / 100</Text>
-        </View>
+        <Text
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          style={[styles.tier, embedded && styles.tierEmbedded]}
+        >
+          {card.tier}
+        </Text>
 
-        <View style={{ height: bottomSpacerHeight }} />
+        <ScoreProgress
+          score={card.score}
+          color={scoreColor}
+          active={active}
+          reduceMotion={reduceMotion}
+          maxWidth={progressWidth}
+        />
       </View>
     </View>
   );
@@ -187,15 +273,18 @@ function DeckLayer({
   deckWidth,
   cardHeight,
   imageSize,
-  bottomSpacerHeight,
-  barMaxWidth,
   screenWidth,
-  threshold,
   translateX,
   translateY,
+  transitionProgress,
+  recycleProgress,
+  navigationStep,
   activeIndex,
   cardCount,
   embedded,
+  activeCardIndex,
+  reduceMotion,
+  progressWidth,
 }: {
   card: ScoreDeckCard;
   cardIndex: number;
@@ -203,40 +292,49 @@ function DeckLayer({
   deckWidth: number;
   cardHeight: number;
   imageSize: number;
-  bottomSpacerHeight: number;
-  barMaxWidth: number;
   screenWidth: number;
-  threshold: number;
   translateX: SharedValue<number>;
   translateY: SharedValue<number>;
+  transitionProgress: SharedValue<number>;
+  recycleProgress: SharedValue<number>;
+  navigationStep: SharedValue<number>;
   activeIndex: SharedValue<number>;
   cardCount: number;
   embedded?: boolean;
+  activeCardIndex: number;
+  reduceMotion: boolean;
+  progressWidth: number;
 }) {
-  const secondY = cardHeight * (embedded ? 0.072 : 0.074);
-  const thirdY = cardHeight * (embedded ? 0.132 : 0.136);
-  const scorePct = Math.max(0, Math.min(100, card.score));
-  const scoreWidth = Math.max(0, barMaxWidth * (scorePct / 100));
-
+  const secondY = cardHeight * (embedded ? 0.052 : 0.058);
+  const thirdY = cardHeight * (embedded ? 0.096 : 0.106);
+  // Responsive helpers call React Native's PixelRatio native module. Resolve
+  // them on the JS thread; a UI worklet cannot invoke that module synchronously.
+  const secondX = sw(8);
+  const thirdX = sw(5);
   const animatedStyle = useAnimatedStyle(() => {
-    const rawRelative = cardIndex - activeIndex.value;
+    const rawRelative =
+      navigationStep.get() < 0 && recycleProgress.get() > 0
+        ? activeIndex.get() - cardIndex
+        : cardIndex - activeIndex.get();
     const relative = ((rawRelative % cardCount) + cardCount) % cardCount;
+    const recycle = recycleProgress.get();
 
     if (relative === 0) {
       const rotate = interpolate(
-        translateX.value,
+        translateX.get(),
         [-screenWidth, 0, screenWidth],
-        [-12, 0, 8],
+        reduceMotion ? [0, 0, 0] : [-10, 0, 10],
         Extrapolation.CLAMP,
       );
 
       return {
-        opacity: 1,
-        zIndex: 30,
+        opacity: interpolate(recycle, [0, 0.72, 1], [1, 0.9, 0.54]),
+        zIndex: recycle > 0.56 ? 5 : 30,
         transform: [
-          { translateX: translateX.value },
-          { translateY: translateY.value },
+          { translateX: translateX.get() },
+          { translateY: translateY.get() },
           { rotate: `${rotate}deg` },
+          { scale: interpolate(recycle, [0, 0.5, 1], [1, 0.965, 0.918]) },
         ],
       };
     }
@@ -256,20 +354,27 @@ function DeckLayer({
     const relativeNextY = relative === 1 ? 0 : secondY;
     const relativeBaseScale = relative === 1 ? 0.958 : 0.918;
     const relativeNextScale = relative === 1 ? 1 : 0.958;
-    const relativeBaseOpacity = relative === 1 ? 0.86 : 0.62;
-    const relativeNextOpacity = relative === 1 ? 1 : 0.86;
-    const promote = interpolate(
-      Math.abs(translateX.value),
-      [0, threshold],
-      [0, 1],
-      Extrapolation.CLAMP,
-    );
+    const relativeBaseOpacity = relative === 1 ? 0.9 : 0.66;
+    const relativeNextOpacity = relative === 1 ? 1 : 0.9;
+    const relativeBaseX = relative === 1 ? secondX : -thirdX;
+    const relativeNextX = relative === 1 ? 0 : secondX;
+    const relativeBaseRotate = reduceMotion ? 0 : relative === 1 ? 3.2 : -1.8;
+    const relativeNextRotate = reduceMotion ? 0 : relative === 1 ? 0 : 3.2;
+    const promote = Math.max(transitionProgress.get(), recycle);
 
     return {
       opacity: interpolate(promote, [0, 1], [relativeBaseOpacity, relativeNextOpacity]),
       zIndex: relative === 1 ? 20 : 10,
       transform: [
+        { translateX: interpolate(promote, [0, 1], [relativeBaseX, relativeNextX]) },
         { translateY: interpolate(promote, [0, 1], [relativeBaseY, relativeNextY]) },
+        {
+          rotate: `${interpolate(
+            promote,
+            [0, 1],
+            [relativeBaseRotate, relativeNextRotate],
+          )}deg`,
+        },
         { scale: interpolate(promote, [0, 1], [relativeBaseScale, relativeNextScale]) },
       ],
     };
@@ -277,27 +382,16 @@ function DeckLayer({
     activeIndex,
     cardIndex,
     cardCount,
+    navigationStep,
+    recycleProgress,
+    reduceMotion,
     screenWidth,
+    secondX,
     secondY,
-    threshold,
+    thirdX,
     thirdY,
+    transitionProgress,
   ]);
-
-  const barProgress = useDerivedValue(() => {
-    const rawRelative = cardIndex - activeIndex.value;
-    const relative = ((rawRelative % cardCount) + cardCount) % cardCount;
-    const underCardIsPeeking = relative === 1 && Math.abs(translateX.value) > 8;
-    const shouldFill = relative === 0 || underCardIsPeeking;
-
-    return withTiming(shouldFill ? 1 : 0, {
-      duration: relative === 0 ? 0 : shouldFill ? 1350 : 320,
-      easing: Easing.inOut(Easing.cubic),
-    });
-  }, [activeIndex, cardCount, cardIndex]);
-
-  const barFillStyle = useAnimatedStyle(() => ({
-    width: scoreWidth * barProgress.value,
-  }), [scoreWidth]);
 
   return (
     <Animated.View
@@ -314,10 +408,11 @@ function DeckLayer({
     >
       <ScoreCard
         card={card}
-        barFillStyle={barFillStyle}
         embedded={embedded}
         imageSize={imageSize}
-        bottomSpacerHeight={bottomSpacerHeight}
+        active={cardIndex === activeCardIndex}
+        reduceMotion={reduceMotion}
+        progressWidth={progressWidth}
       />
     </Animated.View>
   );
@@ -334,12 +429,18 @@ export default function StackedScoreDeckPreview({
   showReset = true,
   showControls = true,
   showBackground = true,
+  onActiveCardChange,
 }: Props) {
   const { width, height } = useWindowDimensions();
+  const reduceMotion = useReducedMotion();
   const { data: onboardingData } = useOnboarding();
   const gender = onboardingData?.gender;
   const translateX = useSharedValue(0);
   const translateY = useSharedValue(0);
+  const transitionProgress = useSharedValue(0);
+  const recycleProgress = useSharedValue(0);
+  const navigationStep = useSharedValue(1);
+  const gestureLocked = useSharedValue(0);
   const activeIndexValue = useSharedValue(0);
   const [activeIndex, setActiveIndex] = useState(0);
   const cards = useMemo(() => {
@@ -372,30 +473,43 @@ export default function StackedScoreDeckPreview({
         score,
         tier: getTierLabel(label, score),
         image: CARD_IMAGES[label],
+        delta: deltaMap[label]?.delta ?? null,
+        direction: deltaMap[label]?.direction,
       };
     });
   }, [dashboardMetrics, gender, metrics, overallDelta, totalScore]);
 
   const cardCount = cards.length;
+  const activeCard = cards[activeIndex] ?? cards[0];
+
+  useEffect(() => {
+    const activeCard = cards[activeIndex];
+    if (!activeCard) return;
+    onActiveCardChange?.({
+      label: activeCard.label,
+      score: activeCard.score,
+      index: activeIndex,
+      count: cardCount,
+    });
+  }, [activeIndex, cardCount, cards, onActiveCardChange]);
   const threshold = width * 0.24;
   const availableWidth = Math.max(1, viewportWidth ?? width - SP[5] * 2);
   const availableHeight = Math.max(1, height);
-  const cardWidthRatio = embedded ? 0.78 : 0.82;
-  const maxDeckWidth = availableWidth - availableWidth * 0.21;
+  const cardWidthRatio = embedded ? 0.74 : 0.82;
+  const maxDeckWidth = availableWidth - availableWidth * (embedded ? 0.26 : 0.21);
   const deckWidth = Math.round(Math.min(availableWidth * cardWidthRatio, maxDeckWidth));
   const cardHeight = Math.round(
     Math.min(
-      availableHeight * (embedded ? 0.31 : 0.47),
-      deckWidth * (embedded ? 0.98 : 1.14),
+      availableHeight * (embedded ? 0.45 : 0.49),
+      deckWidth * (embedded ? 1.42 : 1.34),
     ),
   );
   const imageSize = Math.round(
     Math.min(
-      deckWidth * (embedded ? 0.58 : 0.56),
-      cardHeight * (embedded ? 0.48 : 0.48),
+      deckWidth * (embedded ? 0.66 : 0.62),
+      cardHeight * (embedded ? 0.47 : 0.46),
     ),
   );
-  const bottomSpacerHeight = Math.round(cardHeight * (embedded ? 0.085 : 0.09));
   const controlSize = Math.round(
     Math.min(
       availableWidth * (embedded ? 0.105 : 0.11),
@@ -405,83 +519,183 @@ export default function StackedScoreDeckPreview({
   const sideGap = Math.max(0, (availableWidth - deckWidth) / 2);
   const sideControlInset = Math.max(0, Math.round((sideGap - controlSize) / 2));
   const controlTop = Math.max(
-    cardHeight * 0.04,
-    Math.round(cardHeight * (embedded ? 0.07 : 0.08) + imageSize * 0.5 - controlSize * 0.5),
+    0,
+    Math.round(cardHeight * 0.5 - controlSize * 0.5),
   );
-  const stageHeight = Math.round(cardHeight * (embedded ? 1.18 : 1.15));
+  const stageHeight = Math.round(cardHeight * (embedded ? 1.11 : 1.14));
+  const progressWidth = Math.max(
+    0,
+    deckWidth - (embedded ? SP[4] : SP[5]) * 2,
+  );
 
-  const resetDrag = () => {
+  const resetDrag = (velocityX = 0, velocityY = 0) => {
     "worklet";
-    translateX.value = withSpring(0, { damping: 17, stiffness: 180 });
-    translateY.value = withSpring(0, { damping: 17, stiffness: 180 });
+    const duration = reduceMotion ? 120 : 400;
+    translateX.set(withSpring(0, { duration, dampingRatio: 0.86, velocity: velocityX }));
+    translateY.set(withSpring(0, { duration, dampingRatio: 0.86, velocity: velocityY }));
+    transitionProgress.set(
+      withTiming(0, { duration: reduceMotion ? 80 : 180, easing: EASE_OUT }),
+    );
+    recycleProgress.set(0);
+    navigationStep.set(1);
   };
 
-  const completeCardExit = (direction: -1 | 1, exitY = 0) => {
+  const completeCardRecycle = (
+    step: -1 | 1,
+    direction: -1 | 1,
+    exitY = 0,
+  ) => {
     "worklet";
-    translateX.value = withTiming(direction * width * 1.18, { duration: 230 }, (finished) => {
-      if (finished) {
-        const nextIndex = (activeIndexValue.value + 1) % cardCount;
-        activeIndexValue.value = nextIndex;
-        translateX.value = 0;
-        translateY.value = 0;
-        runOnJS(setActiveIndex)(nextIndex);
-      }
-    });
-    translateY.value = withTiming(exitY * 0.32, { duration: 230 });
+    const duration = reduceMotion ? 140 : RECYCLE_DURATION_MS;
+    const firstLeg = reduceMotion ? 45 : 150;
+    const landingLeg = duration - firstLeg;
+    const landingY = cardHeight * (embedded ? 0.096 : 0.106);
+
+    navigationStep.set(step);
+    transitionProgress.set(
+      withTiming(1, {
+        duration: reduceMotion ? 80 : 150,
+        easing: EASE_OUT,
+      }),
+    );
+    recycleProgress.set(
+      withTiming(1, { duration, easing: EASE_IN_OUT }, (finished) => {
+        if (!finished) return;
+
+        const nextIndex = getWrappedIndex(activeIndexValue.get() + step, cardCount);
+        activeIndexValue.set(nextIndex);
+        translateX.set(0);
+        translateY.set(0);
+        transitionProgress.set(0);
+        recycleProgress.set(0);
+        navigationStep.set(1);
+        scheduleOnRN(hapticLight);
+        scheduleOnRN(setActiveIndex, nextIndex);
+      }),
+    );
+
+    translateX.set(
+      withSequence(
+        withTiming(reduceMotion ? 0 : direction * width * 0.62, {
+          duration: firstLeg,
+          easing: EASE_OUT,
+        }),
+        withTiming(0, {
+          duration: landingLeg,
+          easing: EASE_IN_OUT,
+        }),
+      ),
+    );
+    translateY.set(
+      withSequence(
+        withTiming(reduceMotion ? 0 : exitY * 0.1 - cardHeight * 0.025, {
+          duration: firstLeg,
+          easing: EASE_OUT,
+        }),
+        withTiming(landingY, {
+          duration: landingLeg,
+          easing: EASE_IN_OUT,
+        }),
+      ),
+    );
   };
 
-  const advanceFromButton = (step: -1 | 1, exitDirection: -1 | 1) => {
-    const nextIndex = getWrappedIndex(activeIndex + step, cardCount);
-
-    translateX.value = withTiming(exitDirection * width * 1.18, { duration: 230 }, (finished) => {
-      if (finished) {
-        activeIndexValue.value = nextIndex;
-        translateX.value = 0;
-        translateY.value = 0;
-        runOnJS(setActiveIndex)(nextIndex);
-      }
-    });
-    translateY.value = withTiming(0, { duration: 230 });
-  };
+  const advanceFromButton = useCallback((step: -1 | 1, exitDirection: -1 | 1) => {
+    if (recycleProgress.get() > 0) return;
+    completeCardRecycle(step, exitDirection);
+  }, [cardCount, cardHeight, embedded, reduceMotion, width]);
 
   const panGesture = useMemo(
     () =>
       Gesture.Pan()
-        .activeOffsetX([-3, 3])
+        .activeOffsetX([-8, 8])
+        .failOffsetY([-14, 14])
         .onBegin(() => {
-          cancelAnimation(translateX);
-          cancelAnimation(translateY);
-        })
-        .onUpdate((event) => {
-          translateX.value = event.translationX;
-          translateY.value = event.translationY;
-        })
-        .onEnd((event) => {
-          const direction = event.translationX >= 0 ? 1 : -1;
-          const shouldExit = Math.abs(event.translationX) > threshold || Math.abs(event.velocityX) > 850;
-          if (shouldExit) {
-            completeCardExit(direction, event.translationY);
+          if (recycleProgress.get() > 0) {
+            gestureLocked.set(1);
             return;
           }
 
-          resetDrag();
+          gestureLocked.set(0);
+          cancelAnimation(translateX);
+          cancelAnimation(translateY);
+          cancelAnimation(transitionProgress);
+          cancelAnimation(recycleProgress);
+          recycleProgress.set(0);
+          navigationStep.set(1);
+        })
+        .onUpdate((event) => {
+          if (gestureLocked.get() > 0) return;
+          translateX.set(event.translationX);
+          translateY.set(event.translationY * 0.28);
+          transitionProgress.set(
+            Math.max(0, Math.min(1, Math.abs(event.translationX) / threshold)),
+          );
+        })
+        .onEnd((event) => {
+          if (gestureLocked.get() > 0) return;
+          const direction = event.translationX >= 0 ? 1 : -1;
+          const shouldExit =
+            Math.abs(event.translationX) > threshold ||
+            Math.abs(event.velocityX) > 820;
+
+          if (shouldExit) {
+            completeCardRecycle(1, direction, event.translationY);
+            return;
+          }
+
+          resetDrag(event.velocityX, event.velocityY);
         })
         .onFinalize((_, success) => {
-          if (!success) {
+          const wasLocked = gestureLocked.get() > 0;
+          gestureLocked.set(0);
+          if (!success && !wasLocked) {
             resetDrag();
           }
         }),
-    [activeIndexValue, cardCount, threshold, translateX, translateY, width],
+    [
+      activeIndexValue,
+      cardHeight,
+      cardCount,
+      embedded,
+      gestureLocked,
+      navigationStep,
+      recycleProgress,
+      reduceMotion,
+      threshold,
+      transitionProgress,
+      translateX,
+      translateY,
+      width,
+    ],
   );
 
   const content = (
     <View style={[styles.root, embedded && styles.rootEmbedded]}>
       {showHeader ? (
         <View style={styles.headerCopy}>
-        <Text style={styles.title}>Your Scores</Text>
-        <Text style={styles.subtitle}>Stacked card deck preview</Text>
+          <Text style={styles.title}>Your Scores</Text>
+          <Text style={styles.subtitle}>Stacked card deck preview</Text>
         </View>
       ) : null}
+
+      <View style={styles.metricHeading}>
+        {activeCard ? (
+          <Animated.View
+            key={activeCard.label}
+            entering={FadeIn.duration(reduceMotion ? 80 : 180).easing(EASE_OUT)}
+            style={styles.metricHeadingLayer}
+          >
+            <Text
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              style={styles.metricName}
+            >
+              {activeCard.displayLabel}
+            </Text>
+          </Animated.View>
+        ) : null}
+      </View>
 
       <View style={[styles.deckShell, { width: availableWidth, height: stageHeight }]}>
         <GestureDetector gesture={panGesture}>
@@ -500,15 +714,18 @@ export default function StackedScoreDeckPreview({
                   deckWidth={deckWidth}
                   cardHeight={cardHeight}
                   imageSize={imageSize}
-                  bottomSpacerHeight={bottomSpacerHeight}
-                  barMaxWidth={Math.max(0, deckWidth - (embedded ? SP[4] : SP[5]) * 2)}
                   screenWidth={width}
-                  threshold={threshold}
                   translateX={translateX}
                   translateY={translateY}
+                  transitionProgress={transitionProgress}
+                  recycleProgress={recycleProgress}
+                  navigationStep={navigationStep}
                   activeIndex={activeIndexValue}
                   cardCount={cardCount}
                   embedded={embedded}
+                  activeCardIndex={activeIndex}
+                  reduceMotion={reduceMotion}
+                  progressWidth={progressWidth}
                 />
               );
             })}
@@ -534,7 +751,7 @@ export default function StackedScoreDeckPreview({
                 },
               ]}
             >
-              <ChevronLeft color="#FFFFFF" size={embedded ? 21 : 23} strokeWidth={3.1} />
+              <ChevronLeft color="#1C1C1E" size={embedded ? 21 : 23} strokeWidth={2.5} />
             </Pressable>
             <Pressable
               onPress={() => advanceFromButton(1, -1)}
@@ -553,32 +770,38 @@ export default function StackedScoreDeckPreview({
                 },
               ]}
             >
-              <ChevronRight color="#FFFFFF" size={embedded ? 21 : 23} strokeWidth={3.1} />
+              <ChevronRight color="#1C1C1E" size={embedded ? 21 : 23} strokeWidth={2.5} />
             </Pressable>
           </View>
         ) : null}
       </View>
 
-      <View style={styles.footerRow}>
-        <View style={styles.counterPill}>
-          <Text style={styles.counterCurrent}>{activeIndex + 1}</Text>
-          <Text style={styles.counterTotal}> / {cardCount}</Text>
-        </View>
-        {showReset ? <Pressable
+      <View style={styles.deckCounter}>
+        <Text style={styles.deckCounterCurrent}>{activeIndex + 1}</Text>
+        <Text style={styles.deckCounterTotal}> / {cardCount}</Text>
+      </View>
+
+      {showReset ? (
+        <View style={styles.footerRow}>
+          <Pressable
           onPress={() => {
-            translateX.value = 0;
-            translateY.value = 0;
-            activeIndexValue.value = 0;
+            translateX.set(0);
+            translateY.set(0);
+            transitionProgress.set(0);
+            recycleProgress.set(0);
+            navigationStep.set(1);
+            activeIndexValue.set(0);
             setActiveIndex(0);
           }}
           hitSlop={12}
           accessibilityRole="button"
           accessibilityLabel="Reset score deck preview"
           style={styles.resetButton}
-        >
-          <RotateCcw color={COLORS.lightText} size={18} strokeWidth={2.4} />
-        </Pressable> : null}
-      </View>
+          >
+            <RotateCcw color={COLORS.lightText} size={18} strokeWidth={2.4} />
+          </Pressable>
+        </View>
+      ) : null}
     </View>
   );
 
@@ -603,7 +826,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: SP[5],
     paddingBottom: SP[6],
-    gap: sh(22),
+    gap: sh(16),
   },
   gradientRoot: {
     flex: 1,
@@ -613,24 +836,47 @@ const styles = StyleSheet.create({
     width: "100%",
     paddingHorizontal: 0,
     paddingBottom: 0,
-    gap: sh(8),
+    gap: sh(7),
   },
   headerCopy: {
     alignSelf: "stretch",
     gap: sh(4),
   },
   title: {
-    fontFamily: FONT,
+    fontFamily: FONT_BOLD,
     fontSize: ms(30),
     lineHeight: ms(34),
     color: COLORS.lightText,
     letterSpacing: 0,
   },
   subtitle: {
-    fontFamily: FONT,
+    fontFamily: FONT_REGULAR,
     fontSize: ms(13),
     color: COLORS.lightMuted,
     letterSpacing: 0,
+  },
+  metricHeading: {
+    width: "100%",
+    height: sh(38),
+    alignItems: "center",
+    justifyContent: "center",
+    position: "relative",
+  },
+  metricHeadingLayer: {
+    ...StyleSheet.absoluteFill,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: SP[4],
+  },
+  metricName: {
+    maxWidth: "100%",
+    color: "#201F1D",
+    fontFamily: FONT_SEMIBOLD,
+    fontSize: ms(28, 0.18),
+    lineHeight: ms(34),
+    letterSpacing: -0.65,
+    textAlign: "center",
+    includeFontPadding: false,
   },
   deckStage: {
     alignItems: "center",
@@ -651,92 +897,121 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#FFFFFF",
-    borderRadius: RADII.xl,
+    backgroundColor: "#FFFEFC",
+    borderRadius: 32,
+    borderCurve: "continuous",
     borderWidth: 1,
+    borderColor: "#F0ECE7",
     paddingHorizontal: SP[5],
     paddingTop: SP[5],
     paddingBottom: SP[5],
-    shadowColor: "#2B2452",
-    shadowOpacity: 0.18,
-    shadowRadius: 28,
-    shadowOffset: { width: 0, height: 18 },
-    elevation: 12,
+    boxShadow: "0 18px 44px rgba(49, 42, 36, 0.14)",
     overflow: "hidden",
+    position: "relative",
   },
   cardEmbedded: {
     paddingHorizontal: SP[4],
     paddingTop: SP[4],
     paddingBottom: SP[4],
-    borderRadius: RADII.lg,
+    borderRadius: 30,
   },
   cardBehind: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#FFFEFC",
   },
   cardContent: {
+    flex: 1,
     width: "100%",
     alignItems: "center",
+    justifyContent: "space-between",
+    gap: sh(16),
+  },
+  imageWell: {
+    flex: 1,
+    width: "100%",
+    minHeight: sh(176),
+    borderRadius: 25,
+    borderCurve: "continuous",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(111, 91, 76, 0.08)",
+    backgroundColor: "#F8F1EC",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  imageWellEmbedded: {
+    minHeight: sh(170),
+    borderRadius: 23,
   },
   image: {
     width: ms(168, 0.85),
     height: ms(168, 0.85),
-    marginTop: sh(8),
-    marginBottom: sh(16),
   },
   imageEmbedded: {
-    width: ms(148, 0.85),
-    height: ms(148, 0.85),
-    marginTop: sh(4),
-    marginBottom: sh(12),
-  },
-  label: {
-    fontFamily: FONT,
-    fontSize: ms(11),
-    color: COLORS.lightSub,
-    letterSpacing: 1.1,
-    textAlign: "center",
-    marginBottom: sh(5),
+    width: ms(132, 0.85),
+    height: ms(132, 0.85),
   },
   tier: {
-    fontFamily: FONT,
-    fontSize: ms(25),
-    lineHeight: ms(29),
-    color: COLORS.lightText,
-    letterSpacing: 0,
+    width: "100%",
+    fontFamily: FONT_BOLD,
+    fontSize: ms(30, 0.16),
+    lineHeight: ms(36),
+    color: "#201F1D",
+    letterSpacing: -0.75,
     textAlign: "center",
-    marginBottom: sh(18),
+    includeFontPadding: false,
   },
   tierEmbedded: {
-    fontSize: ms(22),
-    lineHeight: ms(26),
-    marginBottom: SP[3],
+    fontSize: ms(28, 0.16),
+    lineHeight: ms(34),
   },
-  barTrack: {
+  progressTrack: {
     width: "100%",
-    height: sh(7),
+    height: Math.max(50, sh(54)),
     borderRadius: 999,
-    backgroundColor: "rgba(11,11,11,0.08)",
+    borderWidth: 1,
+    borderColor: "#D7D3CE",
+    backgroundColor: "#F5F3F0",
+    alignItems: "center",
+    justifyContent: "center",
     overflow: "hidden",
+    position: "relative",
   },
-  barFill: {
-    height: "100%",
+  progressFill: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    bottom: 0,
     borderRadius: 999,
   },
-  scoreRow: {
+  progressValue: {
+    zIndex: 1,
+    fontFamily: FONT_SEMIBOLD,
+    fontSize: ms(22, 0.18),
+    lineHeight: ms(26),
+    color: "#201F1D",
+    letterSpacing: -0.35,
+    fontVariant: ["tabular-nums"],
+    includeFontPadding: false,
+  },
+  deckCounter: {
+    minHeight: sh(20),
     flexDirection: "row",
     alignItems: "baseline",
-    marginTop: sh(10),
+    justifyContent: "center",
   },
-  scoreNum: {
-    fontFamily: FONT,
-    fontSize: ms(18),
-    color: COLORS.lightText,
-    letterSpacing: 0,
+  deckCounterCurrent: {
+    fontFamily: FONT_SEMIBOLD,
+    fontSize: ms(14, 0.18),
+    lineHeight: ms(18),
+    color: "#242321",
+    fontVariant: ["tabular-nums"],
   },
-  scoreUnit: {
-    fontFamily: FONT,
-    fontSize: ms(12),
-    color: COLORS.lightSub,
+  deckCounterTotal: {
+    fontFamily: FONT_REGULAR,
+    fontSize: ms(12, 0.18),
+    lineHeight: ms(16),
+    color: "rgba(36,35,33,0.48)",
+    fontVariant: ["tabular-nums"],
   },
   footerRow: {
     flexDirection: "row",
@@ -745,41 +1020,18 @@ const styles = StyleSheet.create({
     gap: SP[3],
   },
   sideControls: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     zIndex: 50,
   },
   sideArrowButton: {
     position: "absolute",
-    backgroundColor: COLORS.ctaBlack,
+    backgroundColor: "rgba(255,255,255,0.84)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(28,28,30,0.10)",
+    borderCurve: "continuous",
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#000000",
-    shadowOpacity: 0.18,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 5 },
-    elevation: 6,
-  },
-  counterPill: {
-    minHeight: Math.max(44, sh(44)),
-    minWidth: sw(86),
-    borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.76)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.7)",
-    alignItems: "center",
-    justifyContent: "center",
-    flexDirection: "row",
-    paddingHorizontal: SP[4],
-  },
-  counterCurrent: {
-    fontFamily: FONT,
-    fontSize: ms(16),
-    color: COLORS.lightText,
-  },
-  counterTotal: {
-    fontFamily: FONT,
-    fontSize: ms(13),
-    color: COLORS.lightSub,
+    boxShadow: "0 6px 16px rgba(30, 27, 24, 0.12)",
   },
   resetButton: {
     width: Math.max(44, sh(44)),
@@ -790,21 +1042,5 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255,255,255,0.7)",
     alignItems: "center",
     justifyContent: "center",
-  },
-  arrowButton: {
-    width: Math.max(44, sh(44)),
-    height: Math.max(44, sh(44)),
-    borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.76)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.7)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  arrowButtonEmbedded: {
-    width: Math.max(44, sh(38)),
-    height: Math.max(44, sh(38)),
-    backgroundColor: COLORS.lightSurfaceAlt,
-    borderColor: COLORS.lightBorder,
   },
 });

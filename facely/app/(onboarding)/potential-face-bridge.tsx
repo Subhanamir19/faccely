@@ -10,7 +10,7 @@ import { hapticLight } from "@/lib/haptics";
 export default function PotentialFaceBridgeScreen() {
   const goNext = useCallback(() => {
     hapticLight();
-    router.replace({ pathname: "/(tabs)/analysis", params: { onboardingFlow: "1" } });
+    router.replace({ pathname: "/analysis", params: { onboardingFlow: "1" } });
   }, []);
 
   return (

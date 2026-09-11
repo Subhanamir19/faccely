@@ -31,7 +31,8 @@ import { ms, sh, sw } from "@/lib/responsive";
 import { hapticSuccess } from "@/lib/haptics";
 import { ORANGE_ONBOARDING } from "@/components/onboarding/OrangeOnboardingLayout";
 
-const FONT_BOLD = ORANGE_ONBOARDING.font;
+const FONT_BOLD = ORANGE_ONBOARDING.fontBold;
+const FONT_SEMIBOLD = ORANGE_ONBOARDING.fontSemibold;
 const LIME = ORANGE_ONBOARDING.orange;
 const LIME_BORDER_RGBA = "255,121,0";
 
@@ -470,7 +471,7 @@ const styles = StyleSheet.create({
 
   itemText: { flex: 1 },
   itemLabel: {
-    fontFamily: FONT_BOLD,
+    fontFamily: FONT_SEMIBOLD,
     fontSize: ms(14),
     color: ORANGE_ONBOARDING.text,
     letterSpacing: -0.1,
@@ -513,7 +514,7 @@ const styles = StyleSheet.create({
     minHeight: sh(40),
   },
   statusText: {
-    fontFamily: FONT_BOLD,
+    fontFamily: FONT_SEMIBOLD,
     fontSize: ms(12),
     color: ORANGE_ONBOARDING.muted,
     letterSpacing: 0.2,
@@ -538,7 +539,7 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   ctaText: {
-    fontFamily: FONT_BOLD,
+    fontFamily: FONT_SEMIBOLD,
     fontSize: ms(14),
     color: "#FFFFFF",
     letterSpacing: 1.0,

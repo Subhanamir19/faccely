@@ -10,7 +10,6 @@ import {
   StatusBar,
   ScrollView,
 } from "react-native";
-import { Video, ResizeMode } from "expo-av";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -23,12 +22,13 @@ import Animated, {
 } from "react-native-reanimated";
 
 import T from "@/components/ui/T";
+import AppVideo from "@/components/ui/AppVideo";
 import { OrangePrimaryButton } from "@/components/onboarding/OrangeOnboardingLayout";
 import { hapticSelection } from "@/lib/haptics";
 import { COLORS, SP } from "@/lib/tokens";
 import { ms, sh, useResponsiveScale } from "@/lib/responsive";
 
-const FONT_BOLD = "DINNextRounded-Bold";
+const FONT_BOLD = "SFProRounded-Bold";
 const ORANGE = "#FF7900";
 const HEADLINE = "There's a face\nunder your face.";
 const HAPTIC_EVERY_CHARS = 3;
@@ -131,12 +131,12 @@ export default function SplashScreen() {
 
       {/* Video zone */}
       <View style={[styles.videoZone, { height: videoHeight + insets.top }]}>
-        <Video
+        <AppVideo
           source={VIDEO}
           style={StyleSheet.absoluteFill}
-          resizeMode={ResizeMode.COVER}
-          isLooping
-          isMuted
+          contentFit="cover"
+          loop
+          muted
           shouldPlay
         />
         <LinearGradient

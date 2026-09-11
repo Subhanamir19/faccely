@@ -85,11 +85,13 @@ export default function ProtocolPlanCard({
   onToggle,
   onShuffle,
   startDelay = 0,
+  variant = "default",
 }: {
   protocols: ProtocolTask[];
   onToggle: (id: string, done: boolean) => void;
   onShuffle?: () => void;
   startDelay?: number;
+  variant?: "default" | "native";
 }) {
   const [selected, setSelected] = useState<ProtocolTask | null>(null);
   const [shuffling, setShuffling] = useState(false);
@@ -118,11 +120,12 @@ export default function ProtocolPlanCard({
   if (protocols.length === 0) return null;
 
   const selectedImage = selected ? getDietProtocolImage(selected.id) : undefined;
+  const native = variant === "native";
 
   return (
     <Animated.View
-      entering={FadeInDown.delay(startDelay).duration(360)}
-      style={s.card}
+      entering={native ? undefined : FadeInDown.delay(startDelay).duration(360)}
+      style={[s.card, native && s.cardNative]}
     >
       <Animated.View style={rowsAnim}>
         {shuffling ? (
@@ -142,8 +145,12 @@ export default function ProtocolPlanCard({
           return (
             <Animated.View
               key={protocol.id}
-              entering={FadeInDown.delay(index * 35).duration(240)}
-              style={[s.row, index === protocols.length - 1 && s.rowLast]}
+              entering={native ? undefined : FadeInDown.delay(index * 35).duration(240)}
+              style={[
+                s.row,
+                native && s.rowNative,
+                index === protocols.length - 1 && s.rowLast,
+              ]}
             >
               <Pressable
                 onPress={() => {
@@ -154,7 +161,7 @@ export default function ProtocolPlanCard({
                 accessibilityLabel={`View ${protocol.name} details`}
                 style={({ pressed }) => [s.rowMain, pressed && s.rowPressed]}
               >
-                <View style={[s.imageFrame, done && s.imageFrameDone]}>
+                <View style={[s.imageFrame, native && s.imageFrameNative, done && s.imageFrameDone]}>
                   {image ? (
                     <Image source={image} style={s.image} />
                   ) : (
@@ -163,10 +170,10 @@ export default function ProtocolPlanCard({
                 </View>
 
                 <View style={s.copy}>
-                  <Text style={[s.name, done && s.doneText]} numberOfLines={2}>
+                  <Text style={[s.name, native && s.nameNative, done && s.doneText]} numberOfLines={2}>
                     {protocol.name}
                   </Text>
-                  <Text style={s.target} numberOfLines={1}>
+                  <Text style={[s.target, native && s.targetNative]} numberOfLines={1}>
                     {getDietProtocolTargetText(protocol.id)}
                   </Text>
                 </View>
@@ -214,11 +221,14 @@ export default function ProtocolPlanCard({
           accessibilityLabel="Shuffle diet"
           style={({ pressed }) => [
             s.shuffleBtn,
-            shuffling && s.shuffleBtnDisabled,
-            pressed && !shuffling && s.shuffleBtnPressed,
+            native && s.shuffleBtnNative,
+            shuffling && (native ? s.shuffleBtnDisabledNative : s.shuffleBtnDisabled),
+            pressed && !shuffling && (native ? s.shuffleBtnPressedNative : s.shuffleBtnPressed),
           ]}
         >
-          <Text style={s.shuffleText}>{shuffling ? "SHUFFLING..." : "SHUFFLE DIET?"}</Text>
+          <Text style={[s.shuffleText, native && s.shuffleTextNative]}>
+            {shuffling ? "Shuffling..." : "Shuffle diet"}
+          </Text>
         </Pressable>
       ) : null}
 
@@ -294,6 +304,18 @@ const s = StyleSheet.create({
     shadowOffset: { width: 0, height: sh(5) },
     elevation: 2,
   },
+  cardNative: {
+    marginTop: 0,
+    backgroundColor: "#F7F6F3",
+    borderRadius: 20,
+    borderCurve: "continuous",
+    borderColor: "rgba(23,21,18,0.09)",
+    paddingTop: 4,
+    paddingBottom: 10,
+    paddingHorizontal: 12,
+    shadowOpacity: 0,
+    elevation: 0,
+  },
   row: {
     minHeight: sh(82),
     flexDirection: "row",
@@ -301,6 +323,11 @@ const s = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: "rgba(17,17,17,0.06)",
     paddingVertical: sh(9),
+  },
+  rowNative: {
+    minHeight: sh(76),
+    borderBottomColor: "rgba(23,21,18,0.09)",
+    paddingVertical: sh(10),
   },
   rowMain: {
     flex: 1,
@@ -355,6 +382,16 @@ const s = StyleSheet.create({
   imageFrameDone: {
     opacity: 0.55,
   },
+  imageFrameNative: {
+    width: ms(50),
+    height: ms(50),
+    borderRadius: ms(14),
+    borderCurve: "continuous",
+    backgroundColor: "#EFEDE9",
+    borderColor: "rgba(23,21,18,0.09)",
+    shadowOpacity: 0,
+    elevation: 0,
+  },
   image: {
     width: "100%",
     height: "100%",
@@ -376,6 +413,11 @@ const s = StyleSheet.create({
     color: COLORS.lightText,
     letterSpacing: 0,
   },
+  nameNative: {
+    fontSize: ms(15.5),
+    lineHeight: ms(19),
+    color: "#171512",
+  },
   doneText: {
     color: "#9A9AA1",
     textDecorationLine: "line-through",
@@ -387,6 +429,12 @@ const s = StyleSheet.create({
     lineHeight: ms(18),
     color: "#74747A",
     letterSpacing: 0,
+  },
+  targetNative: {
+    marginTop: sh(2),
+    fontSize: ms(12.5),
+    lineHeight: ms(16),
+    color: "#736E67",
   },
   checkCircle: {
     width: ms(32),
@@ -418,6 +466,19 @@ const s = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: sw(18),
   },
+  shuffleBtnNative: {
+    minHeight: sh(44),
+    marginTop: sh(10),
+    backgroundColor: "#EFEDE9",
+  },
+  shuffleBtnPressedNative: {
+    backgroundColor: "#E5E2DD",
+    transform: [{ scale: 0.98 }],
+  },
+  shuffleBtnDisabledNative: {
+    backgroundColor: "#EFEDE9",
+    opacity: 0.62,
+  },
   shuffleBtnPressed: {
     backgroundColor: "#262626",
     transform: [{ translateY: 1 }],
@@ -432,6 +493,12 @@ const s = StyleSheet.create({
     lineHeight: ms(20),
     color: "#FFFFFF",
     letterSpacing: 0,
+  },
+  shuffleTextNative: {
+    color: "#4D9800",
+    fontFamily: FONT_DIN_BOLD,
+    fontSize: ms(13),
+    lineHeight: ms(17),
   },
   modalBackdrop: {
     flex: 1,

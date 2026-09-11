@@ -20,11 +20,11 @@ import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 
-import Chip from "../../components/sigma/Chip";
-import InputBar from "../../components/sigma/InputBar";
-import { COLORS } from "../../lib/tokens";
-import { type SigmaMessage } from "../../lib/types/sigma";
-import { useSigmaStore } from "../../store/sigma";
+import Chip from "../components/sigma/Chip";
+import InputBar from "../components/sigma/InputBar";
+import { COLORS } from "../lib/tokens";
+import { type SigmaMessage } from "../lib/types/sigma";
+import { useSigmaStore } from "../store/sigma";
 import { FLOATING_TAB_BAR } from "@/components/layout/floatingTabBar";
 
 const SUGGESTIONS = [

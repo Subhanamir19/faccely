@@ -18,6 +18,7 @@ import Animated, {
   withSequence,
   withTiming,
 } from "react-native-reanimated";
+import * as Haptics from "expo-haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { COLORS, RADII, SP } from "@/lib/tokens";
@@ -293,17 +294,25 @@ function ChoiceScreen({
       </View>
       <View style={[styles.choiceBottomRail, { paddingBottom: getTabAwareBottomPadding(choiceInsets.bottom) }]}>
         <Pressable
-          onPress={onChooseForMe}
+          onPress={() => {
+            void Haptics.selectionAsync();
+            onChooseForMe();
+          }}
           accessibilityRole="button"
           accessibilityLabel="Choose exercises for me"
+          pressRetentionOffset={16}
           style={({ pressed }) => [styles.exerciseCtaButton, pressed && styles.exerciseCtaButtonPressed]}
         >
           <Text style={styles.exerciseCtaText}>CHOOSE FOR ME</Text>
         </Pressable>
         <Pressable
-          onPress={onChooseMyself}
+          onPress={() => {
+            void Haptics.selectionAsync();
+            onChooseMyself();
+          }}
           accessibilityRole="button"
           accessibilityLabel="Let me choose exercises"
+          pressRetentionOffset={16}
           style={({ pressed }) => [styles.secondaryChoiceButton, pressed && styles.secondaryChoiceButtonPressed]}
         >
           <Text style={styles.secondaryChoiceText}>I'LL CHOOSE</Text>
@@ -456,9 +465,13 @@ function BottomButton({
   const buttonInsets = useSafeAreaInsets();
   const button = (
     <Pressable
-      onPress={onPress}
+      onPress={() => {
+        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        onPress();
+      }}
       accessibilityRole="button"
       accessibilityLabel={label}
+      pressRetentionOffset={16}
       style={({ pressed }) => [styles.exerciseCtaButton, pressed && styles.exerciseCtaButtonPressed]}
     >
       <Text style={styles.exerciseCtaText}>{label}</Text>

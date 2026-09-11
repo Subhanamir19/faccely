@@ -17,6 +17,7 @@ import Animated, {
   FadeInDown,
   useAnimatedProps,
   useAnimatedStyle,
+  useReducedMotion,
   useSharedValue,
   withDelay,
   withSpring,
@@ -43,14 +44,16 @@ import { useInsights } from "@/store/insights";
 const FONT = "DINNextRounded-Regular";
 const FONT_BOLD = "DINNextRounded-Bold";
 
-const BG = "#FEF4E4";
-const INK = "#343638";
-const MUTED = "#777A7D";
+const BG = "#FFFFFF";
+const INK = "#171512";
+const MUTED = "#736E67";
 const GREEN = "#4CD400";
 const GREEN_DARK = "#3CAD00";
 const BLUE = "#16A7E4";
 const ORANGE = "#F27B00";
-const CARD_BORDER = "#E1E1DE";
+const GROUPED_SURFACE = "#F7F6F3";
+const CARD_BORDER = "rgba(23,21,18,0.09)";
+const GRAPH_EASE = Easing.bezier(0.77, 0, 0.175, 1);
 
 const FALLBACK_ICON = require("../../assets/icons/next-foucs.png");
 const AnimatedPath = Animated.createAnimatedComponent(Path);
@@ -226,28 +229,35 @@ function GraphTrendDot({
   accent,
   delay,
   isLast,
+  reduceMotion,
 }: {
   point: GraphCoord;
   accent: string;
   delay: number;
   isLast: boolean;
+  reduceMotion: boolean;
 }) {
   const dotProgress = useSharedValue(0);
 
   useEffect(() => {
-    dotProgress.value = 0;
-    dotProgress.value = withDelay(
+    if (reduceMotion) {
+      dotProgress.set(1);
+      return;
+    }
+
+    dotProgress.set(0);
+    dotProgress.set(withDelay(
       delay,
       withTiming(1, {
-        duration: 260,
+        duration: 220,
         easing: Easing.out(Easing.cubic),
       }),
-    );
-  }, [delay, dotProgress, point.x, point.y]);
+    ));
+  }, [delay, dotProgress, point.x, point.y, reduceMotion]);
 
   const animatedDotProps = useAnimatedProps(() => ({
-    opacity: dotProgress.value,
-    r: 2 + (isLast ? 4 : 3) * dotProgress.value,
+    opacity: dotProgress.get(),
+    r: 2 + (isLast ? 4 : 3) * dotProgress.get(),
   }));
 
   return (
@@ -279,6 +289,7 @@ function ProgressGraphCard({
   const safeDates = useMemo(() => dates.slice(-safePoints.length), [dates, safePoints.length]);
   const graph = useMemo(() => buildGraphLayout(safePoints, chartWidth, chartHeight), [chartHeight, chartWidth, safePoints]);
   const lineProgress = useSharedValue(0);
+  const reduceMotion = useReducedMotion();
   const hasGraph = graph.coords.length > 0;
   const hasLine = graph.coords.length > 1 && graph.path.length > 0;
   const latest = hasGraph ? Math.round(safePoints[safePoints.length - 1]) : null;
@@ -288,15 +299,20 @@ function ProgressGraphCard({
   const labelRight = formatShortDate(safeDates[safeDates.length - 1], hasGraph ? "Latest" : "Trend");
 
   useEffect(() => {
-    lineProgress.value = 0;
-    lineProgress.value = withTiming(1, {
-      duration: 780,
-      easing: Easing.out(Easing.cubic),
-    });
-  }, [graph.path, lineProgress]);
+    if (reduceMotion) {
+      lineProgress.set(1);
+      return;
+    }
+
+    lineProgress.set(0);
+    lineProgress.set(withTiming(1, {
+      duration: 840,
+      easing: GRAPH_EASE,
+    }));
+  }, [graph.path, lineProgress, reduceMotion]);
 
   const animatedLineProps = useAnimatedProps(() => ({
-    strokeDashoffset: graph.length * (1 - lineProgress.value),
+    strokeDashoffset: graph.length * (1 - lineProgress.get()),
   }));
 
   return (
@@ -377,8 +393,9 @@ function ProgressGraphCard({
               key={`${safePoints[index]}-${index}`}
               point={point}
               accent={index === safePoints.length - 1 ? GREEN : BLUE}
-              delay={hasLine ? 520 + index * 50 : index * 50}
+              delay={hasLine ? 520 + index * 45 : index * 45}
               isLast={index === safePoints.length - 1}
+              reduceMotion={reduceMotion}
             />
           ))}
         </Svg>
@@ -511,7 +528,12 @@ function MetricCardsSheet({
   return (
     <Modal visible transparent statusBarTranslucent animationType="fade" onRequestClose={onClose}>
       <View style={styles.sheetRoot}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={onClose}
+          accessibilityRole="button"
+          accessibilityLabel="Close"
+        />
         <Animated.View entering={FadeInDown.duration(280)} style={styles.sheet}>
           <View style={styles.sheetHandle} />
           <View style={styles.sheetHeader}>
@@ -697,9 +719,9 @@ export function NextFocusCheckInRoute() {
               accessibilityLabel="Open next focus metrics"
               style={({ pressed }) => [styles.actionButton, styles.actionButtonFocus, pressed && styles.actionPressed]}
             >
-              <Target size={24} color="#FFFFFF" strokeWidth={3} />
-              <Text style={styles.actionTextWhite}>NEXT FOCUS</Text>
-              <Text style={styles.actionSubWhite}>{recommendations.length || 6} metrics</Text>
+              <Target size={24} color={GREEN_DARK} strokeWidth={3} />
+              <Text style={styles.actionTextFocus}>NEXT FOCUS</Text>
+              <Text style={styles.actionSubFocus}>{recommendations.length || 6} metrics</Text>
             </Pressable>
 
             <Pressable
@@ -708,7 +730,7 @@ export function NextFocusCheckInRoute() {
               accessibilityLabel="Open main problems"
               style={({ pressed }) => [styles.actionButton, styles.actionButtonProblems, pressed && styles.actionPressed]}
             >
-              <TriangleAlert size={24} color={INK} strokeWidth={3} />
+              <TriangleAlert size={24} color={ORANGE} strokeWidth={3} />
               <Text style={styles.actionTextDark}>MAIN PROBLEMS</Text>
               <Text style={styles.actionSubDark}>Blueprint traits</Text>
             </Pressable>
@@ -763,9 +785,12 @@ const styles = StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: 21,
+    borderCurve: "continuous",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.52)",
+    backgroundColor: GROUPED_SURFACE,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: CARD_BORDER,
   },
   pressed: {
     opacity: 0.76,
@@ -779,7 +804,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 7,
-    backgroundColor: "rgba(255,255,255,0.54)",
+    backgroundColor: GROUPED_SURFACE,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: CARD_BORDER,
   },
   statusText: {
     fontFamily: FONT_BOLD,
@@ -803,16 +830,17 @@ const styles = StyleSheet.create({
   graphCard: {
     minHeight: 274,
     borderRadius: 22,
-    borderWidth: 2,
+    borderCurve: "continuous",
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: CARD_BORDER,
     backgroundColor: "#FFFFFF",
     paddingHorizontal: 18,
     paddingVertical: 16,
     shadowColor: "#000000",
-    shadowOpacity: 0.11,
-    shadowRadius: 0,
-    shadowOffset: { width: 0, height: 5 },
-    elevation: 4,
+    shadowOpacity: 0.07,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 7 },
+    elevation: 3,
   },
   graphHeader: {
     flexDirection: "row",
@@ -838,9 +866,10 @@ const styles = StyleSheet.create({
     minWidth: 58,
     minHeight: 52,
     borderRadius: 17,
+    borderCurve: "continuous",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#F0FFE8",
+    backgroundColor: "#EDF6E4",
   },
   scoreBadgeValue: {
     fontFamily: FONT_BOLD,
@@ -863,7 +892,7 @@ const styles = StyleSheet.create({
     position: "relative",
   },
   graphEmptyState: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -892,9 +921,10 @@ const styles = StyleSheet.create({
   },
   summaryCard: {
     borderRadius: 18,
-    borderWidth: 2,
-    borderColor: "#D8EBCB",
-    backgroundColor: "#FCFFF7",
+    borderCurve: "continuous",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: CARD_BORDER,
+    backgroundColor: GROUPED_SURFACE,
     padding: 14,
     flexDirection: "row",
     alignItems: "center",
@@ -904,9 +934,10 @@ const styles = StyleSheet.create({
     width: 46,
     height: 46,
     borderRadius: 15,
+    borderCurve: "continuous",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#E9FFD9",
+    backgroundColor: "#EAF4DF",
   },
   summaryCopy: {
     flex: 1,
@@ -934,36 +965,36 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 112,
     borderRadius: 18,
+    borderCurve: "continuous",
     paddingHorizontal: 12,
     paddingVertical: 15,
     alignItems: "center",
     justifyContent: "center",
     gap: 7,
-    borderBottomWidth: 6,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: CARD_BORDER,
   },
   actionButtonFocus: {
-    backgroundColor: GREEN,
-    borderBottomColor: GREEN_DARK,
+    backgroundColor: "#EDF6E4",
   },
   actionButtonProblems: {
-    backgroundColor: "#FFF3C9",
-    borderBottomColor: "#E0AF00",
+    backgroundColor: GROUPED_SURFACE,
   },
   actionPressed: {
-    transform: [{ translateY: 4 }],
-    borderBottomWidth: 3,
+    transform: [{ scale: 0.98 }],
+    opacity: 0.82,
   },
-  actionTextWhite: {
+  actionTextFocus: {
     fontFamily: FONT_BOLD,
     fontSize: 15,
     lineHeight: 18,
-    color: "#FFFFFF",
+    color: INK,
     textAlign: "center",
   },
-  actionSubWhite: {
+  actionSubFocus: {
     fontFamily: FONT_BOLD,
     fontSize: 12,
-    color: "rgba(255,255,255,0.86)",
+    color: GREEN_DARK,
   },
   actionTextDark: {
     fontFamily: FONT_BOLD,
@@ -975,7 +1006,7 @@ const styles = StyleSheet.create({
   actionSubDark: {
     fontFamily: FONT_BOLD,
     fontSize: 12,
-    color: "#966D00",
+    color: MUTED,
   },
   sheetRoot: {
     flex: 1,

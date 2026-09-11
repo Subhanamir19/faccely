@@ -1,0 +1,39 @@
+diff --git a/node_modules/@react-native/babel-plugin-codegen/index.js b/node_modules/@react-native/babel-plugin-codegen/index.js
+index 06a4939..7af60d8 100644
+--- a/node_modules/@react-native/babel-plugin-codegen/index.js
++++ b/node_modules/@react-native/babel-plugin-codegen/index.js
+@@ -161,7 +161,9 @@ module.exports = function ({parse, types: t}) {
+       this.filename = state.opts.filename;
+       this.defaultExport = null;
+       this.commandsExport = null;
+-      this.codeInserted = false;
++      this.codeInserted =
++        state.get('reactNativeCodegenPluginInitialized') === true;
++      state.set('reactNativeCodegenPluginInitialized', true);
+     },
+     visitor: {
+       ExportNamedDeclaration(path) {
+@@ -216,6 +218,10 @@ module.exports = function ({parse, types: t}) {
+         }
+       },
+       ExportDefaultDeclaration(path, state) {
++        if (this.codeInserted) {
++          return;
++        }
++
+         if (isCodegenDeclaration(path.node.declaration)) {
+           this.defaultExport = path;
+         }
+@@ -223,7 +229,11 @@ module.exports = function ({parse, types: t}) {
+ 
+       Program: {
+         exit(path) {
+-          if (this.defaultExport) {
++          if (
++            !this.codeInserted &&
++            this.defaultExport?.node &&
++            !this.defaultExport.removed
++          ) {
+             const viewConfig = generateViewConfig(this.filename, this.code);
+ 
+             const ast = parse(viewConfig, {

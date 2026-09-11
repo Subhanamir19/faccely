@@ -102,7 +102,12 @@ export default function ProGateModal({ visible, onClose }: ProGateModalProps) {
         exiting={FadeOut.duration(180)}
         style={styles.backdrop}
       >
-        <Pressable style={StyleSheet.absoluteFill} onPress={handleClose} />
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={handleClose}
+          accessibilityRole="button"
+          accessibilityLabel="Close"
+        />
       </Animated.View>
 
       {/* Card */}
@@ -199,7 +204,7 @@ const CARD_RADIUS = 28;
 
 const styles = StyleSheet.create({
   backdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "rgba(0,0,0,0.52)",
   },
 

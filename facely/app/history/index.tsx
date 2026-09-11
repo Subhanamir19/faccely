@@ -1,4 +1,4 @@
-// app/(tabs)/history.tsx
+// app/history/index.tsx
 // Calm archive hub for scan history.
 
 import React, { useCallback, useEffect, useState } from "react";
@@ -11,7 +11,7 @@ import {
   View,
 } from "react-native";
 import { Image as ExpoImage } from "expo-image";
-import { Ionicons } from "@expo/vector-icons";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
@@ -350,7 +350,7 @@ const styles = StyleSheet.create({
     height: "100%",
   },
   imageScrim: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "rgba(0,0,0,0.08)",
   },
   imageMeta: {

@@ -211,7 +211,7 @@ const styles = StyleSheet.create({
     minWidth: 70,
   },
   blurOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     justifyContent: "center",
     alignItems: "center",
     paddingHorizontal: SP[6],

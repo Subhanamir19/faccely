@@ -24,7 +24,7 @@ import BackButton from "@/components/ui/BackButton";
 import { COLORS, SP } from "@/lib/tokens";
 import { ms, sw, sh } from "@/lib/responsive";
 import { useAdvancedAnalysis } from "@/store/advancedAnalysis";
-import { AnalysisContent } from "../(tabs)/analysis";
+import { AnalysisContent } from "../analysis";
 import { fetchScanDetail } from "@/lib/api/history";
 
 const FONT_BOLD = "ProximaNova-Bold";

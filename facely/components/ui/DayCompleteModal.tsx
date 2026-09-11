@@ -7,7 +7,6 @@ import {
   Modal,
   Pressable,
 } from "react-native";
-import { Video, ResizeMode } from "expo-av";
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -19,6 +18,7 @@ import Animated, {
 import { BlurView } from "expo-blur";
 import { COLORS, RADII, SP, TYPE } from "@/lib/tokens";
 import Button from "@/components/ui/Button";
+import AppVideo from "@/components/ui/AppVideo";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -242,12 +242,12 @@ const DayCompleteModal: React.FC<DayCompleteModalProps> = ({
               </View>
             ) : null}
             <View style={styles.videoContainer}>
-              <Video
+              <AppVideo
                 source={VIDEO_SOURCE}
                 style={styles.video}
-                resizeMode={ResizeMode.COVER}
-                isLooping
-                isMuted
+                contentFit="cover"
+                loop
+                muted
                 shouldPlay={visible}
               />
             </View>

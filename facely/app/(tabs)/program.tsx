@@ -1418,6 +1418,8 @@ export default function TasksScreen() {
   const totalCount     = tasks.length;
   const halfwayReached = totalCount > 0 && completedCount >= totalCount / 2;
   const allExercisesResolved = totalCount > 0 && tasks.every((t) => t.status !== "pending");
+  // The Daily routine list keeps the tab bar: the user must always be able to
+  // leave this screen. RoutineList's sticky CTA dock sits above the pill.
 
   // Life modal: halfway hype — once per day when 50% of exercises are done.
   // Guard: don't fire while intro is showing or tasks are still loading.
@@ -1668,7 +1670,7 @@ const styles = StyleSheet.create({
   },
 
   allDoneImgOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "rgba(0,0,0,0.50)",
     alignItems: "center",
     justifyContent: "center",

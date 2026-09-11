@@ -3,22 +3,22 @@
 // thumbnails in that same folder so the UI reflects the exercises actually used.
 import { getNewExerciseEntry, resolveExerciseId } from "@/lib/newExerciseCatalog";
 
-const FALLBACK_ALL = require("../assets/new-exercises-videos/mewing.png");
+const FALLBACK_ALL = require("../assets/new-exercises-videos/mewing.jpg");
 
 export const EXERCISE_ICONS: Record<string, any> = {
   "alternating-cheek-puffs": require("../assets/new-exercises-videos/alternating-cheek-puffs-pose2.png"),
   "chi-ball-training": require("../assets/new-exercises-videos/chi-ball-training-pose2.png"),
   "chin-forcing-while-laying-down": require("../assets/new-exercises-videos/chin-forcing-while-laying-down-pose2.png"),
   "chin-massage": require("../assets/new-exercises-videos/chin-massage-pose2.png"),
-  "chin-tucks-v2": require("../assets/new-exercises-videos/chin-tucks-pose2.png"),
+  "chin-tucks-v2": require("../assets/new-exercises-videos/chin-tucks-pose2.jpg"),
   "asymmetry-chin-tucks": require("../assets/new-exercises-videos/downward-chin-forcing-pose2.png"),
   "downward-chin-forcing": require("../assets/new-exercises-videos/downward-chin-forcing-pose2.png"),
   "eyebrows-lifting": require("../assets/new-exercises-videos/eyebrows-lifting-pose2.png"),
-  "fish-face-v2": require("../assets/new-exercises-videos/FISH-FACE-POSE2.png"),
+  "fish-face-v2": require("../assets/new-exercises-videos/FISH-FACE-POSE2.jpg"),
   "forward-pulling-neck": require("../assets/new-exercises-videos/forward-pulling-neck-pose2.png"),
   "jaw-forcing": require("../assets/new-exercises-videos/jaw-forcing-pose2.png"),
-  "mewing": require("../assets/new-exercises-videos/mewing.png"),
-  "midface-lift": require("../assets/new-exercises-videos/midface-lift.png"),
+  "mewing": require("../assets/new-exercises-videos/mewing.jpg"),
+  "midface-lift": require("../assets/new-exercises-videos/midface-lift.jpg"),
   "neck-massage": require("../assets/new-exercises-videos/neck-massage-pose2.png"),
   "neck-pull": require("../assets/new-exercises-videos/neck-pull-pose2.png"),
   "orbicularis-muscles-eye": require("../assets/new-exercises-videos/orbicularis-muscles-eye-pose2.png"),
