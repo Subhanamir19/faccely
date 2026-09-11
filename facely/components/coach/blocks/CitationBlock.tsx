@@ -1,8 +1,10 @@
 import React from "react";
 import { View, Text } from "react-native";
 
-import { COLORS, TYPE, SP, RADII } from "@/lib/tokens";
+import { TYPE } from "@/lib/tokens";
 import type { CoachCitationBlock } from "@/lib/coach/blocks";
+
+import { COACH, COACH_RADIUS } from "../theme";
 
 /* ============================================================================
  * Evidence labelling.
@@ -11,15 +13,18 @@ import type { CoachCitationBlock } from "@/lib/coach/blocks";
  * a claim cannot be softened by phrasing. Being the app that says "plausible,
  * no controlled trials" where competitors say "proven" is the differentiator,
  * which makes it worth the screen space.
+ *
+ * Drawn as a signal line with a coloured node, matching the vertical signal
+ * motif used by the analysis screens.
  * ========================================================================== */
 
 const TIER_STYLE: Record<
   CoachCitationBlock["tier"],
   { label: string; color: string }
 > = {
-  proven: { label: "Proven", color: COLORS.success },
-  plausible: { label: "Plausible", color: COLORS.warning },
-  unproven: { label: "Unproven", color: COLORS.errorLight },
+  proven: { label: "Proven", color: COACH.positive },
+  plausible: { label: "Plausible", color: COACH.band.average },
+  unproven: { label: "Unproven", color: COACH.coral },
 };
 
 export function CitationBlock({ block }: { block: CoachCitationBlock }) {
@@ -30,19 +35,25 @@ export function CitationBlock({ block }: { block: CoachCitationBlock }) {
       style={{
         flexDirection: "row",
         alignItems: "flex-start",
-        gap: SP[2],
-        paddingVertical: SP[2],
-        paddingHorizontal: SP[3],
-        borderRadius: RADII.md,
-        backgroundColor: COLORS.whiteGlass,
+        gap: 8,
+        paddingVertical: 10,
+        paddingHorizontal: 12,
+        borderRadius: COACH_RADIUS.card,
+        backgroundColor: COACH.surfaceMuted,
         borderLeftWidth: 2,
         borderLeftColor: tier.color,
       }}
     >
-      <Text style={{ ...TYPE.caption, color: tier.color, fontFamily: "Poppins-SemiBold" }}>
+      <Text
+        style={{
+          ...TYPE.caption,
+          color: tier.color,
+          fontFamily: "Poppins-SemiBold",
+        }}
+      >
         {tier.label}
       </Text>
-      <Text style={{ ...TYPE.caption, color: COLORS.muted, flexShrink: 1 }}>
+      <Text style={{ ...TYPE.caption, color: COACH.inkMuted, flexShrink: 1 }}>
         {block.claim}
       </Text>
     </View>

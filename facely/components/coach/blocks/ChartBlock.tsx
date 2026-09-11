@@ -2,10 +2,11 @@ import React, { useMemo } from "react";
 import { View, Text } from "react-native";
 import Svg, { Circle, Line, Path, Text as SvgText } from "react-native-svg";
 
-import { COLORS, TYPE, SP } from "@/lib/tokens";
+import { TYPE } from "@/lib/tokens";
 import { METRIC_LABELS, type MetricKey } from "@/lib/types";
 import type { CoachChartBlock } from "@/lib/coach/blocks";
 
+import { COACH } from "../theme";
 import { BlockSurface } from "./BlockRenderer";
 
 /* ============================================================================
@@ -25,12 +26,19 @@ const CHART_HEIGHT = 140;
 const PADDING_X = 8;
 const PADDING_Y = 14;
 
-/** Accent first; the rest are drawn from the verdict palette for contrast. */
+/**
+ * Series colours.
+ *
+ * Ink first, not lime. A single trend line is the subject of the card, and the
+ * brand spec keeps lime as a focal accent rather than the default ink for
+ * every chart. Lime marks the second series, where it distinguishes rather
+ * than decorates.
+ */
 const SERIES_COLORS = [
-  COLORS.accent,
-  COLORS.verdictGreat,
-  COLORS.verdictAverage,
-  COLORS.verdictPoor,
+  COACH.ink,
+  COACH.accentDeep,
+  COACH.band.average,
+  COACH.coral,
 ];
 
 export function ChartBlock({ block }: { block: CoachChartBlock }) {
@@ -73,7 +81,7 @@ export function ChartBlock({ block }: { block: CoachChartBlock }) {
               y1={PADDING_Y + plotHeight}
               x2={width - PADDING_X}
               y2={PADDING_Y + plotHeight}
-              stroke={COLORS.divider}
+              stroke={COACH.hairline}
               strokeWidth={1}
             />
 
@@ -129,19 +137,19 @@ export function ChartBlock({ block }: { block: CoachChartBlock }) {
           style={{
             flexDirection: "row",
             justifyContent: "space-between",
-            marginTop: SP[1],
+            marginTop: 4,
           }}
         >
-          <Text style={{ ...TYPE.caption, color: COLORS.sub }}>{labels.start}</Text>
-          <Text style={{ ...TYPE.caption, color: COLORS.sub }}>{labels.end}</Text>
+          <Text style={{ ...TYPE.caption, color: COACH.inkFaint }}>{labels.start}</Text>
+          <Text style={{ ...TYPE.caption, color: COACH.inkFaint }}>{labels.end}</Text>
         </View>
 
         {block.series.length > 1 ? (
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: SP[3], marginTop: SP[2] }}>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12, marginTop: 8 }}>
             {block.series.map((series, index) => (
               <View
                 key={series.label}
-                style={{ flexDirection: "row", alignItems: "center", gap: SP[1] }}
+                style={{ flexDirection: "row", alignItems: "center", gap: 4 }}
               >
                 <View
                   style={{
@@ -151,7 +159,7 @@ export function ChartBlock({ block }: { block: CoachChartBlock }) {
                     backgroundColor: SERIES_COLORS[index % SERIES_COLORS.length],
                   }}
                 />
-                <Text style={{ ...TYPE.caption, color: COLORS.sub }}>
+                <Text style={{ ...TYPE.caption, color: COACH.inkFaint }}>
                   {METRIC_LABELS[series.label as MetricKey] ??
                     series.label.replace(/_/g, " ")}
                 </Text>
@@ -161,7 +169,7 @@ export function ChartBlock({ block }: { block: CoachChartBlock }) {
         ) : null}
 
         {block.caption ? (
-          <Text style={{ ...TYPE.caption, color: COLORS.muted, marginTop: SP[2] }}>
+          <Text style={{ ...TYPE.caption, color: COACH.inkMuted, marginTop: 8 }}>
             {block.caption}
           </Text>
         ) : null}

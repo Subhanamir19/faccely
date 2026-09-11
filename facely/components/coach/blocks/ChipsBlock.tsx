@@ -1,16 +1,21 @@
 import React from "react";
 import { View, Pressable, Text } from "react-native";
 
-import { COLORS, TYPE, SP, RADII } from "@/lib/tokens";
+import { TYPE } from "@/lib/tokens";
 import { hapticLight } from "@/lib/haptics";
 import type { CoachChipsBlock } from "@/lib/coach/blocks";
+
+import { COACH, COACH_RADIUS } from "../theme";
 
 /* ============================================================================
  * Tappable follow-up questions.
  *
  * The highest-leverage element in the feature. A user who never has to type
- * keeps the conversation going; one facing an empty input usually stops. Coach
- * is instructed to end every reply with these unless it ended with a chart.
+ * keeps the conversation going; one facing an empty input usually stops. The
+ * backend guarantees these on every reply.
+ *
+ * Outlined on paper rather than filled with lime: three solid accent pills in a
+ * row would turn the thread into a menu, and the spec keeps lime focal.
  * ========================================================================== */
 
 export function ChipsBlock({
@@ -23,7 +28,7 @@ export function ChipsBlock({
   if (!onPress) return null;
 
   return (
-    <View style={{ gap: SP[2] }}>
+    <View style={{ gap: 8 }}>
       {block.items.map((item) => (
         <Chip key={item} label={item} onPress={() => onPress(item)} />
       ))}
@@ -41,17 +46,20 @@ export function Chip({ label, onPress }: { label: string; onPress: () => void })
       style={({ pressed }) => ({
         alignSelf: "flex-start",
         maxWidth: "100%",
-        paddingVertical: SP[2],
-        paddingHorizontal: SP[4],
-        borderRadius: RADII.pill,
+        // 44pt minimum touch target, per the brand spec.
+        minHeight: 44,
+        justifyContent: "center",
+        paddingVertical: 10,
+        paddingHorizontal: 16,
+        borderRadius: COACH_RADIUS.pill,
         borderWidth: 1,
-        borderColor: COLORS.accentBorder,
-        backgroundColor: pressed ? COLORS.accentGlow : COLORS.whiteGlass,
+        borderColor: pressed ? COACH.accentDeep : COACH.border,
+        backgroundColor: pressed ? COACH.accentSoft : COACH.surface,
       })}
       accessibilityRole="button"
       accessibilityLabel={label}
     >
-      <Text style={{ ...TYPE.caption, color: COLORS.accent }}>{label}</Text>
+      <Text style={{ ...TYPE.caption, color: COACH.ink }}>{label}</Text>
     </Pressable>
   );
 }

@@ -1,7 +1,8 @@
 import React, { useMemo } from "react";
 import { Text } from "react-native";
 
-import { COLORS, TYPE } from "@/lib/tokens";
+import { TYPE } from "@/lib/tokens";
+import { COACH } from "../theme";
 import type { CoachTextBlock } from "@/lib/coach/blocks";
 
 /* ============================================================================
@@ -55,7 +56,7 @@ export function TextBlock({ block }: { block: CoachTextBlock }) {
     <Text
       style={{
         ...TYPE.body,
-        color: COLORS.textHigh,
+        color: COACH.ink,
       }}
     >
       {segments.map((segment, index) => (

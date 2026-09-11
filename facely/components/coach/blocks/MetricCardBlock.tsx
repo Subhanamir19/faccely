@@ -1,10 +1,11 @@
 import React from "react";
 import { View, Text } from "react-native";
 
-import { COLORS, TYPE, SP } from "@/lib/tokens";
+import { TYPE } from "@/lib/tokens";
 import { METRIC_LABELS } from "@/lib/types";
 import type { CoachMetricCardBlock } from "@/lib/coach/blocks";
 
+import { COACH, COACH_SPACE, scoreBand } from "../theme";
 import { BlockSurface } from "./BlockRenderer";
 
 /* ============================================================================
@@ -12,20 +13,16 @@ import { BlockSurface } from "./BlockRenderer";
  *
  * Every figure here came from the database, not the model — see
  * services/coachData.ts on the backend. The note is the only part Coach wrote.
+ *
+ * The score carries its band colour; the rest of the card stays ink on paper.
+ * Colouring the whole surface by score would turn a guidance screen into a
+ * verdict, which the brand spec rules out.
  * ========================================================================== */
 
-/** Score to tier colour, matching the bands used elsewhere in the app. */
-function scoreColor(score: number): string {
-  if (score >= 85) return COLORS.verdictElite;
-  if (score >= 70) return COLORS.verdictGreat;
-  if (score >= 55) return COLORS.verdictGood;
-  if (score >= 40) return COLORS.verdictAverage;
-  return COLORS.verdictPoor;
-}
-
 export function MetricCardBlock({ block }: { block: CoachMetricCardBlock }) {
-  const color = scoreColor(block.score);
+  const color = scoreBand(block.score);
   const hasDelta = typeof block.delta === "number" && block.delta !== 0;
+  const rising = (block.delta ?? 0) > 0;
 
   return (
     <BlockSurface>
@@ -34,31 +31,31 @@ export function MetricCardBlock({ block }: { block: CoachMetricCardBlock }) {
           flexDirection: "row",
           alignItems: "center",
           justifyContent: "space-between",
-          gap: SP[3],
+          gap: COACH_SPACE.gap,
         }}
       >
-        <Text style={{ ...TYPE.bodyMedium, color: COLORS.text, flexShrink: 1 }}>
+        <Text style={{ ...TYPE.bodyMedium, color: COACH.ink, flexShrink: 1 }}>
           {METRIC_LABELS[block.metric] ?? block.metric.replace(/_/g, " ")}
         </Text>
 
-        <View style={{ flexDirection: "row", alignItems: "baseline", gap: SP[2] }}>
+        <View style={{ flexDirection: "row", alignItems: "baseline", gap: 8 }}>
           <Text style={{ ...TYPE.h3, color }}>{block.score}</Text>
 
           {hasDelta ? (
             <Text
               style={{
                 ...TYPE.caption,
-                color: (block.delta as number) > 0 ? COLORS.success : COLORS.errorLight,
+                color: rising ? COACH.positive : COACH.coral,
               }}
             >
-              {(block.delta as number) > 0 ? "+" : ""}
+              {rising ? "+" : ""}
               {block.delta}
             </Text>
           ) : null}
         </View>
       </View>
 
-      <Text style={{ ...TYPE.caption, color: COLORS.sub, marginTop: SP[2] }}>
+      <Text style={{ ...TYPE.caption, color: COACH.inkMuted, marginTop: 8 }}>
         {block.note}
       </Text>
     </BlockSurface>

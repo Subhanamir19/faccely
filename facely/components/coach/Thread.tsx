@@ -1,17 +1,22 @@
 import React, { useEffect, useRef } from "react";
 import { ScrollView, View, Text, ActivityIndicator } from "react-native";
 
-import { COLORS, TYPE, SP, RADII } from "@/lib/tokens";
+import { TYPE } from "@/lib/tokens";
 import type { CoachErrorCode, CoachMessage } from "@/lib/coach/blocks";
 
+import { COACH, COACH_RADIUS, COACH_SPACE, COACH_TAB_CLEARANCE } from "./theme";
 import { BlockRenderer } from "./blocks/BlockRenderer";
 
 /* ============================================================================
  * The conversation.
  *
- * User turns are bubbles; Coach's are bare blocks on the sheet background. That
- * asymmetry is intentional — a chart or a metric card inside a chat bubble
- * reads as a quoted screenshot rather than as part of the app.
+ * Laid out the way a chat assistant reads: the user's turns are compact bubbles
+ * pushed to the right, Coach's replies run full width with no bubble at all.
+ *
+ * That asymmetry is doing real work. A chart or a metric card inside a chat
+ * bubble reads as a quoted screenshot; the same card on the page reads as part
+ * of the app. Coach's answers are app content that happens to be written in
+ * response to a question.
  * ========================================================================== */
 
 export type ThreadProps = {
@@ -45,8 +50,14 @@ export function Thread({ messages, activeTool, onChipPress }: ThreadProps) {
     <ScrollView
       ref={scrollRef}
       style={{ flex: 1 }}
-      contentContainerStyle={{ padding: SP[4], gap: SP[5] }}
+      contentContainerStyle={{
+        paddingHorizontal: COACH_SPACE.pageMargin,
+        paddingTop: COACH_SPACE.gapLarge,
+        paddingBottom: COACH_SPACE.section,
+        gap: COACH_SPACE.section,
+      }}
       keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="interactive"
       showsVerticalScrollIndicator={false}
     >
       {messages.map((message) =>
@@ -67,15 +78,17 @@ function UserBubble({ text }: { text: string }) {
     <View
       style={{
         alignSelf: "flex-end",
-        maxWidth: "85%",
-        paddingVertical: SP[3],
-        paddingHorizontal: SP[4],
-        borderRadius: RADII.lg,
-        borderBottomRightRadius: RADII.xs,
-        backgroundColor: COLORS.accent,
+        maxWidth: "84%",
+        paddingVertical: 10,
+        paddingHorizontal: 14,
+        borderRadius: COACH_RADIUS.bubble,
+        borderBottomRightRadius: 6,
+        backgroundColor: COACH.surface,
+        borderWidth: 1,
+        borderColor: COACH.border,
       }}
     >
-      <Text style={{ ...TYPE.body, color: "#0B0B0B" }}>{text}</Text>
+      <Text style={{ ...TYPE.body, color: COACH.ink }}>{text}</Text>
     </View>
   );
 }
@@ -104,9 +117,9 @@ function ToolIndicator({ name }: { name: string }) {
   const label = TOOL_LABELS[name] ?? (name === "thinking" ? "Thinking" : "Working");
 
   return (
-    <View style={{ flexDirection: "row", alignItems: "center", gap: SP[2] }}>
-      <ActivityIndicator size="small" color={COLORS.accent} />
-      <Text style={{ ...TYPE.caption, color: COLORS.sub }}>{label}…</Text>
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+      <ActivityIndicator size="small" color={COACH.inkFaint} />
+      <Text style={{ ...TYPE.caption, color: COACH.inkFaint }}>{label}…</Text>
     </View>
   );
 }
@@ -124,15 +137,18 @@ function ErrorNotice({ code }: { code: CoachErrorCode }) {
   return (
     <View
       style={{
-        paddingVertical: SP[3],
-        paddingHorizontal: SP[4],
-        borderRadius: RADII.md,
-        backgroundColor: COLORS.whiteGlass,
+        paddingVertical: 10,
+        paddingHorizontal: 12,
+        borderRadius: COACH_RADIUS.card,
+        backgroundColor: COACH.surfaceMuted,
         borderLeftWidth: 2,
-        borderLeftColor: COLORS.errorLight,
+        borderLeftColor: COACH.coral,
       }}
     >
-      <Text style={{ ...TYPE.caption, color: COLORS.muted }}>{ERROR_COPY[code]}</Text>
+      <Text style={{ ...TYPE.caption, color: COACH.inkMuted }}>{ERROR_COPY[code]}</Text>
     </View>
   );
 }
+
+/** Height the composer must clear so the last reply is never hidden. */
+export const THREAD_BOTTOM_CLEARANCE = COACH_TAB_CLEARANCE;

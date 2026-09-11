@@ -1,7 +1,7 @@
 import React from "react";
 import { View } from "react-native";
 
-import { COLORS, SP } from "@/lib/tokens";
+import { COACH, COACH_RADIUS, COACH_SPACE } from "../theme";
 import type { CoachBlock } from "@/lib/coach/blocks";
 
 import { TextBlock } from "./TextBlock";
@@ -26,7 +26,7 @@ export type BlockRendererProps = {
 
 export function BlockRenderer({ blocks, onChipPress }: BlockRendererProps) {
   return (
-    <View style={{ gap: SP[3] }}>
+    <View style={{ gap: COACH_SPACE.gap }}>
       {blocks.map((block, index) => (
         <BlockView key={index} block={block} onChipPress={onChipPress} />
       ))}
@@ -72,11 +72,11 @@ export function BlockSurface({ children }: { children: React.ReactNode }) {
   return (
     <View
       style={{
-        backgroundColor: COLORS.card,
-        borderColor: COLORS.cardBorder,
+        backgroundColor: COACH.surface,
+        borderColor: COACH.border,
         borderWidth: 1,
-        borderRadius: 18,
-        padding: SP[4],
+        borderRadius: COACH_RADIUS.card,
+        padding: COACH_SPACE.cardPadding,
       }}
     >
       {children}

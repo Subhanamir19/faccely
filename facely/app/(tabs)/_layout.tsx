@@ -15,7 +15,7 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from "react-native-reanimated";
-import { Scan, CircleCheckBig, UserRound, TrendingUp } from "lucide-react-native";
+import { Scan, CircleCheckBig, UserRound, TrendingUp, MessageCircle } from "lucide-react-native";
 import { APP_SCREEN_BG } from "@/components/layout/AppGradientBackground";
 import { FLOATING_TAB_BAR } from "@/components/layout/floatingTabBar";
 
@@ -398,6 +398,14 @@ export default function TabsLayout() {
         options={{
           title: "Progress",
           tabBarIcon: ({ color, size }) => <TrendingUp color={color} size={size ?? 24} />,
+        }}
+      />
+
+      <Tabs.Screen
+        name="coach"
+        options={{
+          title: "Coach",
+          tabBarIcon: ({ color, size }) => <MessageCircle color={color} size={size ?? 24} />,
         }}
       />
 
