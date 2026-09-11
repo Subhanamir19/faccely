@@ -13,7 +13,7 @@
     "test:potential-face": "tsx tests/potentialFaceGeneration.mock.test.ts",
     "prestart": "npm run build",
     "start": "node dist/index.js",
-    "test:coach": "tsx tests/coachGuards.test.ts"
+    "test:coach": "tsx tests/coachGuards.test.ts && tsx tests/coachPrompt.test.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.99.1",
