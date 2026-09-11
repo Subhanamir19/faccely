@@ -19,7 +19,7 @@
 -- ============================================================================
 
 create or replace function public.coach_record_usage(
-  p_user_id      uuid,
+  p_user_id      text,
   p_period_start date,
   p_day          text,
   p_tokens_in    bigint,
@@ -81,5 +81,5 @@ $$;
 
 -- The backend calls this with the service-role key. No other role may.
 revoke all on function public.coach_record_usage(
-  uuid, date, text, bigint, bigint, numeric, integer, integer
+  text, date, text, bigint, bigint, numeric, integer, integer
 ) from public, anon, authenticated;

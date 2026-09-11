@@ -83,11 +83,17 @@ export const ChartBlockSchema = z.object({
   caption: z.string().max(160).optional(),
 });
 
-/** Two scans side by side, with the metric movements between them. */
+/**
+ * Two scans side by side, with the metric movements between them.
+ *
+ * Scan ids are validated as opaque strings rather than UUIDs. Ids in this
+ * database are not uniformly UUID-shaped — `users.id` is text — so pinning a
+ * format here would reject perfectly good rows.
+ */
 export const CompareBlockSchema = z.object({
   type: z.literal("compare"),
-  beforeScanId: z.string().uuid(),
-  afterScanId: z.string().uuid(),
+  beforeScanId: z.string().min(1).max(64),
+  afterScanId: z.string().min(1).max(64),
   deltas: z
     .array(
       z.object({

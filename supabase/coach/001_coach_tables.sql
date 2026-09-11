@@ -21,7 +21,7 @@
 -- ----------------------------------------------------------------------------
 create table if not exists public.coach_threads (
   id           uuid primary key default gen_random_uuid(),
-  user_id      uuid not null references public.users (id) on delete cascade,
+  user_id      text not null references public.users (id) on delete cascade,
   title        text,
   created_at   timestamptz not null default now(),
   updated_at   timestamptz not null default now(),
@@ -43,7 +43,7 @@ create index if not exists coach_threads_user_updated_idx
 create table if not exists public.coach_messages (
   id         uuid primary key default gen_random_uuid(),
   thread_id  uuid not null references public.coach_threads (id) on delete cascade,
-  user_id    uuid not null references public.users (id) on delete cascade,
+  user_id    text not null references public.users (id) on delete cascade,
   role       text not null check (role in ('user', 'assistant', 'system')),
   content    text,
   blocks     jsonb,
@@ -66,7 +66,7 @@ create index if not exists coach_messages_user_created_idx
 -- ----------------------------------------------------------------------------
 create table if not exists public.coach_memory (
   id            uuid primary key default gen_random_uuid(),
-  user_id       uuid not null references public.users (id) on delete cascade,
+  user_id       text not null references public.users (id) on delete cascade,
   key           text not null,
   value         text not null,
   source        text not null default 'chat' check (source in ('chat', 'onboarding', 'scan')),
@@ -88,7 +88,7 @@ create index if not exists coach_memory_user_used_idx
 -- period_start is the Monday 00:00 UTC of the week the row covers.
 -- ----------------------------------------------------------------------------
 create table if not exists public.coach_usage (
-  user_id         uuid not null references public.users (id) on delete cascade,
+  user_id         text not null references public.users (id) on delete cascade,
   period_start    date not null,
   tokens_in       bigint not null default 0,
   tokens_out      bigint not null default 0,

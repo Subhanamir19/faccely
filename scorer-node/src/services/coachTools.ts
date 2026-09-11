@@ -56,7 +56,8 @@ const GetScanHistoryArgs = z.object({
 });
 
 const GetSubmetricsArgs = z.object({
-  scan_id: z.string().uuid().optional(),
+  // Opaque id, not necessarily UUID-shaped. See CompareBlockSchema.
+  scan_id: z.string().min(1).max(64).optional(),
   group: z.enum(["cheekbones", "jawline", "eyes", "skin", "haircut"]).optional(),
 });
 
