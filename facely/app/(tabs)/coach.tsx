@@ -12,6 +12,7 @@ import { Chip } from "@/components/coach/blocks/ChipsBlock";
 import { CoachAvatar } from "@/components/coach/Avatar";
 import { useProfile } from "@/store/profile";
 import { COACH, COACH_SPACE, COACH_TYPE } from "@/components/coach/theme";
+import { useKeyboardVisible } from "@/components/coach/useKeyboard";
 
 /* ============================================================================
  * The Coach tab.
@@ -38,6 +39,7 @@ export default function CoachScreen() {
   const send = useCoach((state) => state.send);
   const stop = useCoach((state) => state.stop);
   const hydrateProfile = useProfile((state) => state.hydrate);
+  const keyboardVisible = useKeyboardVisible();
 
   const busy = status !== "idle";
 
@@ -65,9 +67,14 @@ export default function CoachScreen() {
     [busy, send]
   );
 
-  // The tab bar floats over the screen, so the composer adds its own clearance.
-  const composerBottomInset =
-    Math.max(insets.bottom, 8) + FLOATING_TAB_BAR.pillHeight + FLOATING_TAB_BAR.gapBottom;
+  // The tab bar floats over the screen rather than reserving space, so the
+  // composer carries clearance for it — but only while the keyboard is down.
+  // With the keyboard up, KeyboardAvoidingView has already padded the screen by
+  // the keyboard's height and the tab bar is behind it, so that clearance would
+  // strand the input mid-screen.
+  const composerBottomInset = keyboardVisible
+    ? COACH_SPACE.gap
+    : Math.max(insets.bottom, 8) + FLOATING_TAB_BAR.pillHeight + FLOATING_TAB_BAR.gapBottom;
 
   return (
     <AppGradientBackground style={{ flex: 1 }}>
@@ -78,6 +85,7 @@ export default function CoachScreen() {
         <Header
           topInset={insets.top}
           quotaLabel={quotaLabel(quota?.messagesLeft)}
+          compact={keyboardVisible}
         />
 
         {disabled ? (
@@ -119,15 +127,19 @@ function quotaLabel(messagesLeft: number | undefined): string | null {
 function Header({
   topInset,
   quotaLabel: label,
+  compact,
 }: {
   topInset: number;
   quotaLabel: string | null;
+  /** Tightened while typing, where vertical space belongs to the thread. */
+  compact: boolean;
 }) {
   return (
     <View
       style={{
-        // 24px top-safe clearance, per the design spec.
-        paddingTop: topInset + 24,
+        // 24px top-safe clearance, per the design spec. Halved while the
+        // keyboard is up, so the conversation keeps as much room as possible.
+        paddingTop: topInset + (compact ? 12 : 24),
         paddingHorizontal: COACH_SPACE.pageMargin,
         paddingBottom: COACH_SPACE.gap,
         flexDirection: "row",

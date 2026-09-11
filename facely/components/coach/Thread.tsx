@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from "react";
-import { ScrollView, View, Text, ActivityIndicator } from "react-native";
+import { ScrollView, View, Text, ActivityIndicator, Keyboard } from "react-native";
 
 import type { CoachErrorCode, CoachMessage } from "@/lib/coach/blocks";
 
@@ -8,7 +8,6 @@ import {
   COACH_AVATAR,
   COACH_RADIUS,
   COACH_SPACE,
-  COACH_TAB_CLEARANCE,
   COACH_TYPE,
 } from "./theme";
 import { CoachAvatar, UserAvatar } from "./Avatar";
@@ -55,6 +54,15 @@ export function Thread({ messages, activeTool, onChipPress }: ThreadProps) {
     const timer = setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 60);
     return () => clearTimeout(timer);
   }, [messages, activeTool]);
+
+  // The keyboard takes roughly half the screen. Without this the last reply is
+  // behind it the moment the user taps the input to ask a follow-up.
+  useEffect(() => {
+    const subscription = Keyboard.addListener("keyboardDidShow", () => {
+      scrollRef.current?.scrollToEnd({ animated: true });
+    });
+    return () => subscription.remove();
+  }, []);
 
   return (
     <ScrollView
@@ -215,6 +223,3 @@ function ErrorNotice({ code }: { code: CoachErrorCode }) {
     </View>
   );
 }
-
-/** Height the composer must clear so the last reply is never hidden. */
-export const THREAD_BOTTOM_CLEARANCE = COACH_TAB_CLEARANCE;
