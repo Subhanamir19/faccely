@@ -22,6 +22,7 @@ import { Fredoka_700Bold } from "@expo-google-fonts/fredoka/700Bold";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import LoadingOverlay from "../components/ui/LoadingOverlay";
+import { CoachHost } from "../components/coach/CoachHost";
 import { useRoutineStore } from "../store/routineStore";
 import { scheduleDaily } from "../lib/time/nextMidnight";
 import { AuthProvider } from "@/providers/AuthProvider";
@@ -204,6 +205,10 @@ export default function RootLayout() {
                 options={{ animation: reduceMotion ? "fade" : "default", contentStyle: { backgroundColor: "#0B0B0B" } }}
               />
             </Stack>
+            {/* Above the navigator so the button survives navigation and the
+                sheet floats over the current screen instead of pushing onto
+                the stack. */}
+            <CoachHost />
             <LoadingOverlay />
             {updateStatus.available && (
               <UpdateModal
