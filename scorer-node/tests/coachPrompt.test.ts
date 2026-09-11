@@ -158,3 +158,43 @@ test("a lapsed user is asked about missed days instead of today", () => {
 test("chips never exceed three", () => {
   assert.ok(suggestOpeningChips(context()).length <= 3);
 });
+
+/* ========================================================================== */
+/*   Sentence buffering                                                       */
+/* ========================================================================== */
+
+const { SentenceBuffer } = await import("../src/services/coachTurn.js");
+
+test("a sentence is released only once it is complete", () => {
+  const buffer = new SentenceBuffer();
+
+  assert.deepEqual(buffer.push("Your jawline"), []);
+  assert.deepEqual(buffer.push(" is holding"), []);
+
+  const released = buffer.push(" steady. ");
+  assert.equal(released.length, 1);
+  assert.match(released[0], /Your jawline is holding steady\./);
+});
+
+test("a decimal does not split a sentence", () => {
+  const buffer = new SentenceBuffer();
+
+  assert.deepEqual(buffer.push("Aim for 7.5 hours"), []);
+  assert.equal(buffer.push(" of sleep. ").length, 1);
+});
+
+test("several sentences in one chunk are released together", () => {
+  const buffer = new SentenceBuffer();
+  const released = buffer.push("First point. Second point. Third");
+
+  assert.equal(released.length, 2);
+  assert.equal(buffer.flush().trim(), "Third");
+});
+
+test("flush returns an unterminated tail", () => {
+  const buffer = new SentenceBuffer();
+  buffer.push("No terminator here");
+
+  assert.equal(buffer.flush(), "No terminator here");
+  assert.equal(buffer.flush(), "");
+});

@@ -27,7 +27,7 @@ import { initMetrics, setConcurrencyStateGetter } from "./observability/metrics.
 
 
 
-import config, { IS_DEV, PROVIDERS, ROUTINE, SERVER } from "./config/index.js";
+import config, { COACH, IS_DEV, PROVIDERS, ROUTINE, SERVER } from "./config/index.js";
 
 console.log("[BOOT]", {
   env: config.NODE_ENV,
@@ -56,6 +56,8 @@ import {
   setRoutineOpenAIClient,
 } from "./routes/routine.js";
 import protocolsRouter, { setProtocolsOpenAIClient } from "./routes/protocols.js";
+import coachRouter from "./routes/coach.js";
+import { setCoachOpenAIClient } from "./services/coachTurn.js";
 import { programsRouter } from "./routes/programs.js";
 import { insightsRouter } from "./routes/insights.js";
 import { generateInsightsForUser, setInsightsOpenAIClient } from "./insights/generateInsights.js";
@@ -78,7 +80,22 @@ const app = express();
 app.set("trust proxy", 1); // we are behind Railway's proxy; needed for correct client IPs
 
 // Gzip compression - reduces JSON payload size by ~70-90%
-app.use(compression());
+//
+// Streaming responses are exempt. Compression buffers output until it has
+// enough bytes to be worth a frame, which turns a token-by-token stream into a
+// single delivery at the end - the reply still arrives, but none of it arrives
+// early, which is the entire point of streaming it.
+app.use(
+  compression({
+    filter: (req, res) => {
+      const contentType = String(res.getHeader("Content-Type") ?? "");
+      if (contentType.includes("x-ndjson") || contentType.includes("text/event-stream")) {
+        return false;
+      }
+      return compression.filter(req, res);
+    },
+  })
+);
 
 // Mount metrics early; harmless order-wise
 initMetrics(app, { enabled: true, path: "/metrics" }); // <-- ADD THIS
@@ -92,10 +109,20 @@ const imageOpenAI = new OpenAI({
   timeout: PROVIDERS.openai.imageGenerationTimeoutMs,
 });
 
+// Coach gets its own client: a turn can span several tool rounds, so it needs a
+// longer ceiling than the routine client's, and retries are left off because a
+// half-streamed reply cannot be replayed from the start.
+const coachOpenAI = new OpenAI({
+  apiKey: PROVIDERS.openai.apiKey,
+  timeout: COACH.timeoutMs,
+  maxRetries: 0,
+});
+
 setRoutineOpenAIClient(openai);
 setProtocolsOpenAIClient(openai);
 setGenerateOpenAIClient(imageOpenAI);
 setInsightsOpenAIClient(openai);
+setCoachOpenAIClient(coachOpenAI);
 
 
 // --- one-time schema sanity check (shows up in Railway logs) ---
@@ -618,6 +645,10 @@ app.use("/potential-face", requestTimeout(30_000), verifyAuth, potentialFaceRout
 app.use("/routine/async", verifyAuth, routineAsyncRouter);
 
 app.use("/sigma", requestTimeout(30_000), verifyAuth, sigmaRouter);
+// Coach turns run several tool rounds, so the 30s ceiling used elsewhere would
+// log a spurious timeout on every slow reply. The stream itself is not cut
+// short by this middleware - it only fires while headers are unsent.
+app.use("/coach", requestTimeout(COACH.timeoutMs), verifyAuth, coachRouter);
 app.use("/generate", requestTimeout(PROVIDERS.openai.imageGenerationTimeoutMs + 15_000), verifyAuth, generateRouter);
 app.use("/jobs", verifyAuth, jobsRouter);                    // ← add this line
 app.use("/promo", verifyAuth, promoRouter);
