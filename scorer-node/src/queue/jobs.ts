@@ -147,7 +147,9 @@ export async function enqueuePotentialFace(
 ) {
   await ensureQueues();
   const baseId = payload.potentialFaceId;
-  const jobId = opts?.forceRequeue ? `${baseId}:${Date.now()}` : baseId;
+  // "-" not ":" — BullMQ rejects custom ids containing ":" ("Custom Id cannot
+  // contain :"), which left forced retries stuck in `pending` with no job.
+  const jobId = opts?.forceRequeue ? `${baseId}-${Date.now()}` : baseId;
   const { forceRequeue: _omit, ...jobOpts } = opts ?? {};
   return qPotentialFace!.add("potential_face", payload, { jobId, ...jobOpts });
 }
