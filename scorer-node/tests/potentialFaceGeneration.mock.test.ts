@@ -177,10 +177,11 @@ test("records generation telemetry on successful potential-face generation", asy
   assert.equal(harness.attempts.length, 1);
   assert.equal(harness.readyRows.length, 1);
   assert.equal(calls.prompts.length, 1);
-  assert.match(calls.prompts[0], /Highest-leverage aesthetic targets/);
-  assert.match(calls.prompts[0], /baseline score 22, target 47/);
-  assert.match(calls.prompts[0], /only improve haircut shape, density appearance, or facial-hair grooming when those targets are listed/);
-  assert.match(calls.prompts[0], /No waxy, plastic, airbrushed/);
+  assert.match(calls.prompts[0], /CHANGES \(most important first\):\n1\. Skin clarity\. Change to:/);
+  assert.match(calls.prompts[0], /2\. Jawline\. Change to:/);
+  assert.match(calls.prompts[0], /plain black crew-neck t-shirt/);
+  assert.match(calls.prompts[0], /pure white studio background/);
+  assert.doesNotMatch(calls.prompts[0], /smoother|baseline score/);
 
   const ready = harness.readyRows[0] as { targeted_metrics: Array<Record<string, unknown>> };
   assert.equal(ready.targeted_metrics.length, 5);
@@ -193,9 +194,9 @@ test("records generation telemetry on successful potential-face generation", asy
 
   const attempt = harness.attempts[0] as Record<string, unknown>;
   assert.equal(attempt.success, true);
-  assert.equal(attempt.model, "gpt-image-2");
+  assert.equal(attempt.model, "gpt-image-2.5-sunburst");
   assert.equal(attempt.size, "1024x1024");
-  assert.equal(attempt.quality, "medium");
+  assert.equal(attempt.quality, "high");
   assert.equal(attempt.requestedCandidateCount, 1);
   assert.equal(attempt.candidateCount, 1);
   assert.equal(attempt.providerRequestId, "req_success");
@@ -209,6 +210,43 @@ test("records generation telemetry on successful potential-face generation", asy
   assert.equal(attempt.sourceImageWidth, 64);
   assert.equal(attempt.sourceImageHeight, 96);
   assert.equal(attempt.generationPhase, "ready");
+});
+
+test("ranks targets by visual impact and carries verdict and observation", () => {
+  const advanced = {
+    cheekbones: {
+      face_fat: "There is soft fullness under the cheekbones — getting leaner is the most direct fix.",
+      face_fat_score: 48,
+      face_fat_verdict: "Puffy",
+      fwhr: "The ratio appears narrow.",
+      fwhr_score: 30,
+      fwhr_verdict: "Narrow (<1.7)",
+    },
+    eyes: { eye_type: "Sharp, focused eyes.", eye_type_score: 86, eye_type_verdict: "Hunter" },
+    haircut: {
+      density: "Hair is hidden under a hat.",
+      density_score: 20,
+      density_verdict: "Obscured",
+      facial_hair: "Clean and intentional.",
+      facial_hair_score: 60,
+      facial_hair_verdict: "Clean Shaven",
+    },
+  };
+
+  const targets = service.pickTargetedMetrics(advanced);
+  assert.deepEqual(targets.map((t) => t.sub_metric), ["face_fat_score", "fwhr_score"]);
+  assert.equal(targets[0].verdict, "Puffy");
+  assert.equal(targets[0].observation, "There is soft fullness under the cheekbones");
+
+  const strengths = service.pickStrengths(advanced);
+  assert.deepEqual(strengths, [
+    { label: "Eye area", verdict: "Hunter" },
+    { label: "Facial hair", verdict: "Clean Shaven" },
+  ]);
+
+  const prompt = service.buildPotentialFacePrompt({ targetedMetrics: targets, strengths });
+  assert.match(prompt, /1\. Facial fat \(now: Puffy: There is soft fullness under the cheekbones\)\. Change to:/);
+  assert.match(prompt, /ALREADY STRONG \(keep exactly as is\): Eye area \(Hunter\), Facial hair \(Clean Shaven\)\./);
 });
 
 test("does not throw for BullMQ retry after OpenAI succeeds but upload fails", async () => {

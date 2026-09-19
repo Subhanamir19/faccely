@@ -24,6 +24,10 @@ export interface TargetedMetric {
   baseline_score: number;
   /** Score the generated image is meant to represent (0–100). */
   target_score: number;
+  /** Advanced-analysis verdict label at baseline, e.g. "Puffy". Absent on pre-v5 rows. */
+  verdict?: string;
+  /** Observation half of the advanced-analysis commentary, advice stripped. Absent on pre-v5 rows. */
+  observation?: string;
 }
 
 export interface PotentialFaceRecord {

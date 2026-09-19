@@ -11,6 +11,9 @@ import OpenAI, { toFile } from "openai";
 import { PROVIDERS } from "../config/index.js";
 import {
   buildPotentialFacePrompt,
+  pickStrengths,
+  pickTargetedMetrics,
+  POTENTIAL_FACE_IMAGE_SETTINGS,
   preparePotentialFaceSourceImage,
   PROMPT_VERSION,
   type PotentialFacePromptMode,
@@ -24,6 +27,17 @@ function parsePromptMode(value: unknown): PotentialFacePromptMode {
   return typeof value === "string" && PROMPT_MODES.has(value as PotentialFacePromptMode)
     ? value as PotentialFacePromptMode
     : "aggressive";
+}
+
+/** Optional advanced_result sent by the dev tab as a JSON form field. */
+function parseAdvancedResult(value: unknown): Record<string, unknown> | null {
+  if (typeof value !== "string" || !value.trim()) return null;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
 }
 
 function openAIErrorDetails(err: any): {
@@ -205,14 +219,21 @@ router.post("/potential-face-dev", upload.single("image"), async (req, res) => {
     }
     const buffer = await preparePotentialFaceSourceImage(rawBuffer);
 
-    const promptMode = parsePromptMode((req.body as Record<string, unknown>)?.promptMode);
-    const prompt = buildPotentialFacePrompt({ mode: promptMode });
+    const body = req.body as Record<string, unknown>;
+    const promptMode = parsePromptMode(body?.promptMode);
+    // Same picker and prompt as the production worker when the advanced
+    // analysis is supplied, so dev output matches what users will see.
+    const advancedResult = parseAdvancedResult(body?.advancedResult);
+    const targetedMetrics = advancedResult ? pickTargetedMetrics(advancedResult) : [];
+    const strengths = advancedResult ? pickStrengths(advancedResult) : [];
+    const prompt = buildPotentialFacePrompt({ mode: promptMode, targetedMetrics, strengths });
 
     console.log("[/generate/potential-face-dev] calling image model", {
       userId,
       model: IMAGE_MODEL,
       promptMode,
       promptVersion: PROMPT_VERSION,
+      targetedMetrics: targetedMetrics.length,
     });
 
     const response = await _openai.images.edit({
@@ -220,10 +241,10 @@ router.post("/potential-face-dev", upload.single("image"), async (req, res) => {
       image: await toFile(buffer, "potential-face-source.jpg", { type: "image/jpeg" }),
       prompt,
       n: 1,
-      size: "1024x1024",
-      quality: "medium",
-      output_format: "jpeg",
-      output_compression: 84,
+      size: POTENTIAL_FACE_IMAGE_SETTINGS.size,
+      quality: POTENTIAL_FACE_IMAGE_SETTINGS.quality,
+      output_format: POTENTIAL_FACE_IMAGE_SETTINGS.outputFormat,
+      output_compression: POTENTIAL_FACE_IMAGE_SETTINGS.outputCompression,
       moderation: "low",
     } as any);
 
@@ -238,6 +259,8 @@ router.post("/potential-face-dev", upload.single("image"), async (req, res) => {
       model: IMAGE_MODEL,
       promptMode,
       promptVersion: PROMPT_VERSION,
+      prompt,
+      targetedMetrics,
     });
   } catch (err: any) {
     const { status: upstreamStatus, code, type, message } = openAIErrorDetails(err);
