@@ -10,6 +10,8 @@ import { QUEUES, SERVICE, PROVIDERS, WORKERS, ROUTINE } from "../config/index.js
 import { setRoutineOpenAIClient } from "../routes/routine.js";
 import { generateRoutine } from "../utils/generateRoutine.js";
 import { generatePotentialFace } from "../services/potentialFaceGeneration.js";
+import { sendPushToUser } from "../services/pushNotifications.js";
+import { getPotentialFaceById } from "../supabase/potentialFaces.js";
 import type { Scores } from "../validators.js";
 import type { PotentialFaceJob } from "./jobs.js";
 
@@ -185,6 +187,12 @@ export async function buildWorker(): Promise<WorkerBundle> {
     const isFinalAttempt = job.attemptsMade + 1 >= totalAttempts;
 
     try {
+      // Read the status first: a duplicate job for an already-ready row
+      // returns that row too, and must not notify the user a second time.
+      const before = job.data?.potentialFaceId
+        ? await getPotentialFaceById(job.data.potentialFaceId).catch(() => null)
+        : null;
+
       const result = await withWorkerTimeout(
         () =>
           generatePotentialFace(imageOpenAI, {
@@ -193,6 +201,14 @@ export async function buildWorker(): Promise<WorkerBundle> {
           }),
         POTENTIAL_FACE_TIMEOUT_MS
       );
+
+      if (before?.status === "pending" && result?.status === "ready") {
+        await sendPushToUser(result.user_id, {
+          title: "Your potential face is ready 👀",
+          body: "See what your face could look like once you fix your weak points.",
+          data: { type: "potential_face_ready", potentialFaceId: result.id },
+        });
+      }
 
       console.log("[worker:potential-face] completed", {
         ...ctx,
