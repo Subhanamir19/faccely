@@ -8,7 +8,7 @@
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": false,
-      "buildNumber": "27",
+      "buildNumber": "28",
       "bundleIdentifier": "com.sigmamax.app",
       "infoPlist": {
         "CADisableMinimumFrameDurationOnPhone": true,
@@ -19,7 +19,7 @@
     },
     "android": {
       "package": "com.sigmamax.app",
-      "versionCode": 16,
+      "versionCode": 17,
       "adaptiveIcon": {
         "foregroundImage": "./assets/sigmamax-real-updatred-logo.png",
         "backgroundColor": "#ffffff"
