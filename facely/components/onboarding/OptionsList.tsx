@@ -14,7 +14,7 @@ import Animated, {
 
 import T from "@/components/ui/T";
 import { COLORS, RADII, SP } from "@/lib/tokens";
-import { hapticSelection } from "@/lib/haptics";
+import { hapticRigid } from "@/lib/haptics";
 
 export type Option = {
   key: string;
@@ -132,7 +132,7 @@ export default function OptionsList({
   allowDeselect = false,
 }: OptionsListProps) {
   const handleSelect = (key: string) => {
-    hapticSelection();
+    hapticRigid();
     if (multiSelect && onSelectMulti) {
       if (selectedMulti.includes(key)) {
         onSelectMulti(selectedMulti.filter((k) => k !== key));

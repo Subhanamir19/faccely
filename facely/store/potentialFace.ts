@@ -19,6 +19,7 @@ import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 
 import { logger } from "../lib/logger";
+import { getAuthState } from "./auth";
 import {
   fetchCurrentPotentialFace,
   requestPotentialFaceGeneration,
@@ -65,9 +66,16 @@ type State = {
    */
   revealSeen: boolean;
   revealSeenPotentialFaceId: string | null;
+  /**
+   * The account this state belongs to. Persisted state from another account
+   * (logout, new sign-in on the same phone) must never be shown.
+   */
+  ownerUid: string | null;
 };
 
 type Actions = {
+  /** Drop everything if the stored state belongs to a different account. */
+  ensureOwner: (uid: string | null) => void;
   /** Fetch /current and update state. Always hits the network. */
   load: () => Promise<PotentialFace | null>;
   /**
@@ -116,11 +124,20 @@ export const usePotentialFace = create<State & Actions>()(
       unlockEvaluation: null,
       revealSeen: false,
       revealSeenPotentialFaceId: null,
+      ownerUid: null,
+
+      ensureOwner: (uid) => {
+        if (!uid || get().ownerUid === uid) return;
+        // Also covers state saved before ownership was tracked (ownerUid null).
+        get().clear();
+        set({ ownerUid: uid });
+      },
 
       // ---------------------------------------------------------------------
       // load
       // ---------------------------------------------------------------------
       load: async () => {
+        get().ensureOwner(getAuthState().uid);
         const current = get().data;
         if (__DEV__ && current?.id?.startsWith(DEV_PREVIEW_ID_PREFIX)) {
           return current;
@@ -304,6 +321,7 @@ export const usePotentialFace = create<State & Actions>()(
           isPolling: false,
           revealSeen: false,
           revealSeenPotentialFaceId: null,
+          ownerUid: getAuthState().uid,
         });
       },
 
@@ -332,9 +350,11 @@ export const usePotentialFace = create<State & Actions>()(
       name: STORAGE_KEY,
       storage: createJSONStorage(() => AsyncStorage),
       // Don't persist transient state. Signed URLs go stale — components must
-      // tolerate a missed image and `load()` will refresh on mount.
+      // tolerate a missed image and `load()` will refresh on mount. Dev-tab
+      // mock faces stay in memory only, so they can never outlive the preview.
       partialize: (state) => ({
-        data: state.data,
+        data: state.data?.id?.startsWith(DEV_PREVIEW_ID_PREFIX) ? null : state.data,
+        ownerUid: state.ownerUid,
         lastFetchedAt: state.lastFetchedAt,
         revealSeen: state.revealSeen,
         revealSeenPotentialFaceId: state.revealSeenPotentialFaceId,

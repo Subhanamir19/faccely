@@ -3,7 +3,6 @@ import {
   Image,
   ImageSourcePropType,
   Pressable,
-  StatusBar,
   StyleSheet,
   Text,
   View,
@@ -12,7 +11,9 @@ import {
 import { LinearGradient } from "expo-linear-gradient";
 import { router, type Href } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { hapticSelection } from "@/lib/haptics";
+import { hapticTick } from "@/lib/haptics";
+import ScreenBackground from "@/components/onboarding/ScreenBackground";
+import { BG_MOODS } from "@/lib/tokens";
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -26,7 +27,8 @@ const HEADING_FONT = "SFProRounded-Bold";
 const BUTTON_FONT = "SFProRounded-Semibold";
 const ORANGE = "#F26A13";
 const TEXT = "#050505";
-const PAPER = "#FFFCF7";
+const MOOD = "warm" as const;
+const PAPER = BG_MOODS[MOOD].bottom;
 const CTA_FACE = "#151515";
 const CTA_DEPTH = "#050505";
 const HAPTIC_EVERY_CHARS = 3;
@@ -65,7 +67,7 @@ function useTypedSegments(segments: HeadingSegment[], delayMs = 240) {
       if (nextLength !== lastLength) {
         lastLength = nextLength;
         if (fullText[nextLength - 1]?.trim() && nextLength % HAPTIC_EVERY_CHARS === 0) {
-          hapticSelection();
+          hapticTick();
         }
         setLength(nextLength);
       }
@@ -198,7 +200,7 @@ export default function FeatureStatementScreen({
 
   return (
     <View style={styles.root}>
-      <StatusBar barStyle="dark-content" backgroundColor={PAPER} />
+      <ScreenBackground mood={MOOD} />
       <View
         style={[
           styles.safe,
@@ -261,7 +263,7 @@ export default function FeatureStatementScreen({
           )}
           <LinearGradient
             pointerEvents="none"
-            colors={["rgba(255,252,247,0)", "rgba(255,252,247,0.9)", PAPER]}
+            colors={["rgba(237,235,231,0)", "rgba(237,235,231,0.9)", PAPER]}
             locations={[0, 0.58, 1]}
             style={[styles.edgeFade, { height: stageHeight * 0.16 }]}
           />

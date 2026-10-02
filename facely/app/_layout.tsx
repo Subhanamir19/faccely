@@ -5,6 +5,8 @@ import { View, Platform } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import UpdateModal from "@/components/ui/UpdateModal";
 import { checkForUpdate, type UpdateStatus } from "@/lib/updateCheck";
+import { listenForNotificationTaps, registerPushToken } from "@/lib/pushNotifications";
+import { usePotentialFace } from "@/store/potentialFace";
 import * as NavigationBar from "expo-navigation-bar";
 import { Stack } from "expo-router";
 import { useReducedMotion } from "react-native-reanimated";
@@ -111,6 +113,21 @@ export default function RootLayout() {
     logger.log("[Auth] Token present:", idToken ? `${idToken.slice(0, 10)}...` : "none");
   }, [authInitialized, idToken]);
 
+  // Account switch (logout, new sign-in): drop the previous account's
+  // potential face before any screen can show it.
+  const authUid = useAuthStore((state) => state.uid);
+  useEffect(() => {
+    if (authInitialized) usePotentialFace.getState().ensureOwner(authUid);
+  }, [authInitialized, authUid]);
+
+  // Push: refresh this device's token (tokens rotate) and route taps,
+  // including the tap that cold-started the app.
+  useEffect(() => {
+    if (!authInitialized) return;
+    void registerPushToken();
+    return listenForNotificationTaps();
+  }, [authInitialized]);
+
   // Check for app updates once auth is initialized
   useEffect(() => {
     if (!authInitialized) return;
@@ -161,7 +178,11 @@ export default function RootLayout() {
               <Stack.Screen name="(onboarding)" />
               <Stack.Screen name="(tabs)" />
               <Stack.Screen name="loading" />
+              <Stack.Screen name="potential-face" options={{ presentation: "fullScreenModal", gestureEnabled: false }} />
+              <Stack.Screen name="analysis-reveal" options={{ animation: "fade", gestureEnabled: false, contentStyle: { backgroundColor: "#EDEBE7" } }} />
               <Stack.Screen name="face-map-preview" options={{ animation: reduceMotion ? "none" : "slide_from_right", contentStyle: { backgroundColor: "#F8F7F2" } }} />
+              <Stack.Screen name="weak-points-preview" options={{ contentStyle: { backgroundColor: "#FFFCF7" } }} />
+              <Stack.Screen name="wp-probe" options={{ contentStyle: { backgroundColor: "#FFFCF7" } }} />
               <Stack.Screen name="reset-onboarding" />
               <Stack.Screen
                 name="analysis"

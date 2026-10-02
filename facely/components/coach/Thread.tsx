@@ -1,31 +1,23 @@
-import React, { useEffect, useRef } from "react";
-import { ScrollView, View, Text, ActivityIndicator, Keyboard } from "react-native";
+import React, { useEffect, useRef, useState } from "react";
+import { Animated, Easing, ScrollView, View, Text, Keyboard } from "react-native";
 
 import type { CoachErrorCode, CoachMessage } from "@/lib/coach/blocks";
 
-import {
-  COACH,
-  COACH_AVATAR,
-  COACH_RADIUS,
-  COACH_SPACE,
-  COACH_TYPE,
-} from "./theme";
-import { CoachAvatar, UserAvatar } from "./Avatar";
+import { COACH, COACH_RADIUS, COACH_SPACE, COACH_TYPE } from "./theme";
 import { BlockRenderer } from "./blocks/BlockRenderer";
+import { CoachAvatar } from "./Avatar";
 
 /* ============================================================================
  * The conversation.
  *
- * Both sides carry an avatar, the way a normal chat reads: Coach's illustrated
- * face on the left of its replies, the user's profile photo on the right of
- * theirs.
+ * The user's turn is a borderless grey bubble flush right. Coach's runs the
+ * full page width with no bubble, under a small byline with the same face the
+ * paywall and the empty screen show, so the voice is always the one character.
+ * The byline sits above the reply rather than beside it, so cards and charts
+ * keep the whole width.
  *
- * The user's turn is a compact bubble; Coach's runs full width with no bubble.
  * A chart or metric card inside a chat bubble reads as a screenshot quoted into
  * a conversation, where the same card on the page reads as part of the app.
- *
- * Consecutive turns from the same side show the avatar only once, so a
- * back-and-forth does not turn into a column of repeated faces.
  * ========================================================================== */
 
 export type ThreadProps = {
@@ -87,20 +79,19 @@ export function Thread({ messages, activeTool, onChipPress }: ThreadProps) {
             style={{ marginTop: index === 0 ? 0 : startsGroup ? COACH_SPACE.section : 12 }}
           >
             {message.role === "user" ? (
-              <UserRow text={message.text} showAvatar={startsGroup} />
+              <UserBubble text={message.text} />
             ) : (
-              <CoachRow
-                message={message}
-                showAvatar={startsGroup}
-                onChipPress={onChipPress}
-              />
+              <>
+                {startsGroup ? <CoachByline /> : null}
+                <CoachContent message={message} onChipPress={onChipPress} />
+              </>
             )}
           </View>
         );
       })}
 
       {activeTool ? (
-        <View style={{ marginTop: 12, paddingLeft: COACH_AVATAR.size + COACH_AVATAR.gutter }}>
+        <View style={{ marginTop: 12 }}>
           <ToolIndicator name={activeTool} />
         </View>
       ) : null}
@@ -108,59 +99,28 @@ export function Thread({ messages, activeTool, onChipPress }: ThreadProps) {
   );
 }
 
-/** Fixed-width avatar column, so messages line up whether or not one shows. */
-function AvatarSlot({ children }: { children?: React.ReactNode }) {
+function CoachByline() {
   return (
-    <View style={{ width: COACH_AVATAR.size, alignItems: "center" }}>{children}</View>
-  );
-}
-
-function UserRow({ text, showAvatar }: { text: string; showAvatar: boolean }) {
-  return (
-    <View
-      style={{
-        flexDirection: "row",
-        justifyContent: "flex-end",
-        alignItems: "flex-start",
-        gap: COACH_AVATAR.gutter,
-      }}
-    >
-      <View
-        style={{
-          maxWidth: "78%",
-          paddingVertical: 10,
-          paddingHorizontal: 14,
-          borderRadius: COACH_RADIUS.bubble,
-          borderBottomRightRadius: 6,
-          backgroundColor: COACH.surface,
-          borderWidth: 1,
-          borderColor: COACH.border,
-        }}
-      >
-        <Text style={{ ...COACH_TYPE.body, color: COACH.ink }}>{text}</Text>
-      </View>
-
-      <AvatarSlot>{showAvatar ? <UserAvatar /> : null}</AvatarSlot>
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 10 }}>
+      <CoachAvatar />
+      <Text style={{ ...COACH_TYPE.captionSemiBold, color: COACH.ink }}>Coach</Text>
     </View>
   );
 }
 
-function CoachRow({
-  message,
-  showAvatar,
-  onChipPress,
-}: {
-  message: CoachMessage;
-  showAvatar: boolean;
-  onChipPress: (text: string) => void;
-}) {
+function UserBubble({ text }: { text: string }) {
   return (
-    <View style={{ flexDirection: "row", alignItems: "flex-start", gap: COACH_AVATAR.gutter }}>
-      <AvatarSlot>{showAvatar ? <CoachAvatar /> : null}</AvatarSlot>
-
-      <View style={{ flex: 1 }}>
-        <CoachContent message={message} onChipPress={onChipPress} />
-      </View>
+    <View
+      style={{
+        alignSelf: "flex-end",
+        maxWidth: "80%",
+        paddingVertical: 12,
+        paddingHorizontal: 18,
+        borderRadius: COACH_RADIUS.bubble,
+        backgroundColor: COACH.fill,
+      }}
+    >
+      <Text style={{ ...COACH_TYPE.body, color: COACH.ink }}>{text}</Text>
     </View>
   );
 }
@@ -185,14 +145,55 @@ function CoachContent({
   return <BlockRenderer blocks={message.blocks} onChipPress={onChipPress} />;
 }
 
+/**
+ * A softly pulsing dot beside the label, in place of a platform spinner. The
+ * whole row breathes together, so it reads as one "working" signal.
+ */
 function ToolIndicator({ name }: { name: string }) {
   const label = TOOL_LABELS[name] ?? (name === "thinking" ? "Thinking" : "Working");
+  const [pulse] = useState(() => new Animated.Value(0.35));
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, {
+          toValue: 1,
+          duration: 700,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulse, {
+          toValue: 0.35,
+          duration: 700,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [pulse]);
 
   return (
-    <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingTop: 4 }}>
-      <ActivityIndicator size="small" color={COACH.inkFaint} />
-      <Text style={{ ...COACH_TYPE.caption, color: COACH.inkFaint }}>{label}…</Text>
-    </View>
+    <Animated.View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 10,
+        paddingTop: 4,
+        opacity: pulse,
+      }}
+    >
+      <View
+        style={{
+          width: 10,
+          height: 10,
+          borderRadius: COACH_RADIUS.pill,
+          backgroundColor: COACH.ink,
+        }}
+      />
+      <Text style={{ ...COACH_TYPE.body, color: COACH.inkMuted }}>{label}…</Text>
+    </Animated.View>
   );
 }
 
@@ -205,21 +206,7 @@ const ERROR_COPY: Record<CoachErrorCode, string> = {
   internal: "Coach is unavailable right now.",
 };
 
+/** Plain assistant text, the way ChatGPT reports a limit, not a warning box. */
 function ErrorNotice({ code }: { code: CoachErrorCode }) {
-  return (
-    <View
-      style={{
-        paddingVertical: 10,
-        paddingHorizontal: 12,
-        borderRadius: COACH_RADIUS.card,
-        backgroundColor: COACH.surfaceMuted,
-        borderLeftWidth: 2,
-        borderLeftColor: COACH.coral,
-      }}
-    >
-      <Text style={{ ...COACH_TYPE.caption, color: COACH.inkMuted }}>
-        {ERROR_COPY[code]}
-      </Text>
-    </View>
-  );
+  return <Text style={{ ...COACH_TYPE.body, color: COACH.ink }}>{ERROR_COPY[code]}</Text>;
 }

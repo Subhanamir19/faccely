@@ -75,7 +75,7 @@ import {
   Maximize2,
 } from "lucide-react-native";
 import Text from "@/components/ui/T";
-import { APP_SCREEN_BG } from "@/components/layout/AppGradientBackground";
+import { APP_SCREEN_BG, AppScreenGradient } from "@/components/layout/AppGradientBackground";
 import InsightPulseCard from "@/components/ui/InsightPulseCard";
 import {
   MetricDetailCard,
@@ -3946,6 +3946,7 @@ export default function DashboardScreen() {
         },
       ]}
     >
+      <AppScreenGradient />
       {/* Atmospheric lime glow behind header — gives the top section warmth */}
       <LinearGradient
         colors={["rgba(180,243,77,0.10)", "rgba(180,243,77,0.00)"]}

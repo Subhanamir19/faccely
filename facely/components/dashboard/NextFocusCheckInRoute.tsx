@@ -14,17 +14,17 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import Animated, {
   Easing,
+  FadeIn,
   FadeInDown,
   useAnimatedProps,
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
-  withDelay,
   withSpring,
   withTiming,
 } from "react-native-reanimated";
-import Svg, { Circle, Defs, Line, LinearGradient as SvgGradient, Path, Stop } from "react-native-svg";
-import { ArrowLeft, BarChart3, ChevronDown, Target, TriangleAlert, X } from "lucide-react-native";
+import Svg, { Circle, ClipPath, Defs, G, Line, Path, Rect } from "react-native-svg";
+import { ArrowLeft, CalendarClock, Camera, ChevronDown, ChevronRight, Lock, X } from "lucide-react-native";
 
 import Text from "@/components/ui/T";
 import { FLOATING_TAB_BAR } from "@/components/layout/floatingTabBar";
@@ -55,9 +55,26 @@ const GROUPED_SURFACE = "#F7F6F3";
 const CARD_BORDER = "rgba(23,21,18,0.09)";
 const GRAPH_EASE = Easing.bezier(0.77, 0, 0.175, 1);
 
+const AXIS = "rgba(23,21,18,0.12)";
+const NEXT_MARKER = "#B9B4AC";
+
 const FALLBACK_ICON = require("../../assets/icons/next-foucs.png");
-const AnimatedPath = Animated.createAnimatedComponent(Path);
-const AnimatedCircle = Animated.createAnimatedComponent(Circle);
+const AnimatedRect = Animated.createAnimatedComponent(Rect);
+
+// Trajectory model: the projection runs 8 weeks past the latest scan and lands
+// on current score + the gains from the top focus metrics, capped at +10.
+const DAY_MS = 86_400_000;
+const CHECK_IN_DAYS = 7;
+const PROJECTION_DAYS = 56;
+const MAX_TARGET_GAIN = 10;
+const QUICK_WIN_COUNT = 3;
+
+// Chart box padding: the top leaves room for the target bubble.
+const CHART_H = 196;
+const PAD_T = 54;
+const PAD_B = 14;
+const PAD_L = 12;
+const PAD_R = 16;
 
 const FOCUS_IMAGE_BG = "#E9FFD9";
 const PROBLEM_IMAGE_BG = "#FFE3E0";
@@ -76,10 +93,12 @@ type ProblemMetric = {
 
 type SheetMetric = NextFocusRecommendation | ProblemMetric;
 
-type GraphCoord = {
+type ChartPoint = {
   x: number;
   y: number;
 };
+
+type FocusTab = "wins" | "weak";
 
 type FocusIconMeta = {
   iconId: string;
@@ -126,30 +145,73 @@ function formatShortDate(value: string | undefined, fallback: string) {
   return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-function buildGraphLayout(points: number[], width: number, height: number): { path: string; coords: GraphCoord[]; length: number } {
-  if (!points.length) return { path: "", coords: [], length: 1 };
+function parseTime(value: string | undefined): number | null {
+  if (!value) return null;
+  const time = new Date(value).getTime();
+  return Number.isNaN(time) ? null : time;
+}
 
-  const min = Math.min(...points, 40);
-  const max = Math.max(...points, 90);
-  const range = Math.max(12, max - min);
-  const step = points.length > 1 ? width / (points.length - 1) : width;
-  const coords = points.map((point, index) => {
-    const x = points.length > 1 ? index * step : width / 2;
-    const normalized = (point - min) / range;
-    const y = clamp(height - normalized * height, 8, height - 8);
-    return { x, y };
+function formatDay(time: number) {
+  return new Date(time).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+// Days since the first scan for each point. Falls back to a weekly cadence
+// when the dates are missing so the line still spreads out.
+function toDayOffsets(dates: string[], count: number) {
+  const first = parseTime(dates[0]);
+  return Array.from({ length: count }, (_, index) => {
+    const time = parseTime(dates[index]);
+    if (first === null || time === null) return index * CHECK_IN_DAYS;
+    return Math.max(0, (time - first) / DAY_MS);
   });
+}
 
-  const path = coords
-    .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x.toFixed(1)} ${point.y.toFixed(1)}`)
-    .join(" ");
+function estimateGain(item: NextFocusRecommendation) {
+  return clamp(Math.round(item.score / 8), 1, 4);
+}
 
-  const length = coords.slice(1).reduce((sum, point, index) => {
-    const previous = coords[index];
-    return sum + Math.hypot(point.x - previous.x, point.y - previous.y);
-  }, 0);
+// Solid scan line: chained cubics with flat tangents at each scan, matching
+// the onboarding projection curve.
+function smoothPath(points: ChartPoint[]) {
+  if (!points.length) return "";
+  let path = `M ${points[0].x} ${points[0].y}`;
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const a = points[index];
+    const b = points[index + 1];
+    const k = (b.x - a.x) * 0.35;
+    path += ` C ${a.x + k} ${a.y} ${b.x - k} ${b.y} ${b.x} ${b.y}`;
+  }
+  return path;
+}
 
-  return { path, coords, length: Math.max(1, length) };
+// Projection: one symmetric cubic, flat at both ends.
+function projectionControls(start: ChartPoint, end: ChartPoint) {
+  const dx = (end.x - start.x) * 0.42;
+  return [start, { x: start.x + dx, y: start.y }, { x: end.x - dx, y: end.y }, end];
+}
+
+function projectionPath(start: ChartPoint, end: ChartPoint) {
+  const [, c1, c2] = projectionControls(start, end);
+  return `M ${start.x} ${start.y} C ${c1.x} ${c1.y} ${c2.x} ${c2.y} ${end.x} ${end.y}`;
+}
+
+function pointOnProjection(start: ChartPoint, end: ChartPoint, x: number): ChartPoint {
+  const [p0, p1, p2, p3] = projectionControls(start, end);
+  const at = (t: number) => {
+    const u = 1 - t;
+    return {
+      x: u * u * u * p0.x + 3 * u * u * t * p1.x + 3 * u * t * t * p2.x + t * t * t * p3.x,
+      y: u * u * u * p0.y + 3 * u * u * t * p1.y + 3 * u * t * t * p2.y + t * t * t * p3.y,
+    };
+  };
+  let lo = 0;
+  let hi = 1;
+  for (let step = 0; step < 24; step += 1) {
+    const mid = (lo + hi) / 2;
+    if (at(mid).x < x) lo = mid;
+    else hi = mid;
+  }
+  return at((lo + hi) / 2);
 }
 
 function toAdvancedAnalysis(source: LatestAdvanced | AdvancedAnalysis | null): AdvancedAnalysis | null {
@@ -224,196 +286,314 @@ function toAdvancedAnalysis(source: LatestAdvanced | AdvancedAnalysis | null): A
   };
 }
 
-function GraphTrendDot({
-  point,
-  accent,
-  delay,
-  isLast,
-  reduceMotion,
-}: {
-  point: GraphCoord;
-  accent: string;
-  delay: number;
-  isLast: boolean;
-  reduceMotion: boolean;
-}) {
-  const dotProgress = useSharedValue(0);
-
-  useEffect(() => {
-    if (reduceMotion) {
-      dotProgress.set(1);
-      return;
-    }
-
-    dotProgress.set(0);
-    dotProgress.set(withDelay(
-      delay,
-      withTiming(1, {
-        duration: 220,
-        easing: Easing.out(Easing.cubic),
-      }),
-    ));
-  }, [delay, dotProgress, point.x, point.y, reduceMotion]);
-
-  const animatedDotProps = useAnimatedProps(() => ({
-    opacity: dotProgress.get(),
-    r: 2 + (isLast ? 4 : 3) * dotProgress.get(),
-  }));
-
-  return (
-    <AnimatedCircle
-      cx={point.x}
-      cy={point.y}
-      fill="#FFFFFF"
-      stroke={accent}
-      strokeWidth={3}
-      animatedProps={animatedDotProps}
-    />
-  );
-}
-
-function ProgressGraphCard({
-  points,
-  dates,
+function TrajectoryCard({
+  scores,
+  days,
+  target,
+  targetLabel,
+  firstLabel,
   width,
   loading,
+  onScan,
 }: {
-  points: number[];
-  dates: string[];
+  scores: number[];
+  days: number[];
+  target: number;
+  targetLabel: string;
+  firstLabel: string;
   width: number;
   loading: boolean;
+  onScan: () => void;
 }) {
-  const chartWidth = Math.max(240, width - 48);
-  const chartHeight = 160;
-  const safePoints = useMemo(() => points.filter(Number.isFinite).slice(-8), [points]);
-  const safeDates = useMemo(() => dates.slice(-safePoints.length), [dates, safePoints.length]);
-  const graph = useMemo(() => buildGraphLayout(safePoints, chartWidth, chartHeight), [chartHeight, chartWidth, safePoints]);
-  const lineProgress = useSharedValue(0);
   const reduceMotion = useReducedMotion();
-  const hasGraph = graph.coords.length > 0;
-  const hasLine = graph.coords.length > 1 && graph.path.length > 0;
-  const latest = hasGraph ? Math.round(safePoints[safePoints.length - 1]) : null;
-  const first = hasGraph ? safePoints[0] : null;
-  const delta = latest !== null && first !== null ? latest - first : null;
-  const labelLeft = formatShortDate(safeDates[0], hasGraph ? "Scan 1" : "No scans");
-  const labelRight = formatShortDate(safeDates[safeDates.length - 1], hasGraph ? "Latest" : "Trend");
+  const chartW = Math.max(240, width - 36);
+  const hasScans = scores.length > 0;
+  const current = hasScans ? Math.round(scores[scores.length - 1]) : null;
+  const delta = hasScans ? Math.round(scores[scores.length - 1] - scores[0]) : 0;
+  const stroke = Math.max(5, chartW * 0.02);
+
+  const geo = useMemo(() => {
+    // With no scans, draw a faint sample trajectory behind the first-scan prompt.
+    const plotScores = hasScans ? scores : [58];
+    const plotDays = hasScans ? days : [0];
+    const plotTarget = hasScans ? target : 66;
+    const lastDay = plotDays[plotDays.length - 1];
+    const horizon = lastDay + PROJECTION_DAYS;
+
+    const all = [...plotScores, plotTarget];
+    const hi = Math.max(...all) + 2;
+    const lo = Math.min(Math.min(...all) - 5, hi - 14);
+    const left = PAD_L;
+    const right = chartW - PAD_R;
+    const bottom = CHART_H - PAD_B;
+    const toX = (day: number) => left + (day / horizon) * (right - left);
+    const toY = (score: number) => bottom - ((score - lo) / (hi - lo)) * (bottom - PAD_T);
+
+    const real = plotScores.map((score, index) => ({ x: toX(plotDays[index]), y: toY(score) }));
+    const last = real[real.length - 1];
+    const end = { x: toX(horizon), y: toY(plotTarget) };
+    const ticks = [0, 0.25, 0.5, 0.75, 1].map((fraction) => ({
+      x: toX(horizon * fraction),
+      label: fraction === 0 ? firstLabel : `Wk ${Math.round((horizon * fraction) / 7)}`,
+    }));
+
+    return {
+      real,
+      realPath: smoothPath(real),
+      projPath: projectionPath(last, end),
+      end,
+      next: pointOnProjection(last, end, toX(lastDay + CHECK_IN_DAYS)),
+      bottom,
+      left,
+      right,
+      ticks,
+    };
+  }, [chartW, days, firstLabel, hasScans, scores, target]);
+
+  const reveal = useSharedValue(0);
 
   useEffect(() => {
     if (reduceMotion) {
-      lineProgress.set(1);
+      reveal.set(1);
       return;
     }
+    reveal.set(0);
+    reveal.set(withTiming(1, { duration: 1100, easing: GRAPH_EASE }));
+  }, [geo, reduceMotion, reveal]);
 
-    lineProgress.set(0);
-    lineProgress.set(withTiming(1, {
-      duration: 840,
-      easing: GRAPH_EASE,
-    }));
-  }, [graph.path, lineProgress, reduceMotion]);
-
-  const animatedLineProps = useAnimatedProps(() => ({
-    strokeDashoffset: graph.length * (1 - lineProgress.get()),
+  const revealProps = useAnimatedProps(() => ({
+    width: chartW * reveal.get(),
   }));
+
+  const bubbleW = 96;
+  const bubbleLeft = clamp(geo.end.x - bubbleW + 18, 0, chartW - bubbleW);
+  const chipLabel = scores.length < 2 ? "Baseline set" : `${delta >= 0 ? "+" : ""}${delta} since ${firstLabel}`;
+  const chipDown = scores.length >= 2 && delta < 0;
 
   return (
     <View style={[styles.graphCard, { width }]}>
       <View style={styles.graphHeader}>
-        <View>
-          <Text style={styles.eyebrow}>PROGRESS OVER SCANS</Text>
-          <Text style={styles.graphTitle}>Your check-in trend</Text>
+        <View style={styles.graphHeaderCopy}>
+          <Text style={styles.eyebrow}>{hasScans ? "TODAY'S SCORE" : "YOUR TRAJECTORY"}</Text>
+          <View style={styles.scoreRow}>
+            <Text style={styles.scoreValue}>{current ?? "--"}</Text>
+            {hasScans ? (
+              <Text style={styles.scoreTarget} numberOfLines={1}>
+                {`→ ${target} by ${targetLabel}`}
+              </Text>
+            ) : null}
+          </View>
         </View>
-        <View style={styles.scoreBadge}>
-          {loading && !hasGraph ? (
-            <ActivityIndicator color={GREEN_DARK} size="small" />
-          ) : (
-            <>
-              <Text style={styles.scoreBadgeValue}>{latest ?? "--"}</Text>
-              {delta !== null ? (
-                <Text style={[styles.scoreBadgeDelta, delta < 0 && styles.scoreBadgeDeltaDown]}>
-                  {delta >= 0 ? "+" : ""}
-                  {delta.toFixed(0)}
-                </Text>
-              ) : null}
-            </>
-          )}
-        </View>
-      </View>
-
-      <View style={styles.chartWrap}>
-        <Svg width={chartWidth} height={chartHeight}>
-          <Defs>
-            <SvgGradient id="focusLine" x1="0" y1="0" x2="1" y2="0">
-              <Stop offset="0" stopColor={BLUE} />
-              <Stop offset="1" stopColor={GREEN} />
-            </SvgGradient>
-          </Defs>
-          {[0, 1, 2].map((row) => {
-            const y = 20 + row * 52;
-            return (
-              <Line
-                key={row}
-                x1={0}
-                y1={y}
-                x2={chartWidth}
-                y2={y}
-                stroke="rgba(52,54,56,0.10)"
-                strokeWidth={1}
-              />
-            );
-          })}
-          {hasLine ? (
-            <>
-              <AnimatedPath
-                d={graph.path}
-                fill="none"
-                stroke="url(#focusLine)"
-                strokeWidth={10}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeDasharray={`${graph.length} ${graph.length}`}
-                strokeDashoffset={graph.length}
-                opacity={0.12}
-                animatedProps={animatedLineProps}
-              />
-              <AnimatedPath
-                d={graph.path}
-                fill="none"
-                stroke="url(#focusLine)"
-                strokeWidth={5}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeDasharray={`${graph.length} ${graph.length}`}
-                strokeDashoffset={graph.length}
-                animatedProps={animatedLineProps}
-              />
-            </>
-          ) : null}
-          {graph.coords.map((point, index) => (
-            <GraphTrendDot
-              key={`${safePoints[index]}-${index}`}
-              point={point}
-              accent={index === safePoints.length - 1 ? GREEN : BLUE}
-              delay={hasLine ? 520 + index * 45 : index * 45}
-              isLast={index === safePoints.length - 1}
-              reduceMotion={reduceMotion}
-            />
-          ))}
-        </Svg>
-        {!hasGraph ? (
-          <View pointerEvents="none" style={styles.graphEmptyState}>
-            <Text style={styles.graphEmptyText}>{loading ? "Loading scan trend" : "No scan trend yet"}</Text>
+        {hasScans ? (
+          <View style={[styles.deltaChip, chipDown && styles.deltaChipDown]}>
+            <Text style={[styles.deltaChipText, chipDown && styles.deltaChipTextDown]}>{chipLabel}</Text>
           </View>
         ) : null}
       </View>
 
-      <View style={styles.graphFooter}>
-        <Text style={styles.graphDate}>{labelLeft}</Text>
-        <Text style={styles.graphHint}>{hasGraph ? `${safePoints.length} scans` : "No scans"}</Text>
-        <Text style={styles.graphDate}>{labelRight}</Text>
+      <View style={[styles.chartWrap, { width: chartW }]}>
+        <Svg width={chartW} height={CHART_H}>
+          <Defs>
+            <ClipPath id="trajectoryReveal">
+              <AnimatedRect x={0} y={0} height={CHART_H} animatedProps={revealProps} />
+            </ClipPath>
+          </Defs>
+          <Line x1={geo.left} y1={geo.end.y} x2={geo.right} y2={geo.end.y} stroke={AXIS} strokeWidth={1.5} strokeDasharray="2 7" />
+          <Line x1={geo.left} y1={geo.bottom} x2={geo.right} y2={geo.bottom} stroke={AXIS} strokeWidth={1} />
+          <G clipPath="url(#trajectoryReveal)" opacity={hasScans ? 1 : 0.32}>
+            <Path
+              d={geo.projPath}
+              fill="none"
+              stroke={GREEN}
+              strokeOpacity={0.55}
+              strokeWidth={stroke}
+              strokeLinecap="round"
+              strokeDasharray={[stroke * 2.4, stroke * 1.7]}
+            />
+            {geo.real.length > 1 ? (
+              <Path d={geo.realPath} fill="none" stroke={GREEN} strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round" />
+            ) : null}
+            {hasScans ? (
+              <Circle cx={geo.next.x} cy={geo.next.y} r={stroke * 0.9} fill="#FFFFFF" stroke={NEXT_MARKER} strokeWidth={stroke * 0.42} />
+            ) : null}
+            {geo.real.map((point, index) => {
+              const isLast = index === geo.real.length - 1;
+              return (
+                <Circle
+                  key={`${point.x}-${index}`}
+                  cx={point.x}
+                  cy={point.y}
+                  r={isLast ? stroke * 1.26 : stroke * 0.8}
+                  fill="#FFFFFF"
+                  stroke={GREEN}
+                  strokeWidth={isLast ? stroke * 0.46 : stroke * 0.38}
+                />
+              );
+            })}
+            <Circle cx={geo.end.x} cy={geo.end.y} r={stroke * 1.26} fill={GREEN} stroke="#FFFFFF" strokeWidth={stroke * 0.4} />
+          </G>
+        </Svg>
+
+        {hasScans ? (
+          <Animated.View
+            entering={reduceMotion ? undefined : FadeIn.duration(260).delay(950)}
+            pointerEvents="none"
+            style={[styles.bubble, { width: bubbleW, left: bubbleLeft, top: geo.end.y - 50 }]}
+          >
+            <Text style={styles.bubbleText}>{`Target ${target}`}</Text>
+            <View style={[styles.bubbleTail, { left: clamp(geo.end.x - bubbleLeft - 6, 10, bubbleW - 22) }]} />
+          </Animated.View>
+        ) : null}
+
+        {!hasScans ? (
+          <View style={styles.graphEmptyState}>
+            {loading ? (
+              <ActivityIndicator color={GREEN_DARK} />
+            ) : (
+              <>
+                <Text style={styles.graphEmptyTitle}>See where your routine takes you</Text>
+                <Text style={styles.graphEmptyBody}>Your first scan sets the baseline for your projection.</Text>
+                <Pressable
+                  onPress={onScan}
+                  accessibilityRole="button"
+                  style={({ pressed }) => [styles.primaryButton, pressed && styles.actionPressed]}
+                >
+                  <Camera size={17} color="#FFFFFF" strokeWidth={2.6} />
+                  <Text style={styles.primaryButtonText}>Take first scan</Text>
+                </Pressable>
+              </>
+            )}
+          </View>
+        ) : null}
+
+        <View style={styles.tickRow}>
+          {geo.ticks.map((tick, index) => (
+            <Text
+              key={tick.label + index}
+              style={[
+                styles.tickText,
+                {
+                  left: clamp(tick.x - 28, 0, chartW - 56),
+                  textAlign: index === 0 ? "left" : index === geo.ticks.length - 1 ? "right" : "center",
+                },
+              ]}
+            >
+              {tick.label}
+            </Text>
+          ))}
+        </View>
       </View>
+
+      {hasScans ? (
+        <View style={styles.legendRow}>
+          <View style={styles.legendItem}>
+            <View style={styles.legendSolid} />
+            <Text style={styles.legendText}>Your scans</Text>
+          </View>
+          <View style={styles.legendItem}>
+            <View style={styles.legendDashed}>
+              <View style={styles.legendDash} />
+              <View style={styles.legendDash} />
+            </View>
+            <Text style={styles.legendText}>Projected</Text>
+          </View>
+          <View style={styles.legendItem}>
+            <View style={styles.legendRing} />
+            <Text style={styles.legendText}>Next check-in</Text>
+          </View>
+        </View>
+      ) : null}
     </View>
   );
 }
+
+function CheckInCard({ daysLeft, dateLabel, onScan }: { daysLeft: number; dateLabel: string; onScan: () => void }) {
+  const due = daysLeft <= 0;
+  const elapsed = clamp(CHECK_IN_DAYS - daysLeft, 0, CHECK_IN_DAYS);
+
+  return (
+    <View style={[styles.checkInCard, due && styles.checkInCardDue]}>
+      <View style={styles.checkInTop}>
+        <View style={[styles.checkInIcon, due && styles.checkInIconDue]}>
+          <CalendarClock size={21} color={due ? "#FFFFFF" : GREEN_DARK} strokeWidth={2.6} />
+        </View>
+        <View style={styles.checkInCopy}>
+          <Text style={styles.checkInTitle}>
+            {due ? "Check-in due" : `Next check-in in ${daysLeft} ${daysLeft === 1 ? "day" : "days"}`}
+          </Text>
+          <Text style={styles.checkInBody}>
+            {due ? "Same light, same angle as your last scan." : `${dateLabel} · same light, same angle`}
+          </Text>
+        </View>
+      </View>
+      {due ? (
+        <Pressable
+          onPress={onScan}
+          accessibilityRole="button"
+          style={({ pressed }) => [styles.primaryButton, styles.checkInButton, pressed && styles.actionPressed]}
+        >
+          <Camera size={17} color="#FFFFFF" strokeWidth={2.6} />
+          <Text style={styles.primaryButtonText}>Scan now</Text>
+        </Pressable>
+      ) : (
+        <View style={styles.dayTrack}>
+          {Array.from({ length: CHECK_IN_DAYS }, (_, index) => (
+            <View key={index} style={[styles.daySegment, index < elapsed && styles.daySegmentDone]} />
+          ))}
+        </View>
+      )}
+    </View>
+  );
+}
+
+function scoreColor(score: number) {
+  if (score < 45) return PROBLEM_RED;
+  if (score < 65) return ORANGE;
+  return GREEN_DARK;
+}
+
+function FocusRow({
+  iconId,
+  tone,
+  title,
+  children,
+  trailing,
+  onPress,
+}: {
+  iconId: string;
+  tone: "focus" | "problem";
+  title: string;
+  children: React.ReactNode;
+  trailing: React.ReactNode;
+  onPress: () => void;
+}) {
+  const icon = getAdvancedAnalysisIcon(iconId);
+
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={title}
+      style={({ pressed }) => [styles.focusRow, pressed && styles.pressed]}
+    >
+      <View style={[styles.focusRowIcon, { backgroundColor: tone === "problem" ? PROBLEM_IMAGE_BG : FOCUS_IMAGE_BG }]}>
+        <Image
+          source={icon ?? FALLBACK_ICON}
+          style={[styles.focusIcon, icon ? getAdvancedAnalysisIconStyle(iconId) : null]}
+          resizeMode="contain"
+        />
+      </View>
+      <View style={styles.focusRowCopy}>
+        <Text style={styles.focusRowTitle} numberOfLines={1}>
+          {title}
+        </Text>
+        {children}
+      </View>
+      {trailing}
+    </Pressable>
+  );
+}
+
 function getSheetMetricIconId(item: SheetMetric) {
   if ("iconId" in item) return item.iconId;
   return FOCUS_ICON_MAP[item.id]?.iconId ?? "cheekbones.bone_structure";
@@ -619,6 +799,8 @@ export function NextFocusCheckInRoute() {
   const { width } = useWindowDimensions();
   const [focusVisible, setFocusVisible] = useState(false);
   const [problemsVisible, setProblemsVisible] = useState(false);
+  const [tab, setTab] = useState<FocusTab>("wins");
+  const [now] = useState(() => Date.now());
 
   const data = useInsights((s) => s.data);
   const loading = useInsights((s) => s.loading);
@@ -652,6 +834,36 @@ export function NextFocusCheckInRoute() {
   );
   const problemMetrics = useMemo(() => buildProblemMetrics(advancedForBlueprint), [advancedForBlueprint]);
 
+  const scores = useMemo(() => (data?.graph_points ?? []).filter(Number.isFinite).slice(-12), [data?.graph_points]);
+  const scoreDates = useMemo(() => (data?.graph_dates ?? []).slice(-scores.length), [data?.graph_dates, scores.length]);
+  const days = useMemo(() => toDayOffsets(scoreDates, scores.length), [scoreDates, scores.length]);
+  const hasScans = scores.length > 0;
+
+  const quickWins = useMemo(
+    () => recommendations.slice(0, QUICK_WIN_COUNT).map((item) => ({ item, gain: estimateGain(item) })),
+    [recommendations],
+  );
+  const totalGain = Math.min(MAX_TARGET_GAIN, quickWins.reduce((sum, win) => sum + win.gain, 0));
+  const current = hasScans ? Math.round(scores[scores.length - 1]) : 0;
+  const target = Math.min(100, current + totalGain);
+
+  const lastScanTime = parseTime(scoreDates[scoreDates.length - 1]) ?? parseTime(data?.history?.[0]?.created_at) ?? now;
+  const firstLabel = formatShortDate(scoreDates[0], "Start");
+  const targetLabel = formatDay(lastScanTime + PROJECTION_DAYS * DAY_MS);
+  const nextCheckIn = lastScanTime + CHECK_IN_DAYS * DAY_MS;
+  const daysLeft = Math.ceil((nextCheckIn - now) / DAY_MS);
+
+  const subtitle = !hasScans
+    ? "Take your first scan to set a baseline."
+    : scores.length === 1
+      ? "Baseline set. Work your focus areas and check in weekly."
+      : `${scores.length} scans in. Here's where your routine is heading.`;
+
+  const goToScan = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    router.push("/(tabs)/take-picture");
+  }, [router]);
+
   const openFocus = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setFocusVisible(true);
@@ -660,6 +872,11 @@ export function NextFocusCheckInRoute() {
   const openProblems = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setProblemsVisible(true);
+  }, []);
+
+  const selectTab = useCallback((next: FocusTab) => {
+    Haptics.selectionAsync();
+    setTab(next);
   }, []);
 
   return (
@@ -684,64 +901,112 @@ export function NextFocusCheckInRoute() {
             >
               <ArrowLeft size={23} color={INK} strokeWidth={3} />
             </Pressable>
-            <View style={styles.statusPill}>
-              {loading ? <ActivityIndicator color={GREEN_DARK} size="small" /> : <BarChart3 size={17} color={GREEN_DARK} strokeWidth={3} />}
-              <Text style={styles.statusText}>{data?.scan_count ?? 0} scans</Text>
-            </View>
           </View>
 
-          <Text style={styles.heroTitle}>Check-in focus</Text>
-          <Text style={styles.heroSubtitle}>Review your scan trend, then choose what to inspect first.</Text>
+          <Text style={styles.heroTitle}>Your progress</Text>
+          <Text style={styles.heroSubtitle}>{subtitle}</Text>
 
-          <ProgressGraphCard
-            points={data?.graph_points ?? []}
-            dates={data?.graph_dates ?? []}
+          <TrajectoryCard
+            scores={scores}
+            days={days}
+            target={target}
+            targetLabel={targetLabel}
+            firstLabel={firstLabel}
             width={contentWidth}
-          loading={loading}
+            loading={loading}
+            onScan={goToScan}
           />
 
-          <View style={[styles.summaryCard, { width: contentWidth }]}>
-            <View style={styles.summaryIcon}>
-              <Target size={23} color={GREEN_DARK} strokeWidth={3} />
+          {hasScans ? <CheckInCard daysLeft={daysLeft} dateLabel={formatDay(nextCheckIn)} onScan={goToScan} /> : null}
+
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Focus this week</Text>
+            {hasScans ? (
+              <View style={styles.segment}>
+                {(["wins", "weak"] as const).map((key) => (
+                  <Pressable
+                    key={key}
+                    onPress={() => selectTab(key)}
+                    accessibilityRole="tab"
+                    accessibilityState={{ selected: tab === key }}
+                    style={[styles.segmentItem, tab === key && styles.segmentItemActive]}
+                  >
+                    <Text style={[styles.segmentText, tab === key && styles.segmentTextActive]}>
+                      {key === "wins" ? "Quick wins" : "Weak points"}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            ) : null}
+          </View>
+
+          {!hasScans ? (
+            <View style={styles.lockedCard}>
+              <Lock size={20} color={MUTED} strokeWidth={2.6} />
+              <Text style={styles.lockedText}>Your focus areas unlock after your first scan.</Text>
             </View>
-            <View style={styles.summaryCopy}>
-              <Text style={styles.summaryTitle}>Your check-in guide</Text>
-              <Text style={styles.summaryBody}>
-                Your scan trend and blueprint traits are organized into the areas to inspect first.
+          ) : tab === "wins" ? (
+            <View style={styles.focusGroup}>
+              {quickWins.map(({ item, gain }) => (
+                <FocusRow
+                  key={item.id}
+                  iconId={getSheetMetricIconId(item)}
+                  tone="focus"
+                  title={item.title}
+                  onPress={openFocus}
+                  trailing={
+                    <View style={styles.gainPill}>
+                      <Text style={styles.gainText}>+{gain}</Text>
+                    </View>
+                  }
+                >
+                  <Text style={styles.focusRowSub} numberOfLines={1}>
+                    {item.evidence}
+                  </Text>
+                </FocusRow>
+              ))}
+              <Text style={styles.focusCaption}>
+                {`These add up to about +${totalGain}. That's the target line on your graph.`}
               </Text>
+              <Pressable onPress={openFocus} accessibilityRole="button" style={({ pressed }) => [styles.seeAll, pressed && styles.pressed]}>
+                <Text style={styles.seeAllText}>See all {recommendations.length}</Text>
+                <ChevronRight size={16} color={GREEN_DARK} strokeWidth={3} />
+              </Pressable>
             </View>
-          </View>
-
-          <View style={styles.actionGrid}>
-            <Pressable
-              onPress={openFocus}
-              accessibilityRole="button"
-              accessibilityLabel="Open next focus metrics"
-              style={({ pressed }) => [styles.actionButton, styles.actionButtonFocus, pressed && styles.actionPressed]}
-            >
-              <Target size={24} color={GREEN_DARK} strokeWidth={3} />
-              <Text style={styles.actionTextFocus}>NEXT FOCUS</Text>
-              <Text style={styles.actionSubFocus}>{recommendations.length || 6} metrics</Text>
-            </Pressable>
-
-            <Pressable
-              onPress={openProblems}
-              accessibilityRole="button"
-              accessibilityLabel="Open main problems"
-              style={({ pressed }) => [styles.actionButton, styles.actionButtonProblems, pressed && styles.actionPressed]}
-            >
-              <TriangleAlert size={24} color={ORANGE} strokeWidth={3} />
-              <Text style={styles.actionTextDark}>MAIN PROBLEMS</Text>
-              <Text style={styles.actionSubDark}>Blueprint traits</Text>
-            </Pressable>
-          </View>
+          ) : problemMetrics.length ? (
+            <View style={styles.focusGroup}>
+              {problemMetrics.slice(0, QUICK_WIN_COUNT).map((item) => (
+                <FocusRow
+                  key={item.id}
+                  iconId={item.iconId}
+                  tone="problem"
+                  title={item.title}
+                  onPress={openProblems}
+                  trailing={<Text style={[styles.weakScore, { color: scoreColor(item.score) }]}>{item.score}</Text>}
+                >
+                  <View style={styles.weakTrack}>
+                    <View style={[styles.weakFill, { width: `${clamp(item.score, 4, 100)}%`, backgroundColor: scoreColor(item.score) }]} />
+                  </View>
+                </FocusRow>
+              ))}
+              <Pressable onPress={openProblems} accessibilityRole="button" style={({ pressed }) => [styles.seeAll, pressed && styles.pressed]}>
+                <Text style={styles.seeAllText}>See all {problemMetrics.length}</Text>
+                <ChevronRight size={16} color={GREEN_DARK} strokeWidth={3} />
+              </Pressable>
+            </View>
+          ) : (
+            <View style={styles.lockedCard}>
+              <Lock size={20} color={MUTED} strokeWidth={2.6} />
+              <Text style={styles.lockedText}>Run an advanced analysis to see your weak traits.</Text>
+            </View>
+          )}
         </View>
       </ScrollView>
 
       <MetricCardsSheet
         visible={focusVisible}
-        title="Next Focus"
-        subtitle="The 5-6 highest-leverage metrics from your latest analysis."
+        title="Quick wins"
+        subtitle="The highest-leverage metrics from your latest analysis."
         items={recommendations}
         tone="focus"
         emptyTitle="No focus metrics yet"
@@ -751,7 +1016,7 @@ export function NextFocusCheckInRoute() {
 
       <MetricCardsSheet
         visible={problemsVisible}
-        title="Main Problems"
+        title="Weak points"
         subtitle="The blueprint traits currently pulling your scan down most."
         items={problemMetrics}
         tone="problem"
@@ -795,26 +1060,8 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.76,
   },
-  statusPill: {
-    minWidth: 88,
-    height: 40,
-    borderRadius: 20,
-    paddingHorizontal: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 7,
-    backgroundColor: GROUPED_SURFACE,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: CARD_BORDER,
-  },
-  statusText: {
-    fontFamily: FONT_BOLD,
-    fontSize: 14,
-    color: INK,
-  },
   heroTitle: {
-    marginTop: -2,
+    marginTop: 4,
     fontFamily: FONT_BOLD,
     fontSize: 31,
     lineHeight: 35,
@@ -822,20 +1069,21 @@ const styles = StyleSheet.create({
   },
   heroSubtitle: {
     marginTop: -8,
-    fontFamily: FONT_BOLD,
-    fontSize: 14,
-    lineHeight: 19,
-    color: INK,
+    marginBottom: 2,
+    fontFamily: FONT,
+    fontSize: 15,
+    lineHeight: 20,
+    color: MUTED,
   },
   graphCard: {
-    minHeight: 274,
-    borderRadius: 22,
+    borderRadius: 24,
     borderCurve: "continuous",
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: CARD_BORDER,
     backgroundColor: "#FFFFFF",
     paddingHorizontal: 18,
-    paddingVertical: 16,
+    paddingTop: 16,
+    paddingBottom: 14,
     shadowColor: "#000000",
     shadowOpacity: 0.07,
     shadowRadius: 18,
@@ -846,7 +1094,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "flex-start",
     justifyContent: "space-between",
-    gap: 12,
+    gap: 10,
+  },
+  graphHeaderCopy: {
+    flex: 1,
+    minWidth: 0,
   },
   eyebrow: {
     fontFamily: FONT_BOLD,
@@ -855,157 +1107,380 @@ const styles = StyleSheet.create({
     color: "#9D9EA2",
     letterSpacing: 1.6,
   },
-  graphTitle: {
-    marginTop: 2,
-    fontFamily: FONT_BOLD,
-    fontSize: 22,
-    lineHeight: 27,
-    color: INK,
+  scoreRow: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    gap: 8,
   },
-  scoreBadge: {
-    minWidth: 58,
-    minHeight: 52,
-    borderRadius: 17,
-    borderCurve: "continuous",
-    alignItems: "center",
-    justifyContent: "center",
+  scoreValue: {
+    fontFamily: FONT_BOLD,
+    fontSize: 40,
+    lineHeight: 46,
+    color: INK,
+    fontVariant: ["tabular-nums"],
+  },
+  scoreTarget: {
+    flexShrink: 1,
+    fontFamily: FONT_BOLD,
+    fontSize: 14,
+    color: GREEN_DARK,
+  },
+  deltaChip: {
+    marginTop: 2,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
     backgroundColor: "#EDF6E4",
   },
-  scoreBadgeValue: {
+  deltaChipDown: {
+    backgroundColor: "#FFF0E0",
+  },
+  deltaChipText: {
     fontFamily: FONT_BOLD,
-    fontSize: 22,
-    lineHeight: 24,
+    fontSize: 12,
     color: GREEN_DARK,
   },
-  scoreBadgeDelta: {
-    fontFamily: FONT_BOLD,
-    fontSize: 11,
-    color: GREEN_DARK,
-  },
-  scoreBadgeDeltaDown: {
+  deltaChipTextDown: {
     color: ORANGE,
   },
   chartWrap: {
-    marginTop: 16,
-    alignItems: "center",
-    justifyContent: "center",
+    marginTop: 6,
     position: "relative",
   },
-  graphEmptyState: {
-    ...StyleSheet.absoluteFill,
+  bubble: {
+    position: "absolute",
+    height: 34,
+    borderRadius: 12,
+    borderCurve: "continuous",
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: GREEN_DARK,
   },
-  graphEmptyText: {
+  bubbleText: {
     fontFamily: FONT_BOLD,
+    fontSize: 14,
+    color: "#FFFFFF",
+  },
+  bubbleTail: {
+    position: "absolute",
+    bottom: -5,
+    width: 12,
+    height: 12,
+    borderRadius: 2,
+    backgroundColor: GREEN_DARK,
+    transform: [{ rotate: "45deg" }],
+  },
+  graphEmptyState: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 0,
+    height: CHART_H,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 18,
+  },
+  graphEmptyTitle: {
+    fontFamily: FONT_BOLD,
+    fontSize: 18,
+    lineHeight: 22,
+    color: INK,
+    textAlign: "center",
+  },
+  graphEmptyBody: {
+    marginTop: 4,
+    marginBottom: 14,
+    fontFamily: FONT,
     fontSize: 13,
-    lineHeight: 17,
+    lineHeight: 18,
     color: MUTED,
     textAlign: "center",
   },
-  graphFooter: {
-    marginTop: 8,
+  tickRow: {
+    height: 18,
+    marginTop: 4,
+  },
+  tickText: {
+    position: "absolute",
+    width: 56,
+    fontFamily: FONT_BOLD,
+    fontSize: 11,
+    color: MUTED,
+  },
+  legendRow: {
+    marginTop: 10,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 14,
+  },
+  legendItem: {
     flexDirection: "row",
     alignItems: "center",
+    gap: 6,
+  },
+  legendSolid: {
+    width: 16,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: GREEN,
+  },
+  legendDashed: {
+    width: 16,
+    flexDirection: "row",
     justifyContent: "space-between",
   },
-  graphDate: {
+  legendDash: {
+    width: 6,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: GREEN,
+    opacity: 0.55,
+  },
+  legendRing: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    borderWidth: 2,
+    borderColor: NEXT_MARKER,
+  },
+  legendText: {
     fontFamily: FONT_BOLD,
-    fontSize: 12,
+    fontSize: 11,
     color: MUTED,
   },
-  graphHint: {
-    fontFamily: FONT_BOLD,
-    fontSize: 12,
-    color: BLUE,
-  },
-  summaryCard: {
-    borderRadius: 18,
-    borderCurve: "continuous",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: CARD_BORDER,
-    backgroundColor: GROUPED_SURFACE,
-    padding: 14,
+  primaryButton: {
+    height: 44,
+    paddingHorizontal: 20,
+    borderRadius: 22,
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
-  },
-  summaryIcon: {
-    width: 46,
-    height: 46,
-    borderRadius: 15,
-    borderCurve: "continuous",
-    alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#EAF4DF",
+    gap: 8,
+    backgroundColor: GREEN_DARK,
   },
-  summaryCopy: {
-    flex: 1,
-    minWidth: 0,
-  },
-  summaryTitle: {
+  primaryButtonText: {
     fontFamily: FONT_BOLD,
     fontSize: 15,
-    lineHeight: 19,
-    color: INK,
-  },
-  summaryBody: {
-    marginTop: 2,
-    fontFamily: FONT,
-    fontSize: 12,
-    lineHeight: 17,
-    color: MUTED,
-  },
-  actionGrid: {
-    flexDirection: "row",
-    gap: 12,
-    marginTop: 2,
-  },
-  actionButton: {
-    flex: 1,
-    minHeight: 112,
-    borderRadius: 18,
-    borderCurve: "continuous",
-    paddingHorizontal: 12,
-    paddingVertical: 15,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 7,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: CARD_BORDER,
-  },
-  actionButtonFocus: {
-    backgroundColor: "#EDF6E4",
-  },
-  actionButtonProblems: {
-    backgroundColor: GROUPED_SURFACE,
+    color: "#FFFFFF",
   },
   actionPressed: {
     transform: [{ scale: 0.98 }],
     opacity: 0.82,
   },
-  actionTextFocus: {
-    fontFamily: FONT_BOLD,
-    fontSize: 15,
-    lineHeight: 18,
-    color: INK,
-    textAlign: "center",
+  checkInCard: {
+    borderRadius: 20,
+    borderCurve: "continuous",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: CARD_BORDER,
+    backgroundColor: GROUPED_SURFACE,
+    padding: 14,
+    gap: 12,
   },
-  actionSubFocus: {
+  checkInCardDue: {
+    backgroundColor: "#EDF6E4",
+  },
+  checkInTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  checkInIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    borderCurve: "continuous",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#EAF4DF",
+  },
+  checkInIconDue: {
+    backgroundColor: GREEN_DARK,
+  },
+  checkInCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  checkInTitle: {
+    fontFamily: FONT_BOLD,
+    fontSize: 16,
+    lineHeight: 20,
+    color: INK,
+  },
+  checkInBody: {
+    marginTop: 2,
+    fontFamily: FONT,
+    fontSize: 13,
+    lineHeight: 17,
+    color: MUTED,
+  },
+  checkInButton: {
+    alignSelf: "stretch",
+  },
+  dayTrack: {
+    flexDirection: "row",
+    gap: 5,
+  },
+  daySegment: {
+    flex: 1,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "rgba(23,21,18,0.08)",
+  },
+  daySegmentDone: {
+    backgroundColor: GREEN,
+  },
+  sectionHeader: {
+    marginTop: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  sectionTitle: {
+    fontFamily: FONT_BOLD,
+    fontSize: 20,
+    lineHeight: 24,
+    color: INK,
+  },
+  segment: {
+    flexDirection: "row",
+    padding: 3,
+    borderRadius: 999,
+    backgroundColor: GROUPED_SURFACE,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: CARD_BORDER,
+  },
+  segmentItem: {
+    paddingHorizontal: 11,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+  segmentItemActive: {
+    backgroundColor: "#FFFFFF",
+    shadowColor: "#000000",
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  segmentText: {
     fontFamily: FONT_BOLD,
     fontSize: 12,
+    color: MUTED,
+  },
+  segmentTextActive: {
+    color: INK,
+  },
+  focusGroup: {
+    gap: 8,
+  },
+  focusRow: {
+    minHeight: 68,
+    borderRadius: 18,
+    borderCurve: "continuous",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: CARD_BORDER,
+    backgroundColor: GROUPED_SURFACE,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  focusRowIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 14,
+    borderCurve: "continuous",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  focusRowCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 5,
+  },
+  focusRowTitle: {
+    fontFamily: FONT_BOLD,
+    fontSize: 16,
+    lineHeight: 20,
+    color: INK,
+  },
+  focusRowSub: {
+    fontFamily: FONT,
+    fontSize: 12,
+    lineHeight: 16,
+    color: MUTED,
+  },
+  gainPill: {
+    minWidth: 44,
+    height: 32,
+    paddingHorizontal: 8,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#EDF6E4",
+  },
+  gainText: {
+    fontFamily: FONT_BOLD,
+    fontSize: 15,
     color: GREEN_DARK,
   },
-  actionTextDark: {
-    fontFamily: FONT_BOLD,
-    fontSize: 15,
-    lineHeight: 18,
-    color: INK,
-    textAlign: "center",
+  weakTrack: {
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "rgba(23,21,18,0.08)",
+    overflow: "hidden",
   },
-  actionSubDark: {
+  weakFill: {
+    height: 6,
+    borderRadius: 3,
+  },
+  weakScore: {
+    minWidth: 32,
     fontFamily: FONT_BOLD,
+    fontSize: 18,
+    textAlign: "right",
+    fontVariant: ["tabular-nums"],
+  },
+  focusCaption: {
+    marginTop: 2,
+    paddingHorizontal: 4,
+    fontFamily: FONT,
     fontSize: 12,
+    lineHeight: 17,
+    color: MUTED,
+  },
+  seeAll: {
+    alignSelf: "center",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  seeAllText: {
+    fontFamily: FONT_BOLD,
+    fontSize: 14,
+    color: GREEN_DARK,
+  },
+  lockedCard: {
+    borderRadius: 18,
+    borderCurve: "continuous",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: CARD_BORDER,
+    backgroundColor: GROUPED_SURFACE,
+    padding: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  lockedText: {
+    flex: 1,
+    fontFamily: FONT,
+    fontSize: 14,
+    lineHeight: 19,
     color: MUTED,
   },
   sheetRoot: {

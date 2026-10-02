@@ -1,5 +1,12 @@
 // app/(onboarding)/goals.tsx
 // Multi-select goals - 2x3 grid of image cards. Each card maps to a face area.
+//
+// The grid shape is kept deliberately: the reference flow has no grid pattern,
+// but its multi-select row would drop the face-area imagery, which is doing
+// real work here. What is taken from the reference is its card treatment —
+// radius 24, no shadow, no border until selected, 8pt gutters, and a 16pt
+// indicator — plus the footer label that changes with the empty state instead
+// of sitting there disabled.
 import React, { useCallback, useEffect, useState } from "react";
 import {
   Image,
@@ -21,8 +28,8 @@ import Animated, {
 } from "react-native-reanimated";
 
 import T from "@/components/ui/T";
-import { COLORS, RADII, SP } from "@/lib/tokens";
-import { hapticSelection } from "@/lib/haptics";
+import { SP } from "@/lib/tokens";
+import { hapticRigid } from "@/lib/haptics";
 import { ms, sh, sw } from "@/lib/responsive";
 import { useOnboarding } from "@/store/onboarding";
 import OrangeOnboardingLayout, {
@@ -32,14 +39,8 @@ import OrangeOnboardingLayout, {
 const FONT_SEMIBOLD = ORANGE_ONBOARDING.fontSemibold;
 const ORANGE = ORANGE_ONBOARDING.orange;
 const ORANGE_SOFT = ORANGE_ONBOARDING.orangeSoft;
-const GAP = sw(12);
-const SOFT_SHADOW = {
-  shadowColor: "#000000",
-  shadowOpacity: 0.06,
-  shadowRadius: ms(14),
-  shadowOffset: { width: 0, height: ms(4) },
-  elevation: 2,
-} as const;
+const GAP = sw(8);
+const CARD_FILL = "#FDFDFD";
 
 type GoalCard = {
   key: string;
@@ -62,7 +63,7 @@ export default function GoalsScreen() {
   const [selected, setSelected] = useState<string[]>(savedGoals ?? []);
 
   const toggle = useCallback((key: string) => {
-    hapticSelection();
+    hapticRigid();
     setSelected((prev) =>
       prev.includes(key) ? prev.filter((item) => item !== key) : [...prev, key],
     );
@@ -79,7 +80,7 @@ export default function GoalsScreen() {
       presentation="sequence"
       stepKey="goals"
       title="What do you want to improve?"
-      subtitle="Select all that apply - we'll personalize your plan around them"
+      primaryLabel={selected.length === 0 ? "Pick at least one" : "Continue"}
       onPrimary={handleNext}
       primaryDisabled={selected.length === 0}
       sheetContentStyle={styles.screenContent}
@@ -152,8 +153,8 @@ function GoalCardView({
   }, [active, isActive]);
 
   const containerStyle = useAnimatedStyle(() => ({
-    backgroundColor: interpolateColor(active.value, [0, 1], [COLORS.lightCard, ORANGE_SOFT]),
-    borderColor: interpolateColor(active.value, [0, 1], [COLORS.lightHairline, ORANGE]),
+    backgroundColor: interpolateColor(active.value, [0, 1], [CARD_FILL, ORANGE_SOFT]),
+    borderColor: interpolateColor(active.value, [0, 1], [CARD_FILL, ORANGE]),
     transform: [{ scale: 1 - press.value * 0.025 }, { translateY: press.value * 1.5 }],
   }));
 
@@ -179,7 +180,6 @@ function GoalCardView({
         style={[
           styles.card,
           { width, height: width * 1.05 },
-          !isActive && SOFT_SHADOW,
           containerStyle,
         ]}
       >
@@ -192,14 +192,14 @@ function GoalCardView({
         </T>
 
         <Animated.View style={[styles.check, checkStyle]}>
-          <Check size={ms(13)} color="#FFFFFF" strokeWidth={3.5} />
+          <Check size={ms(11)} color="#FFFFFF" strokeWidth={3.4} />
         </Animated.View>
       </Animated.View>
     </Pressable>
   );
 }
 
-const CHECK_SIZE = ms(22);
+const CHECK_SIZE = ms(16);
 
 const styles = StyleSheet.create({
   screenContent: {
@@ -215,8 +215,9 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
   },
   card: {
-    borderRadius: RADII.md,
-    borderWidth: 1.5,
+    borderRadius: ms(24),
+    // Always 2, colour-only on selection, so picking a card never reflows it.
+    borderWidth: 2,
     paddingTop: SP[2],
     paddingBottom: SP[2],
     paddingHorizontal: SP[3],

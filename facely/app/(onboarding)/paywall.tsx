@@ -17,7 +17,14 @@ import {
   TextStyle,
   ViewStyle,
 } from "react-native";
-import * as Haptics from "expo-haptics";
+import {
+  hapticError,
+  hapticLight,
+  hapticMedium,
+  hapticSelection,
+  hapticSuccess,
+  hapticThud,
+} from "@/lib/haptics";
 import Animated, {
   cancelAnimation,
   Easing,
@@ -70,7 +77,7 @@ const PARROT_GREEN_TEXT = "#348000";
 
 const PAYWALL_BENEFITS = [
   "See your complete facial scores and priority fixes",
-  "Preview your potential face with personalized guidance",
+  "Get your potential face, delivered to your Progress tab",
   "Follow a daily routine and track measurable progress",
 ] as const;
 
@@ -627,9 +634,7 @@ const PaywallScreen: React.FC = () => {
   }, []); // Only run once on mount
 
   const onSelectPlan = (plan: PlanKey) => {
-    if (Platform.OS === "ios") {
-      void Haptics.selectionAsync();
-    }
+    hapticMedium();
     if (plan === selected) return;
     setSelected(plan);
   };
@@ -733,6 +738,8 @@ const PaywallScreen: React.FC = () => {
         return;
       }
 
+      hapticSuccess();
+
       // Complete onboarding BEFORE updating subscription state.
       // This prevents a race where the RevenueCat listener fires and
       // IndexGate sees hasAccess=true but onboarding isn't marked complete.
@@ -745,11 +752,12 @@ const PaywallScreen: React.FC = () => {
       const hasEntitlement = await checkSubscriptionStatus();
       setRevenueCatEntitlement(hasEntitlement);
 
-      // Kick the post-purchase hero workflow. It scores the saved onboarding
-      // scan, enqueues the durable potential-face generation, then reveals it.
+      // Kick the post-purchase workflow: score the saved onboarding scan, run
+      // the advanced analysis, and start the potential face in the background.
       const frontal = useOnboarding.getState().scanFrontalUri;
       const side = useOnboarding.getState().scanSideUri;
       if (frontal && side) {
+        useOnboarding.getState().markPostPurchasePending();
         router.replace({ pathname: "/loading", params: { mode: "onboardingPotentialFace" } });
       } else {
         router.replace("/(tabs)/program");
@@ -757,6 +765,7 @@ const PaywallScreen: React.FC = () => {
     } catch (error: any) {
       logger.error("[Paywall] Purchase error:", error);
       if (isMountedRef.current) {
+        hapticError();
         Alert.alert(
           "Purchase Failed",
           error.message || "An error occurred while processing your purchase. Please try again."
@@ -780,6 +789,7 @@ const PaywallScreen: React.FC = () => {
       const hasEntitlement = await checkSubscriptionStatus();
 
       if (hasEntitlement) {
+        hapticSuccess();
         await completeOnboarding();
         ensureCode().catch(() => {});
         setRevenueCatEntitlement(hasEntitlement);
@@ -793,6 +803,7 @@ const PaywallScreen: React.FC = () => {
     } catch (error: any) {
       logger.error("[Paywall] Restore error:", error);
       if (isMountedRef.current) {
+        hapticError();
         Alert.alert(
           "Restore Failed",
           error.message || "Failed to restore purchases. Please try again."
@@ -886,9 +897,7 @@ const PaywallScreen: React.FC = () => {
               <View style={[styles.ctaDepth, isLoading && styles.ctaDepthDisabled]}>
                 <Pressable
                   onPress={() => {
-                    if (Platform.OS === "ios") {
-                      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    }
+                    hapticThud();
                     void onContinue();
                   }}
                   disabled={isLoading}
@@ -922,7 +931,7 @@ const PaywallScreen: React.FC = () => {
                 <Pressable
                   style={({ pressed }) => [styles.footerAction, pressed && styles.footerActionPressed]}
                   onPress={() => {
-                    if (Platform.OS === "ios") void Haptics.selectionAsync();
+                    hapticSelection();
                     void WebBrowser.openBrowserAsync("https://third-tamarillo-756.notion.site/Privacy-Policy-30266c2b427680a29ba5e586b5913999");
                   }}
                   accessibilityRole="link"
@@ -936,7 +945,7 @@ const PaywallScreen: React.FC = () => {
                     pressed && styles.footerActionPressed,
                   ]}
                   onPress={() => {
-                    if (Platform.OS === "ios") void Haptics.selectionAsync();
+                    hapticSelection();
                     setShowRecoveryInput(!showRecoveryInput);
                   }}
                   accessibilityRole="button"
@@ -953,9 +962,7 @@ const PaywallScreen: React.FC = () => {
                     isLoading && styles.footerActionDisabled,
                   ]}
                   onPress={() => {
-                    if (Platform.OS === "ios") {
-                      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    }
+                    hapticLight();
                     void onRestorePurchases();
                   }}
                   disabled={isLoading}

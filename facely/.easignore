@@ -25,3 +25,8 @@ android/app/build/
 *.ipa
 *.apk
 coverage/
+
+# Never upload local env files to build workers — EAS environment
+# variables (eas env:list --environment production) are the source of truth.
+.env
+.env.*

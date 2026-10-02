@@ -1,0 +1,236 @@
+﻿[
+    {
+        "id":  "male_face",
+        "size":  40,
+        "transparentPixels":  964,
+        "opaquePixels":  102
+    },
+    {
+        "id":  "male_face",
+        "size":  80,
+        "transparentPixels":  3979,
+        "opaquePixels":  180
+    },
+    {
+        "id":  "male_face",
+        "size":  120,
+        "transparentPixels":  9020,
+        "opaquePixels":  265
+    },
+    {
+        "id":  "female_face",
+        "size":  40,
+        "transparentPixels":  784,
+        "opaquePixels":  107
+    },
+    {
+        "id":  "female_face",
+        "size":  80,
+        "transparentPixels":  3267,
+        "opaquePixels":  210
+    },
+    {
+        "id":  "female_face",
+        "size":  120,
+        "transparentPixels":  7462,
+        "opaquePixels":  331
+    },
+    {
+        "id":  "other_sparkles",
+        "size":  40,
+        "transparentPixels":  1220,
+        "opaquePixels":  113
+    },
+    {
+        "id":  "other_sparkles",
+        "size":  80,
+        "transparentPixels":  5060,
+        "opaquePixels":  263
+    },
+    {
+        "id":  "other_sparkles",
+        "size":  120,
+        "transparentPixels":  11511,
+        "opaquePixels":  400
+    },
+    {
+        "id":  "prefer_not_to_say",
+        "size":  40,
+        "transparentPixels":  968,
+        "opaquePixels":  160
+    },
+    {
+        "id":  "prefer_not_to_say",
+        "size":  80,
+        "transparentPixels":  4049,
+        "opaquePixels":  285
+    },
+    {
+        "id":  "prefer_not_to_say",
+        "size":  120,
+        "transparentPixels":  9231,
+        "opaquePixels":  429
+    },
+    {
+        "id":  "quick_habit",
+        "size":  40,
+        "transparentPixels":  1103,
+        "opaquePixels":  94
+    },
+    {
+        "id":  "quick_habit",
+        "size":  80,
+        "transparentPixels":  4528,
+        "opaquePixels":  202
+    },
+    {
+        "id":  "quick_habit",
+        "size":  120,
+        "transparentPixels":  10322,
+        "opaquePixels":  357
+    },
+    {
+        "id":  "balanced_target",
+        "size":  40,
+        "transparentPixels":  960,
+        "opaquePixels":  105
+    },
+    {
+        "id":  "balanced_target",
+        "size":  80,
+        "transparentPixels":  3982,
+        "opaquePixels":  207
+    },
+    {
+        "id":  "balanced_target",
+        "size":  120,
+        "transparentPixels":  9031,
+        "opaquePixels":  327
+    },
+    {
+        "id":  "dedicated_arm",
+        "size":  40,
+        "transparentPixels":  983,
+        "opaquePixels":  125
+    },
+    {
+        "id":  "dedicated_arm",
+        "size":  80,
+        "transparentPixels":  4085,
+        "opaquePixels":  253
+    },
+    {
+        "id":  "dedicated_arm",
+        "size":  120,
+        "transparentPixels":  9306,
+        "opaquePixels":  375
+    },
+    {
+        "id":  "full_protocol_flame",
+        "size":  40,
+        "transparentPixels":  939,
+        "opaquePixels":  107
+    },
+    {
+        "id":  "full_protocol_flame",
+        "size":  80,
+        "transparentPixels":  3893,
+        "opaquePixels":  217
+    },
+    {
+        "id":  "full_protocol_flame",
+        "size":  120,
+        "transparentPixels":  8849,
+        "opaquePixels":  329
+    },
+    {
+        "id":  "jawline_training",
+        "size":  40,
+        "transparentPixels":  1041,
+        "opaquePixels":  79
+    },
+    {
+        "id":  "jawline_training",
+        "size":  80,
+        "transparentPixels":  4272,
+        "opaquePixels":  188
+    },
+    {
+        "id":  "jawline_training",
+        "size":  120,
+        "transparentPixels":  9701,
+        "opaquePixels":  276
+    },
+    {
+        "id":  "eye_area_symmetry",
+        "size":  40,
+        "transparentPixels":  1104,
+        "opaquePixels":  78
+    },
+    {
+        "id":  "eye_area_symmetry",
+        "size":  80,
+        "transparentPixels":  4515,
+        "opaquePixels":  164
+    },
+    {
+        "id":  "eye_area_symmetry",
+        "size":  120,
+        "transparentPixels":  10235,
+        "opaquePixels":  258
+    },
+    {
+        "id":  "cheekbone_structure",
+        "size":  40,
+        "transparentPixels":  940,
+        "opaquePixels":  92
+    },
+    {
+        "id":  "cheekbone_structure",
+        "size":  80,
+        "transparentPixels":  3872,
+        "opaquePixels":  178
+    },
+    {
+        "id":  "cheekbone_structure",
+        "size":  120,
+        "transparentPixels":  8786,
+        "opaquePixels":  273
+    },
+    {
+        "id":  "skin_complexion",
+        "size":  40,
+        "transparentPixels":  1074,
+        "opaquePixels":  88
+    },
+    {
+        "id":  "skin_complexion",
+        "size":  80,
+        "transparentPixels":  4447,
+        "opaquePixels":  199
+    },
+    {
+        "id":  "skin_complexion",
+        "size":  120,
+        "transparentPixels":  10093,
+        "opaquePixels":  306
+    },
+    {
+        "id":  "daily_protocol_stack",
+        "size":  40,
+        "transparentPixels":  928,
+        "opaquePixels":  109
+    },
+    {
+        "id":  "daily_protocol_stack",
+        "size":  80,
+        "transparentPixels":  3852,
+        "opaquePixels":  202
+    },
+    {
+        "id":  "daily_protocol_stack",
+        "size":  120,
+        "transparentPixels":  8775,
+        "opaquePixels":  307
+    }
+]

@@ -2,13 +2,13 @@
   "expo": {
     "name": "Sigma Max",
     "slug": "sigmamax-app",
-    "version": "1.17.0",
+    "version": "1.19.0",
     "orientation": "portrait",
     "icon": "./assets/sigmamax-real-updatred-logo.png",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": false,
-      "buildNumber": "26",
+      "buildNumber": "27",
       "bundleIdentifier": "com.sigmamax.app",
       "infoPlist": {
         "CADisableMinimumFrameDurationOnPhone": true,
@@ -66,7 +66,13 @@
       "expo-image",
       "expo-sharing",
       "expo-status-bar",
-      "expo-video"
+      "expo-video",
+      [
+        "expo-notifications",
+        {
+          "color": "#F26A13"
+        }
+      ]
     ],
     "scheme": "sigmamax",
     "experiments": {

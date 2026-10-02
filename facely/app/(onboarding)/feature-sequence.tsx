@@ -3,7 +3,6 @@ import {
   Image,
   ImageSourcePropType,
   Pressable,
-  StatusBar,
   StyleSheet,
   Text,
   View,
@@ -12,7 +11,10 @@ import {
 import { router } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { hapticLight, hapticSelection } from "@/lib/haptics";
+import { hapticHeavy, hapticTick } from "@/lib/haptics";
+import { WeakPointsScanStage } from "@/components/onboarding/WeakPointsScanScreen";
+import ScreenBackground from "@/components/onboarding/ScreenBackground";
+import { BG_MOODS } from "@/lib/tokens";
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -29,24 +31,15 @@ const BUTTON_FONT = "SFProRounded-Semibold";
 const ORANGE = "#F26A13";
 const TEXT = "#050505";
 const COPY = "#3E454B";
-const PAPER = "#FFFCF7";
+// This screen is the "analysis / AI capability" beat, so it takes the violet
+// mood. PAPER is the shell the mood resolves to at the bottom of the screen.
+const PAPER = BG_MOODS.violet.bottom;
 const ASSET_TRANSITION_MS = 560;
 const TRANSITION_LOCK_MS = 620;
 const HAPTIC_EVERY_CHARS = 3;
 
 const STRUCTURE_IMAGE = require("../../assets/features-assets/structure.png");
 const POSTURE_IMAGE = require("../../assets/features-assets/posture.png");
-const WEAK_POINT_ITEMS: Array<{
-  source: ImageSourcePropType;
-  title: string;
-  score: string;
-}> = [
-  { source: require("../../assets/attractiveness-icons/harmony.png"), title: "Harmony", score: "61" },
-  { source: require("../../assets/attractiveness-icons/angularity.png"), title: "Angularity", score: "54" },
-  { source: require("../../assets/attractiveness-icons/dimorphism.png"), title: "Dimorphism", score: "58" },
-  { source: require("../../assets/attractiveness-icons/skin-quality.png"), title: "Skin quality", score: "66" },
-];
-
 const DIET_ITEMS: Array<{
   source: ImageSourcePropType;
   x: number;
@@ -144,7 +137,7 @@ function useTypedText(value: string, delayMs: number) {
       if (nextLength !== lastLength) {
         lastLength = nextLength;
         if (value[nextLength - 1]?.trim() && nextLength % HAPTIC_EVERY_CHARS === 0) {
-          hapticSelection();
+          hapticTick();
         }
         setTyped(value.slice(0, nextLength));
       }
@@ -300,30 +293,13 @@ function DietTile({
 
 
 function WeakPointsVisual({ stageWidth, stageHeight }: { stageWidth: number; stageHeight: number }) {
-  const cardWidth = Math.min(stageWidth * 0.82, 360);
-  const iconSize = Math.min(stageWidth * 0.15, 62);
-
   return (
     <View style={[styles.weakStage, { width: stageWidth, height: stageHeight }]}>
-      <View style={[styles.analysisCard, { width: cardWidth }]}>
-        <Text style={styles.analysisKicker}>ADVANCED ANALYSIS</Text>
-        <Text style={styles.analysisTitle}>Weak-point map</Text>
-        <View style={styles.analysisMeterTrack}>
-          <View style={styles.analysisMeterFill} />
-        </View>
-
-        <View style={styles.weakPointGrid}>
-          {WEAK_POINT_ITEMS.map((item) => (
-            <View key={item.title} style={styles.weakPointTile}>
-              <View style={[styles.weakPointIcon, { width: iconSize, height: iconSize, borderRadius: iconSize / 2 }]}>
-                <Image source={item.source} style={styles.weakPointImage} resizeMode="contain" />
-              </View>
-              <Text style={styles.weakPointTitle} numberOfLines={1}>{item.title}</Text>
-              <Text style={styles.weakPointMeta}>Score {item.score}</Text>
-            </View>
-          ))}
-        </View>
-      </View>
+      <WeakPointsScanStage
+        width={Math.min(stageWidth * 0.86, 360)}
+        height={stageHeight}
+        startDelay={260}
+      />
     </View>
   );
 }
@@ -332,7 +308,9 @@ function EdgeFade({ height }: { height: number }) {
   return (
     <LinearGradient
       pointerEvents="none"
-      colors={["rgba(255,252,247,0)", "rgba(255,252,247,0.86)", PAPER]}
+      // Fades to the mood's mid stop, not the shell: this sits at the bottom
+      // of the mid-screen stage, where the gradient has not yet released.
+      colors={["rgba(233,229,241,0)", "rgba(233,229,241,0.86)", BG_MOODS.violet.mid]}
       locations={[0, 0.58, 1]}
       style={[styles.edgeFade, { height }]}
     />
@@ -507,7 +485,7 @@ export default function FeatureSequenceScreen() {
   const setButtonPressed = useCallback(
     (pressed: boolean) => {
       if (isTransitioning) return;
-      if (pressed) hapticLight();
+      if (pressed) hapticHeavy();
       buttonScale.value = withTiming(pressed ? 0.995 : 1, {
         duration: pressed ? 80 : 150,
         easing: Easing.out(Easing.cubic),
@@ -540,7 +518,7 @@ export default function FeatureSequenceScreen() {
 
   return (
     <View style={styles.root}>
-      <StatusBar barStyle="dark-content" backgroundColor={PAPER} />
+      <ScreenBackground mood="violet" />
       <View
         style={[
           styles.safe,
@@ -673,96 +651,6 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     alignItems: "center",
     justifyContent: "center",
-  },
-  analysisCard: {
-    borderRadius: 30,
-    backgroundColor: "#FFFFFF",
-    paddingHorizontal: 22,
-    paddingVertical: 24,
-    borderWidth: 1,
-    borderColor: "rgba(5,5,5,0.07)",
-    shadowColor: "#2A1A10",
-    shadowOpacity: 0.10,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 14 },
-    elevation: 7,
-  },
-  analysisKicker: {
-    color: "#7A8086",
-    fontFamily: BODY_FONT,
-    fontSize: 11,
-    lineHeight: 14,
-    letterSpacing: 1.4,
-    textAlign: "center",
-  },
-  analysisTitle: {
-    color: TEXT,
-    fontFamily: HEADING_FONT,
-    fontSize: 31,
-    lineHeight: 35,
-    letterSpacing: 0,
-    textAlign: "center",
-    marginTop: 6,
-  },
-  analysisMeterTrack: {
-    height: 9,
-    borderRadius: 999,
-    backgroundColor: "rgba(5,5,5,0.08)",
-    overflow: "hidden",
-    marginTop: 18,
-    marginHorizontal: 18,
-  },
-  analysisMeterFill: {
-    width: "68%",
-    height: "100%",
-    borderRadius: 999,
-    backgroundColor: ORANGE,
-  },
-  weakPointGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 12,
-    marginTop: 20,
-  },
-  weakPointTile: {
-    width: "47%",
-    flexGrow: 1,
-    minHeight: 104,
-    borderRadius: 22,
-    backgroundColor: "#FFFAF4",
-    borderWidth: 1,
-    borderColor: "rgba(242,106,19,0.12)",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 10,
-    paddingVertical: 12,
-  },
-  weakPointIcon: {
-    backgroundColor: "rgba(242,106,19,0.10)",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 8,
-  },
-  weakPointImage: {
-    width: "62%",
-    height: "62%",
-  },
-  weakPointTitle: {
-    color: TEXT,
-    fontFamily: HEADING_FONT,
-    fontSize: 14,
-    lineHeight: 17,
-    letterSpacing: 0,
-    textAlign: "center",
-  },
-  weakPointMeta: {
-    color: "#71777D",
-    fontFamily: BODY_FONT,
-    fontSize: 12,
-    lineHeight: 15,
-    letterSpacing: 0,
-    marginTop: 2,
-    textAlign: "center",
   },
   copySlot: {
     flex: 1,

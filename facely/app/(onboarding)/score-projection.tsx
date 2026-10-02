@@ -1,188 +1,215 @@
 // app/(onboarding)/score-projection.tsx
-// 90-day score projection — visual language borrowed from the dashboard's
-// MiniGraph/JourneyGraph: Y-axis 0/50/100, dashed grid, wide soft glow halo,
-// pulsing end-dot ring, upward-settle reveal, and a dashed projected line
-// (dashed = future/estimate). Counterfactual "no routine" is a muted red curve.
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  StyleSheet,
-  StatusBar,
-  Pressable,
-  ScrollView,
-  View,
-  Image,
-} from "react-native";
+// Trust screen — "SigmaMax supports steady progress".
+// A white card holds two curves: a solid green one (SigmaMax) that climbs and
+// settles high, and a dashed coral one (other apps) that wobbles and stalls.
+// Both draw left-to-right on entry; the solid line uses strokeDashoffset, the
+// dashed line uses an animated clip rect because its dash array is the texture.
+import React, { useCallback, useEffect, useMemo } from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import Animated, {
   Easing,
-  FadeInDown,
   useAnimatedProps,
-  useAnimatedReaction,
   useAnimatedStyle,
+  useReducedMotion,
   useSharedValue,
   withDelay,
-  withRepeat,
-  withSequence,
   withSpring,
   withTiming,
-  runOnJS,
 } from "react-native-reanimated";
-import Svg, {
-  Circle,
-  Defs,
-  Line,
-  LinearGradient as SvgGradient,
-  Path,
-  Stop,
-  Text as SvgText,
-} from "react-native-svg";
+import Svg, { Circle, ClipPath, Defs, G, Path, Rect } from "react-native-svg";
 import { router } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ChevronLeft } from "lucide-react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import T from "@/components/ui/T";
-import { COLORS, RADII, SP, getProgressForStep } from "@/lib/tokens";
-import { ms, sh, useResponsiveScale } from "@/lib/responsive";
-import { hapticLight, hapticSuccess } from "@/lib/haptics";
+import { OrangePrimaryButton } from "@/components/onboarding/OrangeOnboardingLayout";
+import ScreenBackground from "@/components/onboarding/ScreenBackground";
+import {
+  hapticLight,
+  hapticCrescendo,
+  hapticTick,
+  hapticSuccess,
+} from "@/lib/haptics";
+import { useResponsiveScale } from "@/lib/responsive";
+import { BG_MOODS } from "@/lib/tokens";
 import { useOnboarding } from "@/store/onboarding";
-import OrangeOnboardingLayout, {
-  OrangePrimaryButton,
-  ORANGE_ONBOARDING,
-} from "@/components/onboarding/OrangeOnboardingLayout";
-
-const FONT_BOLD = ORANGE_ONBOARDING.fontBold;
-const FONT_SEMIBOLD = ORANGE_ONBOARDING.fontSemibold;
-const LIME = "#35A854";
-const SAGE = "#237A3A";
-const SAGE_SOFT = "#EAF7EE";
 
 // ---------------------------------------------------------------------------
-// Chart geometry — mirrors dashboard MiniGraph
+// Palette — carried over 1:1 from the reference trust screen.
 // ---------------------------------------------------------------------------
+const INK = "#16181A";
+const GREEN = "#4FAF55";
+const GREEN_BUBBLE = "#56B85F";
+const GREEN_SPARK = "#57BC5F";
+const GREEN_DEEP = "#3E9B47";
+const STAT_BG = "#DCEFD6";
+const STAT_BADGE = "#BCE3B5";
+const CORAL = "#F4694F";
+const AXIS = "rgba(23,24,26,0.16)";
+const AXIS_TEXT = "rgba(23,24,26,0.34)";
+const CARD = "#FFFFFF";
+const BG_SHELL = BG_MOODS.mint.bottom;
 
-const SIDE_PAD = SP[5];
+const FONT_BOLD = "SFProRounded-Bold";
+const FONT_SEMI = "SFProRounded-Semibold";
+const FONT_REG = "SFProRounded-Regular";
 
-const HERO_IMAGE = require("@/assets/onbaording-images/score-projection.png");
+// TODO(copy): 62% is the reference figure. Swap in the real SigmaMax number.
+const STAT_LEAD = "62% SigmaMax users";
+const STAT_TAIL = " maintain their score gain over 6 months";
 
-const START_SCORE = 63;
-const END_SCORE = 90;
-const NO_ROUTINE_END = 52;
+// ---------------------------------------------------------------------------
+// Motion schedule (ms)
+// ---------------------------------------------------------------------------
+const T_HEAD = 60;
+const T_CARD = 180;
+const T_GREEN = 420;
+const D_GREEN = 1150;
+const T_CORAL = 560;
+const D_CORAL = 1100;
+const T_LBL_SCORE = 780;
+const T_LBL_OTHER = 920;
+const T_DOT_END = T_GREEN + D_GREEN - 140;
+const T_BUBBLE = T_DOT_END + 110;
+const T_STAT = 1780;
+const T_CTA = 1960;
 
-const WAYPOINT_30 = { frac: 1 / 3, score: 69, delta: 6 };
-const WAYPOINT_60 = { frac: 2 / 3, score: 81, delta: 18 };
+const EASE_DRAW = Easing.inOut(Easing.cubic);
+const EASE_OUT = Easing.out(Easing.cubic);
 
-// Projection curve — single smooth cubic, slow start then accelerating.
-// Control-point y-values tuned so the curve passes ~exactly through the
-// WAYPOINT_30 (score 69) and WAYPOINT_60 (score 81) dots.
-// Counterfactual — gentle drift down from 63 to 52, single smooth cubic
-function createProjectionGeometry(chartWidth: number) {
-  const chartHeight = Math.min(230, Math.max(180, Math.round(chartWidth * 0.595)));
-  const padLeft = Math.min(40, Math.max(30, chartWidth * 0.096));
-  const padRight = Math.min(36, Math.max(28, chartWidth * 0.085));
-  const padTop = Math.min(32, Math.max(24, chartHeight * 0.133));
-  const padBottom = Math.min(28, Math.max(22, chartHeight * 0.114));
-  const innerWidth = chartWidth - padLeft - padRight;
-  const innerHeight = chartHeight - padTop - padBottom;
-  const sy = (score: number) =>
-    padTop + (1 - Math.max(0, Math.min(100, score)) / 100) * innerHeight;
-  const sx = (fraction: number) => padLeft + fraction * innerWidth;
-  const x0 = sx(0);
-  const xn = sx(1);
-  const y0 = sy(START_SCORE);
-  const ya = sy(END_SCORE);
-  const yb = sy(NO_ROUTINE_END);
-  const sigmaPath =
-    `M ${x0},${y0} ` +
-    `C ${sx(0.33)},${sy(64)} ${sx(0.67)},${sy(85)} ${xn},${ya}`;
-  const noRoutinePath =
-    `M ${x0},${y0} ` +
-    `C ${sx(0.35)},${sy(62)} ${sx(0.65)},${sy(53)} ${xn},${yb}`;
+// Haptics track the pen, not the clock. Ticks are spaced evenly along the
+// drawn *distance*, then mapped back through the draw easing, so they bunch up
+// where the line accelerates and thin out as it settles.
+const GREEN_TICKS = 14;
+
+function inverseEaseInOutCubic(p: number) {
+  return p < 0.5
+    ? Math.cbrt(p / 4)
+    : 1 - Math.cbrt(2 * (1 - p)) / 2;
+}
+
+function drawTickTimes(start: number, duration: number, count: number) {
+  const times: number[] = [];
+  for (let i = 1; i <= count; i += 1) {
+    times.push(start + inverseEaseInOutCubic(i / count) * duration);
+  }
+  return times;
+}
+
+const AnimatedPath = Animated.createAnimatedComponent(Path);
+const AnimatedRect = Animated.createAnimatedComponent(Rect);
+const AnimatedCircle = Animated.createAnimatedComponent(Circle);
+
+// ---------------------------------------------------------------------------
+// Chart geometry — every point is a fraction of the card box, so the whole
+// composition scales with the device instead of drifting off a fixed viewBox.
+// ---------------------------------------------------------------------------
+type Pt = { x: number; y: number };
+
+const P_START: Pt = { x: 0.103, y: 0.542 };
+const P_GREEN_END: Pt = { x: 0.804, y: 0.218 };
+const P_CORAL_1: Pt = { x: 0.288, y: 0.471 };
+const P_CORAL_2: Pt = { x: 0.436, y: 0.548 };
+const P_CORAL_3: Pt = { x: 0.636, y: 0.403 };
+const P_CORAL_END: Pt = { x: 0.821, y: 0.428 };
+
+const AXIS_X0 = 0.126;
+const AXIS_X1 = 0.888;
+const AXIS_Y = 0.85;
+const AXIS_Y_TOP = 0.668;
+
+function createChartGeometry(w: number, h: number) {
+  const at = (p: Pt): Pt => ({ x: p.x * w, y: p.y * h });
+  const s = at(P_START);
+  const g = at(P_GREEN_END);
+
+  // Solid curve: one symmetric cubic, flat at both ends — gentle start, firm
+  // middle, settled finish.
+  const gdx = g.x - s.x;
+  const greenPath =
+    "M " + s.x + "," + s.y +
+    " C " + (s.x + gdx * 0.42) + "," + s.y +
+    " " + (g.x - gdx * 0.42) + "," + g.y +
+    " " + g.x + "," + g.y;
+
+  // Dashed curve: chained cubics with horizontal tangents at each extremum, so
+  // every peak and trough reads as a real turn rather than a kink.
+  const knots = [s, at(P_CORAL_1), at(P_CORAL_2), at(P_CORAL_3), at(P_CORAL_END)];
+  let coralPath = "M " + knots[0].x + "," + knots[0].y;
+  for (let i = 0; i < knots.length - 1; i += 1) {
+    const a = knots[i];
+    const b = knots[i + 1];
+    const k = (b.x - a.x) * 0.35;
+    coralPath +=
+      " C " + (a.x + k) + "," + a.y +
+      " " + (b.x - k) + "," + b.y +
+      " " + b.x + "," + b.y;
+  }
+
+  const stroke = Math.max(5, w * 0.023);
 
   return {
-    chartWidth,
-    chartHeight,
-    padLeft,
-    padRight,
-    padTop,
-    innerHeight,
-    sx,
-    sy,
-    x0,
-    xn,
-    y0,
-    ya,
-    yb,
-    sigmaPath,
-    noRoutinePath,
-    sigmaFillPath:
-      sigmaPath +
-      ` L ${xn},${padTop + innerHeight} L ${x0},${padTop + innerHeight} Z`,
+    greenPath,
+    coralPath,
+    stroke,
+    start: s,
+    greenEnd: g,
+    coralEnd: at(P_CORAL_END),
+    dotR: stroke * 1.26,
+    dotStroke: stroke * 0.46,
+    coralDotR: stroke * 0.84,
+    dash: [stroke * 2.4, stroke * 1.7] as [number, number],
+    axisX0: AXIS_X0 * w,
+    axisX1: AXIS_X1 * w,
+    axisY: AXIS_Y * h,
+    axisYTop: AXIS_Y_TOP * h,
+    drawLen: Math.ceil(w * 2.6),
   };
 }
 
 // ---------------------------------------------------------------------------
-
-const AnimatedPath = Animated.createAnimatedComponent(Path);
-const AnimatedCircle = Animated.createAnimatedComponent(Circle);
-
-const FOCUS_LABEL: Record<string, string> = {
-  angularity: "facial angularity",
-  harmony: "facial harmony",
-  leanness: "facial leanness",
-  overall: "routine",
-};
-
+// Decorative four-point sparkle
 // ---------------------------------------------------------------------------
-// Pulsing end dot — same pattern as dashboard LastDot
-// ---------------------------------------------------------------------------
-function PulsingEndDot({ cx, cy, delay }: { cx: number; cy: number; delay: number }) {
-  const pulse = useSharedValue(0);
-  const appear = useSharedValue(0);
+function Sparkle({
+  size,
+  left,
+  top,
+  delay,
+  reduceMotion,
+}: {
+  size: number;
+  left: number;
+  top: number;
+  delay: number;
+  reduceMotion: boolean;
+}) {
+  const a = useSharedValue(0);
 
   useEffect(() => {
-    appear.value = withDelay(delay, withSpring(1, { damping: 10, stiffness: 180 }));
-    pulse.value = withDelay(
-      delay + 200,
-      withRepeat(
-        withSequence(
-          withTiming(1, { duration: 1000, easing: Easing.inOut(Easing.sin) }),
-          withTiming(0, { duration: 1000, easing: Easing.inOut(Easing.sin) }),
-        ),
-        -1,
-        false,
-      ),
+    a.value = withDelay(
+      delay,
+      reduceMotion
+        ? withTiming(1, { duration: 160 })
+        : withSpring(1, { damping: 12, stiffness: 190 }),
     );
-  }, []);
+  }, [a, delay, reduceMotion]);
 
-  const ringProps = useAnimatedProps(() => ({
-    r: (7 + pulse.value * 10) * appear.value,
-    opacity: (1 - pulse.value) * 0.6 * appear.value,
-  }));
-  const coreProps = useAnimatedProps(() => ({ r: 5 * appear.value }));
-  const haloProps = useAnimatedProps(() => ({
-    r: 9 * appear.value,
-    opacity: 0.25 * appear.value,
+  const style = useAnimatedStyle(() => ({
+    opacity: a.value,
+    transform: [{ scale: reduceMotion ? 1 : a.value }],
   }));
 
   return (
-    <>
-      <AnimatedCircle cx={cx} cy={cy} fill={LIME} animatedProps={haloProps} />
-      <AnimatedCircle
-        cx={cx}
-        cy={cy}
-        fill="none"
-        stroke={LIME}
-        strokeWidth={1.5}
-        animatedProps={ringProps}
-      />
-      <AnimatedCircle
-        cx={cx}
-        cy={cy}
-        fill={COLORS.lightBg}
-        stroke={LIME}
-        strokeWidth={2}
-        animatedProps={coreProps}
-      />
-    </>
+    <Animated.View
+      pointerEvents="none"
+      style={[{ position: "absolute", left, top, width: size, height: size }, style]}
+    >
+      <Svg width={size} height={size} viewBox="0 0 24 24">
+        <Path
+          d="M12 0 C13.1 7.2 16.8 10.9 24 12 C16.8 13.1 13.1 16.8 12 24 C10.9 16.8 7.2 13.1 0 12 C7.2 10.9 10.9 7.2 12 0 Z"
+          fill={GREEN_SPARK}
+        />
+      </Svg>
+    </Animated.View>
   );
 }
 
@@ -190,117 +217,146 @@ function PulsingEndDot({ cx, cy, delay }: { cx: number; cy: number; delay: numbe
 
 export default function ScoreProjectionScreen() {
   const insets = useSafeAreaInsets();
-  const responsive = useResponsiveScale();
-  const improveFocus = useOnboarding((s) => s.data.improveFocus);
-  const goals = useOnboarding((s) => s.data.goals);
+  const R = useResponsiveScale();
+  const reduceMotion = Boolean(useReducedMotion());
 
-  const focusWord = useMemo(() => {
-    const first = improveFocus?.[0];
-    if (first && FOCUS_LABEL[first]) return FOCUS_LABEL[first];
-    if (goals && goals.length > 0) return "routine";
-    return "daily routine";
-  }, [improveFocus, goals]);
+  const sidePad = Math.round(R.width * 0.087);
+  const cardW = R.width - sidePad * 2;
+  const cardH = Math.round(cardW * 0.983);
+  const geo = useMemo(() => createChartGeometry(cardW, cardH), [cardW, cardH]);
 
-  const chartWidth = Math.min(560, Math.max(240, responsive.width - SIDE_PAD * 2));
-  const geometry = useMemo(() => createProjectionGeometry(chartWidth), [chartWidth]);
-  const {
-    chartWidth: CHART_W,
-    chartHeight: CHART_H,
-    padLeft: PAD_LEFT,
-    padRight: PAD_RIGHT,
-    padTop: PAD_TOP,
-    innerHeight: INNER_H,
-    sx,
-    sy,
-    x0: X0,
-    xn: XN,
-    y0: Y0,
-    ya: YA,
-    yb: YB,
-    sigmaPath: PATH_SIGMA,
-    noRoutinePath: PATH_NOROUTINE,
-    sigmaFillPath: PATH_SIGMA_FILL,
-  } = geometry;
-  const axisLabelWidth = Math.min(52, Math.max(40, CHART_W * 0.125));
-
-  // Reveal: both lines draw left-to-right via strokeDashoffset.
-  const DASH_LEN = Math.ceil(CHART_W * 2.5);
-  const sigmaOffset = useSharedValue(DASH_LEN);
-  const noRouteOffset = useSharedValue(DASH_LEN);
-  const fillA = useSharedValue(0);
-  const scoreVal = useSharedValue(START_SCORE);
-  const deltaChipOp = useSharedValue(0);
-  const waypoint30A = useSharedValue(0);
-  const waypoint60A = useSharedValue(0);
-
-  const [displayScore, setDisplayScore] = useState<number>(START_SCORE);
-  const [displayDelta, setDisplayDelta] = useState<number>(0);
-
-  const deltaVal = useSharedValue(0);
-  const insightCardOpacity = useSharedValue(0);
-  const insightCardY = useSharedValue(14);
+  const headA = useSharedValue(0);
+  const cardA = useSharedValue(0);
+  const greenOffset = useSharedValue(geo.drawLen);
+  const coralClip = useSharedValue(0);
+  const startDotA = useSharedValue(0);
+  const endDotA = useSharedValue(0);
+  const coralDotA = useSharedValue(0);
+  const scoreLblA = useSharedValue(0);
+  const otherLblA = useSharedValue(0);
+  const bubbleA = useSharedValue(0);
+  const statA = useSharedValue(0);
+  const ctaA = useSharedValue(0);
 
   useEffect(() => {
-    const REVEAL_DURATION = 1400;
-    const EASE = Easing.out(Easing.cubic);
+    greenOffset.value = geo.drawLen;
 
-    sigmaOffset.value = withDelay(200, withTiming(0, { duration: 1400, easing: Easing.inOut(Easing.cubic) }));
-    noRouteOffset.value = withDelay(300, withTiming(0, { duration: 1400, easing: Easing.inOut(Easing.cubic) }));
-    fillA.value = withDelay(900, withTiming(1, { duration: 700, easing: Easing.out(Easing.quad) }));
+    if (reduceMotion) {
+      headA.value = withTiming(1, { duration: 200 });
+      cardA.value = withDelay(80, withTiming(1, { duration: 200 }));
+      greenOffset.value = 0;
+      coralClip.value = 1;
+      startDotA.value = withDelay(160, withTiming(1, { duration: 200 }));
+      endDotA.value = withDelay(160, withTiming(1, { duration: 200 }));
+      coralDotA.value = withDelay(160, withTiming(1, { duration: 200 }));
+      scoreLblA.value = withDelay(240, withTiming(1, { duration: 200 }));
+      otherLblA.value = withDelay(240, withTiming(1, { duration: 200 }));
+      bubbleA.value = withDelay(320, withTiming(1, { duration: 200 }));
+      statA.value = withDelay(400, withTiming(1, { duration: 200 }));
+      ctaA.value = withDelay(480, withTiming(1, { duration: 200 }));
+      return;
+    }
 
-    scoreVal.value = withDelay(
-      200,
-      withTiming(END_SCORE, { duration: REVEAL_DURATION, easing: Easing.inOut(Easing.cubic) }),
+    headA.value = withDelay(T_HEAD, withTiming(1, { duration: 460, easing: EASE_OUT }));
+    cardA.value = withDelay(T_CARD, withTiming(1, { duration: 480, easing: EASE_OUT }));
+
+    greenOffset.value = withDelay(
+      T_GREEN,
+      withTiming(0, { duration: D_GREEN, easing: EASE_DRAW }),
+    );
+    coralClip.value = withDelay(
+      T_CORAL,
+      withTiming(1, { duration: D_CORAL, easing: EASE_DRAW }),
     );
 
-    waypoint30A.value = withDelay(700, withSpring(1, { damping: 11, stiffness: 190 }));
-    waypoint60A.value = withDelay(950, withSpring(1, { damping: 11, stiffness: 190 }));
-    deltaChipOp.value = withDelay(1300, withTiming(1, { duration: 400, easing: EASE }));
-
-    // Insight card — enters after the graph has drawn
-    insightCardOpacity.value = withDelay(1500, withTiming(1, { duration: 500, easing: EASE }));
-    insightCardY.value = withDelay(1500, withSpring(0, { damping: 14, stiffness: 180 }));
-    deltaVal.value = withDelay(
-      1700,
-      withTiming(END_SCORE - START_SCORE, { duration: 1100, easing: Easing.out(Easing.cubic) }),
+    startDotA.value = withDelay(
+      T_GREEN - 60,
+      withSpring(1, { damping: 11, stiffness: 200 }),
     );
-  }, [sigmaOffset, noRouteOffset, fillA, scoreVal, waypoint30A, waypoint60A, deltaChipOp, deltaVal, insightCardOpacity, insightCardY]);
+    endDotA.value = withDelay(T_DOT_END, withSpring(1, { damping: 10, stiffness: 190 }));
+    coralDotA.value = withDelay(
+      T_CORAL + D_CORAL - 160,
+      withSpring(1, { damping: 12, stiffness: 190 }),
+    );
 
-  useAnimatedReaction(
-    () => Math.round(scoreVal.value),
-    (current, prev) => {
-      if (current !== prev) runOnJS(setDisplayScore)(current);
-    },
-  );
+    scoreLblA.value = withDelay(
+      T_LBL_SCORE,
+      withTiming(1, { duration: 380, easing: EASE_OUT }),
+    );
+    otherLblA.value = withDelay(
+      T_LBL_OTHER,
+      withTiming(1, { duration: 380, easing: EASE_OUT }),
+    );
+    bubbleA.value = withDelay(T_BUBBLE, withSpring(1, { damping: 12, stiffness: 210 }));
+    statA.value = withDelay(T_STAT, withTiming(1, { duration: 440, easing: EASE_OUT }));
+    ctaA.value = withDelay(T_CTA, withTiming(1, { duration: 440, easing: EASE_OUT }));
+  }, [
+    bubbleA, cardA, coralClip, coralDotA, ctaA, endDotA, geo.drawLen, greenOffset,
+    headA, otherLblA, reduceMotion, scoreLblA, startDotA, statA,
+  ]);
 
-  useAnimatedReaction(
-    () => Math.round(deltaVal.value),
-    (current, prev) => {
-      if (current !== prev) runOnJS(setDisplayDelta)(current);
-    },
-  );
+  // Haptic track for the draw: a run of ticks under the climbing green line,
+  // one light tap when the coral line gives up, a building crescendo on the bubble.
+  useEffect(() => {
+    if (reduceMotion) return;
 
-  const fillProps = useAnimatedProps(() => ({ fillOpacity: fillA.value }));
-  const sigmaProps = useAnimatedProps(() => ({ strokeDashoffset: sigmaOffset.value }));
-  const noRouteProps = useAnimatedProps(() => ({ strokeDashoffset: noRouteOffset.value }));
+    const timers = drawTickTimes(T_GREEN, D_GREEN, GREEN_TICKS).map((at) =>
+      setTimeout(hapticTick, Math.round(at)),
+    );
+    timers.push(setTimeout(hapticLight, T_CORAL + D_CORAL - 160));
+    timers.push(setTimeout(hapticCrescendo, T_BUBBLE));
 
-  const deltaChipStyle = useAnimatedStyle(() => ({
-    opacity: deltaChipOp.value,
-    transform: [{ translateY: (1 - deltaChipOp.value) * 8 }],
+    return () => timers.forEach(clearTimeout);
+  }, [reduceMotion]);
+
+  const greenProps = useAnimatedProps(() => ({
+    strokeDashoffset: greenOffset.value,
+  }));
+  const coralClipProps = useAnimatedProps(() => ({
+    width: Math.max(0.01, coralClip.value * cardW),
+  }));
+  const startDotProps = useAnimatedProps(() => ({
+    r: geo.dotR * startDotA.value,
+    strokeWidth: geo.dotStroke * startDotA.value,
+  }));
+  const endDotProps = useAnimatedProps(() => ({
+    r: geo.dotR * endDotA.value,
+    strokeWidth: geo.dotStroke * endDotA.value,
+  }));
+  const coralDotProps = useAnimatedProps(() => ({
+    r: geo.coralDotR * coralDotA.value,
   }));
 
-  const wp30Style = useAnimatedStyle(() => ({
-    opacity: waypoint30A.value,
-    transform: [{ scale: waypoint30A.value }],
+  const headStyle = useAnimatedStyle(() => ({
+    opacity: headA.value,
+    transform: [{ translateY: reduceMotion ? 0 : (1 - headA.value) * 10 }],
   }));
-  const wp60Style = useAnimatedStyle(() => ({
-    opacity: waypoint60A.value,
-    transform: [{ scale: waypoint60A.value }],
+  const cardStyle = useAnimatedStyle(() => ({
+    opacity: cardA.value,
+    transform: [
+      { translateY: reduceMotion ? 0 : (1 - cardA.value) * 14 },
+      { scale: reduceMotion ? 1 : 0.972 + cardA.value * 0.028 },
+    ],
   }));
-
-  const insightCardStyle = useAnimatedStyle(() => ({
-    opacity: insightCardOpacity.value,
-    transform: [{ translateY: insightCardY.value }],
+  const scoreLblStyle = useAnimatedStyle(() => ({
+    opacity: scoreLblA.value,
+    transform: [{ translateX: reduceMotion ? 0 : (1 - scoreLblA.value) * -8 }],
+  }));
+  const otherLblStyle = useAnimatedStyle(() => ({
+    opacity: otherLblA.value,
+    transform: [{ translateX: reduceMotion ? 0 : (1 - otherLblA.value) * -8 }],
+  }));
+  const bubbleStyle = useAnimatedStyle(() => ({
+    opacity: Math.min(1, bubbleA.value * 1.6),
+    transform: [{ scale: reduceMotion ? 1 : 0.4 + bubbleA.value * 0.6 }],
+  }));
+  const statStyle = useAnimatedStyle(() => ({
+    opacity: statA.value,
+    transform: [{ translateY: reduceMotion ? 0 : (1 - statA.value) * 12 }],
+  }));
+  const ctaStyle = useAnimatedStyle(() => ({
+    opacity: ctaA.value,
+    transform: [{ translateY: reduceMotion ? 0 : (1 - ctaA.value) * 12 }],
   }));
 
   const handleBack = useCallback(() => {
@@ -310,397 +366,387 @@ export default function ScoreProjectionScreen() {
 
   const handleContinue = useCallback(() => {
     hapticSuccess();
-    router.push("/(onboarding)/paywall");
+    // Locked findings need the user's scan photo; skippers go straight to the paywall.
+    const scanned = !!useOnboarding.getState().scanFrontalUri;
+    router.push(scanned ? "/(onboarding)/weak-points-locked" : "/(onboarding)/paywall");
   }, []);
 
-  const progress = getProgressForStep("score-projection");
-
-  const wp30X = sx(WAYPOINT_30.frac);
-  const wp30Y = sy(WAYPOINT_30.score);
-  const wp60X = sx(WAYPOINT_60.frac);
-  const wp60Y = sy(WAYPOINT_60.score);
-
   return (
-    <OrangeOnboardingLayout
-      headerImage={HERO_IMAGE}
-      headerImageMode="contain"
-      scrollable={false}
-      footer={<OrangePrimaryButton label="See my plan" onPress={handleContinue} />}
-    >
+    <View style={styles.screen}>
+      <ScreenBackground mood="mint" />
 
-      {/* Top row: circular back + progress */}
-      <View style={[styles.topRow, { paddingTop: insets.top + SP[2] }]}>
+      <Sparkle
+        size={R.ms(20)}
+        left={R.width * 0.744}
+        top={insets.top + R.sh(44)}
+        delay={reduceMotion ? 0 : 260}
+        reduceMotion={reduceMotion}
+      />
+      <Sparkle
+        size={R.ms(24)}
+        left={R.width * 0.028}
+        top={insets.top + R.sh(190)}
+        delay={reduceMotion ? 0 : 360}
+        reduceMotion={reduceMotion}
+      />
+      <Sparkle
+        size={R.ms(18)}
+        left={R.width * 0.912}
+        top={insets.top + R.sh(186)}
+        delay={reduceMotion ? 0 : 440}
+        reduceMotion={reduceMotion}
+      />
+
+      <View
+        style={[
+          styles.topRow,
+          { paddingTop: insets.top + R.sh(10), paddingHorizontal: Math.round(sidePad * 0.72) },
+        ]}
+      >
         <Pressable
           onPress={handleBack}
           accessibilityRole="button"
           accessibilityLabel="Go back"
-          hitSlop={12}
-          style={({ pressed }) => [
-            styles.backBtn,
-            pressed && { opacity: 0.7 },
-          ]}
+          hitSlop={14}
+          style={({ pressed }) => [styles.backBtn, pressed && { opacity: 0.45 }]}
         >
-          <ChevronLeft size={ms(20)} color={COLORS.lightText} strokeWidth={2.5} />
+          <ChevronLeft size={R.ms(30)} color={INK} strokeWidth={2.6} />
         </Pressable>
-        <View style={styles.progressTrack}>
-          <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
-        </View>
       </View>
 
-      <ScrollView
-        style={styles.content}
-        contentContainerStyle={styles.contentInner}
-        showsVerticalScrollIndicator={false}
-        bounces
-      >
-        <Animated.View entering={FadeInDown.duration(400).delay(40)} style={styles.heroWrap}>
-          <Image source={HERO_IMAGE} style={styles.heroImage} resizeMode="contain" />
-        </Animated.View>
+      <Animated.View style={[styles.headline, { paddingHorizontal: sidePad }, headStyle]}>
+        <Text
+          accessibilityRole="header"
+          maxFontSizeMultiplier={1.15}
+          style={[
+            styles.headlineText,
+            { fontSize: R.clamp(40, 30, 44), lineHeight: R.clamp(41, 32, 45) },
+          ]}
+        >
+          SigmaMax supports{"\n"}steady progress
+        </Text>
+      </Animated.View>
 
-        <Animated.View entering={FadeInDown.duration(400).delay(80)}>
-          <T style={styles.headline}>Your score in 90 days</T>
-          <T style={styles.subtext}>
-            If you commit to your {focusWord}, here's the trajectory
-          </T>
-        </Animated.View>
+      {/* Card + chart */}
+      <View style={[styles.stage, { paddingBottom: R.sh(18) }]}>
+        <Animated.View
+          style={[
+            styles.card,
+            { width: cardW, height: cardH, borderRadius: R.clamp(28, 22, 34) },
+            cardStyle,
+          ]}
+        >
+          <Svg width={cardW} height={cardH}>
+            <Defs>
+              <ClipPath id="coral-reveal">
+                <AnimatedRect x={0} y={0} height={cardH} animatedProps={coralClipProps} />
+              </ClipPath>
+            </Defs>
 
-        {/* Chart */}
-        <View style={styles.chartCard}>
-          <View style={[styles.chart, { width: CHART_W, height: CHART_H }]}>
-            <Svg width={CHART_W} height={CHART_H}>
-              <Defs>
-                <SvgGradient id="sigmaFill" x1="0" y1="0" x2="0" y2="1">
-                  <Stop offset="0%" stopColor={LIME} stopOpacity="0.42" />
-                  <Stop offset="100%" stopColor={LIME} stopOpacity="0" />
-                </SvgGradient>
-              </Defs>
+            {/* Faint L-axis */}
+            <Path
+              d={
+                "M " + geo.axisX0 + "," + geo.axisYTop +
+                " L " + geo.axisX0 + "," + geo.axisY +
+                " L " + geo.axisX1 + "," + geo.axisY
+              }
+              stroke={AXIS}
+              strokeWidth={1}
+              fill="none"
+            />
 
-              {/* Dashed grid — matches dashboard MiniGraph (3,5) */}
-              {[0.33, 0.66].map((frac, i) => (
-                <Line
-                  key={i}
-                  x1={PAD_LEFT}
-                  y1={PAD_TOP + frac * INNER_H}
-                  x2={CHART_W - PAD_RIGHT}
-                  y2={PAD_TOP + frac * INNER_H}
-                  stroke="rgba(0,0,0,0.10)"
-                  strokeWidth={1}
-                  strokeDasharray="3,5"
-                />
-              ))}
-
-              {/* Y-axis labels — 0 / 50 / 100 */}
-              {[100, 50, 0].map((score) => (
-                <SvgText
-                  key={score}
-                  x={PAD_LEFT - 10}
-                  y={sy(score) + 3.5}
-                  fontSize="10"
-                  fontWeight="600"
-                  fill="rgba(0,0,0,0.50)"
-                  textAnchor="end"
-                >
-                  {score}
-                </SvgText>
-              ))}
-
-              {/* Area fill under sigma line */}
-              <AnimatedPath d={PATH_SIGMA_FILL} fill="url(#sigmaFill)" animatedProps={fillProps} />
-
-              {/* No-routine counterfactual — solid red, draws in */}
-              <AnimatedPath
-                d={PATH_NOROUTINE}
-                stroke={COLORS.declineRed}
-                strokeOpacity={0.78}
-                strokeWidth={2.6}
-                fill="none"
+            {/* Other apps — dashed, revealed by the sweeping clip rect */}
+            <G clipPath="url(#coral-reveal)">
+              <Path
+                d={geo.coralPath}
+                stroke={CORAL}
+                strokeWidth={geo.stroke}
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                strokeDasharray={DASH_LEN}
-                animatedProps={noRouteProps}
-              />
-
-              {/* Wide soft glow halo behind the lime line */}
-              <AnimatedPath
-                d={PATH_SIGMA}
-                stroke={LIME}
-                strokeWidth={14}
+                strokeDasharray={geo.dash}
                 fill="none"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeOpacity={0.20}
-                strokeDasharray={DASH_LEN}
-                animatedProps={sigmaProps}
               />
+            </G>
 
-              {/* Main projection — lime, draws in */}
-              <AnimatedPath
-                d={PATH_SIGMA}
-                stroke={LIME}
-                strokeWidth={3}
-                fill="none"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeDasharray={DASH_LEN}
-                animatedProps={sigmaProps}
-              />
+            {/* SigmaMax — solid, drawn by strokeDashoffset */}
+            <AnimatedPath
+              d={geo.greenPath}
+              stroke={GREEN}
+              strokeWidth={geo.stroke}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              fill="none"
+              strokeDasharray={geo.drawLen}
+              animatedProps={greenProps}
+            />
 
-              {/* Start dot */}
-              <Circle cx={X0} cy={Y0} r={4} fill="rgba(0,0,0,0.65)" />
+            <AnimatedCircle
+              cx={geo.coralEnd.x}
+              cy={geo.coralEnd.y}
+              fill={CORAL}
+              animatedProps={coralDotProps}
+            />
+            <AnimatedCircle
+              cx={geo.start.x}
+              cy={geo.start.y}
+              fill={CARD}
+              stroke={GREEN}
+              animatedProps={startDotProps}
+            />
+            <AnimatedCircle
+              cx={geo.greenEnd.x}
+              cy={geo.greenEnd.y}
+              fill={CARD}
+              stroke={GREEN}
+              animatedProps={endDotProps}
+            />
+          </Svg>
 
-              {/* Waypoint dots */}
-              <Circle cx={wp30X} cy={wp30Y} r={3.5} fill="#FFFFFF" stroke={LIME} strokeWidth={1.5} />
-              <Circle cx={wp60X} cy={wp60Y} r={3.5} fill="#FFFFFF" stroke={LIME} strokeWidth={1.5} />
+          {/* Axis caption sits on the baseline, same as the reference */}
+          <Text
+            maxFontSizeMultiplier={1.1}
+            style={[
+              styles.axisLabel,
+              {
+                left: cardW * 0.17,
+                top: cardH * AXIS_Y - R.ms(12),
+                fontSize: R.clamp(17, 13, 19),
+              },
+            ]}
+          >
+            Time
+          </Text>
 
-              {/* No-routine end dot */}
-              <Circle cx={XN} cy={YB} r={3.5} fill={COLORS.declineRed} fillOpacity={0.7} />
-
-              {/* Pulsing end dot — LastDot pattern */}
-              <PulsingEndDot cx={XN} cy={YA} delay={1200} />
-            </Svg>
-
-            {/* Waypoint delta chips (positioned in JS over the SVG) */}
-            <Animated.View
-              style={[styles.wpLabel, { left: wp30X - 18, top: wp30Y - 28 }, wp30Style]}
-              pointerEvents="none"
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              { position: "absolute", left: cardW * 0.06, top: cardH * 0.355 },
+              scoreLblStyle,
+            ]}
+          >
+            <Text
+              maxFontSizeMultiplier={1.1}
+              style={[styles.curveLabel, { color: INK, fontSize: R.clamp(17, 13, 19) }]}
             >
-              <T style={styles.wpLabelText}>+{WAYPOINT_30.delta}</T>
-            </Animated.View>
-            <Animated.View
-              style={[styles.wpLabel, { left: wp60X - 20, top: wp60Y - 28 }, wp60Style]}
-              pointerEvents="none"
-            >
-              <T style={styles.wpLabelText}>+{WAYPOINT_60.delta}</T>
-            </Animated.View>
-          </View>
+              Your score
+            </Text>
+          </Animated.View>
 
-          {/* X-axis */}
-          <View style={styles.xAxis}>
-            {[
-              { label: "DAY 1", x: X0 },
-              { label: "DAY 30", x: sx(WAYPOINT_30.frac) },
-              { label: "DAY 60", x: sx(WAYPOINT_60.frac) },
-              { label: "DAY 90", x: XN },
-            ].map((tick) => (
-              <T
-                key={tick.label}
-                style={[
-                  styles.axisLabel,
-                  { left: tick.x - axisLabelWidth / 2, width: axisLabelWidth },
-                ]}
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              { position: "absolute", left: cardW * 0.555, top: cardH * 0.295 },
+              otherLblStyle,
+            ]}
+          >
+            <Text
+              maxFontSizeMultiplier={1.1}
+              style={[styles.curveLabel, { color: CORAL, fontSize: R.clamp(17, 13, 19) }]}
+            >
+              Other apps
+            </Text>
+          </Animated.View>
+
+          {/* Brand bubble with a tail aimed at the end dot */}
+          <Animated.View
+            pointerEvents="none"
+            style={[styles.bubbleWrap, { left: cardW * 0.648, top: cardH * 0.048 }, bubbleStyle]}
+          >
+            <View
+              style={[
+                styles.bubble,
+                {
+                  paddingHorizontal: R.ms(13),
+                  paddingVertical: R.ms(7),
+                  borderRadius: R.clamp(12, 9, 15),
+                },
+              ]}
+            >
+              <Text
+                maxFontSizeMultiplier={1.1}
+                style={[styles.bubbleText, { fontSize: R.clamp(17, 13, 19) }]}
               >
-                {tick.label}
-              </T>
-            ))}
-          </View>
-
-          {/* Legend */}
-          <View style={[styles.legend, { paddingHorizontal: PAD_LEFT }]}>
-            <View style={styles.legendItem}>
-              <View style={[styles.legendLine, { backgroundColor: LIME }]} />
-              <T style={styles.legendText}>With SigmaMax</T>
+                SigmaMax
+              </Text>
             </View>
-            <View style={styles.legendItem}>
-              <View style={[styles.legendLine, { backgroundColor: COLORS.declineRed, opacity: 0.78 }]} />
-              <T style={styles.legendText}>No routine</T>
-            </View>
-          </View>
-        </View>
-
-        {/* Insight line — simple animated delta */}
-        <Animated.View style={[styles.insightTextOnly, insightCardStyle]}>
-          <T style={styles.insightLeadCentered}>Your score can increase up to</T>
-          <T style={styles.insightDeltaBig}>+{displayDelta}</T>
+            <View
+              style={[
+                styles.bubbleTail,
+                {
+                  width: R.ms(11),
+                  height: R.ms(11),
+                  left: R.ms(13),
+                  bottom: -R.ms(4),
+                },
+              ]}
+            />
+          </Animated.View>
         </Animated.View>
-      </ScrollView>
+      </View>
 
-      <View style={[styles.footer, { paddingBottom: insets.bottom + SP[3] }]}>
-        <Pressable
-          onPress={handleContinue}
-          style={({ pressed }) => [
-            styles.cta,
-            pressed && { backgroundColor: COLORS.ctaBlackPressed },
+      {/* Proof pill */}
+      <Animated.View
+        style={[
+          styles.statPill,
+          {
+            marginHorizontal: sidePad,
+            borderRadius: R.clamp(20, 16, 26),
+            paddingVertical: R.sh(16),
+            paddingHorizontal: R.ms(16),
+            gap: R.ms(12),
+          },
+          statStyle,
+        ]}
+      >
+        <View
+          style={[
+            styles.statBadge,
+            { width: R.ms(22), height: R.ms(22), borderRadius: R.ms(11) },
           ]}
         >
-          <T style={styles.ctaText}>SEE MY PLAN</T>
-        </Pressable>
-      </View>
-    </OrangeOnboardingLayout>
+          <View
+            style={[
+              styles.statTriangle,
+              {
+                borderLeftWidth: R.ms(5),
+                borderRightWidth: R.ms(5),
+                borderBottomWidth: R.ms(8),
+              },
+            ]}
+          />
+        </View>
+        <Text
+          maxFontSizeMultiplier={1.2}
+          style={[
+            styles.statText,
+            { fontSize: R.clamp(17, 14, 19), lineHeight: R.clamp(21, 18, 24) },
+          ]}
+        >
+          <Text style={styles.statLead}>{STAT_LEAD}</Text>
+          {STAT_TAIL}
+        </Text>
+      </Animated.View>
+
+      {/* CTA */}
+      <Animated.View
+        style={[
+          styles.footer,
+          {
+            paddingTop: R.sh(26),
+            paddingBottom: Math.max(R.sh(20), insets.bottom + R.sh(14)),
+            paddingHorizontal: sidePad,
+          },
+          ctaStyle,
+        ]}
+      >
+        <OrangePrimaryButton
+          label="Next"
+          onPress={handleContinue}
+          tone="ink"
+          uppercase={false}
+          fontFamily={FONT_BOLD}
+        />
+      </Animated.View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: COLORS.lightBg },
-
+  screen: {
+    flex: 1,
+    backgroundColor: BG_SHELL,
+  },
   topRow: {
-    display: "none",
     flexDirection: "row",
     alignItems: "center",
-    gap: SP[3],
-    paddingHorizontal: SIDE_PAD,
-    paddingBottom: SP[3],
   },
   backBtn: {
-    width: ms(40),
-    height: ms(40),
-    borderRadius: ms(20),
-    backgroundColor: COLORS.lightSurfaceAlt,
+    width: 44,
+    height: 44,
+    alignItems: "flex-start",
+    justifyContent: "center",
+  },
+  headline: {
+    alignItems: "center",
+  },
+  headlineText: {
+    color: INK,
+    fontFamily: FONT_BOLD,
+    letterSpacing: -1.3,
+    textAlign: "center",
+  },
+  stage: {
+    flex: 1,
     alignItems: "center",
     justifyContent: "center",
   },
-  progressTrack: {
-    flex: 1,
-    height: sh(6),
-    borderRadius: 999,
-    backgroundColor: COLORS.lightHairline,
-    overflow: "hidden",
-  },
-  progressFill: {
-    height: "100%",
-    backgroundColor: LIME,
-    borderRadius: 999,
-  },
-
-  content: {
-    flex: 1,
-  },
-  contentInner: {
-    paddingHorizontal: 0,
-    paddingTop: SP[3],
-    paddingBottom: SP[4],
-  },
-
-  heroWrap: {
-    display: "none",
-    alignItems: "center",
-    marginBottom: SP[3],
-  },
-  heroImage: {
-    width: "100%",
-    aspectRatio: 2,
-  },
-  headline: {
-    fontFamily: FONT_BOLD,
-    fontSize: ms(28),
-    lineHeight: ms(34),
-    letterSpacing: 0,
-    color: COLORS.lightText,
-    textAlign: "left",
-    marginBottom: SP[2],
-  },
-  subtext: {
-    fontFamily: ORANGE_ONBOARDING.font,
-    fontSize: ms(14),
-    lineHeight: ms(20),
-    color: COLORS.lightSub,
-    textAlign: "left",
-    marginBottom: SP[4],
-  },
-
-  chartCard: {
-    backgroundColor: COLORS.lightCard,
-    borderRadius: RADII.lg,
-    borderWidth: 1,
-    borderColor: COLORS.lightHairline,
-    paddingVertical: SP[4],
-    paddingHorizontal: 0,
-    overflow: "hidden",
-  },
-  chart: {
-    position: "relative",
-    alignSelf: "center",
-  },
-  wpLabel: {
-    position: "absolute",
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: RADII.sm,
-    backgroundColor: SAGE_SOFT,
-    borderWidth: 1,
-    borderColor: LIME,
-  },
-  wpLabelText: {
-    fontFamily: FONT_SEMIBOLD,
-    fontSize: ms(11),
-    color: SAGE,
-    letterSpacing: 0.2,
-  },
-
-  xAxis: {
-    position: "relative",
-    height: 16,
-    marginTop: SP[2],
+  card: {
+    backgroundColor: CARD,
+    overflow: "visible",
+    shadowColor: "#1F3A22",
+    shadowOpacity: 0.07,
+    shadowRadius: 22,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 5,
   },
   axisLabel: {
     position: "absolute",
-    textAlign: "center",
-    fontFamily: FONT_SEMIBOLD,
-    fontSize: 10,
-    lineHeight: 14,
-    letterSpacing: 0.8,
-    color: COLORS.lightSub,
+    color: AXIS_TEXT,
+    fontFamily: FONT_SEMI,
+    letterSpacing: -0.2,
   },
-
-  legend: {
-    flexDirection: "row",
-    gap: SP[5],
-    marginTop: SP[3],
-  },
-  legendItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SP[2],
-  },
-  legendLine: {
-    width: 18,
-    height: 2.5,
-    borderRadius: 2,
-  },
-  legendText: {
-    fontFamily: ORANGE_ONBOARDING.font,
-    fontSize: ms(12),
-    color: COLORS.lightSub,
-  },
-
-  insightTextOnly: {
-    alignItems: "center",
-    marginTop: SP[5],
-    marginBottom: SP[4],
-  },
-  insightLeadCentered: {
-    fontFamily: ORANGE_ONBOARDING.font,
-    fontSize: ms(13),
-    lineHeight: ms(18),
-    letterSpacing: 0.2,
-    color: COLORS.lightSub,
-    textAlign: "center",
-  },
-  insightDeltaBig: {
+  curveLabel: {
     fontFamily: FONT_BOLD,
-    fontSize: ms(56),
-    lineHeight: ms(64),
-    letterSpacing: -1.5,
-    color: SAGE,
-    marginTop: SP[1],
+    letterSpacing: -0.3,
   },
-  footer: {
-    display: "none",
-    paddingTop: SP[3],
-    paddingHorizontal: SIDE_PAD,
-    backgroundColor: COLORS.lightBg,
+  bubbleWrap: {
+    position: "absolute",
+    transformOrigin: "left bottom",
   },
-  cta: {
-    minHeight: sh(54),
-    borderRadius: 999,
-    backgroundColor: COLORS.ctaBlack,
+  bubble: {
+    backgroundColor: GREEN_BUBBLE,
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: sh(14),
   },
-  ctaText: {
-    fontFamily: FONT_SEMIBOLD,
-    fontSize: ms(14),
+  bubbleText: {
     color: "#FFFFFF",
-    letterSpacing: 1.0,
+    fontFamily: FONT_BOLD,
+    letterSpacing: -0.3,
+  },
+  bubbleTail: {
+    position: "absolute",
+    backgroundColor: GREEN_BUBBLE,
+    transform: [{ rotate: "45deg" }],
+  },
+  statPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: STAT_BG,
+  },
+  statBadge: {
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: STAT_BADGE,
+  },
+  statTriangle: {
+    width: 0,
+    height: 0,
+    backgroundColor: "transparent",
+    borderStyle: "solid",
+    borderLeftColor: "transparent",
+    borderRightColor: "transparent",
+    borderBottomColor: GREEN_DEEP,
+  },
+  statText: {
+    flex: 1,
+    color: INK,
+    fontFamily: FONT_REG,
+    letterSpacing: -0.3,
+  },
+  statLead: {
+    fontFamily: FONT_BOLD,
+  },
+  footer: {
+    alignSelf: "stretch",
   },
 });

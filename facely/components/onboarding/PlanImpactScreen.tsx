@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
-  StatusBar,
   StyleSheet,
   Text,
   View,
@@ -26,10 +25,13 @@ import {
   OnboardingSequenceHeader,
   OrangePrimaryButton,
 } from "@/components/onboarding/OrangeOnboardingLayout";
-import { hapticHeavy, hapticLight } from "@/lib/haptics";
+import { hapticRigid, hapticThud } from "@/lib/haptics";
 import { useResponsiveScale } from "@/lib/responsive";
+import ScreenBackground from "@/components/onboarding/ScreenBackground";
+import { BG_MOODS } from "@/lib/tokens";
 
-const PAPER = "#F5F0E8";
+const MOOD = "mint" as const;
+const PAPER = BG_MOODS[MOOD].bottom;
 const INK = "#17140F";
 const EASE_FAST_OUT = Easing.bezier(0.16, 1, 0.3, 1);
 const EASE_SETTLE = Easing.bezier(0.34, 1.56, 0.64, 1);
@@ -440,9 +442,9 @@ export default function PlanImpactScreen() {
     collisionClock.set(0);
     if (!playing) return;
 
-    const facePopHaptic = setTimeout(hapticLight, 0);
+    const facePopHaptic = setTimeout(hapticRigid, 0);
     // Separate the simultaneous row haptics slightly so both remain perceptible.
-    const elementPopHaptic = setTimeout(hapticLight, 70);
+    const elementPopHaptic = setTimeout(hapticRigid, 70);
     const ctaTimer = setTimeout(() => setCtaReady(true), CTA_REVEAL_MS);
 
     headlineOpacity.set(withTiming(1, {
@@ -488,7 +490,7 @@ export default function PlanImpactScreen() {
       COLLISION_MS,
       withTiming(1, { duration: 1 }, (finished) => {
         "worklet";
-        if (finished) scheduleOnRN(hapticHeavy);
+        if (finished) scheduleOnRN(hapticThud);
       }),
     ));
 
@@ -531,7 +533,7 @@ export default function PlanImpactScreen() {
 
   return (
     <View style={styles.screen}>
-      <StatusBar barStyle="dark-content" backgroundColor={PAPER} />
+      <ScreenBackground mood={MOOD} />
       <OnboardingSequenceHeader stepKey="plan-impact" />
       <View pointerEvents="none" style={styles.content}>
         <Animated.View

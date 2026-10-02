@@ -2,7 +2,7 @@
 // Transitional pause between the splash and the quiz. Three lines type in
 // sequence with subtle haptic ticks, then auto-advance after a short dwell.
 import React, { useCallback, useEffect, useState } from "react";
-import { ScrollView, StyleSheet, Pressable, StatusBar, Text, View } from "react-native";
+import { ScrollView, StyleSheet, Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import Animated, {
@@ -14,8 +14,9 @@ import Animated, {
 } from "react-native-reanimated";
 
 import { OrangePrimaryButton } from "@/components/onboarding/OrangeOnboardingLayout";
-import { hapticSelection } from "@/lib/haptics";
-import { COLORS, SP } from "@/lib/tokens";
+import { hapticTick } from "@/lib/haptics";
+import ScreenBackground from "@/components/onboarding/ScreenBackground";
+import { BG_MOODS, COLORS, SP } from "@/lib/tokens";
 import { ms } from "@/lib/responsive";
 
 const FONT_BOLD = "SFProRounded-Bold";
@@ -53,7 +54,7 @@ function useTypedText(text: string, delay: number) {
 
       const char = text[nextLength - 1];
       if (char?.trim() && nextLength % HAPTIC_EVERY_CHARS === 0) {
-        hapticSelection();
+        hapticTick();
       }
 
       if (nextLength < text.length) {
@@ -109,7 +110,7 @@ export default function WarmupScreen() {
       accessibilityRole="button"
       accessibilityLabel="Continue"
     >
-      <StatusBar barStyle="dark-content" />
+      <ScreenBackground mood="cool" />
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.center}
@@ -180,7 +181,7 @@ function RevealLine({
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: "#FFF8F2" },
+  screen: { flex: 1, backgroundColor: BG_MOODS.cool.bottom },
   scroll: { flex: 1 },
   center: {
     flexGrow: 1,

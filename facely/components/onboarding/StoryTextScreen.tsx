@@ -9,7 +9,7 @@ import OrangeOnboardingLayout, {
   OrangePrimaryButton,
   ORANGE_ONBOARDING,
 } from "@/components/onboarding/OrangeOnboardingLayout";
-import { hapticSelection } from "@/lib/haptics";
+import { hapticTick } from "@/lib/haptics";
 import { SP } from "@/lib/tokens";
 import { ms, sh } from "@/lib/responsive";
 
@@ -25,6 +25,8 @@ type StoryTextScreenProps = {
   ctaLabel?: string;
   onNext: () => void;
   accessibilityLabel?: string;
+  /** Shown above the CTA once the lines finish typing. */
+  accessory?: React.ReactNode;
 };
 
 export default function StoryTextScreen({
@@ -33,6 +35,7 @@ export default function StoryTextScreen({
   ctaLabel = "Continue",
   onNext,
   accessibilityLabel,
+  accessory,
 }: StoryTextScreenProps) {
   const [activeLine, setActiveLine] = useState(0);
   const [charCount, setCharCount] = useState(0);
@@ -53,7 +56,7 @@ export default function StoryTextScreen({
         const nextCount = charCount + 1;
         const nextChar = currentLine[charCount];
         if (nextChar?.trim() && nextCount % HAPTIC_EVERY_CHARS === 0) {
-          hapticSelection();
+          hapticTick();
         }
         setCharCount(nextCount);
       }, CHAR_INTERVAL_MS);
@@ -89,7 +92,8 @@ export default function StoryTextScreen({
       scrollable={false}
       footer={
         done ? (
-          <Animated.View entering={FadeInDown.duration(240)}>
+          <Animated.View entering={FadeInDown.duration(240)} style={styles.footer}>
+            {accessory}
             <OrangePrimaryButton label={ctaLabel} onPress={onNext} tone="ink" uppercase={false} />
           </Animated.View>
         ) : undefined
@@ -146,6 +150,9 @@ const styles = StyleSheet.create({
     color: ORANGE_ONBOARDING.orangeDark,
     letterSpacing: 0,
     textAlign: "center",
+  },
+  footer: {
+    gap: sh(14),
   },
   cursor: {
     color: ORANGE_ONBOARDING.orange,

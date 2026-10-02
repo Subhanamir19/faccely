@@ -1,15 +1,15 @@
 // app/(onboarding)/age.tsx
-// Horizontal age picker inside the shared sequence-style onboarding shell.
+// Vertical age wheel inside the shared sequence-style onboarding shell.
+//
+// Geometry is taken from the reference recording's age screen: the selected
+// value renders at 64, its neighbours at 48 and the outer pair at 28, and the
+// rows compress toward the top and bottom edges rather than sitting on an even
+// pitch. Measured centres were 80pt above / 69pt below the selected value and
+// 147 / 123 at the outer pair, so the pitch is uniform and each row is pulled
+// back toward the centre as it travels outward.
 
 import React, { useCallback, useMemo, useRef, useState } from "react";
-import {
-  ScrollView,
-  StyleSheet,
-  View,
-  useWindowDimensions,
-  type NativeScrollEvent,
-  type NativeSyntheticEvent,
-} from "react-native";
+import { StyleSheet, View } from "react-native";
 import { router } from "expo-router";
 import Animated, {
   type SharedValue,
@@ -22,9 +22,8 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 
-import { SP } from "@/lib/tokens";
 import { hapticSelection } from "@/lib/haptics";
-import { ms, sh, sw } from "@/lib/responsive";
+import { ms, sh } from "@/lib/responsive";
 import { useOnboarding } from "@/store/onboarding";
 import OrangeOnboardingLayout, {
   OrangePrimaryButton,
@@ -41,8 +40,13 @@ const AGES: number[] = Array.from(
   (_, i) => MIN_AGE + i,
 );
 
+const ITEM_HEIGHT = sh(74);
+const VISIBLE_ROWS = 5;
+const FONT_SELECTED = ms(64, 0.3);
+const FONT_ADJACENT = ms(48, 0.3);
+const FONT_OUTER = ms(28, 0.3);
+
 export default function AgeScreen() {
-  const { width: winW } = useWindowDimensions();
   const reduceMotion = useReducedMotion();
 
   const savedAge = useOnboarding((s) => s.data.age);
@@ -55,26 +59,22 @@ export default function AgeScreen() {
 
   const [age, setAge] = useState<number>(initialAge);
 
-  const itemWidth = sw(80);
-  const sidePad = (winW - itemWidth) / 2;
-  const initialOffset = (initialAge - MIN_AGE) * itemWidth;
-
-  const scrollX = useSharedValue<number>(initialOffset);
+  const initialOffset = (initialAge - MIN_AGE) * ITEM_HEIGHT;
+  const scrollY = useSharedValue<number>(initialOffset);
   const settledIndex = useSharedValue<number>(initialAge - MIN_AGE);
   const settleScale = useSharedValue<number>(1);
-  const isSettled = useSharedValue<number>(1);
   const lastIdx = useRef<number>(initialAge - MIN_AGE);
 
   const onScroll = useAnimatedScrollHandler({
     onScroll: (event) => {
-      scrollX.value = event.contentOffset.x;
+      scrollY.value = event.contentOffset.y;
     },
   });
 
   const onMomentumEnd = useCallback(
-    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-      const x = event.nativeEvent.contentOffset.x;
-      const idx = Math.round(x / itemWidth);
+    (event: { nativeEvent: { contentOffset: { y: number } } }) => {
+      const y = event.nativeEvent.contentOffset.y;
+      const idx = Math.round(y / ITEM_HEIGHT);
       const clamped = Math.max(0, Math.min(AGES.length - 1, idx));
 
       if (clamped !== lastIdx.current) {
@@ -84,7 +84,6 @@ export default function AgeScreen() {
       }
 
       settledIndex.value = clamped;
-      isSettled.value = reduceMotion ? 1 : withTiming(1, { duration: 150 });
       settleScale.value = reduceMotion ? 1 : 0.94;
       if (!reduceMotion) {
         settleScale.value = withSpring(1, {
@@ -94,7 +93,7 @@ export default function AgeScreen() {
         });
       }
     },
-    [isSettled, itemWidth, reduceMotion, settleScale, settledIndex],
+    [reduceMotion, settleScale, settledIndex],
   );
 
   const handleNext = useCallback(() => {
@@ -121,54 +120,38 @@ export default function AgeScreen() {
           />
         }
       >
-        <ScrollView
-          style={styles.verticalScroll}
-          contentContainerStyle={styles.center}
-          showsVerticalScrollIndicator={false}
-          bounces={false}
-        >
-          <OrangeScreenTitle
-            title="How old are you?"
-            subtitle="Choose the age that matches you today."
-          />
+        <OrangeScreenTitle title="How old are you?" />
 
-          <View style={styles.pickerWrap}>
-            <Animated.FlatList
-              style={styles.ageList}
-              data={AGES}
-              keyExtractor={(value) => String(value)}
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              snapToInterval={itemWidth}
-              disableIntervalMomentum
-              decelerationRate="fast"
-              contentContainerStyle={{ paddingHorizontal: sidePad }}
-              onScroll={onScroll}
-              onScrollBeginDrag={() => {
-                isSettled.value = reduceMotion ? 1 : withTiming(0, { duration: 90 });
-              }}
-              onMomentumScrollEnd={onMomentumEnd}
-              scrollEventThrottle={16}
-              getItemLayout={(_, index) => ({
-                length: itemWidth,
-                offset: itemWidth * index,
-                index,
-              })}
-              initialScrollIndex={initialAge - MIN_AGE}
-              renderItem={({ item, index }) => (
-                <AgeItem
-                  age={item}
-                  index={index}
-                  itemWidth={itemWidth}
-                  scrollX={scrollX}
-                  settledIndex={settledIndex}
-                  settleScale={settleScale}
-                  isSettled={isSettled}
-                />
-              )}
-            />
-          </View>
-        </ScrollView>
+        <View style={styles.pickerWrap}>
+          <Animated.FlatList
+            style={styles.ageList}
+            data={AGES}
+            keyExtractor={(value) => String(value)}
+            showsVerticalScrollIndicator={false}
+            snapToInterval={ITEM_HEIGHT}
+            disableIntervalMomentum
+            decelerationRate="fast"
+            contentContainerStyle={styles.ageListContent}
+            onScroll={onScroll}
+            onMomentumScrollEnd={onMomentumEnd}
+            scrollEventThrottle={16}
+            getItemLayout={(_, index) => ({
+              length: ITEM_HEIGHT,
+              offset: ITEM_HEIGHT * index,
+              index,
+            })}
+            initialScrollIndex={initialAge - MIN_AGE}
+            renderItem={({ item, index }) => (
+              <AgeItem
+                age={item}
+                index={index}
+                scrollY={scrollY}
+                settledIndex={settledIndex}
+                settleScale={settleScale}
+              />
+            )}
+          />
+        </View>
       </OrangeOnboardingLayout>
     </View>
   );
@@ -177,93 +160,82 @@ export default function AgeScreen() {
 function AgeItem({
   age,
   index,
-  itemWidth,
-  scrollX,
+  scrollY,
   settledIndex,
   settleScale,
-  isSettled,
 }: {
   age: number;
   index: number;
-  itemWidth: number;
-  scrollX: SharedValue<number>;
+  scrollY: SharedValue<number>;
   settledIndex: SharedValue<number>;
   settleScale: SharedValue<number>;
-  isSettled: SharedValue<number>;
 }) {
   const labelStyle = useAnimatedStyle(() => {
-    const distance = Math.abs(scrollX.value / itemWidth - index);
-    const scale = interpolate(distance, [0, 1, 2], [1, 0.55, 0.45], "clamp");
-    const opacity = interpolate(distance, [0, 1, 2], [1, 0.32, 0.14], "clamp");
-    const settle = settledIndex.value === index ? settleScale.value : 1;
-    return { opacity, transform: [{ scale: scale * settle }] };
-  });
+    const offset = scrollY.value / ITEM_HEIGHT - index;
+    const distance = Math.abs(offset);
 
-  const tickStyle = useAnimatedStyle(() => {
-    const distance = Math.abs(scrollX.value / itemWidth - index);
-    const lockScale = settledIndex.value === index
-      ? interpolate(isSettled.value, [0, 1], [0.72, 1], "clamp")
-      : 0.72;
+    // 64 / 48 / 28 expressed against the selected size, so one font size drives
+    // the whole wheel and the neighbours stay in proportion on every device.
+    const scale = interpolate(
+      distance,
+      [0, 1, 2, 3],
+      [1, FONT_ADJACENT / FONT_SELECTED, FONT_OUTER / FONT_SELECTED, 0.3],
+      "clamp",
+    );
+    const opacity = interpolate(distance, [0, 1, 2, 3], [1, 0.4, 0.18, 0], "clamp");
+
+    // Rows travelling away from the centre are pulled back toward it, which is
+    // what produces the reference's 80/69 then 147/123 spacing off a flat pitch.
+    const pull = interpolate(distance, [0, 1, 2, 3], [0, 0, 14, 34], "clamp");
+    const settle = settledIndex.value === index ? settleScale.value : 1;
 
     return {
-      opacity: interpolate(distance, [0, 0.6, 1], [1, 0.3, 0], "clamp"),
+      opacity,
       transform: [
-        { scaleY: interpolate(distance, [0, 1], [1.6, 0.7], "clamp") * lockScale },
+        { translateY: offset > 0 ? pull : -pull },
+        { scale: scale * settle },
       ],
     };
   });
 
   return (
-    <View style={[styles.ageItem, { width: itemWidth }]}>
+    <View style={styles.ageItem}>
       <Animated.Text style={[styles.ageText, labelStyle]}>{age}</Animated.Text>
-      <Animated.View style={[styles.tick, tickStyle]} />
     </View>
   );
 }
-
-const TICK_HEIGHT = ms(20);
 
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: PAPER,
   },
-  verticalScroll: {
-    flex: 1,
-  },
-  center: {
-    flexGrow: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingBottom: SP[3],
-  },
   pickerWrap: {
+    flexGrow: 1,
     width: "100%",
     alignItems: "center",
     justifyContent: "center",
   },
   ageList: {
     flexGrow: 0,
-    maxHeight: sh(112),
+    width: "100%",
+    height: ITEM_HEIGHT * VISIBLE_ROWS,
+  },
+  ageListContent: {
+    // Two blank rows at each end so the first and last age can reach the centre.
+    paddingVertical: ITEM_HEIGHT * ((VISIBLE_ROWS - 1) / 2),
   },
   ageItem: {
+    height: ITEM_HEIGHT,
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: sh(8),
   },
   ageText: {
     fontFamily: ORANGE_ONBOARDING.fontBold,
-    fontSize: ms(48),
-    lineHeight: ms(56),
-    letterSpacing: 0,
+    fontSize: FONT_SELECTED,
+    lineHeight: FONT_SELECTED * 1.1,
+    letterSpacing: -1,
     color: ORANGE_ONBOARDING.text,
     includeFontPadding: false,
-  },
-  tick: {
-    marginTop: sh(8),
-    width: 2,
-    height: TICK_HEIGHT,
-    borderRadius: 1,
-    backgroundColor: ORANGE_ONBOARDING.orange,
   },
 });

@@ -18,6 +18,10 @@ import Animated, {
 import { Scan, CircleCheckBig, UserRound, TrendingUp, MessageCircle } from "lucide-react-native";
 import { APP_SCREEN_BG } from "@/components/layout/AppGradientBackground";
 import { FLOATING_TAB_BAR } from "@/components/layout/floatingTabBar";
+import PotentialFaceReadyToast, {
+  useHasUnseenPotentialFace,
+} from "@/components/potentialFace/PotentialFaceReadyToast";
+import { useHasUnseenCoachScan } from "@/store/coachSeen";
 
 const LIGHT_TAB_THEME = {
   tint: "systemChromeMaterialLight" as const,
@@ -283,6 +287,9 @@ function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
                     reduceMotion={reduceMotion}
                   />
                 ) : null}
+                {options.tabBarBadge != null ? (
+                  <View pointerEvents="none" style={styles.badgeDot} />
+                ) : null}
               </Pressable>
             );
           })}
@@ -348,6 +355,15 @@ const styles = StyleSheet.create({
     borderRadius: 30,
     zIndex: 1,
   },
+  badgeDot: {
+    position: "absolute",
+    top: 14,
+    right: "30%",
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#F26A13",
+  },
   tabPressed: {
     opacity: 0.72,
     transform: [{ scale: 0.94 }],
@@ -364,7 +380,11 @@ const styles = StyleSheet.create({
 });
 
 export default function TabsLayout() {
+  const hasUnseenPotentialFace = useHasUnseenPotentialFace();
+  const hasUnseenCoachScan = useHasUnseenCoachScan();
+
   return (
+    <>
     <Tabs
       initialRouteName="take-picture"
       tabBar={(props) => <FloatingTabBar {...props} />}
@@ -398,6 +418,8 @@ export default function TabsLayout() {
         options={{
           title: "Progress",
           tabBarIcon: ({ color, size }) => <TrendingUp color={color} size={size ?? 24} />,
+          // A dot, not a count: the renderer only checks presence.
+          tabBarBadge: hasUnseenPotentialFace ? "" : undefined,
         }}
       />
 
@@ -406,6 +428,8 @@ export default function TabsLayout() {
         options={{
           title: "Coach",
           tabBarIcon: ({ color, size }) => <MessageCircle color={color} size={size ?? 24} />,
+          // A new scan Coach has not talked about yet.
+          tabBarBadge: hasUnseenCoachScan ? "" : undefined,
         }}
       />
 
@@ -417,18 +441,18 @@ export default function TabsLayout() {
         }}
       />
 
-      {/* Dev tools: hidden everywhere for now, debug builds included.
-          `href: null` blocks deep links to it and dropping tabBarIcon keeps it
-          out of the tab bar. To bring it back in development, restore
-          `href: __DEV__ ? undefined : null` and the matching tabBarIcon. */}
+      {/* Dev tools: hidden from the tab bar (no tabBarIcon). Still reachable at
+          /dev in development builds; `href: null` blocks it in production. */}
       <Tabs.Screen
         name="dev"
         options={{
           title: "Dev",
-          href: null,
+          href: __DEV__ ? undefined : null,
         }}
       />
 
     </Tabs>
+    <PotentialFaceReadyToast />
+    </>
   );
 }

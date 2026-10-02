@@ -12,6 +12,7 @@ import { usePotentialFace } from "@/store/potentialFace";
 import { ensureJpegCompressed } from "../lib/api/media";
 import { useAuthStore } from "@/store/auth";
 import { requestPotentialFaceGeneration } from "@/lib/api/potentialFace";
+import { prefetchFaceGeometry } from "@/lib/faceLandmarks";
 
 type ParamValue = string | string[] | undefined;
 
@@ -26,13 +27,14 @@ type Params = {
   sideMime?: ParamValue;
   normalized?: ParamValue;
   onboardingFlow?: ParamValue;
-  next?: ParamValue;
-  devPreview?: ParamValue;
 };
 
 type ImageMeta = { uri: string; name: string; mime: string };
 
-const ONBOARDING_ADVANCED_MIN_LOADING_MS = 1800;
+// How long the completed ring stays on screen before the results open. Long
+// enough to read as "done", short enough not to feel like a delay.
+const COMPLETE_HOLD_MS = 450;
+
 
 function takeFirst(value?: ParamValue): string | undefined {
   if (!value) return undefined;
@@ -131,8 +133,6 @@ export default function LoadingScreen() {
   const sideMime = takeFirst(params.sideMime);
   const normalized = normalizeNormalized(takeFirst(params.normalized));
   const onboardingFlow = takeFirst(params.onboardingFlow) === "1";
-  const nextRoute = takeFirst(params.next);
-  const devPreview = takeFirst(params.devPreview) === "1";
 
   const storedImageUri = useScores((state) => state.imageUri);
   const [isLoading, setIsLoading] = useState(true);
@@ -160,6 +160,14 @@ export default function LoadingScreen() {
 
     if (!onboardingHydrated) return () => {
       cancelled = true;
+    };
+
+    // Fill the ring, then open the results once the user has seen it finish.
+    const completeThen = (go: () => void) => {
+      setIsLoading(false);
+      setTimeout(() => {
+        if (!cancelled) go();
+      }, COMPLETE_HOLD_MS);
     };
 
     const handleError = (err: unknown, title: string) => {
@@ -255,8 +263,7 @@ export default function LoadingScreen() {
             throw new Error("Advanced analysis did not return results.");
           }
           if (cancelled) return;
-          setIsLoading(false);
-          router.replace("/analysis");
+          completeThen(() => router.replace("/analysis"));
           return;
         }
 
@@ -264,11 +271,12 @@ export default function LoadingScreen() {
         // data ready by the time user navigates there. User doesn't wait.
         explainPair(frontMeta.uri, sideMeta.uri, scores).catch(() => {});
 
-        setIsLoading(false);
-        router.replace({
-          pathname: "/score",
-          params: { scoresPayload: JSON.stringify(scores) } as any,
-        });
+        completeThen(() =>
+          router.replace({
+            pathname: "/score",
+            params: { scoresPayload: JSON.stringify(scores) } as any,
+          })
+        );
         
       } catch (error) {
         handleError(error, "Analysis failed");
@@ -282,33 +290,19 @@ export default function LoadingScreen() {
         if (!storedImageUri || !storedScores) {
           throw new Error("Scores not found. Please run analysis again.");
         }
-        const startedAt = Date.now();
         const { data, error: advError } = await useAdvancedAnalysis
           .getState()
           .ensureFetched();
-        if (onboardingFlow && nextRoute === "findingsBridge") {
-          const elapsed = Date.now() - startedAt;
-          const remaining = ONBOARDING_ADVANCED_MIN_LOADING_MS - elapsed;
-          if (remaining > 0) {
-            await new Promise((resolve) => setTimeout(resolve, remaining));
-          }
-        }
         if (cancelled) return;
         if (!data) {
           throw new Error(advError ?? "Advanced analysis did not return results.");
         }
-        setIsLoading(false);
-        if (onboardingFlow && nextRoute === "findingsBridge") {
-          router.replace({
-            pathname: "/(onboarding)/potential-face-bridge",
-            params: devPreview ? { devPreview: "1" } : {},
-          });
-          return;
-        }
-        router.replace(
-          onboardingFlow
-            ? { pathname: "/analysis", params: { onboardingFlow: "1" } }
-            : "/analysis"
+        completeThen(() =>
+          router.replace(
+            onboardingFlow
+              ? { pathname: "/analysis", params: { onboardingFlow: "1" } }
+              : "/analysis"
+          )
         );
       } catch (error) {
         handleError(error, "Advanced analysis failed");
@@ -351,6 +345,8 @@ export default function LoadingScreen() {
         if (cancelled) return;
 
         const scoreState = useScores.getState();
+        // Face detection for the reveal runs alongside the advanced analysis.
+        prefetchFaceGeometry(scoreState.imageUri);
         const scanId = scoreState.scanId;
         if (!scanId) {
           throw new Error("Scan was scored but not saved. Please try again later.");
@@ -364,25 +360,37 @@ export default function LoadingScreen() {
           throw new Error(advancedError ?? "Advanced analysis did not return results.");
         }
 
-        let generationStarted = false;
-        try {
-          await requestPotentialFaceGeneration(scanId);
-          generationStarted = true;
-          usePotentialFace.getState().load().catch(() => {});
-        } catch (generationError) {
-          // Non-fatal by design. The reveal screen has a graceful fallback,
-          // and the user can still continue into advanced analysis.
-          console.warn("[loading] onboarding potential face generation did not finish:", generationError);
-        }
+        // The potential face generates in the background and is revealed
+        // later from the Progress tab; it never blocks this flow. plan-intro
+        // requests it again (idempotent) in case this call fails.
+        void requestPotentialFaceGeneration(scanId)
+          .then(() => usePotentialFace.getState().load())
+          .catch((generationError) => {
+            console.warn("[loading] potential face generation request failed:", generationError);
+          });
 
         useOnboarding.getState().clearScanPhotos();
-        setIsLoading(false);
-        router.replace(generationStarted ? "/(onboarding)/potential-face-reveal" : "/(onboarding)/potential-face-bridge");
+        completeThen(() =>
+          router.replace({ pathname: "/analysis-reveal", params: { onboardingFlow: "1" } })
+        );
       } catch (error) {
-        console.warn("[loading] onboarding potential face workflow failed:", error);
+        console.warn("[loading] onboarding post-purchase workflow failed:", error);
+        if (cancelled) return;
+        // Terminal either way: clear the photos so a relaunch does not retry
+        // the same failing pair in a loop.
+        useOnboarding.getState().clearScanPhotos();
         setIsLoading(false);
-        const hasScores = !!useScores.getState().scores;
-        router.replace(hasScores ? "/(onboarding)/potential-face-bridge" : "/(tabs)/program");
+        if (useScores.getState().scores) {
+          // Scoring worked, only advanced analysis failed. The analysis
+          // screen retries it and offers a way on to the plan.
+          router.replace({ pathname: "/analysis", params: { onboardingFlow: "1" } });
+        } else {
+          Alert.alert(
+            "We couldn't analyze your photos",
+            "Your subscription is active. Take a new scan to get your full analysis.",
+          );
+          router.replace("/(tabs)/take-picture");
+        }
       }
     };
 
@@ -432,8 +440,6 @@ export default function LoadingScreen() {
     side,
     normalized,
     onboardingFlow,
-    nextRoute,
-    devPreview,
     frontName,
     sideName,
     frontMime,

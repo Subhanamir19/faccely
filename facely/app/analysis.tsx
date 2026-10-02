@@ -11,9 +11,10 @@ import {
   Platform,
   Image as RNImage,
   useWindowDimensions,
+  BackHandler,
 } from "react-native";
 import { Image as ExpoImage } from "expo-image";
-import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
+import { router, useFocusEffect, useLocalSearchParams, useNavigation } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import * as NavigationBar from "expo-navigation-bar";
@@ -716,10 +717,11 @@ export function AnalysisContent({
             if (full) handleCardPress(full);
           }}
           footer={(
-            <Animated.View entering={FadeInDown.duration(340).delay(600)} style={sx.footerCta}>
+            // Docked CTA lands last — after the header, switcher and first cards.
+            <Animated.View entering={FadeInDown.duration(340).delay(420).easing(Easing.bezier(0.16, 1, 0.3, 1))}>
               <Pressable
                 onPress={() => router.push(onboardingFlow ? "/(onboarding)/plan-intro" : "/(tabs)/program")}
-                style={({ pressed }) => [sx.ctaBtn, pressed && { opacity: 0.9, transform: [{ scale: 0.985 }] }]}
+                style={({ pressed }) => [sx.ctaBtn, pressed && { transform: [{ scale: 0.97 }] }]}
                 accessibilityRole="button"
                 accessibilityLabel={onboardingFlow ? "Next" : "Start your routine"}
               >
@@ -950,8 +952,10 @@ export default function AnalysisScreen() {
   // Pending = data is ready for a scan the user hasn't dismissed the
   // blueprint for yet. Drives both the modal trigger and the content gate
   // so the carousel never flashes behind the modal on first entry.
+  // Post-purchase, the reveal has just introduced the analysis; a third
+  // intro in a row would stall the user. The info button still opens it.
   const needsFirstSurface =
-    !!data && !!cachedScanId && dismissedForScanIdRef.current !== cachedScanId;
+    !onboardingFlow && !!data && !!cachedScanId && dismissedForScanIdRef.current !== cachedScanId;
 
   useEffect(() => {
     if (needsFirstSurface && !blueprintVisible) setBlueprintVisible(true);
@@ -973,6 +977,20 @@ export default function AnalysisScreen() {
     else router.replace("/(tabs)/dashboard");
   }, []);
 
+  // Post-purchase, "back" would land on the pre-paywall onboarding screens.
+  // The only way on is forward, to the plan.
+  const navigation = useNavigation();
+  useEffect(() => {
+    if (onboardingFlow) navigation.setOptions({ gestureEnabled: false });
+  }, [navigation, onboardingFlow]);
+  useFocusEffect(
+    useCallback(() => {
+      if (!onboardingFlow) return;
+      const sub = BackHandler.addEventListener("hardwareBackPress", () => true);
+      return () => sub.remove();
+    }, [onboardingFlow]),
+  );
+
   return (
     <AppGradientBackground style={sx.screen}>
       {showContent && <StatusBar style="dark" />}
@@ -991,10 +1009,14 @@ export default function AnalysisScreen() {
       <View style={[sx.safeArea, { paddingTop: insets.top }]}>
 
         {showContent && (
-          <Animated.View entering={FadeInDown.duration(550).delay(50).easing(Easing.bezier(0.22, 0.8, 0.2, 1))} style={sx.resultsHeader}>
-            <Pressable onPress={handleBack} accessibilityRole="button" accessibilityLabel="Back" hitSlop={6} style={({ pressed }) => [sx.headerIconButton, pressed && sx.headerIconPressed]}>
-              <ChevronLeft size={ms(20)} color="#1C1C1E" strokeWidth={2.1} />
-            </Pressable>
+          <Animated.View entering={FadeInDown.duration(340).easing(Easing.bezier(0.16, 1, 0.3, 1))} style={sx.resultsHeader}>
+            {onboardingFlow ? (
+              <View style={sx.headerIconButton} />
+            ) : (
+              <Pressable onPress={handleBack} accessibilityRole="button" accessibilityLabel="Back" hitSlop={6} style={({ pressed }) => [sx.headerIconButton, pressed && sx.headerIconPressed]}>
+                <ChevronLeft size={ms(20)} color="#1C1C1E" strokeWidth={2.1} />
+              </Pressable>
+            )}
             <Text style={sx.resultsHeaderTitle}>Advanced Analysis</Text>
             <Pressable onPress={() => setBlueprintVisible(true)} accessibilityRole="button" accessibilityLabel="About this analysis" hitSlop={6} style={({ pressed }) => [sx.headerIconButton, pressed && sx.headerIconPressed]}>
               <Info size={ms(18)} color="#1C1C1E" strokeWidth={1.8} />
@@ -1050,6 +1072,19 @@ export default function AnalysisScreen() {
                 <ShimmerCard key={i} index={i} />
               ))}
             </View>
+          )}
+
+          {/* Post-purchase, the user must never be stuck here: if the
+              analysis failed or consent was declined, let them go on to
+              their plan. The analysis stays reachable from the tabs. */}
+          {onboardingFlow && !showLoading && (
+            <Pressable
+              onPress={() => router.push("/(onboarding)/plan-intro")}
+              accessibilityRole="button"
+              style={({ pressed }) => [sx.onboardingSkip, pressed && { opacity: 0.75 }]}
+            >
+              <Text style={sx.retryText}>Continue to my plan</Text>
+            </Pressable>
           )}
 
         </ScrollView>
@@ -1670,6 +1705,12 @@ const sx = StyleSheet.create({
     paddingVertical: sh(11),
     borderRadius: 999,
     backgroundColor: COLORS.lightSurfaceAlt,
+  },
+  onboardingSkip: {
+    alignSelf: "center",
+    marginTop: sh(20),
+    paddingHorizontal: sw(28),
+    paddingVertical: sh(11),
   },
   retryText: {
     fontSize: ms(14, 0.3),

@@ -3,16 +3,36 @@ import { router } from "expo-router";
 
 import OrangeQuestionScreen, {
   OrangeOption,
-  OrangeOptionGrid,
+  OrangeOptionRow,
 } from "@/components/onboarding/OrangeQuestionScreen";
-import { hapticSelection } from "@/lib/haptics";
+import { hapticRigid } from "@/lib/haptics";
 import { useOnboarding } from "@/store/onboarding";
 
 const OPTIONS: OrangeOption[] = [
-  { key: "5min", label: "5 min", caption: "Quick habit", emoji: "⚡" },
-  { key: "10min", label: "10 min", caption: "Balanced", emoji: "🎯" },
-  { key: "15min", label: "15 min", caption: "Dedicated", emoji: "💪" },
-  { key: "20min", label: "20+ min", caption: "Full protocol", emoji: "🔥" },
+  {
+    key: "5min",
+    label: "5 min",
+    caption: "Quick habit",
+    image: require("@/assets/onboarding-option-illustrations/time-dedication/quick_habit.png"),
+  },
+  {
+    key: "10min",
+    label: "10 min",
+    caption: "Balanced",
+    image: require("@/assets/onboarding-option-illustrations/time-dedication/balanced_target.png"),
+  },
+  {
+    key: "15min",
+    label: "15 min",
+    caption: "Dedicated",
+    image: require("@/assets/onboarding-option-illustrations/time-dedication/dedicated_arm.png"),
+  },
+  {
+    key: "20min",
+    label: "20+ min",
+    caption: "Full protocol",
+    image: require("@/assets/onboarding-option-illustrations/time-dedication/full_protocol_flame.png"),
+  },
 ];
 
 export default function TimeDedicationScreen() {
@@ -22,7 +42,7 @@ export default function TimeDedicationScreen() {
 
   const handleSelect = useCallback(
     (key: string) => {
-      hapticSelection();
+      hapticRigid();
       setField("timeDedication", key);
     },
     [setField],
@@ -38,14 +58,17 @@ export default function TimeDedicationScreen() {
       stepKey="time-dedication"
       heroImage={require("@/assets/bg-assets-for-onbaording-screens/time.jpg")}
       title="How much time can you commit?"
-      subtitle="We'll build a routine that fits your schedule."
       onContinue={handleNext}
     >
-      <OrangeOptionGrid
-        options={OPTIONS}
-        selectedKey={selected}
-        onSelect={handleSelect}
-      />
+      {OPTIONS.map((option) => (
+        <OrangeOptionRow
+          key={option.key}
+          variant="descriptive"
+          option={option}
+          selected={selected === option.key}
+          onPress={() => handleSelect(option.key)}
+        />
+      ))}
     </OrangeQuestionScreen>
   );
 }

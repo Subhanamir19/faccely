@@ -51,6 +51,7 @@ import { sw, sh, ms } from "@/lib/responsive";
 import {
   APP_SCREEN_BG,
   AppGradientBackground,
+  AppScreenGradient,
 } from "@/components/layout/AppGradientBackground";
 import { FLOATING_TAB_BAR } from "@/components/layout/floatingTabBar";
 import { useTasksStore } from "@/store/tasks";
@@ -638,6 +639,7 @@ function ScanIntroScreen({
   return (
     <View style={styles.scanScreen}>
       <StatusBar barStyle="dark-content" backgroundColor={APP_SCREEN_BG} />
+      <AppScreenGradient />
       <SafeAreaView style={styles.scanSafeArea}>
         <View style={styles.scanContent}>
           <View style={[styles.scanTopBar, compact && styles.scanTopBarCompact]}>
@@ -1086,6 +1088,7 @@ export default function TakePicture() {
   }) => (
     <View style={styles.scanScreen}>
       <StatusBar barStyle={'dark-content'} backgroundColor={APP_SCREEN_BG} />
+      <AppScreenGradient />
       <SafeAreaView style={styles.scanSafeArea}>
         <View style={styles.scanGuidedContent}>
           <ScanStepHeading
@@ -1128,6 +1131,7 @@ export default function TakePicture() {
   const renderReview = () => (
     <View style={styles.scanScreen}>
       <StatusBar barStyle={'dark-content'} backgroundColor={APP_SCREEN_BG} />
+      <AppScreenGradient />
       <SafeAreaView style={styles.scanSafeArea}>
         <View style={styles.scanGuidedContent}>
           <ScanStepHeading eyebrow={'PHOTOS READY'} title={'Review your photos'} />
@@ -1719,7 +1723,6 @@ const styles = StyleSheet.create({
   },
   scanSafeArea: {
     flex: 1,
-    backgroundColor: APP_SCREEN_BG,
   },
   scanContent: {
     flex: 1,

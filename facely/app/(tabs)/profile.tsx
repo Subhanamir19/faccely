@@ -15,6 +15,8 @@ import {
 } from "react-native";
 import { BlurView } from "expo-blur";
 import * as Clipboard from "expo-clipboard";
+import Constants from "expo-constants";
+import * as Haptics from "expo-haptics";
 import {
   GlassView,
   isGlassEffectAPIAvailable,
@@ -23,6 +25,7 @@ import {
 import * as ImagePicker from "expo-image-picker";
 import * as WebBrowser from "expo-web-browser";
 import { router } from "expo-router";
+import Animated, { FadeIn, FadeInDown, FadeOut } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   Camera,
@@ -39,7 +42,7 @@ import {
 } from "lucide-react-native";
 
 import { FLOATING_TAB_BAR } from "@/components/layout/floatingTabBar";
-import { APP_SCREEN_BG } from "@/components/layout/AppGradientBackground";
+import { APP_SCREEN_BG, AppScreenGradient } from "@/components/layout/AppGradientBackground";
 import T from "@/components/ui/T";
 import { COLORS, SP } from "@/lib/tokens";
 import { ms } from "@/lib/responsive";
@@ -64,7 +67,9 @@ const DETAIL_FONT = "DINNextRounded-Regular";
 const GREEN = "#4D9800";
 const INK = "#171512";
 const SECONDARY = "#736E67";
-const GROUP_BG = "#F7F6F3";
+const GROUP_BG = "rgba(255,255,255,0.86)";
+const WARM_FILL = "#F4EFE8";
+const APP_VERSION = Constants.expoConfig?.version ?? null;
 const SEPARATOR = "rgba(23,21,18,0.09)";
 
 const PROFILE_LIQUID_GLASS =
@@ -130,18 +135,23 @@ function CameraMaterial({
 function SettingsSection({
   label,
   footer,
+  index = 0,
   children,
 }: {
   label: string;
   footer?: string;
+  index?: number;
   children: React.ReactNode;
 }) {
   return (
-    <View style={styles.section}>
+    <Animated.View
+      entering={FadeInDown.duration(260).delay(60 * index)}
+      style={styles.section}
+    >
       <T style={styles.sectionLabel}>{label}</T>
       <View style={styles.group}>{children}</View>
       {footer ? <T style={styles.sectionFooter}>{footer}</T> : null}
-    </View>
+    </Animated.View>
   );
 }
 
@@ -210,7 +220,10 @@ function SettingsRow({
 
   return (
     <Pressable
-      onPress={onPress}
+      onPress={() => {
+        Haptics.selectionAsync().catch(() => {});
+        onPress();
+      }}
       disabled={disabled}
       accessibilityRole={accessibilityRole}
       accessibilityLabel={value ? `${label}, ${value}` : label}
@@ -315,6 +328,7 @@ export default function ProfileScreen() {
   const gender = onboardingData.gender || "Not set";
   const ethnicity = onboardingData.ethnicity || "Not set";
   const age = typeof onboardingData.age === "number" ? String(onboardingData.age) : "Not set";
+  const nameDirty = nameInput.trim() !== (displayName ?? "").trim();
 
   const saveName = async () => {
     await setDisplayName(nameInput.trim());
@@ -426,6 +440,7 @@ export default function ProfileScreen() {
   return (
     <View style={styles.root}>
       <StatusBar barStyle="dark-content" backgroundColor={APP_SCREEN_BG} />
+      <AppScreenGradient />
       {/* The name field sits mid-list; without this the keyboard covers it. */}
       <KeyboardAvoidingView
         style={styles.flex}
@@ -498,7 +513,7 @@ export default function ProfileScreen() {
             </View>
           </View>
 
-          <SettingsSection label="PERSONAL">
+          <SettingsSection index={0} label="PERSONAL">
             <View style={styles.nameEditorRow}>
               <View style={styles.nameEditorCopy}>
                 <T style={styles.inputLabel}>Name</T>
@@ -518,25 +533,29 @@ export default function ProfileScreen() {
                   selectionColor={INK}
                 />
               </View>
-              <Pressable
-                onPress={saveName}
-                disabled={isHydrating}
-                accessibilityRole="button"
-                accessibilityLabel={nameSaved ? "Name saved" : "Save name"}
-                accessibilityState={{ disabled: isHydrating }}
-                hitSlop={4}
-                style={({ pressed }) => [
-                  styles.saveButton,
-                  nameSaved && styles.saveButtonComplete,
-                  isHydrating && styles.rowDisabled,
-                  pressed && styles.compactPressed,
-                ]}
-              >
-                {nameSaved ? <Check size={15} color={GREEN} strokeWidth={2.6} /> : null}
-                <T style={[styles.saveButtonText, nameSaved && styles.saveButtonTextComplete]}>
-                  {nameSaved ? "Saved" : "Save"}
-                </T>
-              </Pressable>
+              {nameDirty || nameSaved ? (
+                <Animated.View entering={FadeIn.duration(160)} exiting={FadeOut.duration(160)}>
+                  <Pressable
+                    onPress={saveName}
+                    disabled={isHydrating}
+                    accessibilityRole="button"
+                    accessibilityLabel={nameSaved ? "Name saved" : "Save name"}
+                    accessibilityState={{ disabled: isHydrating }}
+                    hitSlop={4}
+                    style={({ pressed }) => [
+                      styles.saveButton,
+                      nameSaved && styles.saveButtonComplete,
+                      isHydrating && styles.rowDisabled,
+                      pressed && styles.compactPressed,
+                    ]}
+                  >
+                    {nameSaved ? <Check size={15} color={GREEN} strokeWidth={2.6} /> : null}
+                    <T style={[styles.saveButtonText, nameSaved && styles.saveButtonTextComplete]}>
+                      {nameSaved ? "Saved" : "Save"}
+                    </T>
+                  </Pressable>
+                </Animated.View>
+              ) : null}
             </View>
             <GroupDivider />
             <InfoRow label="Gender" value={gender} />
@@ -547,6 +566,7 @@ export default function ProfileScreen() {
           </SettingsSection>
 
           <SettingsSection
+            index={1}
             label="MEMBERSHIP"
             footer="Restoring purchases never creates a new charge."
           >
@@ -579,6 +599,7 @@ export default function ProfileScreen() {
           </SettingsSection>
 
           <SettingsSection
+            index={2}
             label="SECURITY"
             footer="Keep your recovery code somewhere private."
           >
@@ -642,7 +663,7 @@ export default function ProfileScreen() {
             />
           </SettingsSection>
 
-          <SettingsSection label="ACCOUNT">
+          <SettingsSection index={3} label="ACCOUNT">
             <SettingsRow
               label={loggingOut ? "Signing out…" : "Sign Out"}
               icon={
@@ -670,6 +691,10 @@ export default function ProfileScreen() {
               danger
             />
           </SettingsSection>
+
+          {APP_VERSION ? (
+            <T style={styles.versionText} selectable>Version {APP_VERSION}</T>
+          ) : null}
         </View>
       </ScrollView>
       </KeyboardAvoidingView>
@@ -722,10 +747,10 @@ const styles = StyleSheet.create({
     height: 96,
     borderRadius: 48,
     overflow: "hidden",
-    backgroundColor: "#ECEAE6",
-    borderWidth: 1,
-    borderColor: "rgba(23,21,18,0.08)",
-    boxShadow: "0 9px 22px rgba(23, 18, 12, 0.13)",
+    backgroundColor: WARM_FILL,
+    borderWidth: 3,
+    borderColor: "#FFFFFF",
+    boxShadow: "0 0 0 1.5px rgba(242, 106, 19, 0.28), 0 9px 22px rgba(23, 18, 12, 0.13)",
   },
   avatarImage: {
     width: "100%",
@@ -735,7 +760,7 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#F0EEEA",
+    backgroundColor: WARM_FILL,
   },
   cameraMaterial: {
     position: "absolute",
@@ -791,7 +816,7 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#EFEDE9",
+    backgroundColor: "#F1EBE2",
   },
   planPillActive: {
     backgroundColor: "#EDF6E4",
@@ -823,7 +848,8 @@ const styles = StyleSheet.create({
     borderCurve: "continuous",
     backgroundColor: GROUP_BG,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(23,21,18,0.07)",
+    borderColor: "rgba(23,21,18,0.06)",
+    boxShadow: "0 1px 2px rgba(60, 40, 20, 0.04), 0 8px 20px rgba(60, 40, 20, 0.05)",
   },
   sectionFooter: {
     paddingHorizontal: 12,
@@ -845,7 +871,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   rowPressed: {
-    backgroundColor: "#ECEAE6",
+    backgroundColor: "rgba(23,21,18,0.05)",
   },
   rowDisabled: {
     opacity: 0.48,
@@ -858,7 +884,7 @@ const styles = StyleSheet.create({
     flexShrink: 0,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#EAE8E4",
+    backgroundColor: WARM_FILL,
   },
   rowIconGreen: {
     backgroundColor: "#EAF4DF",
@@ -931,9 +957,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 5,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: WARM_FILL,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(23,21,18,0.10)",
+    borderColor: "rgba(23,21,18,0.08)",
   },
   saveButtonComplete: {
     backgroundColor: "#EDF6E4",
@@ -1005,9 +1031,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 6,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: WARM_FILL,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(23,21,18,0.10)",
+    borderColor: "rgba(23,21,18,0.08)",
   },
   copyButtonComplete: {
     backgroundColor: "#EDF6E4",
@@ -1021,5 +1047,14 @@ const styles = StyleSheet.create({
   },
   copyButtonTextComplete: {
     color: GREEN,
+  },
+  versionText: {
+    alignSelf: "center",
+    marginTop: -8,
+    color: SECONDARY,
+    fontFamily: DETAIL_FONT,
+    fontSize: ms(12),
+    lineHeight: ms(16),
+    opacity: 0.8,
   },
 });

@@ -143,6 +143,11 @@ export default function IndexGate() {
   }
 
   if (hasAccess) {
+    // The app died between purchase and the analysis: resume that run.
+    const { postPurchasePending, scanFrontalUri, scanSideUri } = useOnboarding.getState();
+    if (postPurchasePending && scanFrontalUri && scanSideUri) {
+      return <Redirect href={{ pathname: "/loading", params: { mode: "onboardingPotentialFace" } }} />;
+    }
     return <Redirect href="/(tabs)/program" />;
   }
 

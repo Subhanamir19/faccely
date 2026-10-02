@@ -24,7 +24,7 @@ import Animated, {
 import T from "@/components/ui/T";
 import AppVideo from "@/components/ui/AppVideo";
 import { OrangePrimaryButton } from "@/components/onboarding/OrangeOnboardingLayout";
-import { hapticSelection } from "@/lib/haptics";
+import { hapticTick } from "@/lib/haptics";
 import { COLORS, SP } from "@/lib/tokens";
 import { ms, sh, useResponsiveScale } from "@/lib/responsive";
 
@@ -54,7 +54,7 @@ function useTypedText(value: string, delayMs: number) {
       if (nextLength !== lastLength) {
         lastLength = nextLength;
         if (value[nextLength - 1]?.trim() && nextLength % HAPTIC_EVERY_CHARS === 0) {
-          hapticSelection();
+          hapticTick();
         }
         setTyped(value.slice(0, nextLength));
       }

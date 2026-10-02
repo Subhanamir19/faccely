@@ -25,8 +25,9 @@ import { ChevronLeft } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import T from "@/components/ui/T";
-import { hapticLight } from "@/lib/haptics";
-import { getProgressForStep, SP } from "@/lib/tokens";
+import { hapticHeavy, hapticLight } from "@/lib/haptics";
+import { BG_MOODS, getProgressForStep, SP } from "@/lib/tokens";
+import ScreenBackground from "./ScreenBackground";
 import { ms, sh, useResponsiveScale } from "@/lib/responsive";
 
 export const ORANGE_ONBOARDING = {
@@ -156,8 +157,8 @@ export default function OrangeOnboardingLayout({
     );
 
     return (
-      <View style={styles.sequenceScreen}>
-        <StatusBar barStyle={statusBarStyle} backgroundColor={ORANGE_ONBOARDING.paper} />
+      <ScreenBackground mood="peach" statusBar={false} style={styles.sequenceScreen}>
+        <StatusBar barStyle={statusBarStyle} backgroundColor={BG_MOODS.peach.top} />
 
         <OnboardingSequenceHeader
           stepKey={stepKey}
@@ -170,7 +171,7 @@ export default function OrangeOnboardingLayout({
           style={[
             styles.sequenceBody,
             {
-              paddingHorizontal: responsive.clamp(24, 20, 38),
+              paddingHorizontal: responsive.clamp(32, 26, 44),
               paddingBottom: insets.bottom + SP[3],
             },
           ]}
@@ -200,7 +201,7 @@ export default function OrangeOnboardingLayout({
             </View>
           ) : null}
         </Animated.View>
-      </View>
+      </ScreenBackground>
     );
   }
 
@@ -346,7 +347,10 @@ export function OnboardingSequenceHeader({
         styles.sequenceNav,
         {
           paddingTop: insets.top + responsive.clamp(8, 6, 12),
-          paddingHorizontal: responsive.clamp(24, 20, 38),
+          // The reference pulls the chevron much tighter to the edge than the
+          // content gutter (14 vs 32) and keeps 24 on the progress side.
+          paddingLeft: responsive.clamp(16, 14, 28),
+          paddingRight: responsive.clamp(24, 20, 36),
         },
       ]}
     >
@@ -416,7 +420,7 @@ export function OrangePrimaryButton({
 
   const setPressed = (pressed: boolean) => {
     if (disabled) return;
-    if (pressed) hapticLight();
+    if (pressed) hapticHeavy();
     if (reduceMotion) return;
     scale.value = withSpring(pressed ? 0.995 : 1, {
       damping: 24,
@@ -457,7 +461,7 @@ export function OrangePrimaryButton({
           accessibilityState={{ disabled }}
           style={[
             styles.primaryButton,
-            { minHeight: responsive.clamp(56, 48, 62) },
+            { minHeight: responsive.clamp(60, 54, 66) },
             isInk && styles.primaryButtonInk,
             disabled && styles.primaryButtonDisabled,
           ]}
@@ -548,7 +552,6 @@ const styles = StyleSheet.create({
   },
   sequenceScreen: {
     flex: 1,
-    backgroundColor: ORANGE_ONBOARDING.paper,
   },
   sequenceNav: {
     flexDirection: "row",
@@ -743,13 +746,14 @@ const styles = StyleSheet.create({
     letterSpacing: 0,
   },
   primaryButton: {
-    width: "100%",
-    minHeight: sh(56),
-    borderRadius: ms(17),
+    minWidth: ms(142),
+    maxWidth: "100%",
+    minHeight: sh(60),
+    borderRadius: 999,
     backgroundColor: ORANGE_ONBOARDING.orange,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: SP[5],
+    paddingHorizontal: SP[8] + SP[1],
     shadowColor: ORANGE_ONBOARDING.orange,
     shadowOpacity: 0.2,
     shadowRadius: ms(16),
@@ -757,7 +761,8 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   primaryButtonMotion: {
-    width: "100%",
+    alignSelf: "center",
+    maxWidth: "100%",
     position: "relative",
   },
   primaryButtonMotionDisabled: {
@@ -769,18 +774,16 @@ const styles = StyleSheet.create({
     right: 0,
     top: sh(7),
     bottom: 0,
-    borderRadius: ms(17),
+    borderRadius: 999,
     backgroundColor: "#C75300",
   },
   primaryButtonDepthInk: {
-    borderRadius: ms(23),
+    borderRadius: 999,
     backgroundColor: "#050505",
   },
-  primaryButtonFaceMotion: {
-    width: "100%",
-  },
+  primaryButtonFaceMotion: {},
   primaryButtonInk: {
-    borderRadius: ms(23),
+    borderRadius: 999,
     backgroundColor: "#151515",
     shadowColor: "#000000",
     shadowOpacity: 0.2,

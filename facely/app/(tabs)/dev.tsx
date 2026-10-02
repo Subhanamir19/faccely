@@ -51,6 +51,7 @@ import type { AdvancedAnalysis } from "@/lib/api/advancedAnalysis";
 import ProgramHero from "@/components/program/ProgramHero";
 import ProgramLoadingScreen, { PROGRAM_LOADING_BG } from "@/components/program/ProgramLoadingScreen";
 import RingLoader, { type RingLoaderKind } from "@/components/ui/RingLoader";
+import CinematicLoader from "@/components/ui/CinematicLoader";
 import { Image as RNImage } from "react-native";
 import { API_BASE } from "@/lib/api/config";
 import { buildAuthHeadersAsync } from "@/lib/api/authHeaders";
@@ -136,13 +137,14 @@ const ONBOARDING_FLOW_SCREENS: { label: string; route: string }[] = [
   { label: "Studies",           route: "/(onboarding)/studies" },          // → plan impact
   { label: "Plan Impact",       route: "/(onboarding)/plan-impact" },      // → time dedication
   { label: "Time Dedication",   route: "/(onboarding)/time-dedication" },  // → score-projection
-  { label: "Score Projection",  route: "/(onboarding)/score-projection" }, // → paywall
-  { label: "Paywall",           route: "/(onboarding)/paywall" },          // → potential face workflow
-  { label: "Potential Face",    route: "/(onboarding)/potential-face-reveal" }, // → analysis intro
-  { label: "Analysis Intro",    route: "/(onboarding)/analysis-intro" },    // → bridge
-  { label: "Analysis Bridge",   route: "/(onboarding)/potential-face-bridge" }, // → advanced analysis
+  { label: "Score Projection",  route: "/(onboarding)/score-projection" }, // → locked findings
+  { label: "Locked Findings",   route: "/(onboarding)/weak-points-locked" }, // → paywall
+  { label: "Paywall",           route: "/(onboarding)/paywall" },          // → loading: scoring + advanced analysis
+  { label: "Analysis Reveal",   route: "/analysis-reveal?onboardingFlow=1" }, // → advanced analysis
+  { label: "Advanced Analysis", route: "/analysis?onboardingFlow=1" },     // → plan intro
   { label: "Plan Intro",        route: "/(onboarding)/plan-intro" },        // → routine-animation
   { label: "Routine Animation", route: "/(onboarding)/routine-animation" }, // → program
+  { label: "Coach",             route: "/(tabs)/coach" },                  // tab, not a flow step — preview shortcut
 ];
 
 // Screens that exist but are NOT reachable from the main splash → potential-face flow.
@@ -1555,6 +1557,8 @@ type PotentialDevPayload = {
   model?: string;
   promptVersion?: string;
   promptMode?: PotentialPromptMode;
+  prompt?: string;
+  targetedMetrics?: unknown[];
   message?: string;
   error?: string;
   providerStatus?: number;
@@ -2434,6 +2438,7 @@ export default function DevScreen() {
   const [potentialResultUri, setPotentialResultUri] = useState<string | null>(null);
   const [potentialGenerating, setPotentialGenerating] = useState(false);
   const [potentialMeta, setPotentialMeta] = useState<string | null>(null);
+  const [potentialPrompt, setPotentialPrompt] = useState<string | null>(null);
   const [potentialPromptMode, setPotentialPromptMode] = useState<PotentialPromptMode>("aggressive");
   const [potentialPreview, setPotentialPreview] = useState<{ uri: string; label: string } | null>(null);
   const [dayCompleteVisible, setDayCompleteVisible] = useState(false);
@@ -2461,15 +2466,18 @@ export default function DevScreen() {
   const [programLoadingPreviewVisible, setProgramLoadingPreviewVisible] = useState(false);
   const [loaderPreviewVisible, setLoaderPreviewVisible] = useState(false);
   const [loaderKindIdx, setLoaderKindIdx] = useState(0);
+  // Simulates the analysis finishing so the ring's completion sweep can be seen.
+  const [loaderPreviewDone, setLoaderPreviewDone] = useState(false);
+  const [loaderPreviewRun, setLoaderPreviewRun] = useState(0);
   const [loaderPreviewAppearance, setLoaderPreviewAppearance] = useState<"default" | "onboarding">("default");
   const { data: advancedData } = useAdvancedAnalysis();
   const { imageUri } = useScores();
   const MOCK_ADVANCED: AdvancedAnalysis = {
-    cheekbones: { width: "", width_score: 48, width_verdict: "", maxilla: "", maxilla_score: 38, maxilla_verdict: "", bone_structure: "", bone_structure_score: 52, bone_structure_verdict: "", face_fat: "", face_fat_score: 41, face_fat_verdict: "", fwhr: "", fwhr_score: 54, fwhr_verdict: "" },
-    jawline:    { development: "", development_score: 44, development_verdict: "", gonial_angle: "", gonial_angle_score: 62, gonial_angle_verdict: "", projection: "", projection_score: 35, projection_verdict: "", ramus: "", ramus_score: 50, ramus_verdict: "" },
-    eyes:       { canthal_tilt: "", canthal_tilt_score: 57, canthal_tilt_verdict: "", eye_type: "", eye_type_score: 66, eye_type_verdict: "", brow_volume: "", brow_volume_score: 71, brow_volume_verdict: "", symmetry: "", symmetry_score: 49, symmetry_verdict: "" },
+    cheekbones: { width: "Your cheekbones are there but sit under a soft layer, so they read narrower than they are. Getting leaner will let them carry more of the face.", width_score: 48, width_verdict: "", maxilla: "Your midface sits slightly flat from the front, which softens how your cheekbones and under-eye area read. Consistent tongue posture and lower water retention will make the area look more supported over the next few months.", maxilla_score: 38, maxilla_verdict: "", bone_structure: "", bone_structure_score: 52, bone_structure_verdict: "", face_fat: "There is some softness through your cheeks and under the jaw that hides the structure you already have. Dropping a little body fat and cutting salty late meals would sharpen this noticeably within weeks.", face_fat_score: 41, face_fat_verdict: "", fwhr: "", fwhr_score: 54, fwhr_verdict: "" },
+    jawline:    { development: "Your jaw has a clean outline but lacks the muscle bulk at the angle that gives a stronger lower third. Steady masseter work and a leaner face will bring out more definition.", development_score: 44, development_verdict: "", gonial_angle: "", gonial_angle_score: 62, gonial_angle_verdict: "", projection: "Your chin sits a little behind the line of your lips in profile, which makes the lower face look shorter. Posture work and chin tucks will change how it projects in photos.", projection_score: 35, projection_verdict: "", ramus: "", ramus_score: 50, ramus_verdict: "" },
+    eyes:       { canthal_tilt: "", canthal_tilt_score: 57, canthal_tilt_verdict: "", eye_type: "", eye_type_score: 66, eye_type_verdict: "", brow_volume: "", brow_volume_score: 71, brow_volume_verdict: "", symmetry: "Your left eye sits a touch lower and looks slightly more hooded than the right, which is common and mostly soft tissue. Sleeping on your back and balanced chewing help even it out.", symmetry_score: 49, symmetry_verdict: "" },
     skin:       { color: "", color_score: 73, color_verdict: "", quality: "", quality_score: 60, quality_verdict: "" },
-    haircut:    { density: "", density_score: 52, density_verdict: "", styling: "", styling_score: 46, styling_verdict: "", facial_hair: "", facial_hair_score: 58, facial_hair_verdict: "" },
+    haircut:    { density: "", density_score: 52, density_verdict: "", styling: "Your current cut adds width at the sides, which competes with your cheekbones. A shorter side with more height on top would balance your face shape.", styling_score: 46, styling_verdict: "", facial_hair: "", facial_hair_score: 58, facial_hair_verdict: "" },
   };
 
   // Life modal previews
@@ -2530,12 +2538,17 @@ export default function DevScreen() {
     if (!potentialSourceUri || potentialGenerating) return;
     setPotentialGenerating(true);
     setPotentialMeta(null);
+    setPotentialPrompt(null);
 
     try {
       const imagePart = await prepareUploadPart(potentialSourceUri);
       const form = new FormData();
       form.append("image", imagePart);
       form.append("promptMode", potentialPromptMode);
+      // Loaded advanced analysis drives the same per-person prompt the
+      // production worker builds. It belongs to the last scan, so pick that
+      // scan's photo for a like-for-like test.
+      if (advancedData) form.append("advancedResult", JSON.stringify(advancedData));
 
       const headers = await buildAuthHeadersAsync({ includeLegacy: true });
       const res = await fetch(`${API_BASE}/generate/potential-face-dev`, {
@@ -2574,8 +2587,11 @@ export default function DevScreen() {
 
       setPotentialResultUri(`data:image/png;base64,${payload.b64}`);
       setPotentialMeta(
-        `${payload.model ?? "gpt-image-2"} · ${payload.promptMode ?? potentialPromptMode} · prompt ${payload.promptVersion ?? "unknown"}`
+        `${payload.model ?? "unknown model"} · ${payload.promptMode ?? potentialPromptMode} · prompt ${payload.promptVersion ?? "unknown"} · ${
+          payload.targetedMetrics?.length ? `${payload.targetedMetrics.length} targets from advanced analysis` : "generic (no advanced analysis)"
+        }`
       );
+      setPotentialPrompt(payload.prompt ?? null);
     } catch (err: any) {
       const message = err?.message ?? String(err);
       Alert.alert(
@@ -2587,7 +2603,9 @@ export default function DevScreen() {
     }
   };
 
-  const handlePreviewPotentialFaceFlowFree = () => {
+  // Seeds a fake scan, advanced analysis and a ready potential face, so the
+  // post-purchase screens render without a purchase or backend call.
+  const seedPostPurchasePreview = () => {
     const fallbackCurrent = RNImage.resolveAssetSource(require("../../assets/before.jpeg")).uri;
     const fallbackPotential = RNImage.resolveAssetSource(require("../../assets/after.jpeg")).uri;
     const currentUri = potentialSourceUri ?? imageUri ?? fallbackCurrent;
@@ -2609,7 +2627,16 @@ export default function DevScreen() {
     });
     useAdvancedAnalysis.getState().seedDevData(MOCK_ADVANCED, "dev-scan-preview");
     usePotentialFace.getState().seedDevPreview({ potentialUri });
-    router.push("/(onboarding)/potential-face-reveal");
+  };
+
+  const handlePreviewPostPurchaseFlow = () => {
+    seedPostPurchasePreview();
+    router.push({ pathname: "/analysis-reveal", params: { onboardingFlow: "1" } });
+  };
+
+  const handlePreviewPotentialFaceReveal = () => {
+    seedPostPurchasePreview();
+    router.push("/potential-face");
   };
 
   return (
@@ -2625,6 +2652,61 @@ export default function DevScreen() {
         <DashboardStoryLaunchCard onPress={() => setDashboardStoryPreviewVisible(true)} />
 
         <T style={styles.screenTitle}>Dev Tools</T>
+
+        {/* ── Know Your Weak Points (new onboarding screen) ─────────── */}
+        <GlassCard style={styles.card}>
+          <SectionHeader
+            title="Know Your Weak Points"
+            subtitle="Scanner-framed face, scan-line sweep, then alert pills opening out from the centre"
+          />
+          <DevButton
+            label="▶  Preview Weak Points Scan"
+            accent
+            onPress={() => router.push("/weak-points-preview" as any)}
+          />
+          <View style={styles.screenGrid}>
+            {[
+              { label: "No haptics", variant: "nohaptics" },
+              { label: "No image", variant: "noimage" },
+              { label: "No animation", variant: "static" },
+              { label: "No pills", variant: "nopills" },
+              { label: "No chrome", variant: "nochrome" },
+              { label: "No sweep", variant: "nosweep" },
+              { label: "Bare (all off)", variant: "bare" },
+            ].map(({ label, variant }) => (
+              <TouchableOpacity
+                key={variant}
+                style={styles.screenChip}
+                activeOpacity={0.7}
+                onPress={() =>
+                  router.push(`/weak-points-preview?variant=${variant}` as any)
+                }
+              >
+                <T style={styles.screenChipText}>{label}</T>
+                <T style={styles.screenChipArrow}>→</T>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <View style={styles.screenGrid}>
+            {[
+              { label: "Probe A: text only", probe: "a" },
+              { label: "Probe B: + image", probe: "b" },
+              { label: "Probe C: + reanimated", probe: "c" },
+              { label: "Probe D: + gradient/CTA", probe: "d" },
+            ].map(({ label, probe }) => (
+              <TouchableOpacity
+                key={probe}
+                style={styles.screenChip}
+                activeOpacity={0.7}
+                onPress={() => router.push(`/wp-probe?probe=${probe}` as any)}
+              >
+                <T style={styles.screenChipText}>{label}</T>
+                <T style={styles.screenChipArrow}>→</T>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </GlassCard>
+
         {/* ── Insight Pulse Preview ─────────────────────────────────── */}
         <GlassCard style={styles.card}>
           <SectionHeader
@@ -2671,6 +2753,9 @@ export default function DevScreen() {
           {potentialMeta ? (
             <T style={styles.sectionSubtitle} variant="small" color="sub">{potentialMeta}</T>
           ) : null}
+          {potentialPrompt ? (
+            <T style={styles.sectionSubtitle} variant="small" color="sub" selectable>{potentialPrompt}</T>
+          ) : null}
 
           <View style={styles.row}>
             {POTENTIAL_PROMPT_MODES.map((mode) => (
@@ -2682,6 +2767,7 @@ export default function DevScreen() {
                   setPotentialPromptMode(mode);
                   setPotentialResultUri(null);
                   setPotentialMeta(null);
+                  setPotentialPrompt(null);
                 }}
               />
             ))}
@@ -2699,12 +2785,19 @@ export default function DevScreen() {
           <View style={styles.divider} />
 
           <DevButton
-            label="Preview Full Story Flow (Free)"
+            label="Preview Post-Purchase Flow (Free)"
             accent
-            onPress={handlePreviewPotentialFaceFlowFree}
+            onPress={handlePreviewPostPurchaseFlow}
           />
           <T style={styles.sectionSubtitle} variant="small" color="sub">
-            Uses the current lab result if present, then opens the full reveal-to-routine story flow. No backend call.
+            Reveal → Analysis → Plan Intro → Routine Animation → Program, with mock data. A ready potential face is seeded too, so the top toast and the Progress dot appear when you land on the tabs. No backend call.
+          </T>
+          <DevButton
+            label="Preview Potential Face Reveal"
+            onPress={handlePreviewPotentialFaceReveal}
+          />
+          <T style={styles.sectionSubtitle} variant="small" color="sub">
+            Opens the one-time reveal the toast and push notification lead to.
           </T>
         </GlassCard>
 
@@ -2730,7 +2823,10 @@ export default function DevScreen() {
               <TouchableOpacity
                 key={route}
                 style={styles.flowChip}
-                onPress={() => router.push(route as any)}
+                onPress={() => {
+                  if (route.startsWith("/analysis") && !imageUri) seedPostPurchasePreview();
+                  router.push(route as any);
+                }}
                 activeOpacity={0.7}
               >
                 <View style={styles.flowIndex}>
@@ -3262,7 +3358,7 @@ export default function DevScreen() {
         visible={loaderPreviewVisible}
         animationType="fade"
         presentationStyle="fullScreen"
-        onRequestClose={() => setLoaderPreviewVisible(false)}
+        onRequestClose={() => { setLoaderPreviewVisible(false); setLoaderPreviewDone(false); }}
       >
         {(() => {
           const KINDS: { kind: RingLoaderKind; label: string; title: string; subtitle: string }[] = [
@@ -3276,13 +3372,25 @@ export default function DevScreen() {
             current.kind === "photo" ? (imageUri ?? fallbackPhoto) : undefined;
           return (
             <View style={{ flex: 1, backgroundColor: COLORS.lightBg }}>
-              <RingLoader
-                kind={current.kind}
-                photoUri={photoUri}
-                title={current.title}
-                subtitle={current.subtitle}
-                appearance={loaderPreviewAppearance}
-              />
+              {current.kind === "photo" ? (
+                // Same component the real scan uses, so the stage copy cycles.
+                <CinematicLoader
+                  key={`${loaderKindIdx}-${loaderPreviewRun}`}
+                  loading={!loaderPreviewDone}
+                  photoUri={photoUri}
+                  appearance={loaderPreviewAppearance}
+                />
+              ) : (
+                <RingLoader
+                  key={`${loaderKindIdx}-${loaderPreviewRun}`}
+                  kind={current.kind}
+                  photoUri={photoUri}
+                  title={current.title}
+                  subtitle={current.subtitle}
+                  loading={!loaderPreviewDone}
+                  appearance={loaderPreviewAppearance}
+                />
+              )}
 
               {/* Floating header — switcher + close */}
               <SafeAreaView
@@ -3295,7 +3403,26 @@ export default function DevScreen() {
                   </T>
                   <View style={styles.previewActions}>
                     <Pressable
-                      onPress={() => setLoaderKindIdx((i) => (i + 1) % KINDS.length)}
+                      onPress={() => {
+                        if (loaderPreviewDone) {
+                          setLoaderPreviewDone(false);
+                          setLoaderPreviewRun((n) => n + 1);
+                        } else {
+                          setLoaderPreviewDone(true);
+                        }
+                      }}
+                      hitSlop={12}
+                      style={[styles.previewBtn, { backgroundColor: "rgba(0,0,0,0.06)" }]}
+                    >
+                      <T style={[styles.previewBtnText, { color: COLORS.lightText }]}>
+                        {loaderPreviewDone ? "↻  Replay" : "✓  Finish"}
+                      </T>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => {
+                        setLoaderPreviewDone(false);
+                        setLoaderKindIdx((i) => (i + 1) % KINDS.length);
+                      }}
                       hitSlop={12}
                       style={[styles.previewBtn, { backgroundColor: "rgba(0,0,0,0.06)" }]}
                     >
@@ -3304,7 +3431,7 @@ export default function DevScreen() {
                       </T>
                     </Pressable>
                     <Pressable
-                      onPress={() => setLoaderPreviewVisible(false)}
+                      onPress={() => { setLoaderPreviewVisible(false); setLoaderPreviewDone(false); }}
                       hitSlop={12}
                       style={[styles.previewBtn, styles.previewBtnClose]}
                     >

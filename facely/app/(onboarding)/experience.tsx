@@ -1,21 +1,22 @@
 // app/(onboarding)/experience.tsx
-// Looksmaxxing experience selection — redesigned to match the new onboarding
-// system (OnboardingScreenV2 + PillOptionsList).
+// Looksmaxxing experience selection. Uses the descriptive row rather than the
+// wide row: these three options each carry a line of explanation, and the
+// reference reserves the wide row for options that are label-only.
 import React, { useCallback } from "react";
 import { router } from "expo-router";
 import { Sprout, TrendingUp, Zap } from "lucide-react-native";
 
-import {
-  OnboardingScreenV2,
-  PillOptionsList,
-} from "@/components/onboarding";
-import type { PillOption } from "@/components/onboarding";
+import OrangeQuestionScreen, {
+  OrangeOption,
+  OrangeOptionRow,
+} from "@/components/onboarding/OrangeQuestionScreen";
+import { hapticRigid } from "@/lib/haptics";
 import { useOnboarding } from "@/store/onboarding";
 
-const OPTIONS: PillOption[] = [
-  { key: "new",     label: "Completely new",   description: "Never tried a looksmaxxing app", Icon: Sprout },
-  { key: "some",    label: "Some experience",  description: "Tried a few, inconsistent results", Icon: TrendingUp },
-  { key: "regular", label: "Experienced user", description: "I know the basics", Icon: Zap },
+const OPTIONS: OrangeOption[] = [
+  { key: "new",     label: "Completely new",   caption: "Never tried a looksmaxxing app", Icon: Sprout },
+  { key: "some",    label: "Some experience",  caption: "Tried a few, inconsistent results", Icon: TrendingUp },
+  { key: "regular", label: "Experienced user", caption: "I know the basics", Icon: Zap },
 ];
 
 export default function ExperienceScreen() {
@@ -23,7 +24,10 @@ export default function ExperienceScreen() {
   const selected = data.looksmaxxingExperience ?? null;
 
   const handleSelect = useCallback(
-    (key: string) => setField("looksmaxxingExperience", key),
+    (key: string) => {
+      hapticRigid();
+      setField("looksmaxxingExperience", key);
+    },
     [setField],
   );
 
@@ -33,19 +37,22 @@ export default function ExperienceScreen() {
   }, [selected]);
 
   return (
-    <OnboardingScreenV2
+    <OrangeQuestionScreen
       stepKey="experience"
       title="What's your experience with looksmaxxing apps?"
-      subtitle="Pick one"
       heroImage={require("@/assets/onbaording-images/gender.png")}
-      onPrimary={handleNext}
-      primaryDisabled={!selected}
+      onContinue={handleNext}
+      continueDisabled={!selected}
     >
-      <PillOptionsList
-        options={OPTIONS}
-        selected={selected}
-        onSelect={handleSelect}
-      />
-    </OnboardingScreenV2>
+      {OPTIONS.map((option) => (
+        <OrangeOptionRow
+          key={option.key}
+          variant="descriptive"
+          option={option}
+          selected={selected === option.key}
+          onPress={() => handleSelect(option.key)}
+        />
+      ))}
+    </OrangeQuestionScreen>
   );
 }

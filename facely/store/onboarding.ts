@@ -25,7 +25,14 @@ type State = {
   scanFrontalUri: string | null;
   scanSideUri: string | null;
   setScanPhotos: (frontal: string, side: string) => void;
+  /** Also ends any pending post-purchase run: the photos are its input. */
   clearScanPhotos: () => void;
+
+  // Set at purchase, cleared when the post-purchase analysis run finishes
+  // (via clearScanPhotos). Still set on launch = the app died mid-run, so the
+  // index gate resumes it instead of dropping the user on the program.
+  postPurchasePending: boolean;
+  markPostPurchasePending: () => void;
 
   hydrate: () => Promise<void>;
   setField: <K extends keyof OnboardingData>(k: K, v: OnboardingData[K]) => void;
@@ -38,6 +45,7 @@ type State = {
 const KEY = "onboarding_state_v1";
 const DONE = "onboarding_done_v1";
 const SCAN_PHOTOS = "onboarding_scan_photos_v1";
+const POST_PURCHASE_PENDING = "onboarding_post_purchase_pending_v1";
 
 type ScanPhotos = {
   frontal: string | null;
@@ -50,20 +58,28 @@ export const useOnboarding = create<State>((set, get) => ({
   done: false,
   scanFrontalUri: null,
   scanSideUri: null,
+  postPurchasePending: false,
+  markPostPurchasePending: () => {
+    set({ postPurchasePending: true });
+    void setJSON<boolean>(POST_PURCHASE_PENDING, true);
+  },
   setScanPhotos: (frontal, side) => {
     set({ scanFrontalUri: frontal, scanSideUri: side });
     void setJSON<ScanPhotos>(SCAN_PHOTOS, { frontal, side });
   },
   clearScanPhotos: () => {
-    set({ scanFrontalUri: null, scanSideUri: null });
+    set({ scanFrontalUri: null, scanSideUri: null, postPurchasePending: false });
     void setJSON<ScanPhotos>(SCAN_PHOTOS, { frontal: null, side: null });
+    void setJSON<boolean>(POST_PURCHASE_PENDING, false);
   },
 
   hydrate: async () => {
     const d = await getJSON<OnboardingData>(KEY, {});
     const done = await getJSON<boolean>(DONE, false);
     const scanPhotos = await getJSON<ScanPhotos>(SCAN_PHOTOS, { frontal: null, side: null });
+    const postPurchasePending = await getJSON<boolean>(POST_PURCHASE_PENDING, false);
     set({
+      postPurchasePending,
       data: d,
       completed: done,
       done,
@@ -88,7 +104,9 @@ export const useOnboarding = create<State>((set, get) => ({
     await setJSON(KEY, {});
     await setJSON(DONE, false);
     await setJSON<ScanPhotos>(SCAN_PHOTOS, { frontal: null, side: null });
+    await setJSON<boolean>(POST_PURCHASE_PENDING, false);
     set({
+      postPurchasePending: false,
       data: {},
       completed: false,
       done: false,

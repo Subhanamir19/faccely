@@ -22,7 +22,7 @@ import type { LucideIcon } from "lucide-react-native";
 import T from "@/components/ui/T";
 import { COLORS, RADII, SP } from "@/lib/tokens";
 import { ms, sh } from "@/lib/responsive";
-import { hapticSelection } from "@/lib/haptics";
+import { hapticRigid } from "@/lib/haptics";
 
 const ORANGE = "#F26A13";
 const ORANGE_DARK = "#D85609";
@@ -69,7 +69,7 @@ export default function PillOptionsList(props: Props) {
       : props.selected === key;
 
   const handlePress = (key: string) => {
-    hapticSelection();
+    hapticRigid();
     if (props.multiSelect) {
       const next = props.selectedKeys.includes(key)
         ? props.selectedKeys.filter((k) => k !== key)

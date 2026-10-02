@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
-  StatusBar,
   StyleSheet,
   Text,
   View,
@@ -23,9 +22,13 @@ import {
   OnboardingSequenceHeader,
   OrangePrimaryButton,
 } from "@/components/onboarding/OrangeOnboardingLayout";
+import { hapticRigid, hapticThud } from "@/lib/haptics";
 import { useResponsiveScale } from "@/lib/responsive";
+import ScreenBackground from "@/components/onboarding/ScreenBackground";
+import { BG_MOODS } from "@/lib/tokens";
 
-const BACKGROUND = "#F5F0E8";
+const MOOD = "cool" as const;
+const BACKGROUND = BG_MOODS[MOOD].bottom;
 const INK = "#17140F";
 const PAPER = "#FFFDF8";
 const PAPER_LINE = "#D9D0BA";
@@ -34,6 +37,8 @@ const BLUE = "#7C93FF";
 const EASE_OUT = Easing.bezier(0.23, 1, 0.32, 1);
 const EASE_BURST = Easing.bezier(0.34, 1.4, 0.6, 1);
 const CTA_REVEAL_MS = 1300;
+// A paper "lands" at the peak of its overshoot, so the tap fires there.
+const PAPER_LAND_MS = 385;
 
 type Paper = {
   tag: string;
@@ -130,6 +135,8 @@ const PAPERS: Paper[] = [
   },
 ];
 
+const LAST_PAPER_DELAY = Math.max(...PAPERS.map((p) => p.delay));
+
 function StudyPaper({
   paper,
   playing,
@@ -155,12 +162,19 @@ function StudyPaper({
     scale.set(reduceMotion ? 1 : 0.4);
     if (!playing) return;
 
+    // One tap per paper as it lands; the last one lands with more weight.
+    const isLast = paper.delay === LAST_PAPER_DELAY;
+    const landTimer = setTimeout(
+      isLast ? hapticThud : hapticRigid,
+      paper.delay + (reduceMotion ? 0 : PAPER_LAND_MS),
+    );
+
     if (reduceMotion) {
       opacity.set(withDelay(
         paper.delay,
         withTiming(1, { duration: 400, easing: EASE_OUT }),
       ));
-      return;
+      return () => clearTimeout(landTimer);
     }
 
     opacity.set(withDelay(
@@ -193,6 +207,7 @@ function StudyPaper({
       withTiming(0.985, { duration: 161, easing: EASE_BURST }),
       withTiming(1, { duration: 154, easing: EASE_BURST }),
     )));
+    return () => clearTimeout(landTimer);
   }, [opacity, paper, playing, reduceMotion, rotation, scale, x, y]);
 
   const animatedStyle = useAnimatedStyle(() => ({
@@ -311,7 +326,7 @@ export default function StudiesScreen() {
 
   return (
     <View style={styles.screen}>
-      <StatusBar barStyle="dark-content" backgroundColor={BACKGROUND} />
+      <ScreenBackground mood={MOOD} />
       <OnboardingSequenceHeader stepKey="studies" />
 
       <Animated.View style={[styles.note, noteStyle]}>

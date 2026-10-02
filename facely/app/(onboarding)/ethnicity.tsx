@@ -5,7 +5,7 @@ import OrangeQuestionScreen, {
   OrangeOption,
   OrangeOptionRow,
 } from "@/components/onboarding/OrangeQuestionScreen";
-import { hapticSelection } from "@/lib/haptics";
+import { hapticRigid } from "@/lib/haptics";
 import { useOnboarding } from "@/store/onboarding";
 
 const OPTIONS: OrangeOption[] = [
@@ -24,7 +24,7 @@ export default function EthnicityScreen() {
 
   const handleSelect = useCallback(
     (key: string) => {
-      hapticSelection();
+      hapticRigid();
       setField("ethnicity", key);
     },
     [setField],
@@ -40,13 +40,13 @@ export default function EthnicityScreen() {
       stepKey="ethnicity"
       heroImage={require("@/assets/bg-assets-for-onbaording-screens/ethnicity.jpg")}
       title="What's your ethnicity?"
-      subtitle="Optional. We use this to calibrate benchmarks; it doesn't affect your score."
       onContinue={handleNext}
       contentTall
     >
       {OPTIONS.map((option) => (
         <OrangeOptionRow
           key={option.key}
+          variant="compact"
           option={option}
           selected={selected === option.key}
           onPress={() => handleSelect(option.key)}

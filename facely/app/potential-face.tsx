@@ -1,5 +1,7 @@
-// app/(onboarding)/potential-face-reveal.tsx
-// First post-purchase hero moment: reveal the user's generated potential face.
+// app/potential-face.tsx
+// Full-screen reveal of the user's generated potential face. Opened once, as a
+// modal, from the "ready" banner or its push notification; afterwards the
+// Progress tab card is the everyday view.
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -99,16 +101,14 @@ export default function PotentialFaceRevealScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Opened as a modal from the ready banner or a push notification. Closing
+  // returns to wherever the user was; from a cold start (notification tap)
+  // there is nothing underneath, so land on Progress, where the card lives.
   const goBridge = useCallback(() => {
     if (navigatedRef.current) return;
     navigatedRef.current = true;
-    const current = usePotentialFace.getState().data;
-    const isDevPreview = __DEV__ && !!current?.id?.startsWith("dev-potential-face");
-    router.replace(
-      isDevPreview
-        ? { pathname: "/(onboarding)/analysis-intro", params: { devPreview: "1" } }
-        : "/(onboarding)/analysis-intro"
-    );
+    if (router.canGoBack()) router.back();
+    else router.replace("/(tabs)/dashboard");
   }, []);
 
   const acknowledgeReveal = useCallback(() => {
@@ -255,7 +255,7 @@ function PolishingView({
         {slow ? (
           <Animated.View entering={FadeInDown.duration(320)} style={styles.polishingAction}>
             <PrimaryPill
-              label="NEXT"
+              label="Close"
               onPress={onContinue}
             />
           </Animated.View>
@@ -304,7 +304,7 @@ function FallbackView({
         </Animated.View>
       </View>
       <Animated.View entering={FadeInDown.duration(380).delay(120)}>
-        <PrimaryPill label="NEXT" onPress={onContinue} />
+        <PrimaryPill label="Close" onPress={onContinue} />
       </Animated.View>
     </ScrollView>
   );
@@ -391,7 +391,7 @@ function RevealView({
 
       <View style={styles.footer}>
         <Animated.View entering={FadeInDown.duration(360).delay(760)}>
-          <PrimaryPill label="NEXT" onPress={onPrimary} withChevron />
+          <PrimaryPill label="Done" onPress={onPrimary} />
         </Animated.View>
         {canRetry ? (
           <Pressable

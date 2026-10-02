@@ -8,5 +8,6 @@ export { default as PillOptionsList } from "./PillOptionsList";
 export { default as DateWheelModal } from "./DateWheelModal";
 export { default as PreviewScoreCard } from "./PreviewScoreCard";
 export { default as StoryTextScreen } from "./StoryTextScreen";
+export { default as ScreenBackground } from "./ScreenBackground";
 export type { Option } from "./OptionsList";
 export type { PillOption } from "./PillOptionsList";

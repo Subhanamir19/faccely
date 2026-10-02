@@ -1,8 +1,8 @@
 // app/(onboarding)/scan.tsx
 // Onboarding face scan — captures frontal + side photos and stores them for
-// post-purchase analysis. Light system surrounding a cinematic dark face card
-// (mirrors the splash/hook video pattern). The camera modal stays dark by
-// nature (live camera feed); only the lime accents are swapped for sage.
+// post-purchase analysis. The intro is a Face ID style ring around the guide
+// face on the light onboarding ground. The camera modal stays dark by nature
+// (live camera feed); only the lime accents are swapped for sage.
 
 import React, { useEffect, useRef, useState } from "react";
 import {
@@ -15,22 +15,24 @@ import {
   SafeAreaView,
   ScrollView,
   StyleSheet,
-  type LayoutChangeEvent,
+  Linking,
+  useWindowDimensions,
 } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
 import * as FileSystem from "expo-file-system/legacy";
 import { router } from "expo-router";
-import * as Haptics from "expo-haptics";
+import { hapticHeavy, hapticSuccess, hapticThud } from "@/lib/haptics";
 import { LinearGradient } from "expo-linear-gradient";
+import Svg, { Line } from "react-native-svg";
+import { Camera, Glasses, Lock, Smile, Sun } from "lucide-react-native";
 import Animated, {
   Easing,
   interpolate,
   useAnimatedStyle,
   useSharedValue,
   withRepeat,
-  withSequence,
   withTiming,
 } from "react-native-reanimated";
 
@@ -49,138 +51,161 @@ const SAGE = "#3F7A2A";        // dark readable — text on white / lime-soft
 
 type Step = "intro" | "review";
 
-/* ───────────────────── hero card with live scan animation ───────────────────── */
-function ScanHeroCard() {
-  const [imgH, setImgH] = useState(0);
+/* ───────────────────── Face ID style scan ring ───────────────────── */
+// Modelled on iPhone Face ID enrolment: the face sits in a circular frame and
+// a ring of tick marks fills in around it, then resets. No card, no fake LIVE
+// chip — the ring itself is the "scanning" signal.
 
-  // Horizontal scan line travels through the vector top→bottom→top, looping.
+const RING_TICKS = 72;
+const TICK_LENGTH = 11;
+const TICK_GAP = 14;               // space between tick ring and face circle
+const TICK_STEP_MS = 28;           // time for one tick to light
+const TICK_HOLD_STEPS = 24;        // full ring holds for this many steps
+const TICK_IDLE = "rgba(11,11,11,0.12)";
+const TICK_LIT = "#8CCB3A";        // lime deep enough to read on cream
+
+// Where the head sits in frontal-guide-vector.jpg (1086×1448), as fractions
+// of the image height — used to crop the torso away and centre the face.
+const GUIDE_ASPECT = 1086 / 1448;
+const GUIDE_HEAD_SPAN = 0.566;     // hair top → chin
+const GUIDE_HEAD_CENTER_Y = 0.331;
+
+function ScanRing({ size }: { size: number }) {
+  const [phase, setPhase] = useState(0);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      setPhase((p) => (p + 1) % (RING_TICKS + TICK_HOLD_STEPS));
+    }, TICK_STEP_MS);
+    return () => clearInterval(id);
+  }, []);
+
+  const lit = Math.min(phase, RING_TICKS);
+
+  const faceSize = size - 2 * (TICK_LENGTH + TICK_GAP);
+  // Scale so the head fills ~82% of the circle, then centre it.
+  const imgH = (faceSize * 0.82) / GUIDE_HEAD_SPAN;
+  const imgW = imgH * GUIDE_ASPECT;
+  const imgTop = faceSize / 2 - GUIDE_HEAD_CENTER_Y * imgH;
+  const imgLeft = (faceSize - imgW) / 2;
+
+  // Soft scan line sweeping through the face, ping-pong.
   const scanProgress = useSharedValue(0);
-  // LIVE indicator dot pulses softly.
-  const pulse = useSharedValue(1);
-
   useEffect(() => {
     scanProgress.value = withRepeat(
       withTiming(1, { duration: 2400, easing: Easing.inOut(Easing.cubic) }),
       -1,
-      true, // ping-pong, no jump back
+      true,
     );
-    pulse.value = withRepeat(
-      withSequence(
-        withTiming(0.25, { duration: 700, easing: Easing.inOut(Easing.sin) }),
-        withTiming(1.0,  { duration: 700, easing: Easing.inOut(Easing.sin) }),
-      ),
-      -1,
-      false,
-    );
-  }, [scanProgress, pulse]);
+  }, [scanProgress]);
 
   const scanLineStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: scanProgress.value * imgH }],
-    opacity: interpolate(
-      scanProgress.value,
-      [0, 0.5, 1],
-      [0.45, 1, 0.45],
-      "clamp",
-    ),
+    transform: [{ translateY: scanProgress.value * faceSize }],
+    opacity: interpolate(scanProgress.value, [0, 0.5, 1], [0.3, 0.9, 0.3], "clamp"),
   }));
 
-  const dotStyle = useAnimatedStyle(() => ({ opacity: pulse.value }));
-
-  const onLayoutImg = (e: LayoutChangeEvent) => {
-    setImgH(e.nativeEvent.layout.height);
-  };
+  const c = size / 2;
+  const rOuter = c - 1;
+  const rInner = rOuter - TICK_LENGTH;
 
   return (
-    <View style={heroStyles.card}>
-      {/* LIVE chip — top-right, pulsing dot + label */}
-      <View style={heroStyles.liveTag}>
-        <Animated.View style={[heroStyles.liveDot, dotStyle]} />
-        <T style={heroStyles.liveText}>LIVE</T>
-      </View>
+    <View style={{ width: size, height: size, alignSelf: "center" }}>
+      <Svg width={size} height={size} style={StyleSheet.absoluteFill}>
+        {Array.from({ length: RING_TICKS }, (_, i) => {
+          // Start at 12 o'clock, go clockwise.
+          const angle = (i / RING_TICKS) * Math.PI * 2 - Math.PI / 2;
+          const cos = Math.cos(angle);
+          const sin = Math.sin(angle);
+          return (
+            <Line
+              key={i}
+              x1={c + rInner * cos}
+              y1={c + rInner * sin}
+              x2={c + rOuter * cos}
+              y2={c + rOuter * sin}
+              stroke={i < lit ? TICK_LIT : TICK_IDLE}
+              strokeWidth={3}
+              strokeLinecap="round"
+            />
+          );
+        })}
+      </Svg>
 
-      {/* Image area — relative-positioned so the scan line can absolutely
-          slide across it without overlapping the LIVE chip. */}
-      <View style={heroStyles.imageWrap} onLayout={onLayoutImg}>
+      <View
+        style={[
+          ringStyles.face,
+          {
+            width: faceSize,
+            height: faceSize,
+            borderRadius: faceSize / 2,
+            top: TICK_LENGTH + TICK_GAP,
+            left: TICK_LENGTH + TICK_GAP,
+          },
+        ]}
+      >
         <Image
           source={require("../../assets/capture-guides/frontal-guide-vector.jpg")}
-          style={heroStyles.image}
-          resizeMode="contain"
+          style={{ position: "absolute", width: imgW, height: imgH, top: imgTop, left: imgLeft }}
+          resizeMode="cover"
         />
-
-        {imgH > 0 && (
-          <Animated.View
-            pointerEvents="none"
-            style={[heroStyles.scanLine, scanLineStyle]}
-          >
-            <LinearGradient
-              colors={["transparent", "#B4F34D", "transparent"]}
-              start={{ x: 0, y: 0.5 }}
-              end={{ x: 1, y: 0.5 }}
-              style={StyleSheet.absoluteFill}
-            />
-          </Animated.View>
-        )}
+        <Animated.View pointerEvents="none" style={[ringStyles.scanLine, scanLineStyle]}>
+          <LinearGradient
+            colors={["transparent", LIME, "transparent"]}
+            start={{ x: 0, y: 0.5 }}
+            end={{ x: 1, y: 0.5 }}
+            style={StyleSheet.absoluteFill}
+          />
+        </Animated.View>
       </View>
     </View>
   );
 }
 
-const heroStyles = StyleSheet.create({
-  card: {
-    width: "100%",
-    maxWidth: sw(360),
-    aspectRatio: 0.82,
-    alignSelf: "center",
-    backgroundColor: COLORS.lightCard,
-    borderRadius: ms(28),
-    paddingTop: SP[4],
-    paddingBottom: SP[3],
-    paddingHorizontal: SP[3],
-    marginTop: SP[4],
-    marginBottom: SP[3],
-    overflow: "hidden",
-    shadowColor: "#000",
-    shadowOpacity: 0.07,
-    shadowRadius: ms(22),
-    shadowOffset: { width: 0, height: ms(8) },
-    elevation: 4,
-  },
-  liveTag: {
+/** "1 Front · 2 Side" — tells the user up front there are two photos. */
+function PoseSteps() {
+  return (
+    <View style={ringStyles.poseRow}>
+      {[
+        { n: "1", label: "Front", active: true },
+        { n: "2", label: "Side", active: false },
+      ].map(({ n, label, active }) => (
+        <View key={n} style={ringStyles.pose}>
+          <View style={[ringStyles.poseNum, active && ringStyles.poseNumActive]}>
+            <T style={[ringStyles.poseNumText, active && ringStyles.poseNumTextActive]}>{n}</T>
+          </View>
+          <T style={ringStyles.poseLabel}>{label}</T>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+const TIPS = [
+  { Icon: Sun, label: "Good light" },
+  { Icon: Glasses, label: "No glasses" },
+  { Icon: Smile, label: "Neutral face" },
+] as const;
+
+function PhotoTips() {
+  return (
+    <View style={ringStyles.tipsRow}>
+      {TIPS.map(({ Icon, label }) => (
+        <View key={label} style={ringStyles.tip}>
+          <View style={ringStyles.tipIcon}>
+            <Icon size={18} color={COLORS.lightText} strokeWidth={1.8} />
+          </View>
+          <T style={ringStyles.tipLabel}>{label}</T>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+const ringStyles = StyleSheet.create({
+  face: {
     position: "absolute",
-    top: SP[3],
-    right: SP[3],
-    flexDirection: "row",
-    alignItems: "center",
-    gap: sw(6),
-    paddingHorizontal: sw(10),
-    paddingVertical: sh(5),
-    borderRadius: 999,
-    backgroundColor: "#ECFCCB",
-    zIndex: 2,
-  },
-  liveDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: "#B4F34D",
-  },
-  liveText: {
-    fontFamily: FONT_BOLD,
-    fontSize: ms(10),
-    color: "#3F7A2A",
-    letterSpacing: 0,
-  },
-  imageWrap: {
-    flex: 1,
-    width: "100%",
-    alignItems: "center",
-    justifyContent: "center",
-    position: "relative",
     overflow: "hidden",
-  },
-  image: {
-    width: "98%",
-    height: "98%",
+    backgroundColor: "#FCFCFC",   // matches the guide image's own ground
   },
   scanLine: {
     position: "absolute",
@@ -188,6 +213,66 @@ const heroStyles = StyleSheet.create({
     right: 0,
     top: 0,
     height: 2,
+  },
+  poseRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: SP[4],
+    marginTop: SP[4],
+  },
+  pose: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: sw(8),
+  },
+  poseNum: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 1,
+    borderColor: "rgba(11,11,11,0.18)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  poseNumActive: {
+    backgroundColor: COLORS.lightText,
+    borderColor: COLORS.lightText,
+  },
+  poseNumText: {
+    fontFamily: FONT_BOLD,
+    fontSize: ms(11),
+    color: COLORS.lightSub,
+  },
+  poseNumTextActive: {
+    color: "#FFFFFF",
+  },
+  poseLabel: {
+    fontFamily: FONT_BOLD,
+    fontSize: ms(14),
+    color: COLORS.lightText,
+  },
+  tipsRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: SP[5],
+  },
+  tip: {
+    flex: 1,
+    alignItems: "center",
+    gap: sh(8),
+  },
+  tipIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(11,11,11,0.05)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  tipLabel: {
+    fontFamily: FONT_REGULAR,
+    fontSize: ms(12),
+    color: COLORS.lightSub,
   },
 });
 
@@ -236,6 +321,7 @@ async function persistCompressedResult<T extends { uri: string; name: string }>(
 /* ───────────────────────── main screen ───────────────────────── */
 export default function OnboardingScanScreen() {
   const responsive = useResponsiveScale();
+  const { width: windowWidth } = useWindowDimensions();
   const [perm, requestPerm] = useCameraPermissions();
   const permissionDenied = perm?.granted === false;
 
@@ -254,7 +340,17 @@ export default function OnboardingScanScreen() {
     if (!perm?.granted) {
       const r = await requestPerm();
       if (!r.granted) {
-        Alert.alert("Permission needed", "Camera access is required to scan your face.");
+        // The scan can't be skipped, so a denied camera must never strand the
+        // user: offer the library, or Settings if iOS won't ask again.
+        Alert.alert(
+          "Camera access needed",
+          "Allow camera access to scan your face, or choose photos from your library instead.",
+          [
+            { text: "Choose from Library", onPress: () => void pickFromGallery() },
+            { text: "Open Settings", onPress: () => void Linking.openSettings() },
+            { text: "Not now", style: "cancel" },
+          ],
+        );
         return;
       }
     }
@@ -272,6 +368,7 @@ export default function OnboardingScanScreen() {
         setCameraOpen(true);
       } else {
         setSideUri(normalized);
+        hapticSuccess();
         setStep("review");
       }
     } catch (e) {
@@ -296,6 +393,7 @@ export default function OnboardingScanScreen() {
   };
 
   const capture = async () => {
+    hapticHeavy();
     try {
       const cam: any = cameraRef.current;
       const photo =
@@ -309,10 +407,6 @@ export default function OnboardingScanScreen() {
       Alert.alert("Camera error", String(e?.message || e));
       setCameraOpen(false);
     }
-  };
-
-  const skipScan = () => {
-    router.push("/(onboarding)/studies");
   };
 
   const beginScan = () => {
@@ -379,7 +473,10 @@ export default function OnboardingScanScreen() {
               Camera permission is required to analyze your face.
             </T>
             <Pressable
-              onPress={() => void requestPerm()}
+              onPress={() =>
+                // Once denied for good, the OS won't prompt again; Settings is the only way back.
+                perm?.canAskAgain === false ? void Linking.openSettings() : void requestPerm()
+              }
               style={({ pressed }) => [
                 camStyles.permBtn,
                 pressed && { opacity: 0.85 },
@@ -462,10 +559,6 @@ export default function OnboardingScanScreen() {
               >
                 <T style={camStyles.libBtnText}>Choose from Library</T>
               </Pressable>
-
-              <Pressable onPress={() => setCameraOpen(false)}>
-                <T style={camStyles.skipText}>Skip for now</T>
-              </Pressable>
             </View>
           </>
         )}
@@ -487,36 +580,44 @@ export default function OnboardingScanScreen() {
           >
             {/* Title block — opens the screen with intent */}
             <View style={styles.heroCopy}>
-              <T style={styles.heroTitle}>Your scan starts now</T>
+              <T style={styles.heroTitle}>Let’s scan your face</T>
               <T style={styles.heroSub}>
-                Two photos. The math takes 10 seconds.
+                Two photos, front and side. About 10 seconds.
               </T>
             </View>
 
-            {/* Hero card — vector face guide with a live scanning animation
-                running through it, plus a pulsing LIVE chip in the corner.
-                The animation is the product preview. */}
-            <ScanHeroCard />
+            {/* Face ID style ring — the animation is the product preview. */}
+            <View style={styles.ringArea}>
+              <ScanRing size={Math.min(windowWidth - SP[5] * 2, sw(300))} />
+              <PoseSteps />
+            </View>
 
-            {/* Action block */}
-            <View style={styles.actions}>
-              <Pressable
-                onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                  beginScan();
-                }}
-                style={({ pressed }) => [
-                  styles.cta,
-                  { minHeight: responsive.clamp(54, 48, 60) },
-                  pressed && { backgroundColor: COLORS.ctaBlackPressed },
-                ]}
-              >
-                <T style={styles.ctaText}>BEGIN SCAN</T>
-              </Pressable>
+            {/* Tips + actions, anchored to the bottom */}
+            <View>
+              <PhotoTips />
+              <View style={styles.actions}>
+                <Pressable
+                  onPress={() => {
+                    hapticThud();
+                    beginScan();
+                  }}
+                  style={({ pressed }) => [
+                    styles.cta,
+                    { minHeight: responsive.clamp(54, 48, 60) },
+                    pressed && { backgroundColor: COLORS.ctaBlackPressed },
+                  ]}
+                >
+                  <View style={styles.ctaInner}>
+                    <Camera size={18} color="#FFFFFF" strokeWidth={2} />
+                    <T style={styles.ctaText}>Start scan</T>
+                  </View>
+                </Pressable>
 
-              <Pressable onPress={skipScan} hitSlop={12} style={styles.skipWrap}>
-                <T style={styles.skipLabel}>Skip for now</T>
-              </Pressable>
+                <View style={styles.privacyRow}>
+                  <Lock size={12} color={COLORS.lightSub} strokeWidth={2.2} />
+                  <T style={styles.privacyText}>Your photos are only used to analyze your face.</T>
+                </View>
+              </View>
             </View>
           </ScrollView>
         </SafeAreaView>
@@ -593,6 +694,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: SP[5],
     paddingTop: SP[6],
     paddingBottom: SP[3],
+    justifyContent: "space-between",
+  },
+  ringArea: {
+    flex: 1,
+    justifyContent: "center",
+    paddingVertical: SP[5],
   },
   // Title block — leads at the top with confident hierarchy.
   heroCopy: {
@@ -616,7 +723,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginTop: sh(6),
   },
-  // Action block — CTA + skip together at the bottom for clear next-step.
+  // Action block — CTA anchored at the bottom for a clear next step.
   actions: {
     width: "100%",
     gap: sh(8),
@@ -631,19 +738,26 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingVertical: sh(14),
   },
+  ctaInner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: sw(8),
+  },
   ctaText: {
     fontFamily: FONT_BOLD,
-    fontSize: ms(14),
+    fontSize: ms(16),
     color: "#FFFFFF",
     letterSpacing: 0,
   },
-  skipWrap: {
-    alignSelf: "center",
-    paddingVertical: SP[2],
+  privacyRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: sw(5),
   },
-  skipLabel: {
-    fontFamily: FONT_BOLD,
-    fontSize: ms(13),
+  privacyText: {
+    fontFamily: FONT_REGULAR,
+    fontSize: ms(12),
     color: COLORS.lightSub,
     letterSpacing: 0,
   },
@@ -816,10 +930,5 @@ const camStyles = StyleSheet.create({
     fontSize: ms(13),
     color: "rgba(255,255,255,0.88)",
     letterSpacing: 0.3,
-  },
-  skipText: {
-    fontFamily: FONT_REGULAR,
-    fontSize: ms(12),
-    color: "rgba(255,255,255,0.45)",
   },
 });

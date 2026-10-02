@@ -6,8 +6,8 @@ import { FLOATING_TAB_BAR } from "@/components/layout/floatingTabBar";
  *
  * Coach lives on the app's warm paper background, not on the dark surfaces used
  * by the scan and routine flows. The brand spec is explicit that lime is a
- * focal accent rather than a wash, so it appears in exactly three places here:
- * the send button, the active chip border, and a positive delta. Everything
+ * focal accent rather than a wash, so it appears only on the pressed chip and
+ * a positive delta. The send button is solid ink, as in ChatGPT. Everything
  * else is paper, ink and hairlines.
  *
  * Neutrals are warm — mixed from the near-black ink over the cream ground —
@@ -23,6 +23,8 @@ export const COACH = {
   surface: "#FFFFFF",
   surfaceMuted: "rgba(11,11,11,0.04)",
   border: "rgba(11,11,11,0.08)",
+  /** Borderless grey fill for the user's bubbles and the composer pill. */
+  fill: "rgba(11,11,11,0.05)",
   hairline: "rgba(11,11,11,0.06)",
 
   ink: "#0B0B0B",
@@ -58,9 +60,9 @@ export const COACH_SPACE = {
 
 export const COACH_RADIUS = {
   card: 18,
-  bubble: 20,
+  bubble: 22,
   pill: 999,
-  composer: 24,
+  composer: 28,
 } as const;
 
 /**
@@ -89,6 +91,12 @@ export const COACH_TYPE = {
     fontFamily: "SFProRounded-Bold",
     letterSpacing: -0.5,
   },
+  /** Small centred screen title, the way a chat assistant labels itself. */
+  navTitle: {
+    fontSize: 17,
+    lineHeight: 22,
+    fontFamily: "SFProRounded-Semibold",
+  },
   heading: {
     fontSize: 22,
     lineHeight: 28,
@@ -101,12 +109,12 @@ export const COACH_TYPE = {
   },
   body: {
     fontSize: 16,
-    lineHeight: 23,
+    lineHeight: 24,
     fontFamily: "SFProRounded-Regular",
   },
   bodyMedium: {
     fontSize: 16,
-    lineHeight: 23,
+    lineHeight: 24,
     fontFamily: "SFProRounded-Semibold",
   },
   caption: {

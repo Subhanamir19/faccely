@@ -13,7 +13,8 @@ import {
   Easing,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Svg, Circle, Path, Line, Ellipse } from "react-native-svg";
+import { Svg, Circle, Path } from "react-native-svg";
+import { Image, type ImageSource } from "expo-image";
 import { router } from "expo-router";
 import Reanimated, {
   FadeInDown,
@@ -27,102 +28,14 @@ import Reanimated, {
 
 import { useOnboarding } from "@/store/onboarding";
 import { SP, RADII } from "@/lib/tokens";
-import { ms, sh, sw } from "@/lib/responsive";
-import { hapticSuccess } from "@/lib/haptics";
+import { ms, sh } from "@/lib/responsive";
+import { hapticLight, hapticSuccess } from "@/lib/haptics";
 import { ORANGE_ONBOARDING } from "@/components/onboarding/OrangeOnboardingLayout";
 
 const FONT_BOLD = ORANGE_ONBOARDING.fontBold;
 const FONT_SEMIBOLD = ORANGE_ONBOARDING.fontSemibold;
 const LIME = ORANGE_ONBOARDING.orange;
 const LIME_BORDER_RGBA = "255,121,0";
-
-/* ── Hand-drawn SVG icons ────────────────────────────────────
-   Same illustrated style as building-plan.tsx for visual
-   consistency across the onboarding flow.
-   ─────────────────────────────────────────────────────────── */
-const S = 26;
-
-function JawlineIcon({ color }: { color: string }) {
-  return (
-    <Svg width={S} height={S} viewBox="0 0 26 26">
-      <Path
-        d="M 13 3 C 19 3 22 7 22 12 C 22 18 19 22 13 23 C 7 22 4 18 4 12 C 4 7 7 3 13 3 Z"
-        fill="none" stroke={color} strokeWidth="1.4" strokeLinecap="round"
-      />
-      <Path
-        d="M 6 18 L 9 22 L 13 23 L 17 22 L 20 18"
-        fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"
-      />
-      <Ellipse cx="13" cy="23" rx="1" ry="1" fill={color} />
-    </Svg>
-  );
-}
-
-function EyeAreaIcon({ color }: { color: string }) {
-  return (
-    <Svg width={S} height={S} viewBox="0 0 26 26">
-      <Path
-        d="M 2 13 C 5 7 9 5 13 5 C 17 5 21 7 24 13 C 21 19 17 21 13 21 C 9 21 5 19 2 13 Z"
-        fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round"
-      />
-      <Circle cx="13" cy="13" r="3.5" fill="none" stroke={color} strokeWidth="1.5" />
-      <Circle cx="13" cy="13" r="1" fill={color} />
-      <Line x1="13" y1="2"   x2="13" y2="4.5" stroke={color} strokeWidth="1.2" strokeLinecap="round" />
-      <Line x1="9.5" y1="3"  x2="10.5" y2="5" stroke={color} strokeWidth="1.2" strokeLinecap="round" />
-      <Line x1="16.5" y1="3" x2="15.5" y2="5" stroke={color} strokeWidth="1.2" strokeLinecap="round" />
-    </Svg>
-  );
-}
-
-function HarmonyIcon({ color }: { color: string }) {
-  return (
-    <Svg width={S} height={S} viewBox="0 0 26 26">
-      <Path d="M 13 3 C 8 3 4 7 4 13 C 4 19 7 23 13 24" fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
-      <Path d="M 13 3 C 18 3 22 7 22 13 C 22 19 19 23 13 24" fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
-      <Line x1="13" y1="2"  x2="13" y2="24" stroke={color} strokeWidth="1"   strokeDasharray="2,2" opacity="0.8" />
-      <Line x1="6"  y1="9"  x2="20" y2="9"  stroke={color} strokeWidth="0.8" opacity="0.5" />
-      <Line x1="6"  y1="15" x2="20" y2="15" stroke={color} strokeWidth="0.8" opacity="0.5" />
-    </Svg>
-  );
-}
-
-function SkinIcon({ color }: { color: string }) {
-  return (
-    <Svg width={S} height={S} viewBox="0 0 26 26">
-      <Path
-        d="M 13 4 C 13 4 20 13 20 17 A 7 7 0 0 1 6 17 C 6 13 13 4 13 4 Z"
-        fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
-      />
-      <Line x1="19"   y1="4"   x2="19"   y2="9"   stroke={color} strokeWidth="1.5" strokeLinecap="round" />
-      <Line x1="16.5" y1="6.5" x2="21.5" y2="6.5" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
-      <Path d="M 10 14 Q 11 12 12 13" fill="none" stroke={color} strokeWidth="1" strokeLinecap="round" opacity="0.6" />
-    </Svg>
-  );
-}
-
-function MorningIcon({ color }: { color: string }) {
-  return (
-    <Svg width={S} height={S} viewBox="0 0 26 26">
-      <Line x1="2"  y1="18" x2="24" y2="18" stroke={color} strokeWidth="1.4" strokeLinecap="round" />
-      <Path d="M 5 18 A 8 8 0 0 1 21 18" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" />
-      <Line x1="13" y1="2"  x2="13" y2="5"  stroke={color} strokeWidth="1.5" strokeLinecap="round" />
-      <Line x1="5"  y1="6"  x2="7"  y2="8"  stroke={color} strokeWidth="1.5" strokeLinecap="round" />
-      <Line x1="21" y1="6"  x2="19" y2="8"  stroke={color} strokeWidth="1.5" strokeLinecap="round" />
-      <Line x1="2"  y1="11" x2="4"  y2="12" stroke={color} strokeWidth="1.3" strokeLinecap="round" />
-      <Line x1="24" y1="11" x2="22" y2="12" stroke={color} strokeWidth="1.3" strokeLinecap="round" />
-    </Svg>
-  );
-}
-
-function ProtocolStackIcon({ color }: { color: string }) {
-  return (
-    <Svg width={S} height={S} viewBox="0 0 26 26">
-      <Path d="M 4 8 L 13 4 L 22 8 L 13 12 Z" fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
-      <Path d="M 4 13 L 13 17 L 22 13" fill="none" stroke={color} strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" opacity="0.75" />
-      <Path d="M 4 18 L 13 22 L 22 18" fill="none" stroke={color} strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round" opacity="0.45" />
-    </Svg>
-  );
-}
 
 function CheckIcon() {
   return (
@@ -140,16 +53,40 @@ type RoutineItem = {
   key: string;
   label: string;
   sublabel: string;
-  color: string;
-  Icon: React.ComponentType<{ color: string }>;
+  image: ImageSource | number;
 };
 
 const ROUTINE_ITEMS: RoutineItem[] = [
-  { key: "jaw",       label: "Jawline Training",         sublabel: "Structural jaw exercises",    color: "#FF8C42", Icon: JawlineIcon       },
-  { key: "eye",       label: "Eye Area & Symmetry",      sublabel: "Orbital & lid work",          color: "#9B72F2", Icon: EyeAreaIcon       },
-  { key: "harmony",   label: "Cheekbone & Structure",    sublabel: "Midface definition work",     color: "#4FC3F7", Icon: HarmonyIcon       },
-  { key: "skin",      label: "Skin & Complexion",        sublabel: "Skincare protocols",          color: "#34D399", Icon: SkinIcon          },
-  { key: "protocols", label: "Daily Protocol Stack",     sublabel: "Lifestyle & habit protocols", color: "#F59E0B", Icon: ProtocolStackIcon },
+  {
+    key: "jaw",
+    label: "Jawline Training",
+    sublabel: "Structural jaw exercises",
+    image: require("@/assets/onboarding-option-illustrations/routine-animation/jawline_training.png"),
+  },
+  {
+    key: "eye",
+    label: "Eye Area & Symmetry",
+    sublabel: "Orbital & lid work",
+    image: require("@/assets/onboarding-option-illustrations/routine-animation/eye_area_symmetry.png"),
+  },
+  {
+    key: "harmony",
+    label: "Cheekbone & Structure",
+    sublabel: "Midface definition work",
+    image: require("@/assets/onboarding-option-illustrations/routine-animation/cheekbone_structure.png"),
+  },
+  {
+    key: "skin",
+    label: "Skin & Complexion",
+    sublabel: "Skincare protocols",
+    image: require("@/assets/onboarding-option-illustrations/routine-animation/skin_complexion.png"),
+  },
+  {
+    key: "protocols",
+    label: "Daily Protocol Stack",
+    sublabel: "Lifestyle & habit protocols",
+    image: require("@/assets/onboarding-option-illustrations/routine-animation/daily_protocol_stack.png"),
+  },
 ];
 
 /* ── AI status text cycle ────────────────────────────────────── */
@@ -164,8 +101,8 @@ const STATUS_TEXTS = [
 ] as const;
 
 /* ── Arc geometry ────────────────────────────────────────────── */
-const ARC_SIZE       = 56;
-const ARC_RADIUS     = 25;
+const ARC_SIZE       = 64;
+const ARC_RADIUS     = 29;
 const ARC_CX         = ARC_SIZE / 2;
 const ARC_CY         = ARC_SIZE / 2;
 const CIRCUMFERENCE  = 2 * Math.PI * ARC_RADIUS;
@@ -281,9 +218,13 @@ function RoutineItemRow({
             origin={`${ARC_CX},${ARC_CY}`}
           />
         </Svg>
-        <View style={[styles.itemIcon, { backgroundColor: item.color + "22" }]}>
-          <item.Icon color={item.color} />
-        </View>
+        <Image
+          source={item.image}
+          contentFit="contain"
+          transition={0}
+          accessible={false}
+          style={styles.itemIllustration}
+        />
       </View>
 
       {/* Labels */}
@@ -325,15 +266,27 @@ export default function RoutineAnimationScreen() {
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, []);
 
+  // The count is tracked in a ref rather than derived inside the setState
+  // updater: the updater can run twice under StrictMode, which would fire the
+  // haptic twice per item.
+  const doneRef = useRef(0);
+
   const handleDone = useCallback(() => {
-    setDoneCount((c) => {
-      const next = c + 1;
-      // CTA appears as soon as 2nd item completes — user can proceed early
-      if (next === 2) setCtaReady(true);
-      // Haptic fires when the last item finishes
-      if (next === ROUTINE_ITEMS.length) setTimeout(() => hapticSuccess(), 150);
-      return next;
-    });
+    const next = doneRef.current + 1;
+    doneRef.current = next;
+    setDoneCount(next);
+
+    // CTA appears as soon as 2nd item completes — user can proceed early
+    if (next === 2) setCtaReady(true);
+
+    if (next === ROUTINE_ITEMS.length) {
+      // The run is over: one success pulse instead of a sixth tick.
+      setTimeout(() => hapticSuccess(), 150);
+    } else {
+      // Each item's arc closing gets its own tick, so the list feels like it
+      // is landing item by item rather than only at the end.
+      hapticLight();
+    }
   }, []);
 
   const handleContinue = useCallback(async () => {
@@ -458,15 +411,15 @@ const styles = StyleSheet.create({
   iconWrapper: {
     width: ARC_SIZE,
     height: ARC_SIZE,
+    flexShrink: 0,
     alignItems: "center",
     justifyContent: "center",
   },
-  itemIcon: {
-    width: ms(42),
-    height: ms(42),
-    borderRadius: ms(21),
-    alignItems: "center",
-    justifyContent: "center",
+  itemIllustration: {
+    // Keep a clear inset inside the progress ring: the stroke's inner edge sits
+    // at ARC_RADIUS - strokeWidth / 2, so 50 leaves roughly 2px of air.
+    width: 50,
+    height: 50,
   },
 
   itemText: { flex: 1 },

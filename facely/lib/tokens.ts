@@ -325,10 +325,8 @@ export const ONBOARDING_FLOW = {
     { key: "plan-impact", label: "Plan Impact" },
     { key: "time-dedication", label: "Time Dedication" },
     { key: "score-projection", label: "Score Projection" },
+    { key: "weak-points-locked", label: "Locked Findings" },
     { key: "paywall", label: "Paywall" },
-    { key: "potential-face-reveal", label: "Potential Face" },
-    { key: "analysis-intro", label: "Analysis Intro" },
-    { key: "potential-face-bridge", label: "Analysis Bridge" },
     { key: "plan-intro", label: "Plan Intro" },
     { key: "routine-animation", label: "Routine Animation" },
   ],
@@ -337,7 +335,7 @@ export const ONBOARDING_FLOW = {
 // Orphans / alt entries resolve to the step they visually follow.
 const PROGRESS_ALIASES: Record<string, string> = {
   "face-scan": "scan",
-  "results-reveal": "potential-face-reveal",
+  "results-reveal": "plan-intro",
   "building-plan": "score-projection",
   features: "score-projection",
   reviews: "score-projection",
@@ -353,4 +351,65 @@ export function getProgressForStep(stepKey: string): number {
   if (idx <= 0) return 0; // splash (or unknown) has no progress
   const last = ONBOARDING_FLOW.steps.length - 1;
   return Math.min(1, idx / last);
+}
+
+// ---------------------------------------------------------------------------
+// Onboarding background moods
+// ---------------------------------------------------------------------------
+// The onboarding flow uses one shell colour for every screen. Screens that
+// carry an emotional beat lay a vertical tint over it; the tint fades back into
+// that same shell before the CTA, so consecutive screens read as one surface
+// rather than a set of differently-coloured pages. Question and input screens
+// take the shell flat.
+//
+// Provenance matters here, because the two groups were derived differently:
+//   - ONBOARDING_SURFACE values are pixel samples measured from the reference
+//     recording (see reference-style-for-options-asset.json). The one exception
+//     is `shell`: the measured value is the cool grey #E8E7EE, warmed here so it
+//     sits under the brand orange #F26A13 without going muddy.
+//   - BG_MOODS tints are visual estimates read off the reference screens, not
+//     sampled pixels. Treat them as ±3 per channel.
+export const ONBOARDING_SURFACE = {
+  shell: "#EDEBE7",          // every screen's base; also every gradient's end stop
+  card: "#FDFDFD",           // question bubbles, option rows, result cards
+  cardSelected: "#E8F3E8",   // chosen option fill
+  indicatorEmpty: "#E5E4E7", // unselected radio / checkbox
+  ink: "#181818",            // primary text and the CTA pill
+  inkMuted: "#808080",       // captions, helper copy
+  progressTrack: "#FFFFFF",
+  progressFill: "#35AB4A",
+  selection: "#40A653",      // selected border, check glyph, badge fill
+} as const;
+
+// Shared gradient geometry. The tint holds through the headline, then releases
+// into the shell well above the CTA so the button never sits on colour.
+export const BG_MOOD_GRADIENT = {
+  start: { x: 0.5, y: 0 },
+  end: { x: 0.5, y: 1 },
+  locations: [0, 0.38, 0.88] as const,
+};
+
+// Each mood is [top, mid, bottom]. `bottom` is always the shell.
+export const BG_MOODS = {
+  // Flat shell, for screens that must carry no tint at all.
+  neutral: { top: "#EDEBE7", mid: "#EDEBE7", bottom: "#EDEBE7" },
+  // Question and input screens: a whisper of brand orange, gone before the
+  // options, so the chosen answer stays the only strong colour event.
+  peach: { top: "#FCEADC", mid: "#F3E9E1", bottom: "#EDEBE7" },
+  // New chapter, curiosity, neutral topic hand-off.
+  cool: { top: "#DDE3F7", mid: "#E4E6F0", bottom: "#EDEBE7" },
+  // Affirmation, warmth, emotional payoff.
+  warm: { top: "#FBDBD1", mid: "#F4DFD8", bottom: "#EDEBE7" },
+  // Success, plan ready, projection.
+  mint: { top: "#E4F1E2", mid: "#E9F1E4", bottom: "#EDEBE7" },
+  // Attention and diagnosis — weak points, score breakdowns. Not failure.
+  amber: { top: "#FBEBCF", mid: "#F4EADB", bottom: "#EDEBE7" },
+  // Analysis and AI.
+  violet: { top: "#E7E1F7", mid: "#E9E5F1", bottom: "#EDEBE7" },
+} as const;
+
+export type BgMood = keyof typeof BG_MOODS;
+
+export function getBgMood(mood: BgMood) {
+  return BG_MOODS[mood];
 }

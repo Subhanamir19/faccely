@@ -5,12 +5,14 @@
 import React, { useEffect, useState } from "react";
 
 import RingLoader from "@/components/ui/RingLoader";
+import { hapticTick } from "@/lib/haptics";
 
 const SCAN_STAGES = [
-  "Extracting facial vectors",
-  "Mapping proportions & harmony",
-  "Calibrating sub-metrics",
-  "Generating your scores",
+  "Finding your features",
+  "Measuring proportions",
+  "Checking symmetry",
+  "Scoring each feature",
+  "Putting your results together",
 ];
 
 const STARTUP_STAGES = [
@@ -19,7 +21,7 @@ const STARTUP_STAGES = [
   "Almost ready",
 ];
 
-const STAGE_INTERVAL_MS = 1900;
+const STAGE_INTERVAL_MS = 2800;
 
 export type CinematicLoaderProps = {
   loading?: boolean;
@@ -44,10 +46,17 @@ const CinematicLoader: React.FC<CinematicLoaderProps> = ({
     if (!loading) return;
     setStageIdx(0);
     const t = setInterval(() => {
-      setStageIdx((i) => (i + 1) % stages.length);
+      // Hold on the last stage rather than looping back to the first.
+      setStageIdx((i) => Math.min(i + 1, stages.length - 1));
     }, STAGE_INTERVAL_MS);
     return () => clearInterval(t);
   }, [loading, stages.length]);
+
+  // A tick per scan stage, so the wait feels like work landing step by step.
+  // The startup loader stays silent.
+  useEffect(() => {
+    if (isScan && loading && stageIdx > 0) hapticTick();
+  }, [isScan, loading, stageIdx]);
 
   return (
     <RingLoader

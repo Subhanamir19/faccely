@@ -1,0 +1,182 @@
+﻿{
+    "generation_tool":  "Built-in image_gen",
+    "reference_image":  "C:/SS/option-assets-reference.png",
+    "reference_spec":  "C:/SS/reference-style-for-options-asset.json",
+    "display_size_px":  40,
+    "export_sizes_px":  [
+                            40,
+                            80,
+                            120
+                        ],
+    "assets":  [
+                   {
+                       "group":  "gender",
+                       "id":  "male_face",
+                       "label":  "Male",
+                       "subject":  "A friendly front-facing pink face with short golden-yellow hair, tiny blue eyes and a simple coral smiling mouth. Head only, small rounded ears. Match the male face in the reference.",
+                       "source":  "C:\\Users\\SUBHAN\\.codex\\generated_images\\01a0ae5d-2bfb-7432-8a38-961bcec108ce\\exec-9a5f6859-271a-4d2d-8e5c-b2b594f1ec60.png",
+                       "files":  {
+                                     "original":  "gender/male_face-original.png",
+                                     "x1":  "gender/male_face.png",
+                                     "x2":  "gender/male_face@2x.png",
+                                     "x3":  "gender/male_face@3x.png"
+                                 }
+                   },
+                   {
+                       "group":  "gender",
+                       "id":  "female_face",
+                       "label":  "Female",
+                       "subject":  "A friendly front-facing pink face framed by a simple coral-red rounded bob haircut, tiny green eyes and a simple coral smiling mouth. Head only, small rounded ears. Match the female face in the reference.",
+                       "source":  "C:\\Users\\SUBHAN\\.codex\\generated_images\\01a0ae5d-2bfb-7432-8a38-961bcec108ce\\exec-290eac11-8039-4031-8855-b77374b62887.png",
+                       "files":  {
+                                     "original":  "gender/female_face-original.png",
+                                     "x1":  "gender/female_face.png",
+                                     "x2":  "gender/female_face@2x.png",
+                                     "x3":  "gender/female_face@3x.png"
+                                 }
+                   },
+                   {
+                       "group":  "gender",
+                       "id":  "other_sparkles",
+                       "label":  "Other",
+                       "subject":  "A compact cluster of exactly three rounded four-point sparkles: one medium blue large sparkle left, one small pale lavender sparkle upper-right, and one mint sparkle lower-right. Match the sparkle cluster in the reference.",
+                       "source":  "C:\\Users\\SUBHAN\\.codex\\generated_images\\01a0ae5d-2bfb-7432-8a38-961bcec108ce\\exec-51603765-8834-42b1-9148-964fe211d07f.png",
+                       "files":  {
+                                     "original":  "gender/other_sparkles-original.png",
+                                     "x1":  "gender/other_sparkles.png",
+                                     "x2":  "gender/other_sparkles@2x.png",
+                                     "x3":  "gender/other_sparkles@3x.png"
+                                 }
+                   },
+                   {
+                       "group":  "gender",
+                       "id":  "prefer_not_to_say",
+                       "label":  "Prefer not to say",
+                       "subject":  "A simple friendly closed padlock representing privacy, with a lavender rounded rectangular body, medium-blue rounded shackle and one tiny pale mint keyhole. One compact object.",
+                       "source":  "C:\\Users\\SUBHAN\\.codex\\generated_images\\01a0ae5d-2bfb-7432-8a38-961bcec108ce\\exec-3c058ba5-73a9-4914-82b5-733a2764c606.png",
+                       "files":  {
+                                     "original":  "gender/prefer_not_to_say-original.png",
+                                     "x1":  "gender/prefer_not_to_say.png",
+                                     "x2":  "gender/prefer_not_to_say@2x.png",
+                                     "x3":  "gender/prefer_not_to_say@3x.png"
+                                 }
+                   },
+                   {
+                       "group":  "time-dedication",
+                       "id":  "quick_habit",
+                       "label":  "5 min — Quick habit",
+                       "subject":  "One chunky golden-yellow lightning bolt with gently rounded corners and one small pale-yellow inset highlight. Simple compact bolt, slightly diagonal.",
+                       "source":  "C:\\Users\\SUBHAN\\.codex\\generated_images\\01a0ae5d-2bfb-7432-8a38-961bcec108ce\\exec-975c3efe-e09a-4531-a7b1-203493db7cc6.png",
+                       "files":  {
+                                     "original":  "time-dedication/quick_habit-original.png",
+                                     "x1":  "time-dedication/quick_habit.png",
+                                     "x2":  "time-dedication/quick_habit@2x.png",
+                                     "x3":  "time-dedication/quick_habit@3x.png"
+                                 }
+                   },
+                   {
+                       "group":  "time-dedication",
+                       "id":  "balanced_target",
+                       "label":  "10 min — Balanced",
+                       "subject":  "A simple green circular target ring with a pale mint center and one coral arrow pointing diagonally into the center from the upper right, with rounded purple arrow fletching. Match the smart_mode target in the reference.",
+                       "source":  "C:\\Users\\SUBHAN\\.codex\\generated_images\\01a0ae5d-2bfb-7432-8a38-961bcec108ce\\exec-9abc5f6f-34c9-4358-945d-3417ca9d833b.png",
+                       "files":  {
+                                     "original":  "time-dedication/balanced_target-original.png",
+                                     "x1":  "time-dedication/balanced_target.png",
+                                     "x2":  "time-dedication/balanced_target@2x.png",
+                                     "x3":  "time-dedication/balanced_target@3x.png"
+                                 }
+                   },
+                   {
+                       "group":  "time-dedication",
+                       "id":  "dedicated_arm",
+                       "label":  "15 min — Dedicated",
+                       "subject":  "One simple flexed bicep arm with a rounded coral silhouette, small closed fist and a pale pink inset shape defining the bicep. Side view, compact recognizably flexed arm, no outlines or fine anatomy.",
+                       "source":  "C:\\Users\\SUBHAN\\.codex\\generated_images\\01a0ae5d-2bfb-7432-8a38-961bcec108ce\\exec-b9067e87-7372-4f03-8bb5-69b2c64fcdff.png",
+                       "files":  {
+                                     "original":  "time-dedication/dedicated_arm-original.png",
+                                     "x1":  "time-dedication/dedicated_arm.png",
+                                     "x2":  "time-dedication/dedicated_arm@2x.png",
+                                     "x3":  "time-dedication/dedicated_arm@3x.png"
+                                 }
+                   },
+                   {
+                       "group":  "time-dedication",
+                       "id":  "full_protocol_flame",
+                       "label":  "20+ min — Full protocol",
+                       "subject":  "One rounded purple flame silhouette with a smaller pale-lavender inner flame. Broad round base and two or three simple flame tips. Match the flame in the reference, omit the green plus.",
+                       "source":  "C:\\Users\\SUBHAN\\.codex\\generated_images\\01a0ae5d-2bfb-7432-8a38-961bcec108ce\\exec-80245c8d-cb70-4439-b6e4-9f978057cb41.png",
+                       "files":  {
+                                     "original":  "time-dedication/full_protocol_flame-original.png",
+                                     "x1":  "time-dedication/full_protocol_flame.png",
+                                     "x2":  "time-dedication/full_protocol_flame@2x.png",
+                                     "x3":  "time-dedication/full_protocol_flame@3x.png"
+                                 }
+                   },
+                   {
+                       "group":  "routine-animation",
+                       "id":  "jawline_training",
+                       "label":  "Jawline Training",
+                       "subject":  "One simple pink human head in side profile facing right, with short medium green hair and a strong clearly defined chin and jaw. Use a thick coral filled curved inset along the lower cheek and jaw to emphasize jawline. Friendly minimal face with one tiny medium-green eye. Head only, no neck or shoulders, compact.",
+                       "source":  "C:\\Users\\SUBHAN\\.codex\\generated_images\\01a0ae5d-2bfb-7432-8a38-961bcec108ce\\exec-b093798c-bbee-4dd5-b10b-6b8c2994a07c.png",
+                       "files":  {
+                                     "original":  "routine-animation/jawline_training-original.png",
+                                     "x1":  "routine-animation/jawline_training.png",
+                                     "x2":  "routine-animation/jawline_training@2x.png",
+                                     "x3":  "routine-animation/jawline_training@3x.png"
+                                 }
+                   },
+                   {
+                       "group":  "routine-animation",
+                       "id":  "eye_area_symmetry",
+                       "label":  "Eye Area \u0026 Symmetry",
+                       "subject":  "One stylized friendly almond-shaped eye made of a pale-lavender filled outer silhouette, a pale mint inner eye shape, medium-blue round iris and dark-green small round pupil with one tiny white highlight. Rounded simple shape, front view.",
+                       "source":  "C:\\Users\\SUBHAN\\.codex\\generated_images\\01a0ae5d-2bfb-7432-8a38-961bcec108ce\\exec-dba35022-eb2b-481d-9cb0-4f22d02a11bb.png",
+                       "files":  {
+                                     "original":  "routine-animation/eye_area_symmetry-original.png",
+                                     "x1":  "routine-animation/eye_area_symmetry.png",
+                                     "x2":  "routine-animation/eye_area_symmetry@2x.png",
+                                     "x3":  "routine-animation/eye_area_symmetry@3x.png"
+                                 }
+                   },
+                   {
+                       "group":  "routine-animation",
+                       "id":  "cheekbone_structure",
+                       "label":  "Cheekbone \u0026 Structure",
+                       "subject":  "One simple front-facing pink face with short medium-green hair, two tiny medium-green eyes and a small coral smile. Two symmetric coral rounded wedge-shaped cheek patches clearly emphasize the cheekbones. Head only with tiny rounded ears; match the simple friendly face drawing language in the reference.",
+                       "source":  "C:\\Users\\SUBHAN\\.codex\\generated_images\\01a0ae5d-2bfb-7432-8a38-961bcec108ce\\exec-c297fa44-de73-4ba5-b0f5-7e6b4713068f.png",
+                       "files":  {
+                                     "original":  "routine-animation/cheekbone_structure-original.png",
+                                     "x1":  "routine-animation/cheekbone_structure.png",
+                                     "x2":  "routine-animation/cheekbone_structure@2x.png",
+                                     "x3":  "routine-animation/cheekbone_structure@3x.png"
+                                 }
+                   },
+                   {
+                       "group":  "routine-animation",
+                       "id":  "skin_complexion",
+                       "label":  "Skin \u0026 Complexion",
+                       "subject":  "One plump mint-green skincare droplet with one pale-mint curved inset highlight, accompanied by exactly one small lavender rounded four-point sparkle at upper right. Simple smooth rounded droplet silhouette.",
+                       "source":  "C:\\Users\\SUBHAN\\.codex\\generated_images\\01a0ae5d-2bfb-7432-8a38-961bcec108ce\\exec-77b6afa4-5b40-47e4-be45-8066755725f2.png",
+                       "files":  {
+                                     "original":  "routine-animation/skin_complexion-original.png",
+                                     "x1":  "routine-animation/skin_complexion.png",
+                                     "x2":  "routine-animation/skin_complexion@2x.png",
+                                     "x3":  "routine-animation/skin_complexion@3x.png"
+                                 }
+                   },
+                   {
+                       "group":  "routine-animation",
+                       "id":  "daily_protocol_stack",
+                       "label":  "Daily Protocol Stack",
+                       "subject":  "Exactly three chunky rounded square tiles in a compact isometric stack, top tile golden yellow with a small pale-yellow inset, middle tile mint green, bottom tile lavender. Slight vertical separation, simple flat colored geometric faces, no outline. Match the flat isometric sugar-cube language of the reference.",
+                       "source":  "C:\\Users\\SUBHAN\\.codex\\generated_images\\01a0ae5d-2bfb-7432-8a38-961bcec108ce\\exec-1f019163-e16b-437e-91f5-d8b01802918a.png",
+                       "files":  {
+                                     "original":  "routine-animation/daily_protocol_stack-original.png",
+                                     "x1":  "routine-animation/daily_protocol_stack.png",
+                                     "x2":  "routine-animation/daily_protocol_stack@2x.png",
+                                     "x3":  "routine-animation/daily_protocol_stack@3x.png"
+                                 }
+                   }
+               ]
+}
